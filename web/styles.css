@@ -52,7 +52,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.02
 /* Backdrop for pages that are not the map: the same sky, out of focus. */
 body.page::before {
   content: ""; position: fixed; inset: 0; z-index: -2;
-  background: url("../../web/data/sky.jpg") 62% 58% / 190% no-repeat;
+  background: url("data/sky.jpg") 62% 58% / 190% no-repeat;
   filter: brightness(2.1) blur(1.5px);
   opacity: .75;
 }
@@ -343,7 +343,7 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 .measures div:first-child { border: 0; }
 .measures b { display: block; font: 600 22px/1.15 var(--display); letter-spacing: -.01em; }
 .measures b small { font: 400 13px var(--body); color: var(--ink-2); }
-.measures span { font-size: 12px; color: var(--ink-3); }
+.measures > div > span { font-size: 12px; color: var(--ink-3); }   /* not the number spans inside <b> */
 .spectrum svg { display: block; width: 100%; height: auto; overflow: visible; }
 .spectrum text { font: 400 11px var(--mono); fill: var(--ink-3); }
 .spectrum .lab { font: 500 12px var(--body); fill: var(--ink); }
@@ -375,7 +375,7 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 .step p { color: var(--ink-2); max-width: 420px; }
 .pic { justify-self: end; display: flex; align-items: center; justify-content: center; gap: 10px; width: 190px; height: 76px; }
 .pic .plate { border-radius: 11px; flex: none; }
-.pic .oval { position: relative; width: 152px; height: 76px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px rgba(255, 255, 255, .16); background: url("../../web/data/sky.jpg") center / 100% 100%; }
+.pic .oval { position: relative; width: 152px; height: 76px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px rgba(255, 255, 255, .16); background: url("data/sky.jpg") center / 100% 100%; }
 .pic .oval { filter: brightness(1.5); }
 .pic .oval::before { content: ""; position: absolute; inset: 0; background: radial-gradient(18px 12px at 24% 62%, var(--people), transparent), radial-gradient(22px 12px at 70% 38%, var(--people), transparent), radial-gradient(14px 9px at 52% 78%, var(--people), transparent); opacity: .6; }
 .pic .oval::after { content: ""; position: absolute; left: 41%; top: 30%; width: 9px; height: 9px; border-radius: 2px; border: 1.5px solid var(--comet); box-shadow: 0 0 8px var(--comet); }
@@ -433,3 +433,98 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 .marks > * { pointer-events: auto; }
 .map { cursor: crosshair; }
 .search:focus-within { border-color: rgba(255, 255, 255, .28); }
+.spectrum .err { stroke: rgba(255, 154, 77, .35); stroke-width: 1; }
+.spectrum .err.m1 { stroke: rgba(255, 255, 255, .22); }
+.spectrum circle.m1 { fill: rgba(255, 255, 255, .6); }
+.talk .faint { padding: 14px 0; }
+
+/* =====================================================================
+   PHONE (portrait, up to 640px wide). Everything for small screens lives
+   in this block; the rules above it, and desktop, are unchanged.
+   Explore stacks into one scrolling column: title, the map at full width,
+   the time slider, layer switches (2 x 2), then the stats and button.
+   The floating map cards are hidden there; marker names show instead.
+   ===================================================================== */
+.layer em { font-style: normal; }          /* text wrappers in index.html's layer labels */
+.mk.sel b { display: none; }               /* the featured comet's name is on its card (explore.js adds it for phones) */
+
+@media (max-width: 640px) {
+  body { min-width: 0; }
+  .wide-only { display: none; }
+  .layer em { text-transform: capitalize; }
+
+  /* Top bar: comet mark, nav, and search as an icon that opens over the bar when tapped. */
+  .topbar { top: 10px; left: 10px; right: 10px; gap: 4px; padding: 0 6px 0 16px; }
+  .brand { min-width: 40px; height: 40px; font-size: 0; gap: 0; }
+  .topbar nav { gap: 0; margin: 0 auto; }
+  .topbar nav a { display: grid; place-items: center; height: 40px; padding: 0 12px; }
+  .topbar .av { display: none; }
+  .search { position: relative; flex: none; justify-content: center; width: 40px; height: 40px; margin: 0; padding: 0; }
+  .search input { position: absolute; inset: 0; opacity: 0; }
+  .search:focus-within { position: absolute; z-index: 1; top: 5px; left: 6px; right: 6px; width: auto; height: 40px; justify-content: flex-start; padding: 0 14px; background: #0d111b; }
+  .search:focus-within input { position: static; opacity: 1; font-size: 16px; }   /* 16px stops iOS zooming in */
+
+  /* Explore */
+  body.explore { height: auto; min-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 82px 12px 28px; }
+  .hero { order: -1; position: static; width: auto; padding: 0 4px; }
+  .hero h1 { font-size: 30px; }
+  .map-wrap { position: relative; left: auto; top: auto; transform: none; flex: none; width: calc(100% + 16px); margin: 0 -8px; }
+  .map .grat text { display: none; }   /* would sit on the markers at this size; the dotted line stays */
+  .mk i::before { content: ""; position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; }   /* finger-sized tap area */
+  .mk b { font-size: 11px; }
+  .mk.sel b, .mk.patch b { display: block !important; }
+  .mk.patch.left b { left: auto; right: 16px; }
+  .mapcard { display: none !important; }
+
+  .timebar { position: static; transform: none; width: auto; min-width: 0; height: auto; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 4px 14px; padding: 12px 18px 10px 12px; border-radius: var(--r-lg); }
+  .timebar .play { grid-row: 1 / 3; width: 44px; height: 44px; }
+  .timebar .now { grid-column: 2; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: auto; padding: 0; border: 0; }
+  .timebar .range { grid-column: 2; height: 40px; }
+  .timebar .range::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -10px; }
+  .timebar .range::-moz-range-thumb { width: 24px; height: 24px; }
+
+  .layers { order: 1; position: static; width: auto; display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; padding: 4px 18px; }
+  .layer { min-height: 48px; padding: 0; border-top: 0; }
+  .layer:nth-of-type(n+3) { border-top: 1px solid var(--line); }
+  .heat-key { order: 1; grid-column: 1 / -1; justify-content: center; padding: 12px 0; border-top: 1px solid var(--line); }
+
+  .start { order: 2; position: static; width: auto; grid-template-columns: 1fr 1fr 44px; gap: 18px 14px; padding: 18px; }
+  .start .stat:last-of-type { grid-column: 2 / -1; }
+  .start .stat b { font-size: 22px; }
+  .start .stat b small { font-size: 11px; }
+  .start .btn.wide { grid-column: 1 / 3; }
+  .start .link { width: 44px; height: 44px; gap: 0; font-size: 0; border-radius: 50%; color: var(--ink); background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .13); }
+
+  /* Inner pages */
+  .shell { padding: 80px 12px 28px; }
+  .panel { padding: 16px; }
+
+  /* Comet page */
+  .comet-head { flex-wrap: wrap; gap: 8px; }
+  .comet-head h1 { flex-basis: 100%; font-size: 36px; margin: 0 0 4px; }
+  .comet-head .btn { margin-left: 0; }
+  .comet-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .col { gap: 14px; }
+  .nights { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .measures { grid-template-columns: 1fr 1fr; row-gap: 20px; }
+  .measures div { padding: 0 16px; }
+  .measures div:nth-child(odd) { border-left: 0; }
+  .spectrum .legend { flex-wrap: wrap; gap: 6px 18px; }
+  .talk { padding: 16px; }
+  .tagpick .tag { height: 40px; padding: 0 14px 0 12px; }
+  .composer .btn.small { height: 40px; }
+
+  /* Guide */
+  .guide-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; padding-top: 4px; }
+  .guide-grid h1 { font-size: 36px; }
+  .guide-grid .lede { margin: 10px 0 20px; font-size: 15px; }
+  .step { grid-template-columns: 34px minmax(0, 1fr); align-items: start; padding: 16px 0; }
+  .step::before { font-size: 24px; }
+  .pic { grid-column: 2; justify-self: start; margin-top: 12px; }
+  .practice { position: static; padding: 16px; }
+}
+@media (min-width: 400px) and (max-width: 640px) {
+  .topbar { gap: 8px; }
+  .brand { gap: 8px; font-size: 15px; }   /* room for the name on bigger phones */
+  .topbar nav a { padding: 0 10px; }
+}

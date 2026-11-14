@@ -4,6 +4,9 @@
                                  R,G = day of the first photo since the start date (16 bit), B = photos (D1, capped 255),
                                  A = 255 where covered
   web/data/coverage.json       the start date and the number of days the grid spans
+  web/data/visits.png          when each cell was visited: up to 6 visit start days per cell (a visit is a burst of
+                               photos; 20+ quiet days start a new one). Same grid, stacked 3 tall: block k holds visit
+                               2k in R,G and 2k+1 in B,A as day+1 (16 bit), 0 = no such visit
 Same projection and HEALPix math as web/timelapse.html and web/sky.js.
 Run: uv run -q --with numpy --with pillow python bake/sky_assets.py
 """
@@ -72,6 +75,7 @@ def coverage(step=0.5, samples=12):
     W, H = int(360 / step), int(180 / step)
     first = np.full(W * H, np.inf); count = np.zeros(W * H, np.int64)
     s = (np.arange(samples) + 0.5) / samples
+    seen = []   # (cell, day) pairs, for the visit list
     for a in s:   # bilinear points across each patch, on the sphere, so rotation and the RA wrap come out right
         w = s[None, :, None]
         e01 = (1 - w) * xyz[:, None, 0] + w * xyz[:, None, 1]   # (N, samples, 3) along one edge
@@ -81,6 +85,7 @@ def coverage(step=0.5, samples=12):
         ra = np.degrees(np.arctan2(p[..., 1], p[..., 0])) % 360; dec = np.degrees(np.arcsin(p[..., 2]))
         cell = np.minimum(H - 1, ((90 - dec) / step).astype(int)) * W + np.minimum(W - 1, (ra / step).astype(int))
         np.minimum.at(first, cell.ravel(), np.repeat(t, samples))
+        seen.append(np.unique(cell.ravel().astype(np.int64) * 1024 + np.repeat(np.floor(t - t0).astype(np.int64), samples)))
         if a == s[samples // 2]:   # one row of samples per patch for the count, so a patch counts about once per cell
             np.add.at(count, np.unique(np.stack([cell, np.arange(len(t))[:, None].repeat(samples, 1)], -1).reshape(-1, 2), axis=0)[:, 0], 1)
     days = np.where(np.isfinite(first), first - t0, 0).astype(np.uint16)
@@ -88,9 +93,29 @@ def coverage(step=0.5, samples=12):
     img[:, 0], img[:, 1] = days >> 8, days & 255
     img[:, 2] = np.minimum(255, count); img[:, 3] = np.where(np.isfinite(first), 255, 0)
     Image.fromarray(img.reshape(H, W, 4), "RGBA").save(OUT / "coverage.png")
+    visits(np.unique(np.concatenate(seen)), W, H)
     span = int(days.max()) + 1
     json.dump({"mjd0": float(t0), "days": span, "images": len(rows), "step": step}, (OUT / "coverage.json").open("w"))
     print(f"{len(rows)} images, MJD {t0} + {span} days, {np.isfinite(first).mean():.1%} of cells covered")
+
+
+def visits(codes, W, H, gap=20, keep=6):
+    """codes = cell * 1024 + day, sorted. A cell's visit starts where the cell changes or 20+ days have passed."""
+    cell, day = codes // 1024, codes % 1024
+    start = np.ones(len(codes), bool)
+    start[1:] = (cell[1:] != cell[:-1]) | (day[1:] - day[:-1] > gap)
+    sc, sd = cell[start], day[start]
+    k = np.arange(len(sc)) - np.searchsorted(sc, sc)   # visit number within its cell: 0, 1, 2, ...
+    m = k < keep
+    v = np.zeros((keep, W * H), np.int64)
+    v[k[m], sc[m]] = sd[m] + 1
+    img = np.zeros((keep // 2, H * W, 4), np.uint8)
+    for b in range(keep // 2):
+        a, c = v[2 * b], v[2 * b + 1]   # day+1 fits 10 bits; alpha stays 255 (browsers alter colour where it is not)
+        img[b, :, 0], img[b, :, 1], img[b, :, 2], img[b, :, 3] = a & 255, c & 255, (a >> 8) | ((c >> 8) << 4), 255
+    Image.fromarray(img.reshape(keep // 2 * H, W, 4), "RGBA").save(OUT / "visits.png")
+    n = (v > 0).sum(0)
+    print("visits per photographed cell:", {i: round(float((n[n > 0] == i).mean()), 3) for i in range(1, keep + 1)})
 
 
 if __name__ == "__main__":

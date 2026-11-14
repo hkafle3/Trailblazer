@@ -46,11 +46,11 @@
 <div class="hero"><h1>Find the dots that move.</h1></div>
 
 <aside class="layers glass" aria-label="Map layers">
-  <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg>SPHEREx photos</span><input class="sw" type="checkbox" id="ly-photos" checked></label>
-  <label class="layer" style="--c:var(--people)"><span><svg class="ic"><use href="icons.svg#eye"/></svg>Explored by people</span><input class="sw" type="checkbox" id="ly-people"></label>
+  <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg><em><em class="wide-only">SPHEREx </em>photos</em></span><input class="sw" type="checkbox" id="ly-photos" checked></label>
+  <label class="layer" style="--c:var(--people)"><span><svg class="ic"><use href="icons.svg#eye"/></svg><em>Explored<em class="wide-only"> by people</em></em></span><input class="sw" type="checkbox" id="ly-people"></label>
   <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
-  <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#comet"/></svg>Comets found</span><input class="sw" type="checkbox" id="ly-comets" checked></label>
-  <label class="layer" style="--c:var(--known)"><span><svg class="ic"><use href="icons.svg#known"/></svg>Known objects</span><input class="sw" type="checkbox" id="ly-known" checked></label>
+  <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#comet"/></svg><em>Comets<em class="wide-only"> found</em></em></span><input class="sw" type="checkbox" id="ly-comets" checked></label>
+  <label class="layer" style="--c:var(--known)"><span><svg class="ic"><use href="icons.svg#known"/></svg><em>Known<em class="wide-only"> objects</em></em></span><input class="sw" type="checkbox" id="ly-known" checked></label>
 </aside>
 
 <div class="timebar glass">
@@ -64,7 +64,7 @@
     <svg class="ic lg"><use href="icons.svg#photo"/></svg><b>&nbsp;</b><i></i>
   </div>
   <div class="stat" id="people-meter" style="--c:var(--people);--p:0%" title="Patches checked by people (example data)">
-    <svg class="ic lg"><use href="icons.svg#eye"/></svg><b><span data-n="seen">&nbsp;</span> <small>/ <span data-n="total"></span> patches</small></b><i></i>
+    <svg class="ic lg"><use href="icons.svg#eye"/></svg><b><span data-n="seen">&nbsp;</span> <small>/ <span data-n="total"></span><span class="wide-only"> patches</span></small></b><i></i>
   </div>
   <a class="btn wide" id="go-unexplored">Unexplored patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
   <a class="link" href="guide.html"><svg class="ic"><use href="icons.svg#book"/></svg>How to find a comet</a>

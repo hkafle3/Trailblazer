@@ -3,9 +3,9 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
-//   GET /api/comets   GET /api/explored   (example data until D1 holds real labels; see docs/api.md)
+//   GET /api/comets   GET /api/comets/:id   (D1)        GET /api/explored   (example data)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
-import { COMETS, SUGGEST, exploredCells } from './example-data.js';
+import { SUGGEST, exploredCells } from './example-data.js';
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
@@ -103,8 +103,34 @@ async function gaia(url) {
   }
 }
 
+// Tag tallies per comet: each person's latest tag is their vote (so nobody counts twice)
+const TALLY = `SELECT comet_id, tag, COUNT(*) AS n FROM comments c
+  WHERE tag IS NOT NULL AND id = (SELECT MAX(id) FROM comments d WHERE d.comet_id = c.comet_id AND d.author = c.author AND d.tag IS NOT NULL)
+  GROUP BY comet_id, tag`;
+const tallies = async (db) => {
+  const out = {};
+  for (const { comet_id, tag, n } of (await db.prepare(TALLY).all()).results)
+    (out[comet_id] ??= { comet: 0, asteroid: 0, glitch: 0, unsure: 0 })[tag] = n;
+  return out;
+};
+const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, tail: c.tail, real: !!c.real, example: !c.real,
+  ...(c.kind === 'comet' ? { tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 } } : {}) });
+
 // Comets people found plus known objects, for the map's markers
-const comets = () => json({ example: true, comets: COMETS }, 200, { 'Cache-Control': 'public, max-age=60' });
+async function comets(url, env) {
+  const [rows, tags] = await Promise.all([env.DB.prepare('SELECT id, kind, ra, dec, day, tail, real FROM comets').all(), tallies(env.DB)]);
+  return json({ comets: rows.results.map(c => cometRow(c, tags)) });
+}
+
+// One comet for its page: position, tags, the measured detail (photos, spectrum) and its discussion
+async function comet(id, env) {
+  const c = await env.DB.prepare('SELECT * FROM comets WHERE id = ?').bind(id).first();
+  if (!c) return json({ error: `no comet ${id}` }, 404);
+  const [tags, talk] = await Promise.all([tallies(env.DB),
+    env.DB.prepare('SELECT author, tag, body, created_at FROM comments WHERE comet_id = ? ORDER BY created_at').bind(id).all()]);
+  return json({ ...cometRow(c, tags), tags: tags[id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 },
+    detail: c.detail ? JSON.parse(c.detail) : null, comments: talk.results });
+}
 
 // Which patch-sized cells people have checked, and one nobody has, for the heat map and "Unexplored patch"
 function explored() {
@@ -116,7 +142,10 @@ export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
-    const route = { '/api/images': images, '/api/gaia': gaia, '/api/comets': comets, '/api/explored': explored }[url.pathname];
+    // live data from D1: never cached here, so a new comment shows at once
+    if (url.pathname === '/api/comets') return comets(url, env);
+    if (url.pathname.startsWith('/api/comets/')) return comet(decodeURIComponent(url.pathname.slice('/api/comets/'.length)), env);
+    const route = { '/api/images': images, '/api/gaia': gaia, '/api/explored': explored }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     const cache = caches.default, hit = await cache.match(request);
     if (hit) return hit;

@@ -1,20 +1,6 @@
-// Example data for /api/comets and /api/explored, until labels and comments live in D1.
-// Every response built from this file carries "example": true so the page can say so.
+// Example data for /api/explored, until "patch checked" events are stored in D1.
+// Comets now live in D1 (worker/migrations/, seeded by bake/seed_d1.py).
 // Days count from the coverage map's start, MJD 60789 (2025-04-24); see web/data/coverage.json.
-
-// tags: how many people tagged the comet's dots comet / asteroid / glitch / not sure
-export const COMETS = [
-  { id: 'C-0147', kind: 'comet', ra: 328, dec: 34, day: 127, tail: -150, tags: { comet: 12, asteroid: 1, glitch: 0, unsure: 1 } },
-  { id: 'C-0152', kind: 'comet', ra: 18, dec: 22, day: 160, tail: -35, tags: { comet: 6, asteroid: 1, glitch: 0, unsure: 0 } },
-  { id: 'C-0161', kind: 'comet', ra: 300, dec: -30, day: 210, tail: -120, tags: { comet: 2, asteroid: 1, glitch: 0, unsure: 1 } },
-  { id: 'C-0170', kind: 'comet', ra: 95, dec: -12, day: 245, tail: -200, tags: { comet: 5, asteroid: 0, glitch: 0, unsure: 0 } },
-  { id: 'C-0174', kind: 'comet', ra: 140, dec: 48, day: 330, tail: -60, tags: { comet: 1, asteroid: 0, glitch: 1, unsure: 1 } },
-  // real: interstellar comet 3I/ATLAS, which SPHEREx observed in August 2025 (position from JPL Horizons, 2025-08-10)
-  { id: '3I/ATLAS', kind: 'known', ra: 246.71, dec: -16.79, day: 108, real: true },
-  { id: 'known-1', kind: 'known', ra: 60, dec: 21 }, { id: 'known-2', kind: 'known', ra: 122, dec: 17 },
-  { id: 'known-3', kind: 'known', ra: 171, dec: 4 }, { id: 'known-4', kind: 'known', ra: 282, dec: -24 },
-  { id: 'known-5', kind: 'known', ra: 346, dec: -7 }, { id: 'known-6', kind: 'known', ra: 35, dec: -38 }
-];
 
 // A spot nobody has checked yet: RW Aurigae's patch, which the time-lapse already has baked frames for.
 export const SUGGEST = { ra: 77, dec: 30.4 };

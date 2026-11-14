@@ -6,3 +6,10 @@ compatibility_date = "2026-11-01"
 # Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
 [assets]
 directory = "../web"
+
+# D1 database: comets and comments (labels are comments with a tag). Schema: worker/migrations/.
+[[d1_databases]]
+binding = "DB"
+database_name = "comet-hunt"
+database_id = "0c2df597-de82-417f-93fb-d932729ecf5a"
+migrations_dir = "migrations"

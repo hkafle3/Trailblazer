@@ -59,7 +59,7 @@ $('search').addEventListener('submit', e => {
 });
 
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
-getJson('/api/comets').then(({ comets }) => {
+const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
   const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
   const featured = comets.filter(c => c.kind === 'comet').sort((a, b) => votes(b) - votes(a))[0];
@@ -73,8 +73,8 @@ getJson('/api/comets').then(({ comets }) => {
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
     } else a.title = c.real ? `${c.id} (known comet)` : 'Known object (example)';
-    if (c === featured) a.classList.add('sel');
-    else if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
+    if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
+    if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
   }
@@ -94,7 +94,7 @@ getJson('/api/comets').then(({ comets }) => {
 }).catch(err => console.warn('comets unavailable', err));
 
 // ---- heat map from /api/explored: patch-sized cells people have checked (mint), the rest stay dark ----
-getJson('/api/explored').then(({ total, cells, suggest }) => {
+const exploredLoaded = getJson('/api/explored').then(({ total, cells, suggest }) => {
   const cv = $('heat'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
   const level = n => (n >= 20 ? 3 : n >= 5 ? 2 : 1);
   for (const c of cells) {
@@ -123,50 +123,74 @@ getJson('/api/explored').then(({ total, cells, suggest }) => {
   $('go-unexplored').href = url;
 }).catch(err => console.warn('explored unavailable', err));
 
+// ---- phones: flip a name to the left of its marker when it would cover another name or dot, or run off screen ----
+Promise.all([cometsLoaded, exploredLoaded]).then(() => {
+  if (!matchMedia('(max-width: 640px)').matches) return;
+  const box = el => el.getBoundingClientRect(), hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const marks = [...document.querySelectorAll('.mk')], dots = marks.map(m => box(m.querySelector('i'))), kept = [];
+  for (const m of marks) {
+    const b = m.querySelector('b');
+    if (!b || !b.offsetWidth) continue;
+    const bad = () => { const r = box(b); return r.left < 4 || r.right > innerWidth - 4 || kept.some(k => hit(r, k)) || dots.some((d, i) => marks[i] !== m && hit(r, d)); };
+    if (bad()) { m.classList.toggle('left'); if (bad()) m.classList.toggle('left'); }
+    kept.push(box(b));
+  }
+});
+
 // ---- SPHEREx coverage replay ----
-// coverage.png: R*256+G = day of first photo, A = covered. The day for every pixel of the oval is computed once,
-// so moving the slider only compares numbers.
+// visits.png (bake/sky_assets.py): for each 0.5 degree cell, the start day of up to 6 visits (bursts of photos).
+// The visit days for every pixel of the oval are looked up once, so moving the slider only compares numbers.
+// Each frame: never photographed = dark; photographed = a veil that clears with each pass; any visit in the last
+// FRESH days glows, so SPHEREx's scanning strip keeps moving across the sky for the whole timeline.
 let showByDay = () => {};
 (async () => {
   const meta = await getJson('data/coverage.json');
-  const img = new Image(); img.src = 'data/coverage.png'; await img.decode();
-  const src = Object.assign(document.createElement('canvas'), { width: 720, height: 360 }).getContext('2d', { willReadFrequently: true });
+  const img = new Image(); img.src = 'data/visits.png'; await img.decode();
+  const src = Object.assign(document.createElement('canvas'), { width: 720, height: 1080 }).getContext('2d', { willReadFrequently: true });
   src.drawImage(img, 0, 0);
-  const px = src.getImageData(0, 0, 720, 360).data;
+  const px = src.getImageData(0, 0, 720, 1080).data;
 
-  const cv = $('cover'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
-  const OUT = 65535, NEVER = 65534, day = new Uint16Array(W * H);
+  const cv = $('cover'), g = cv.getContext('2d'), W = cv.width, H = cv.height, K = 6, NONE = 65535;
+  const inOval = new Uint8Array(W * H), visits = new Uint16Array(W * H * K).fill(NONE);
   let inside = 0;
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const rd = inv((i + .5) / W, (j + .5) / H);
-    let v = OUT;
-    if (rd) {
-      const k = (Math.min(359, Math.floor((90 - rd[1]) / meta.step)) * 720 + Math.min(719, Math.floor(rd[0] / meta.step))) * 4;
-      v = px[k + 3] ? px[k] * 256 + px[k + 1] : NEVER;
-      inside++;
+    if (!rd) continue;
+    inside++; inOval[j * W + i] = 1;
+    const cell = Math.min(359, Math.floor((90 - rd[1]) / meta.step)) * 720 + Math.min(719, Math.floor(rd[0] / meta.step));
+    for (let v = 0; v < K; v++) {   // block v>>1 of the stacked image: visit 2k low byte in R, 2k+1 in G, high bits in B
+      const q = ((v >> 1) * 360 * 720 + cell) * 4, day = px[q + (v & 1)] | (((px[q + 2] >> ((v & 1) * 4)) & 15) << 8);
+      if (day) visits[(j * W + i) * K + v] = day - 1;
     }
-    day[j * W + i] = v;
   }
 
   const out = g.createImageData(W, H), o = out.data, slider = $('time');
   const FRESH = 9;   // days a newly photographed strip stays lit up
   showByDay = () => { for (const el of document.querySelectorAll('[data-day]')) el.style.visibility = +el.dataset.day <= +slider.value ? '' : 'hidden'; };
+  const VEIL = [232, 110, 45, 0];   // darkness by passes so far: none, 1, 2, 3+
   function draw() {
-    const d = +slider.value; let lit = 0;
-    for (let k = 0; k < day.length; k++) {
-      const v = day[k], q = k * 4;
-      if (v === OUT) { o[q + 3] = 0; continue; }
-      if (v <= d) {
-        lit++;
-        const age = d - v, fresh = age < FRESH && d < meta.days;
-        o[q] = 234; o[q + 1] = 241; o[q + 2] = 255; o[q + 3] = fresh ? 70 * (1 - age / FRESH) : 0;
-      } else { o[q] = 3; o[q + 1] = 5; o[q + 2] = 10; o[q + 3] = 232; }
+    const d = +slider.value, passes = new Uint32Array(K + 1);
+    for (let k = 0, q = 0; k < inOval.length; k++, q += 4) {
+      if (!inOval[k]) { o[q + 3] = 0; continue; }
+      let n = 0, age = Infinity;
+      for (let v = 0, b = k * K; v < K; v++) {
+        const t = visits[b + v];
+        if (t <= d) { n++; age = Math.min(age, d - t); }
+      }
+      passes[n]++;
+      if (age < FRESH) { o[q] = 234; o[q + 1] = 241; o[q + 2] = 255; o[q + 3] = 90 * (1 - age / FRESH); }
+      else { o[q] = 3; o[q + 1] = 5; o[q + 2] = 10; o[q + 3] = VEIL[Math.min(n, 3)]; }
     }
     g.putImageData(out, 0, 0);
-    const pct = lit / inside * 100;   // Mollweide is equal-area, so counting pixels counts sky fairly
+    // share of the sky photographed at least p times (Mollweide is equal-area, so counting pixels counts sky fairly)
+    const atLeast = p => { let c = 0; for (let n = p; n <= K; n++) c += passes[n]; return c / inside * 100; };
+    const fmt = x => (x > 99.5 ? Math.floor(x) : Math.round(x)) + '%';
+    let pass = 1;
+    while (pass < K && atLeast(pass) >= 99) pass++;
+    const pct = atLeast(1), now = atLeast(pass);
     const when = new Date((meta.mjd0 + d - 40587) * 864e5);
     $('t-date').textContent = when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-    $('t-pct').textContent = (pct > 99.5 ? Math.floor(pct) : Math.round(pct)) + '% photographed';
+    $('t-pct').textContent = pass === 1 ? `${fmt(pct)} photographed` : `Pass ${pass} · ${fmt(now)}`;
     slider.style.setProperty('--p', d / meta.days * 100 + '%');
     $('photo-meter').style.setProperty('--p', pct + '%');
     $('photo-meter').querySelector('b').textContent = Math.floor(pct) + '%';

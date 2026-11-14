@@ -2,23 +2,38 @@
 
 One Cloudflare Worker (`worker/src/index.js`) answers every `/api/*` request and also serves the app's files from `web/`. All routes are `GET`, return JSON, and send `Access-Control-Allow-Origin: *`. Errors are `{"error": "..."}` with a 4xx or 5xx status.
 
-Routes marked **example** return made-up data from `worker/src/example-data.js` with `"example": true`. Replacing them with D1 queries is the next backend task; keep the response shapes and the page keeps working.
+Comets and comments live in Cloudflare D1 (database `comet-hunt`, schema in `worker/migrations/`). `/api/explored` still returns made-up data from `worker/src/example-data.js` with `"example": true`.
 
-## GET /api/comets (example)
+Database: `npm run dev` applies the migrations to a local copy first, so it works with no account. `npm run db:remote` applies them to the real database (needs `npx wrangler login`). A new table or column is a new numbered file in `worker/migrations/`; never edit one that has been applied.
 
-Markers for the Explore map: comets people found (`kind: "comet"`) and known objects (`kind: "known"`).
+## GET /api/comets (D1)
+
+Markers for the Explore map: comets people found (`kind: "comet"`) and known objects (`kind: "known"`), read from the `comets` table. `example: true` marks seeded example rows; `real: true` marks real objects with real data (3I/ATLAS).
 
 ```json
-{ "example": true, "comets": [
-  { "id": "C-0147", "kind": "comet", "ra": 328, "dec": 34, "day": 127, "tail": -150,
+{ "comets": [
+  { "id": "C-0147", "kind": "comet", "ra": 328, "dec": 34, "day": 127, "tail": -150, "real": false, "example": true,
     "tags": { "comet": 12, "asteroid": 1, "glitch": 0, "unsure": 1 } },
-  { "id": "3I/ATLAS", "kind": "known", "ra": 246.71, "dec": -16.79, "day": 108, "real": true }
+  { "id": "3I/ATLAS", "kind": "known", "ra": 247.109, "dec": -16.84, "day": 99, "real": true, "example": false }
 ] }
 ```
 
 - `ra`, `dec`: degrees. `day`: days since the coverage start (MJD 60789, 24 Apr 2025); the marker appears once the time slider reaches it.
-- `tags`: how many people tagged this comet's dots each way. A tag is part of a comment; it counts as that person's vote.
-- `tail`: the angle the marker's tail points, in degrees (cosmetic).
+- `tags`: votes, counted from the `comments` table. A tag is part of a comment, and only each person's latest tag counts.
+
+## GET /api/comets/:id (D1)
+
+One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `detail` (null for example comets) and `comments`, oldest first.
+
+```json
+{ "id": "3I/ATLAS", "kind": "known", "real": true, "tags": { "comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0 },
+  "detail": { "speed_arcsec_per_hour": 99.0, "direction": "west", "first_mjd": 60888.3334, "exposures": 259, "measured": 159,
+    "photos": [ { "file": "2025W33_1B_0599_1_D5.png", "mjd": 60901.2413, "lam": 4.254, "flux": 95.58 } ],
+    "spectrum": { "2025-08": [ { "lam": 4.254, "flux": 95.58, "err": 0.82 } ], "2025-12": [ { "lam": 4.277, "flux": 532.73, "err": 3.1 } ] } },
+  "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun.", "created_at": 1762998800000 } ] }
+```
+
+Refusal: `404 {"error":"no comet C-9999"}`.
 
 ## GET /api/explored (example)
 
