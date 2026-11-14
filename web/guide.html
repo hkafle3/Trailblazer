@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How to find a comet · Comet Hunt</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui.css">
 </head>
 <body class="page">
 
@@ -12,7 +13,6 @@
   <a class="brand" href="./"><span class="brand-mark"></span>Comet Hunt</a>
   <nav><a href="./">Explore</a><a href="comet.html">Comets</a><a class="on" href="guide.html">Guide</a></nav>
   <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet or sky position" aria-label="Search"></label>
-  <a class="av" title="orbit_owl">OO</a>
 </header>
 
 <main class="shell">
@@ -70,10 +70,16 @@
       </div>
       <div class="row">
         <a class="btn" href="timelapse.html?target=rwaur&diff=1">Start practice <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-        <a class="btn ghost">Show me</a>
+        <button class="btn ghost" id="show-me" type="button" aria-pressed="false">Show me</button>
       </div>
     </aside>
   </div>
 </main>
+<script>
+  // "Show me" highlights where the dot is in each blinking photo, then hides it again.
+  const showMe = document.getElementById('show-me'), plate = document.querySelector('.practice .plate');
+  showMe.addEventListener('click', () => { const on = plate.classList.toggle('show'); showMe.setAttribute('aria-pressed', on); showMe.lastChild.textContent = on ? 'Hide' : 'Show me'; });
+</script>
+<script src="ui.js"></script>
 </body>
 </html>

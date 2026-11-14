@@ -46,15 +46,31 @@ const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(ne
   $('ecl').setAttribute('d', pts.map((p, i) => (i ? 'L' : 'M') + P(p[0], p[1])).join(''));
 }
 
-// ---- click anywhere on the oval: open that patch in the time-lapse with the difference view on ----
-$('map').addEventListener('click', e => {
-  const b = e.currentTarget.getBoundingClientRect(), rd = inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height);
-  if (rd) location.href = patchUrl(...rd);
+// ---- click anywhere on the oval: drop a pin with a small card; "Look closer" opens that patch (difference view on) ----
+const pin = $('pin'), readout = $('readout');
+function showPin(ra, dec) {
+  const u = place(pin, ra, dec), v = fwd(ra, dec)[1];
+  pin.classList.toggle('left', u > 0.7);
+  pin.classList.toggle('up', v > 0.62);
+  pin.querySelector('[data-f=where]').textContent = `RA ${ra.toFixed(1)}\u00b0  Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(1)}\u00b0`;
+  pin.querySelector('[data-f=open]').href = patchUrl(ra, dec);
+  pin.hidden = false;
+  pin.querySelector('.pin-ring').style.animation = 'none'; void pin.offsetWidth; pin.querySelector('.pin-ring').style.animation = '';   // replay the drop
+}
+const skyAt = e => { const b = $('map').getBoundingClientRect(); return inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height); };
+$('map').addEventListener('click', e => { const rd = skyAt(e); if (rd) showPin(...rd); });
+$('map').addEventListener('pointermove', e => {   // live coordinates beside the pointer (hidden on touch by CSS)
+  const rd = skyAt(e);
+  readout.hidden = !rd;
+  if (rd) { readout.textContent = `${rd[0].toFixed(1)}\u00b0  ${rd[1] >= 0 ? '+' : ''}${rd[1].toFixed(1)}\u00b0`; readout.style.left = e.clientX + 16 + 'px'; readout.style.top = e.clientY + 16 + 'px'; }
 });
+$('map').addEventListener('pointerleave', () => { readout.hidden = true; });
+$('pin-x').addEventListener('click', () => { pin.hidden = true; });
+addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; });
 $('search').addEventListener('submit', e => {
   e.preventDefault();
   const [ra, dec] = $('q').value.trim().split(/[\s,]+/).map(Number);
-  if (Number.isFinite(ra) && Number.isFinite(dec) && ra >= 0 && ra < 360 && Math.abs(dec) <= 90) location.href = patchUrl(ra, dec);
+  if (Number.isFinite(ra) && Number.isFinite(dec) && ra >= 0 && ra < 360 && Math.abs(dec) <= 90) showPin(ra, dec);
   else $('q').setCustomValidity('Type RA and Dec in degrees, e.g. 269.45 4.69'), $('q').reportValidity(), $('q').setCustomValidity('');
 });
 

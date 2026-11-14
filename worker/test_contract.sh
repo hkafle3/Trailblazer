@@ -24,7 +24,7 @@ check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'
 check "malformed comet id" "/api/comets/%ZZ" 400 'comet id is not valid\|400 Bad Request'   # live: Cloudflare's edge refuses it before the Worker
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
-check "home page served" "/" 200 'Find the dots that move'
+check "home page served" "/" 200 'The sky moves'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below

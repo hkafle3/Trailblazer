@@ -5,24 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Comet Hunt</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui.css">
 </head>
 <body class="explore">
 
 <!-- The map: real SPHEREx sky, coverage replay (canvas), heat map of patches people checked (canvas), grid and ecliptic (svg).
      Markers and cards are filled in by explore.js from /api/comets and /api/explored. -->
 <div class="map-wrap">
-  <div class="map" id="map" title="Click anywhere to open that patch">
+  <div class="map" id="map" title="Click anywhere on the sky to pick a patch">
     <img class="sky" src="data/sky.jpg" alt="All-sky picture from SPHEREx">
     <canvas class="cover" id="cover" width="1000" height="500"></canvas>
     <canvas class="heat" id="heat" width="2000" height="1000"></canvas>
     <svg class="grat" viewBox="0 0 2000 1000" preserveAspectRatio="none">
       <path id="grat"/>
       <path id="ecl" class="ecl"/>
-      <text dy="-10"><textPath href="#ecl" startOffset="5%">most comets travel near this line</textPath></text>
+      <text dy="-10"><textPath href="#ecl" startOffset="24%">most comets travel near this line</textPath></text>
     </svg>
   </div>
 
   <div class="marks" id="marks">
+    <div class="pin" id="pin" hidden>
+      <span class="pin-ring"><i></i></span>
+      <div class="pincard glass">
+        <button class="x" id="pin-x" aria-label="Close">&times;</button>
+        <span class="eyebrow">Patch of sky</span>
+        <h3 data-f="where"></h3>
+        <p>See how this spot changed between SPHEREx photos.</p>
+        <a class="btn small" data-f="open">Look closer <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+      </div>
+    </div>
     <a class="mapcard glass" id="card-comet" hidden>
       <div class="head"><h3 data-f="id"></h3><span class="tag comet">comet</span></div>
       <div class="tally"><i class="t-comet"></i><i class="t-asteroid"></i><i class="t-unsure"></i></div>
@@ -40,18 +51,24 @@
   <a class="brand" href="./"><span class="brand-mark"></span>Comet Hunt</a>
   <nav><a class="on" href="./">Explore</a><a href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
   <form class="search" id="search"><svg class="ic"><use href="icons.svg#search"/></svg><input id="q" placeholder="Sky position, e.g. 269.45 4.69" aria-label="Go to a sky position"></form>
-  <a class="av" title="Example user">OO</a>
-</header>
+  </header>
 
-<div class="hero"><h1>Find the dots that move.</h1></div>
+<div class="hero">
+  <p class="eyebrow">Real NASA SPHEREx photos</p>
+  <h1>The sky moves.<br><span class="glow-text">Catch it.</span></h1>
+  <p class="sub">Spot the dot that jumps between two photos. Anyone can look.</p>
+</div>
 
-<aside class="layers glass" aria-label="Map layers">
+<details class="layers" id="layers">
+  <summary class="glass"><svg class="ic"><use href="icons.svg#stack"/></svg>Layers<svg class="ic chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+  <div class="layers-body glass" aria-label="Map layers">
   <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg><em><em class="wide-only">SPHEREx </em>photos</em></span><input class="sw" type="checkbox" id="ly-photos" checked></label>
   <label class="layer" style="--c:var(--people)"><span><svg class="ic"><use href="icons.svg#eye"/></svg><em>Explored<em class="wide-only"> by people</em></em></span><input class="sw" type="checkbox" id="ly-people"></label>
   <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
   <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#comet"/></svg><em>Comets<em class="wide-only"> found</em></em></span><input class="sw" type="checkbox" id="ly-comets" checked></label>
   <label class="layer" style="--c:var(--known)"><span><svg class="ic"><use href="icons.svg#known"/></svg><em>Known<em class="wide-only"> objects</em></em></span><input class="sw" type="checkbox" id="ly-known" checked></label>
-</aside>
+</div>
+</details>
 
 <div class="timebar glass">
   <button class="play" id="play" aria-label="Replay the sky filling in"><svg class="ic"><use href="icons.svg#play"/></svg></button>
@@ -59,17 +76,21 @@
   <div class="now"><b id="t-date">&nbsp;</b><span id="t-pct">&nbsp;</span></div>
 </div>
 
-<aside class="start glass">
-  <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%" title="Sky photographed by SPHEREx">
-    <svg class="ic lg"><use href="icons.svg#photo"/></svg><b>&nbsp;</b><i></i>
+<aside class="start">
+  <div class="stats glass">
+    <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%" title="Sky photographed by SPHEREx">
+      <span class="orb"></span><b>&nbsp;</b><span class="lbl">of the sky photographed</span>
+    </div>
+    <div class="stat" id="people-meter" style="--c:var(--people);--p:0%" title="Patches checked by people (example data)">
+      <span class="orb"></span><b><span data-n="seen">&nbsp;</span> <small>/ <span data-n="total"></span></small></b><span class="lbl">patches checked &middot; example data</span>
+    </div>
   </div>
-  <div class="stat" id="people-meter" style="--c:var(--people);--p:0%" title="Patches checked by people (example data)">
-    <svg class="ic lg"><use href="icons.svg#eye"/></svg><b><span data-n="seen">&nbsp;</span> <small>/ <span data-n="total"></span><span class="wide-only"> patches</span></small></b><i></i>
-  </div>
-  <a class="btn wide" id="go-unexplored">Unexplored patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+  <a class="btn cta" id="go-unexplored">Start hunting <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
   <a class="link" href="guide.html"><svg class="ic"><use href="icons.svg#book"/></svg>How to find a comet</a>
 </aside>
+<div class="readout" id="readout" hidden></div>
 
 <script type="module" src="explore.js"></script>
+<script src="ui.js"></script>
 </body>
 </html>
