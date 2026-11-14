@@ -74,6 +74,43 @@ def aperture_pixels(x, y, r=R_AP):
 assert aperture_pixels(10.0, 10.0) == aperture_pixels(0.0, 0.0) == 49 and aperture_pixels(3.3, 0.6) == aperture_pixels(53.3, 40.6)
 
 
+def photometry(img, var, usable, x, y):
+    """Circle-minus-ring brightness at (x, y): (flux mJy, noise mJy, share of light in the brightest pixel), or None
+    when under 80% of the circle is usable. Missing or flagged pixels count as the circle's average."""
+    yy, xx = np.indices(img.shape)
+    r = np.hypot(xx - x, yy - y)
+    ap, ring = (r <= R_AP) & usable, (r >= R_IN) & (r <= R_OUT) & usable
+    full = aperture_pixels(x, y)   # the whole circle, even where it runs off the cutout
+    if ap.sum() < 0.8 * full or ring.sum() < 50:
+        return None
+    sky = np.median(img[ring])
+    sky_err = 1.2533 * np.std(img[ring]) / np.sqrt(ring.sum())
+    fill = full / ap.sum()
+    flux = (img[ap] - sky).sum() * fill * SR_PER_PIX * 1e9            # MJy/sr * sr -> mJy
+    # flux is scaled by fill, so its variance scales by fill squared
+    noise = np.sqrt((var[ap].sum() * fill ** 2 if var is not None else 0) + (full * sky_err) ** 2) * SR_PER_PIX * 1e9
+    v = img[ap] - sky
+    return float(flux), float(noise), float(v.max() / v.sum()) if v.sum() > 0 else 0.0
+
+
+def _check_photometry():
+    """Flat sky of 10 plus 2 per pixel inside the circle; unit variance everywhere."""
+    img, var = np.full((40, 40), 10.0), np.ones((40, 40))
+    yy, xx = np.indices(img.shape)
+    img[np.hypot(xx - 20, yy - 20) <= R_AP] += 2.0
+    usable = np.ones(img.shape, bool)
+    k = SR_PER_PIX * 1e9
+    flux, noise, _ = photometry(img, var, usable, 20.0, 20.0)
+    assert abs(flux - 49 * 2 * k) < 1e-9 and abs(noise - np.sqrt(49) * k) < 1e-9, (flux, noise)
+    usable[20, 16:20] = False                     # flag 4 of 49 pixels: same flux, noise grows by 49/45
+    flux2, noise2, _ = photometry(img, var, usable, 20.0, 20.0)
+    assert abs(flux2 - flux) < 1e-9 and abs(noise2 - np.sqrt(45) * 49 / 45 * k) < 1e-9, (flux2, noise2)
+    assert photometry(img, var, np.ones(img.shape, bool), 1.0, 20.0) is None   # circle half off the image
+
+
+_check_photometry()
+
+
 def measure(e):
     """Brightness (mJy) of the comet in a circle, minus the median sky in a ring, plus wavelength (um)."""
     with fits.open(cutout(e)) as h:
@@ -85,23 +122,13 @@ def measure(e):
         spectral = WCS(h["IMAGE"].header, fobj=h, key="W")
         spectral.sip = None   # IRSA: SIP distortion must be off for the spectral WCS
         lam, bw = spectral.pixel_to_world_values(x, y)
-    yy, xx = np.indices(img.shape)
-    r = np.hypot(xx - x, yy - y)
-    ap, ring = (r <= R_AP) & usable, (r >= R_IN) & (r <= R_OUT) & usable
-    full = aperture_pixels(x, y)   # the whole circle, even where it runs off the cutout
-    if ap.sum() < 0.8 * full or ring.sum() < 50:
+    m = photometry(img, var, usable, x, y)
+    if m is None:
         return None   # comet near the cutout edge, or too many flagged pixels in the circle
-    sky = np.median(img[ring])
-    sky_err = 1.2533 * np.std(img[ring]) / np.sqrt(ring.sum())
-    fill = full / ap.sum()   # missing or flagged pixels count as the circle's average, not as zero or their bad value
-    flux = (img[ap] - sky).sum() * fill * SR_PER_PIX * 1e9            # MJy/sr * sr -> mJy
-    # flux is scaled by fill, so its variance scales by fill squared
-    noise = np.sqrt((var[ap].sum() * fill ** 2 if var is not None else 0) + (full * sky_err) ** 2) * SR_PER_PIX * 1e9
-    v = img[ap] - sky
-    peak_frac = float(v.max() / v.sum()) if v.sum() > 0 else 0.0
+    flux, noise, peak_frac = m
     # The coma spreads its light (brightest pixel holds 6-10%); a background star or hot pixel concentrates it
     # (25-99%), and a saturated or bad pixel shows up as a huge error. Checked by hand on the August D5 points.
-    ok = noise * 1e0 < 5 and not (flux > 3 * noise and peak_frac > 0.2)
+    ok = noise < 5 and not (flux > 3 * noise and peak_frac > 0.2)
     return dict(e, lam=float(lam), bw=float(bw), flux=float(flux), err=float(noise), x=float(x), y=float(y),
                 peak_frac=peak_frac, ok=bool(ok))
 
