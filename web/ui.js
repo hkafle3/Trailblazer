@@ -82,21 +82,29 @@
     el.querySelector(':scope > .cb')?.remove();
     const w = el.offsetWidth, hh = el.offsetHeight;
     if (!w || !hh) return;
-    const r = hh / 2, P = 2 * Math.max(w - hh, 0) + 2 * Math.PI * r, n = Math.max(8, Math.min(44, Math.round(P / 24)));
+    const r = hh / 2, P = 2 * Math.max(w - hh, 0) + 2 * Math.PI * r, n = Math.max(6, Math.min(22, Math.round(P / 44)));
     const s = svg('svg', { class: 'cb', width: w + PAD * 2, height: hh + PAD * 2, 'aria-hidden': 'true' });
-    const pts = Array.from({ length: n }, (_, i) => { const [x, y] = stadium(w, hh, P * i / n); return [x + PAD, y + PAD]; });
-    pts.forEach(([x, y], i) => { const l = svg('line', { x1: x, y1: y, x2: pts[(i + 1) % n][0], y2: pts[(i + 1) % n][1], pathLength: 1 }); l.style.setProperty('--i', i); s.append(l); });
+    // a soft outline that draws itself, with a loose scatter of stars along it and a few short constellation strokes
+    s.append(svg('rect', { class: 'cb-ring', x: PAD + .5, y: PAD + .5, width: w - 1, height: hh - 1, rx: r, ry: r, pathLength: 1 }));
+    const pts = Array.from({ length: n }, (_, i) => { const [x, y] = stadium(w, hh, P * (i + Math.random() * .5) / n); return [x + PAD + (Math.random() * 5 - 2.5), y + PAD + (Math.random() * 5 - 2.5)]; });
+    const star = (x, y, rad, i, extra = '') => {
+      const c = svg('circle', { cx: x, cy: y, r: rad, class: extra });
+      c.style.setProperty('--i', i); c.style.setProperty('--dx', (Math.random() * 40 - 20).toFixed(1) + 'px'); c.style.setProperty('--dy', (Math.random() * 40 - 20).toFixed(1) + 'px'); s.append(c);
+    };
     pts.forEach(([x, y], i) => {
-      const c = svg('circle', { cx: x, cy: y, r: i % 4 === 0 ? 1.9 : 1.4 });
-      c.style.setProperty('--i', i); c.style.setProperty('--dx', (Math.random() * 44 - 22).toFixed(1) + 'px'); c.style.setProperty('--dy', (Math.random() * 44 - 22).toFixed(1) + 'px'); s.append(c);
+      if (i % 3 === 0) {   // a short stroke leaving the outline, ending in a small star
+        const a = Math.random() * 6.283, len = 7 + Math.random() * 9, x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+        const l = svg('line', { x1: x, y1: y, x2, y2, pathLength: 1 }); l.style.setProperty('--i', i); s.append(l);
+        star(x2, y2, .9, i, 'stray');
+      }
+      star(x, y, i % 4 === 0 ? 1.9 : 1.4, i);
     });
-    for (let k = 0; k < 2; k++) { const c = svg('circle', { class: 'stray', cx: Math.random() * (w + PAD * 2), cy: Math.random() < .5 ? 1 : hh + PAD * 2 - 1, r: 1 }); c.style.setProperty('--i', n + k); c.style.setProperty('--dx', '0px'); c.style.setProperty('--dy', '0px'); s.append(c); }
     el.prepend(s);
     if (reduce) s.classList.add('in'); else requestAnimationFrame(() => requestAnimationFrame(() => s.classList.add('in')));
   }
   const ro = 'ResizeObserver' in window ? new ResizeObserver(entries => entries.forEach(e => constellate(e.target))) : null;
   function scanButtons() {
-    document.querySelectorAll('.btn:not([data-cb]), .timebar .play:not([data-cb])').forEach(el => {
+    document.querySelectorAll('.btn:not([data-cb]):not(.plain)').forEach(el => {
       el.dataset.cb = '1';
       if (ro) ro.observe(el); else constellate(el);
     });
@@ -181,6 +189,66 @@
     if (s) s.addEventListener('click', () => s.querySelector('input').focus());
   }
 
+
+  // ---------------------------------------------------------------- guide: a notebook laid over whatever page you are on
+  const PIC = 'data/flip/rwaur/';
+  const GUIDE_HTML = `
+    <section class="nb-page nb-left">
+      <p class="nb-kicker">field notes</p>
+      <h2 id="nb-t">How to catch a comet</h2>
+      <p class="nb-lede">Stars stay still between two photos. <span class="nb-hl">Comets move.</span></p>
+      <ol class="nb-steps">
+        <li><div><h3>Pick a patch</h3><p>Start where nobody has looked.</p></div><div class="pic"><span class="oval"></span></div></li>
+        <li><div><h3>Remove the still stars</h3><p>Subtract one photo from the other.</p></div>
+          <div class="pic"><span class="plate"><img src="${PIC}f0.png" alt=""></span><svg class="ic" style="color:var(--ink-3)"><use href="icons.svg#arrow"/></svg>
+          <span class="plate sub"><img src="${PIC}f0.png" alt=""><img src="${PIC}f1.png" alt=""><span class="dot" style="left:62%;top:40%"></span></span></div></li>
+        <li><div><h3>Blink the photos</h3><p>Look for a dot that <span class="nb-hl">jumps</span>.</p></div>
+          <div class="pic"><span class="plate"><img src="${PIC}f0.png" alt=""><span class="ring earlier" style="--d:20px;left:30%;top:66%"></span></span><svg class="ic" style="color:var(--ink-3)"><use href="icons.svg#blink"/></svg>
+          <span class="plate"><img src="${PIC}f1.png" alt=""><span class="ring" style="--d:20px;left:62%;top:40%"></span></span></div></li>
+        <li><div><h3>Fuzzy or sharp?</h3><p>Fuzzy with a tail is a comet. Sharp is an asteroid.</p></div>
+          <div class="pic"><span class="big fuzzy"><span class="dot tail"></span><small>comet</small></span><span class="big sharp"><span class="dot"></span><small>asteroid</small></span></div></li>
+        <li><div><h3>Say what you think</h3><p>Comment with a tag. Your tag is your vote.</p></div>
+          <div class="pic"><span class="bubble"><span class="tag comet">comet</span><i></i></span></div></li>
+      </ol>
+    </section>
+    <section class="nb-page nb-right">
+      <div class="nb-head"><span class="eyebrow">Practice 1 of 3</span><span class="example">Example dot</span></div>
+      <h2>One dot here moves.</h2>
+      <div class="nb-photo"><span class="tape"></span>
+        <div class="plate">
+          <img src="${PIC}f1.png" alt="Practice patch, first photo"><span class="dot tail" style="left:38%;top:58%"></span>
+          <div class="b" style="position:absolute;inset:0;background:#000"><img src="${PIC}f2.png" alt="Practice patch, second photo"><span class="dot tail" style="left:61%;top:44%"></span></div>
+          <span class="blinkbar">blinking</span>
+        </div>
+      </div>
+      <div class="nb-actions"><a class="btn" href="timelapse.html?target=rwaur&diff=1">Start practice <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+        <button class="btn ghost" id="nb-show" type="button" aria-pressed="false"><span>Show me</span></button></div>
+    </section>`;
+  function openGuide() {
+    if (document.querySelector('.nb-veil')) return;
+    if (!document.getElementById('nb-font')) document.head.append(h('link', { id: 'nb-font', rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&display=swap' }));
+    const prev = document.activeElement;
+    const nb = h('div', { class: 'notebook', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'nb-t' }, h('button', { class: 'nb-x', 'aria-label': 'Close the guide', text: '×' }), h('div', { class: 'nb-spine', 'aria-hidden': 'true' }));
+    nb.insertAdjacentHTML('beforeend', GUIDE_HTML);
+    const veil = h('div', { class: 'nb-veil' }, nb);
+    document.body.append(veil);
+    const links = [...document.querySelectorAll('.topbar nav a')], was = links.map(a => a.classList.contains('on'));
+    links.forEach(a => a.classList.toggle('on', /guide\.html$/.test(a.getAttribute('href'))));
+    const close = () => { veil.classList.add('out'); setTimeout(() => veil.remove(), 260); links.forEach((a, i) => a.classList.toggle('on', was[i])); document.removeEventListener('keydown', esc); prev?.focus?.(); if (/[?&]guide=1/.test(location.search)) history.replaceState(null, '', location.pathname); };
+    const esc = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', esc);
+    veil.addEventListener('click', e => { if (e.target === veil) close(); });
+    nb.querySelector('.nb-x').addEventListener('click', close);
+    const show = nb.querySelector('#nb-show'), plate = nb.querySelector('.nb-photo .plate');
+    show.addEventListener('click', () => { const on = plate.classList.toggle('show'); show.setAttribute('aria-pressed', on); show.querySelector('span').textContent = on ? 'Hide' : 'Show me'; });
+    scanButtons(); nb.querySelector('.nb-x').focus();
+  }
+  document.addEventListener('click', e => {
+    const a = e.target.closest?.('a[href$="guide.html"]');
+    if (a && !e.metaKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); openGuide(); }
+  });
+  window.CH_GUIDE = openGuide;
+
   // ---------------------------------------------------------------- tour
   const STEPS = [
     { title: 'Welcome to Comet Catcher', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. Anything that moves between photos is a comet or an asteroid. Take a one-minute look around, or skip it.' },
@@ -239,6 +307,7 @@
   topbar();
   renderAuth();
   scanButtons();
+  if (/[?&]guide=1/.test(location.search)) openGuide();
   new MutationObserver(() => scanButtons()).observe(document.body, { childList: true, subtree: true });
   if (isExplore && (!store.get('ch.tour') || /[?&]tour=1/.test(location.search))) {
     const wait = setInterval(() => { if (document.body.dataset.ready || document.querySelector('#go-unexplored[href]')) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);

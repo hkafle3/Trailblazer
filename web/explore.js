@@ -88,7 +88,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
       a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
-    } else a.title = c.real ? `${c.id} (known comet)` : 'Known object (example)';
+    } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
     if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge

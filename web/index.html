@@ -12,7 +12,7 @@
 <!-- The map: real SPHEREx sky, coverage replay (canvas), heat map of patches people checked (canvas), grid and ecliptic (svg).
      Markers and cards are filled in by explore.js from /api/comets and /api/explored. -->
 <div class="map-wrap">
-  <div class="map" id="map" title="Click anywhere on the sky to pick a patch">
+  <div class="map" id="map">
     <img class="sky" src="data/sky.jpg" alt="All-sky picture from SPHEREx">
     <canvas class="cover" id="cover" width="720" height="360"></canvas>
     <canvas class="heat" id="heat" width="2000" height="1000"></canvas>
@@ -71,7 +71,7 @@
 </details>
 
 <div class="timebar glass">
-  <button class="play" id="play" aria-label="Replay the sky filling in"><svg class="ic"><use href="icons.svg#play"/></svg></button>
+  <button class="play plain" id="play" aria-label="Replay the sky filling in"><svg class="ic"><use href="icons.svg#play"/></svg></button>
   <div class="track">
     <output class="bubble" id="t-bubble" aria-hidden="true"></output>
     <input class="range" id="time" type="range" min="0" max="529" value="529" aria-label="Date">
@@ -82,10 +82,10 @@
 
 <aside class="start">
   <div class="stats glass">
-    <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%" title="Sky photographed by SPHEREx">
+    <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%">
       <span class="orb"></span><b>&nbsp;</b><span class="lbl">of the sky photographed</span>
     </div>
-    <div class="stat" id="people-meter" style="--c:var(--people);--p:0%" title="Patches checked by people (example data)">
+    <div class="stat" id="people-meter" style="--c:var(--people);--p:0%">
       <span class="orb"></span><b><span data-n="seen">&nbsp;</span> <small>/ <span data-n="total"></span></small></b><span class="lbl">patches checked &middot; example data</span>
     </div>
   </div>
