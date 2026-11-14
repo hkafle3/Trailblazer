@@ -18,7 +18,10 @@ The design reference for every screen is `design/screens/` (open the HTML files,
 
 ## How we work
 
-- Branch off `main`, one branch per piece, small pull requests.
+- Never commit to `main`. Pull `main`, make a branch for your piece (`git switch -c map/sweep-labels`), push the branch, and open a pull request. Someone else reads it before it merges.
+- Name branches `area/what`: `map/...`, `comet/...`, `api/...`, `data/...`, `design/...`, `docs/...`.
+- Keep pull requests small, one piece each, so they are quick to read and rarely clash. Pull `main` into your branch if it falls behind.
+- Deploying the live site (`npm run deploy`) happens from `main` after a merge, not from a branch.
 - Run `npm run dev` and `npm test` before opening a pull request. If you touched `web/live/` or `bake/`, also open `/tests/golden.html` and `/tests/live.html` and run `python3 bake/verify.py`.
 - Keep API response shapes as written in `docs/api.md`; change the doc in the same pull request if a shape must change.
 - No keys or tokens in the repo. Cloudflare secrets go in `wrangler secret`, local ones in `worker/.dev.vars` (ignored by git).
