@@ -21,7 +21,7 @@ check "tally counts each person once" "/api/comets/C-0147" 200 '"tags":{"comet":
 check "3I/ATLAS has real photos" "/api/comets/3I%2FATLAS" 200 '"photos":\[{"file"'
 check "3I/ATLAS has a spectrum" "/api/comets/3I%2FATLAS" 200 '"spectrum":{"2025-08":\[{"lam"'
 check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'
-check "malformed comet id" "/api/comets/%ZZ" 400 'comet id is not valid'
+check "malformed comet id" "/api/comets/%ZZ" 400 'comet id is not valid\|400 Bad Request'   # live: Cloudflare's edge refuses it before the Worker
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
 check "home page served" "/" 200 'Find the dots that move'
