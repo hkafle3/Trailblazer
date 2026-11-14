@@ -20,6 +20,7 @@ Markers for the Explore map: comets people found (`kind: "comet"`) and known obj
 
 - `ra`, `dec`: degrees. `day`: days since the coverage start (MJD 60789, 24 Apr 2025); the marker appears once the time slider reaches it.
 - `tags`: votes, counted from the `comments` table. A tag is part of a comment, and only each person's latest tag counts.
+- `track` (known comets): `[[day, ra, dec, magnitude], ...]` every 10 days from JPL Horizons. The map moves the marker along it and shows it only while magnitude is 16 or brighter. Built by `bake/known_comets.py`.
 
 ## GET /api/comets/:id (D1)
 
@@ -33,7 +34,9 @@ One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `deta
   "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun.", "created_at": 1762998800000 } ] }
 ```
 
-Refusal: `404 {"error":"no comet C-9999"}`.
+For a known comet from JPL's catalog, `detail` holds `spherex`: every SPHEREx D1 photo whose outline held the comet when it was taken (`[{ "day": 210.43, "obs": "2025W47_..." }]`), plus `q` (closest distance to the Sun, AU), `tp` (when, Julian date) and `mags`.
+
+Refusals: `404 {"error":"no comet C-9999"}`, `400 {"error":"comet id is not valid"}`, `503` if the database does not answer.
 
 ## GET /api/explored (example)
 

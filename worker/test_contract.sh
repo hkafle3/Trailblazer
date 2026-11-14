@@ -31,4 +31,20 @@ check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below
 curl -s -m 30 -D - -o /dev/null "$BASE/api/images?ra=400&dec=4" | grep -qi 'access-control-allow-origin: \*' && echo "PASS CORS header present" || { echo "FAIL CORS header missing"; fails=$((fails + 1)); }
+# known comets, checked on the parsed JSON: every real known comet has a path through the last coverage day, and
+# every SPHEREx photo of C/2025 R2 (SWAN) carries the comet's position at that moment
+if python3 - "$BASE" <<'PY'
+import json, sys, urllib.request, urllib.parse
+base = sys.argv[1]
+get = lambda path: json.load(urllib.request.urlopen(base + path, timeout=60))
+known = [c for c in get("/api/comets")["comets"] if c["kind"] == "known" and c["real"]]
+assert len(known) >= 30, f"only {len(known)} real known comets"
+short = [c["id"] for c in known if not c.get("track") or c["track"][-1][0] < 529]
+assert not short, f"paths ending before day 529: {short}"
+swan = get("/api/comets/" + urllib.parse.quote("C/2025 R2 (SWAN)", safe=""))
+shots = swan["detail"]["spherex"]
+assert shots and all(isinstance(p.get("ra"), (int, float)) and isinstance(p.get("dec"), (int, float)) for p in shots), "photo without a position"
+PY
+then echo "PASS known comets: paths reach the last day, every photo has a position"
+else echo "FAIL known comets"; fails=$((fails + 1)); fi
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

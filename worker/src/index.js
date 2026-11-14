@@ -114,11 +114,12 @@ const tallies = async (db) => {
   return out;
 };
 const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, tail: c.tail, real: !!c.real, example: !c.real,
+  ...(c.track ? { track: JSON.parse(c.track) } : {}),   // [[day, ra, dec], ...] every 10 days: where a known comet was
   ...(c.kind === 'comet' ? { tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 } } : {}) });
 
 // Comets people found plus known objects, for the map's markers
 async function comets(url, env) {
-  const [rows, tags] = await Promise.all([env.DB.prepare('SELECT id, kind, ra, dec, day, tail, real FROM comets').all(), tallies(env.DB)]);
+  const [rows, tags] = await Promise.all([env.DB.prepare('SELECT id, kind, ra, dec, day, tail, real, track FROM comets').all(), tallies(env.DB)]);
   return json({ comets: rows.results.map(c => cometRow(c, tags)) });
 }
 
