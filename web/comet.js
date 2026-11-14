@@ -125,20 +125,15 @@ function spectrum(d) {
 function known(c) {
   const shots = c.detail.spherex, box = $('c-empty');
   box.innerHTML = '';
-  const where = day => {   // position on a day, from the comet's 10-day track
-    const t = c.track, i = Math.min(t.length - 2, Math.max(0, Math.floor(day / 10))), f = (day - t[i][0]) / (t[i + 1][0] - t[i][0]);
-    const dr = ((t[i + 1][1] - t[i][1] + 540) % 360) - 180;
-    return [(t[i][1] + f * dr + 360) % 360, t[i][2] + f * (t[i + 1][2] - t[i][2])];
-  };
-  const head = el('h2', null, shots.length ? `SPHEREx photographed it ${shots.length} times` : 'Not in a SPHEREx photo yet');
-  box.append(head);
-  const visits = [];   // one link per visit (photos less than 5 days apart are one visit)
-  for (const s of shots) if (!visits.length || s.day - visits[visits.length - 1].day >= 5) visits.push(s);
+  box.append(el('h2', null, shots.length ? `SPHEREx photographed it ${shots.length} times` : 'Not in a SPHEREx photo yet'));
+  // one link per visit: photos less than 5 days after the previous one belong to the same visit
+  const visits = [];
+  shots.forEach((s, i) => { if (i === 0 || s.day - shots[i - 1].day >= 5) visits.push(s); });
   const list = el('div', 'visits');
-  for (const v of visits.slice(0, 8)) {
-    const [ra, dec] = where(v.day), a = el('a', 'chip', date(60789 + v.day, { day: 'numeric', month: 'short', year: 'numeric' }));
-    a.href = `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=D1`;
-    a.title = `Open the patch where it was (RA ${ra.toFixed(2)}, Dec ${dec.toFixed(2)})`;
+  for (const v of visits) {   // each photo carries the comet's exact position at that moment (bake/known_comets.py)
+    const a = el('a', 'chip', date(60789 + v.day, { day: 'numeric', month: 'short', year: 'numeric' }));
+    a.href = `timelapse.html?ra=${v.ra.toFixed(4)}&dec=${v.dec.toFixed(4)}&det=D1`;
+    a.title = `Open the patch where it was (RA ${v.ra.toFixed(2)}, Dec ${v.dec.toFixed(2)})`;
     list.append(a);
   }
   box.append(list, el('p', 'faint', 'Known comet from JPL. Its spectrum is not measured yet.'));

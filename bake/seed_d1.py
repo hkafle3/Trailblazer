@@ -88,13 +88,14 @@ def known(name):
            "ALTER TABLE comets ADD COLUMN track TEXT;",
            "DELETE FROM comets WHERE id LIKE 'known-%';"]
     for c in comets:
-        track = [[d, r, dc, None if m is None else round(m, 1)] for d, r, dc, m in c["track"] if d % 10 == 0]
+        last = c["track"][-1][0]   # keep the final point too, so markers move through the last days of coverage
+        track = [[d, r, dc, None if m is None else round(m, 1)] for d, r, dc, m in c["track"] if d % 10 == 0 or d == last]
         if "2025 N1" in c["pdes"]:   # 3I/ATLAS already has its measured record; give it a path so it moves too
             sql.append(f"UPDATE comets SET track = {q(json.dumps(track, separators=(',', ':')))} WHERE id = '3I/ATLAS';")
             continue
         mid = c["track"][len(c["track"]) // 2]
         detail = dict(name=c["name"], q=c["q"], tp=c["tp"], spherex=c["spherex"],
-                      mags=[[d, m] for d, _, _, m in c["track"] if m is not None and d % 10 == 0])
+                      mags=[[d, m] for d, _, _, m in c["track"] if m is not None and (d % 10 == 0 or d == last)])
         sql.append("INSERT INTO comets (id, kind, ra, dec, day, tail, real, detail, track) VALUES (" + ", ".join(
             q(v) for v in (c["name"], "known", mid[1], mid[2], 0, None, 1, json.dumps(detail, separators=(",", ":")),
                            json.dumps(track, separators=(",", ":")))) + ");")

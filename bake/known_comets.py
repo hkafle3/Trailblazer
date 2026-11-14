@@ -48,7 +48,7 @@ def ephemeris(c):
     if f.exists():
         return json.loads(f.read_text())
     start = f"JD{MJD0 + 2400000.5}"
-    stop = f"JD{MJD0 + DAYS + 2400000.5}"
+    stop = f"JD{MJD0 + DAYS + STEP + 2400000.5}"   # one step past the end, so the last coverage day is bracketed
     params = {"format": "json", "COMMAND": f"'DES={c['pdes']};CAP;NOFRAG'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
               "EPHEM_TYPE": "'OBSERVER'", "CENTER": "'500@399'", "START_TIME": f"'{start}'", "STOP_TIME": f"'{stop}'",
               "STEP_SIZE": f"'{STEP} d'", "QUANTITIES": "'1,9'", "ANG_FORMAT": "'DEG'", "CSV_FORMAT": "'YES'"}
@@ -70,20 +70,34 @@ def ephemeris(c):
 
 
 def inside(px, py, poly):
-    """Point-in-quadrilateral on a local tangent plane (vectorised over many quads at one point each)."""
-    ra, dec = poly[:, 0::2], poly[:, 1::2]
-    d0 = np.radians(py)[:, None]
-    dx = (((ra - px[:, None] + 180) % 360) - 180) * np.cos(d0)
-    dy = dec - py[:, None]
-    # only photos near the point: on the far side of the sky the flat-plane corners wrap around the +-180 seam and
-    # a far-away outline appears to enclose the point (the 3I/ATLAS check against IRSA's list caught this)
-    near = (np.abs(dx).max(1) < 5) & (np.abs(dy).max(1) < 5)
+    """Is each point inside its photo's outline? Corners go through a gnomonic projection centred on the point,
+    where great circles (the outline's edges) are straight lines, so the test holds near the poles and the RA seam.
+    Only outlines within ~5 degrees count: the projection does not reach the far side of the sky."""
+    a0, d0 = np.radians(px)[:, None], np.radians(py)[:, None]
+    a, d = np.radians(poly[:, 0::2]), np.radians(poly[:, 1::2])
+    cosc = np.sin(d0) * np.sin(d) + np.cos(d0) * np.cos(d) * np.cos(a - a0)
+    near = (cosc > np.cos(np.radians(5))).all(1)
+    cosc = np.where(cosc > 0, cosc, 1)
+    X = np.cos(d) * np.sin(a - a0) / cosc
+    Y = (np.cos(d0) * np.sin(d) - np.sin(d0) * np.cos(d) * np.cos(a - a0)) / cosc
     hit = np.zeros(len(px), bool)
-    for i in range(4):
-        x1, y1, x2, y2 = dx[:, i], dy[:, i], dx[:, (i + 1) % 4], dy[:, (i + 1) % 4]
-        cross = ((y1 > 0) != (y2 > 0)) & (0 < (x2 - x1) * (0 - y1) / np.where(y2 == y1, 1e-12, y2 - y1) + x1)
-        hit ^= cross
+    for i in range(4):   # ray from the point (the origin) along +X: count edge crossings
+        x1, y1, x2, y2 = X[:, i], Y[:, i], X[:, (i + 1) % 4], Y[:, (i + 1) % 4]
+        hit ^= ((y1 > 0) != (y2 > 0)) & (x1 + (x2 - x1) * (0 - y1) / np.where(y2 == y1, 1e-12, y2 - y1) > 0)
     return hit & near
+
+
+def _check_inside():
+    sq = lambda ra, dec, h: [ra - h, dec - h, ra + h, dec - h, ra + h, dec + h, ra - h, dec + h]
+    polys = np.array([sq(10, 0, 1), sq(0, 0, 1), sq(0.0, 0, 1), sq(180, 0, 1), sq(359.5, 30, 1)], float)
+    polys[2] = [359, -1, 1, -1, 1, 1, 359, 1]                      # straddles RA 0/360
+    pole = np.array([[0, 88.5, 90, 88.5, 180, 88.5, 270, 88.5]], float)   # a square around the north pole
+    got = inside(np.array([10.5, 30, 0.5, 0, 359.9]), np.array([0.2, 0, 0.2, 0, 30.5]), polys)
+    assert list(got) == [True, False, True, False, True], got      # far-side square must not match the point at RA 0
+    assert inside(np.array([123.0]), np.array([89.9]), pole)[0] and not inside(np.array([123.0]), np.array([85.0]), pole)[0]
+
+
+_check_inside()
 
 
 def main():
@@ -94,7 +108,7 @@ def main():
     print(f"{len(cands)} candidate comets from JPL's database", flush=True)
     with ThreadPoolExecutor(3) as pool:
         ephs = list(pool.map(ephemeris, cands))
-    days = np.arange(0, DAYS + 1, STEP)
+    days = np.arange(0, DAYS + STEP + 1, STEP)
     keep = []
     for c, e in zip(cands, ephs):
         rows = e["rows"]
@@ -119,23 +133,25 @@ def main():
         px = np.interp(t[ok], days, unwrapped) % 360
         py = np.interp(t[ok], days, track[:, 1])
         hit = inside(px, py, polys[ok])
-        shots = sorted(zip(t[ok][hit].round(4).tolist(), ids[ok][hit].tolist()))
+        shots = sorted(zip(t[ok][hit].round(4).tolist(), ids[ok][hit].tolist(), px[hit].round(4).tolist(), py[hit].round(4).tolist()))
         name = c["full_name"].strip()
         out.append(dict(name=name, pdes=c["pdes"], q=c.get("q"), tp=c.get("tp"),
                         track=[[int(d), round(float(r), 4), round(float(dc), 4), m] for d, (r, dc), m in zip(days, track, mags)],
-                        spherex=[dict(day=d, obs=o) for d, o in shots]))
+                        spherex=[dict(day=d, obs=o, ra=r, dec=dc) for d, o, r, dc in shots]))   # exact position at each photo
         print(f"  {name}: brightest {min(m for m in mags if m is not None) if any(m is not None for m in mags) else 'n/a'}, SPHEREx D1 photos {len(shots)}", flush=True)
-    OUT.write_text(json.dumps(out))
-    print(f"wrote {OUT.name}: {len(out)} comets", flush=True)
-
-    # check against IRSA's own list of SPHEREx photos of 3I/ATLAS
+    # check before publishing: every SPHEREx D1 photo IRSA lists for 3I/ATLAS must be among ours. Ours may hold more:
+    # IRSA's list covers Aug and Dec 2025, and SPHEREx photographed the comet again in Mar-Apr 2026.
     from astropy.table import Table
     irsa = Table.read(ROOT / "bake/cache/3iatlas/obscore_3I_Atlas.vot")
     want = {str(r["obs_id"]) for r in irsa if str(r["spherex_detector"]).strip() in ("D1", "1")}
     atlas = next(o for o in out if "2025 N1" in o["pdes"])
     got = {s["obs"] for s in atlas["spherex"]}
-    print(f"3I/ATLAS check: IRSA lists {len(want)} D1 photos; we found {len(got)}; in both {len(want & got)}; "
-          f"IRSA only {sorted(want - got)[:5]}; ours only {sorted(got - want)[:5]}", flush=True)
+    in_window = {s["obs"] for s in atlas["spherex"] if s["day"] < 240}   # through Dec 2025, IRSA's span
+    print(f"3I/ATLAS check: IRSA lists {len(want)} D1 photos; we found {len(got)} ({len(in_window)} through Dec 2025); "
+          f"in both {len(want & got)}; ours only through Dec 2025: {sorted(in_window - want)}", flush=True)
+    assert want <= got, f"missed IRSA photos: {sorted(want - got)}"
+    OUT.write_text(json.dumps(out))
+    print(f"wrote {OUT.name}: {len(out)} comets", flush=True)
 
 
 if __name__ == "__main__":

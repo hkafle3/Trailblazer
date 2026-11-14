@@ -68,7 +68,9 @@ function followTracks(day) {
     const f = Math.min(1, Math.max(0, (day - d0) / (d1 - d0))), dr = ((r1 - r0 + 540) % 360) - 180;   // shortest way round in RA
     place(el, (r0 + f * dr + 360) % 360, c0 + f * (c1 - c0));
     const mag = m0 == null ? m1 : m1 == null ? m0 : m0 + f * (m1 - m0);
-    el.hidden = !(mag != null && mag <= 16) && el.dataset.always !== '1';
+    const bright = mag != null && mag <= 16;
+    // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see; the rest hide
+    if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
   }
 }
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
