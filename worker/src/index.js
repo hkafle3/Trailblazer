@@ -107,6 +107,9 @@ async function gaia(url) {
 const TALLY = `SELECT comet_id, tag, COUNT(*) AS n FROM comments c
   WHERE tag IS NOT NULL AND id = (SELECT MAX(id) FROM comments d WHERE d.comet_id = c.comet_id AND d.author = c.author AND d.tag IS NOT NULL)
   GROUP BY comet_id, tag`;
+const TALLY_ONE = `SELECT tag, COUNT(*) AS n FROM comments c
+  WHERE comet_id = ?1 AND tag IS NOT NULL AND id = (SELECT MAX(id) FROM comments d WHERE d.comet_id = ?1 AND d.author = c.author AND d.tag IS NOT NULL)
+  GROUP BY tag`;
 const tallies = async (db) => {
   const out = {};
   for (const { comet_id, tag, n } of (await db.prepare(TALLY).all()).results)
@@ -153,18 +156,35 @@ async function post(request, env) {
   form.append('response', b.turnstile);
   const ip = request.headers.get('CF-Connecting-IP');
   if (ip) form.append('remoteip', ip);
-  let ok = false;
-  try { ok = (await (await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form })).json()).success === true; }
+  let check = {};
+  try { check = await (await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form })).json(); }
   catch (e) { console.error(e); }
-  if (!ok) return json({ error: 'human check failed, try again' }, 403);
+  if (check.success !== true) return json({ error: 'human check failed, try again' }, 403);
+  // Local dev: the test site key's widget hands out the same dummy token every time, so it is not claimed (the test
+  // secret accepts any token anyway). A real secret refuses the dummy token, so this opens nothing in production.
+  const claim = !(check.metadata?.result_with_testing_key && b.turnstile === 'XXXX.DUMMY.TOKEN.XXXX');
   const db = env.DB;
   if (!await db.prepare('SELECT 1 FROM comets WHERE id = ?').bind(b.comet_id).first()) return json({ error: `no comet ${b.comet_id}` }, 404);
   const now = Date.now();
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(b.turnstile)))].map(x => x.toString(16).padStart(2, '0')).join('');
+  // One batch is one transaction: the rate limit, the comment, the token claim and the tally read happen together.
+  // A reused token breaks the UNIQUE key and rolls the comment back; a rate-limited post inserts nothing and keeps the token.
   // ponytail: per-author limit on a free-text nickname; per-IP or signed-in limits once real accounts exist
-  const { n } = await db.prepare('SELECT COUNT(*) AS n FROM comments WHERE author = ? AND created_at > ?').bind(author, now - 60000).first();
-  if (n >= 5) return json({ error: 'too many comments, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
-  await db.prepare('INSERT INTO comments (comet_id, author, tag, body, created_at) VALUES (?, ?, ?, ?, ?)').bind(b.comet_id, author, tag, body, now).run();
-  const tags = (await tallies(db))[b.comet_id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 };
+  let res;
+  try {
+    res = await db.batch([
+      db.prepare(`INSERT INTO comments (comet_id, author, tag, body, created_at) SELECT ?1, ?2, ?3, ?4, ?5
+        WHERE (SELECT COUNT(*) FROM comments WHERE author = ?2 AND created_at > ?5 - 60000) < 5`).bind(b.comet_id, author, tag, body, now),
+      db.prepare('INSERT INTO turnstile_tokens (hash, created_at) SELECT ?, ? WHERE ? AND changes() = 1').bind(hash, now, claim ? 1 : 0),
+      db.prepare(TALLY_ONE).bind(b.comet_id)
+    ]);
+  } catch (e) {
+    if (/UNIQUE/i.test(String(e?.message) + String(e?.cause?.message))) return json({ error: 'human check already used, try again' }, 403);
+    throw e;
+  }
+  if (res[0].meta.changes !== 1) return json({ error: 'too many comments, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
+  const tags = { comet: 0, asteroid: 0, glitch: 0, unsure: 0 };
+  for (const { tag: t, n } of res[2].results) tags[t] = n;
   return json({ comment: { comet_id: b.comet_id, author, tag, body, created_at: now }, tags }, 201);
 }
 

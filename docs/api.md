@@ -68,6 +68,7 @@ Refusals (JSON, CORS headers as above):
 |---|---|---|
 | 400 | `{"error":"body must be 1 to 1000 characters","field":"body"}` | bad input; `field` is `comet_id`, `tag`, `body`, `author` or `turnstile` (or `body` when it is not JSON) |
 | 403 | `{"error":"human check failed, try again"}` | Turnstile refused the token |
+| 403 | `{"error":"human check already used, try again"}` | the token already paid for a comment |
 | 404 | `{"error":"no comet C-9999"}` | unknown comet |
 | 405 | `{"error":"use POST"}` | any other method |
 | 429 | `{"error":"too many comments, wait a minute","retry_after":60}` | more than 5 comments by one author in a minute |
@@ -75,13 +76,12 @@ Refusals (JSON, CORS headers as above):
 
 ### Turnstile keys
 
-Local dev uses Cloudflare's published test keys, so it works with no account: site key `1x00000000000000000000AA` (always passes, set in `web/comet.html` on the `.cf-turnstile` div) and secret `1x0000000000000000000000000000000AA` (copy `worker/.dev.vars.example` to `worker/.dev.vars`). With the test secret any token passes.
+- Live site: site key `0x4AAAAAAGBTgXAx-fdK_qGx` (public, in `data-sitekey` in `web/comet.html`; the widget allows `comet-hunt.comet-hunt.workers.dev` and `localhost`). The secret is a Worker secret, set with `npx wrangler secret put TURNSTILE_SECRET --config worker/wrangler.toml`. Never commit it.
+- Local dev: on `localhost`, `127.0.0.1` and `[::1]` the page swaps in Cloudflare's test site key `1x00000000000000000000AA` (always passes), to match the test secret `1x0000000000000000000000000000000AA` in `worker/.dev.vars` (copy `worker/.dev.vars.example`). No account needed.
+- The test widget hands out the same dummy token, `XXXX.DUMMY.TOKEN.XXXX`, every time. The Worker does not claim that token when siteverify says a test secret checked it, so you can post more than once locally. A real secret refuses the dummy token, so this changes nothing on the live site.
+- To test the real widget locally, put the real secret in `worker/.dev.vars` and remove the localhost swap in `web/comet.html` for that session.
 
-To switch to real keys:
-
-1. In the Cloudflare dashboard, Turnstile, add a widget for the site's hostname (plus `localhost` if wanted). It gives a site key and a secret key.
-2. `npx wrangler secret put TURNSTILE_SECRET --config worker/wrangler.toml` and paste the secret.
-3. Put the site key in `data-sitekey` in `web/comet.html`, then merge and deploy as usual.
+Each accepted token is stored as a SHA-256 hash (`turnstile_tokens`, migration 0007) in the same transaction as the comment, so a token pays for one comment only. The rate limit is checked inside that same insert, so posts sent at the same moment cannot get past it.
 
 ## GET /api/explored (example)
 

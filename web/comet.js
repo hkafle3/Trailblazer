@@ -142,44 +142,53 @@ function known(c) {
   box.hidden = false;
 }
 
-// Name from the sign-in (PR #4 sets window.CH_USER and localStorage ch.user), else a nickname typed here
+// The API's rule for names; a stored name that breaks it (e.g. "Zoë") falls back to the nickname field
+const NAME = /^[A-Za-z0-9 _.-]{1,24}$/;
+let nameRefused = false;   // set when the API refused the stored name
 function userName() {
-  if (window.CH_USER?.name) return window.CH_USER.name;
-  try { return JSON.parse(localStorage.getItem('ch.user'))?.name || null; } catch { return null; }
+  let n = window.CH_USER?.name;
+  if (!n) try { n = JSON.parse(localStorage.getItem('ch.user'))?.name; } catch {}
+  n = typeof n === 'string' ? n.trim() : '';
+  return !nameRefused && NAME.test(n) ? n : null;
 }
 
 function composer(c) {
   const form = document.querySelector('.composer'), text = form.querySelector('textarea'), nick = form.querySelector('.nick');
   const btn = form.querySelector('button'), note = $('c-note'), hint = note.textContent;
+  let submitting = false;
   const sync = () => {
     nick.hidden = !!userName();
-    btn.disabled = !text.value.trim() || (!nick.hidden && !nick.value.trim());
+    for (const x of form.querySelectorAll('input')) x.disabled = submitting;
+    text.readOnly = submitting;
+    btn.disabled = submitting || !text.value.trim() || (!nick.hidden && !nick.value.trim());
   };
   const say = (msg, err) => { note.textContent = msg; note.classList.toggle('err', !!err); };
   text.addEventListener('input', sync); nick.addEventListener('input', sync);
-  window.addEventListener('ch:user', sync);
+  window.addEventListener('ch:user', () => { nameRefused = false; sync(); });
   sync();
   form.addEventListener('submit', async e => {
     e.preventDefault();
     if (btn.disabled) return;
     const token = window.turnstile?.getResponse() || form.querySelector('[name=cf-turnstile-response]')?.value;
     if (!token) return say('One moment, checking you are human…', true);
-    btn.disabled = true;
-    const tag = form.querySelector('[name=tag]:checked')?.value;
+    const sent = text.value, tag = form.querySelector('[name=tag]:checked')?.value;
+    const stored = userName(), author = stored || nick.value.trim();
+    submitting = true; sync();
     try {
       const r = await fetch('/api/comments', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comet_id: c.id, body: text.value, author: userName() || nick.value.trim(), turnstile: token, ...(tag ? { tag } : {}) }) });
+        body: JSON.stringify({ comet_id: c.id, body: sent, author, turnstile: token, ...(tag ? { tag } : {}) }) });
       const out = await r.json().catch(() => ({}));
+      if (r.status === 400 && out.field === 'author' && stored) nameRefused = true;   // show the nickname field instead
       if (!r.ok) throw new Error(out.error || `Could not post (${r.status})`);
       c.comments.push(out.comment); c.tags = out.tags;
       talk(c);
-      text.value = ''; form.querySelectorAll('[name=tag]').forEach(x => { x.checked = false; });
+      if (text.value === sent) { text.value = ''; form.querySelectorAll('[name=tag]').forEach(x => { x.checked = false; }); }
       say(hint);
     } catch (err) {
       say(err.message, true);
     } finally {
       window.turnstile?.reset();   // a token works once
-      sync();
+      submitting = false; sync();
     }
   });
 }
