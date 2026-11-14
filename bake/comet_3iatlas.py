@@ -64,6 +64,16 @@ def cutout(e):
     return f
 
 
+def aperture_pixels(x, y, r=R_AP):
+    """How many whole pixels the measuring circle covers around (x, y), ignoring the cutout's edges."""
+    xs, ys = np.meshgrid(np.arange(np.floor(x) - r - 1, np.ceil(x) + r + 2), np.arange(np.floor(y) - r - 1, np.ceil(y) + r + 2))
+    return int((np.hypot(xs - x, ys - y) <= r).sum())
+
+
+# the count ignores the cutout's edges: centred on a pixel, a 4-pixel circle covers 49 pixels at the edge or in the middle
+assert aperture_pixels(10.0, 10.0) == aperture_pixels(0.0, 0.0) == 49 and aperture_pixels(3.3, 0.6) == aperture_pixels(53.3, 40.6)
+
+
 def measure(e):
     """Brightness (mJy) of the comet in a circle, minus the median sky in a ring, plus wavelength (um)."""
     with fits.open(cutout(e)) as h:
@@ -77,15 +87,16 @@ def measure(e):
         lam, bw = spectral.pixel_to_world_values(x, y)
     yy, xx = np.indices(img.shape)
     r = np.hypot(xx - x, yy - y)
-    circle = r <= R_AP
-    ap, ring = circle & usable, (r >= R_IN) & (r <= R_OUT) & usable
-    if ap.sum() < 0.8 * circle.sum() or ring.sum() < 50:
+    ap, ring = (r <= R_AP) & usable, (r >= R_IN) & (r <= R_OUT) & usable
+    full = aperture_pixels(x, y)   # the whole circle, even where it runs off the cutout
+    if ap.sum() < 0.8 * full or ring.sum() < 50:
         return None   # comet near the cutout edge, or too many flagged pixels in the circle
     sky = np.median(img[ring])
     sky_err = 1.2533 * np.std(img[ring]) / np.sqrt(ring.sum())
-    fill = circle.sum() / ap.sum()   # flagged pixels count as the circle's average, not as zero or their bad value
+    fill = full / ap.sum()   # missing or flagged pixels count as the circle's average, not as zero or their bad value
     flux = (img[ap] - sky).sum() * fill * SR_PER_PIX * 1e9            # MJy/sr * sr -> mJy
-    noise = np.sqrt((var[ap].sum() * fill if var is not None else 0) + (circle.sum() * sky_err) ** 2) * SR_PER_PIX * 1e9
+    # flux is scaled by fill, so its variance scales by fill squared
+    noise = np.sqrt((var[ap].sum() * fill ** 2 if var is not None else 0) + (full * sky_err) ** 2) * SR_PER_PIX * 1e9
     v = img[ap] - sky
     peak_frac = float(v.max() / v.sum()) if v.sum() > 0 else 0.0
     # The coma spreads its light (brightest pixel holds 6-10%); a background star or hot pixel concentrates it
