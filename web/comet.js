@@ -130,13 +130,36 @@ function where(c) {
   $('c-where').textContent = `RA ${c.ra.toFixed(1)}\u00b0   Dec ${c.dec >= 0 ? '+' : ''}${c.dec.toFixed(1)}\u00b0`;
 }
 
+// A known comet from JPL's catalog: when SPHEREx photographed it (matched to the survey's photo outlines),
+// each with a link that opens that patch on that date. Its spectrum is not measured yet.
+function known(c) {
+  const shots = c.detail.spherex, box = $('c-empty');
+  // keep the card's "Where it is" mini map (where()); drop only its example-comet sentence, which is wrong here
+  box.querySelector(':scope > p:not(.where)')?.remove();
+  box.append(el('h2', null, shots.length ? `SPHEREx photographed it ${shots.length} times` : 'Not in a SPHEREx photo yet'));
+  // one link per visit: photos less than 5 days after the previous one belong to the same visit
+  const visits = [];
+  shots.forEach((s, i) => { if (i === 0 || s.day - shots[i - 1].day >= 5) visits.push(s); });
+  const list = el('div', 'visits');
+  for (const v of visits) {   // each photo carries the comet's exact position at that moment (bake/known_comets.py)
+    const a = el('a', 'chip', date(60789 + v.day, { day: 'numeric', month: 'short', year: 'numeric' }));
+    a.href = `timelapse.html?ra=${v.ra.toFixed(4)}&dec=${v.dec.toFixed(4)}&det=D1`;
+    a.title = `Open the patch where it was (RA ${v.ra.toFixed(2)}, Dec ${v.dec.toFixed(2)})`;
+    list.append(a);
+  }
+  box.append(list, el('p', 'faint', 'Known comet from JPL. Its spectrum is not measured yet.'));
+  box.hidden = false;
+}
+
 fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
   document.title = `${c.id} · Comet Catcher`;
   $('c-id').textContent = c.id;
   const n = c.tags.comet + c.tags.asteroid + c.tags.glitch + c.tags.unsure;
   if (c.kind === 'comet' && n) { $('c-verdict').textContent = c.tags.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }
-  $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.real ? 'Known comet · real SPHEREx data' : 'Known object') : 'Not in any catalog';
+  $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : c.real ? 'Known comet · JPL catalog' : 'Known object') : 'Not in any catalog';
   if (c.kind === 'comet') { const p = $('c-patch'); p.href = `timelapse.html?ra=${c.ra}&dec=${c.dec}&det=D1&diff=1`; p.hidden = false; }
-  if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); } else { where(c); $('c-empty').hidden = false; }
+  if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); }
+  else if (c.detail?.spherex) { where(c); known(c); }
+  else { where(c); $('c-empty').hidden = false; }
   talk(c);
 }).catch(err => { $('c-id').textContent = 'Comet not found'; console.warn(err); });

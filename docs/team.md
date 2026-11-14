@@ -9,7 +9,7 @@
 | Comet page + tagged comments | Loads from D1. 3I/ATLAS has real SPHEREx photos, motion and spectrum (`bake/comet_3iatlas.py`) | `web/comet.html`, `web/comet.js` | `POST /api/comments` with a Turnstile token, then live tally (Durable Object) |
 | Guide + practice patch | Static design only | `web/guide.html` | Use IRSA's real 3I/ATLAS images as the practice patch |
 | API + database | Images, Gaia, comets and comments real (D1: `worker/migrations/`); explored is example data | `worker/src/`, `worker/migrations/` | Explored counter in D1: +1 per patch opened or tagged, `/api/explored` reads it (same shape) |
-| Known objects | Not started | | `/api/known` from IMCCE SkyBoT |
+| Known comets | 35 real comets from JPL, moving on the map, each matched to the SPHEREx photos that caught it (`bake/known_comets.py`) | `bake/known_comets.py`, `worker/migrations/0005_*` | Measure their spectra like 3I/ATLAS; circle known asteroids per patch with SkyBoT |
 | Dot finder | Not started | | Blink photo pairs taken hours apart, save moving dots as candidates. Runs in Python or the browser: a free Worker gets only 10 ms of compute per request |
 | Data prep | Works; coverage map built from all 272,962 SPHEREx photos | `bake/` | Per-cell visit dates so the map can show SPHEREx's moving sweep after the first full pass |
 | Pitch and demo | Not started | `docs/prior-art.md`, `docs/architecture.html` | Story: SPHEREx gives every find a spectrum |
@@ -18,7 +18,10 @@ The design reference for every screen is `design/screens/` (open the HTML files,
 
 ## How we work
 
-- Branch off `main`, one branch per piece, small pull requests.
+- Never commit to `main`. Pull `main`, make a branch for your piece (`git switch -c map/sweep-labels`), push the branch, and open a pull request. Someone else reads it before it merges.
+- Name branches `area/what`: `map/...`, `comet/...`, `api/...`, `data/...`, `design/...`, `docs/...`.
+- Keep pull requests small, one piece each, so they are quick to read and rarely clash. Pull `main` into your branch if it falls behind.
+- Deploying the live site (`npm run deploy`) happens from `main` after a merge, not from a branch.
 - Run `npm run dev` and `npm test` before opening a pull request. If you touched `web/live/` or `bake/`, also open `/tests/golden.html` and `/tests/live.html` and run `python3 bake/verify.py`.
 - Keep API response shapes as written in `docs/api.md`; change the doc in the same pull request if a shape must change.
 - No keys or tokens in the repo. Cloudflare secrets go in `wrangler secret`, local ones in `worker/.dev.vars` (ignored by git).

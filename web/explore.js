@@ -75,6 +75,20 @@ $('search').addEventListener('submit', e => {
 });
 
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
+// Known comets move: their marker follows the JPL path in `track` ([[day, ra, dec, magnitude], ...] every 10 days)
+// and shows only while the comet is bright enough to see (magnitude 16 or brighter).
+const movers = [];
+function followTracks(day) {
+  for (const { el, track } of movers) {
+    const i = Math.min(track.length - 2, Math.max(0, Math.floor(day / 10))), [d0, r0, c0, m0] = track[i], [d1, r1, c1, m1] = track[i + 1];
+    const f = Math.min(1, Math.max(0, (day - d0) / (d1 - d0))), dr = ((r1 - r0 + 540) % 360) - 180;   // shortest way round in RA
+    place(el, (r0 + f * dr + 360) % 360, c0 + f * (c1 - c0));
+    const mag = m0 == null ? m1 : m1 == null ? m0 : m0 + f * (m1 - m0);
+    const bright = mag != null && mag <= 16;
+    // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see; the rest hide
+    if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
+  }
+}
 let trailN = 0;
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
@@ -91,15 +105,18 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
     } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
+    if (c.kind === 'known') a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
+    if (c.kind === 'comet' || c.id === '3I/ATLAS') { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
+    if (c.track) { movers.push({ el: a, track: c.track }); if (c.detail?.photos || c.id === '3I/ATLAS') a.dataset.always = '1'; }
     if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
       const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
       a.insertAdjacentHTML('beforeend', `<svg class="trail" aria-hidden="true"><defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}"><stop offset="0" stop-color="#ff9a4d" stop-opacity="1"/><stop offset="1" stop-color="#ff9a4d" stop-opacity="0"/></linearGradient></defs><path d="M0 0Q${cx.toFixed(1)} ${cy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}" stroke="url(#${gid})"/></svg>`);
     }
-    if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
   }
+  followTracks(+$('time').value);
   if (featured) {
     const n = votes(featured), t = featured.tags;
     card.href = `comet.html?id=${encodeURIComponent(featured.id)}`;
@@ -188,7 +205,10 @@ let showByDay = () => {};
 
   const out = g.createImageData(W, H), o = out.data, slider = $('time');
   const FRESH = 9;   // days a newly photographed strip stays lit up
-  showByDay = () => { for (const el of document.querySelectorAll('[data-day]')) el.style.visibility = +el.dataset.day <= +slider.value ? '' : 'hidden'; };
+  showByDay = () => {
+    for (const el of document.querySelectorAll('[data-day]')) el.style.visibility = +el.dataset.day <= +slider.value ? '' : 'hidden';
+    followTracks(+slider.value);
+  };
   const VEIL = [232, 110, 45, 0];   // darkness by passes so far: none, 1, 2, 3+
   function draw() {
     const d = +slider.value, passes = new Uint32Array(K + 1);
