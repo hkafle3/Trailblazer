@@ -36,7 +36,8 @@ curl -s -m 30 -D - -o /dev/null "$BASE/api/images?ra=400&dec=4" | grep -qi 'acce
 if python3 - "$BASE" <<'PY'
 import json, sys, urllib.request, urllib.parse
 base = sys.argv[1]
-get = lambda path: json.load(urllib.request.urlopen(base + path, timeout=60))
+# Cloudflare's bot protection refuses Python's default "Python-urllib" user agent (403) on the live site
+get = lambda path: json.load(urllib.request.urlopen(urllib.request.Request(base + path, headers={"User-Agent": "comet-hunt-contract-test"}), timeout=60))
 known = [c for c in get("/api/comets")["comets"] if c["kind"] == "known" and c["real"]]
 assert len(known) >= 30, f"only {len(known)} real known comets"
 short = [c["id"] for c in known if not c.get("track") or c["track"][-1][0] < 529]
