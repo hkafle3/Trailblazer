@@ -120,6 +120,16 @@ function spectrum(d) {
   $('c-spec-panel').hidden = false;
 }
 
+// Mollweide position on the all-sky picture (same maths as explore.js; RA 0 in the middle, increasing to the left)
+function where(c) {
+  const R2 = Math.SQRT2, RAD = Math.PI / 180, lon = (((-c.ra + 180) % 360 + 360) % 360 - 180);
+  let t = c.dec * RAD;
+  for (let i = 0; i < 10 && Math.abs(c.dec) < 89.9; i++) t -= (2 * t + Math.sin(2 * t) - Math.PI * Math.sin(c.dec * RAD)) / (2 + 2 * Math.cos(2 * t));
+  const x = (2 * R2 / Math.PI) * lon * RAD * Math.cos(t), y = R2 * Math.sin(t), dot = $('c-mini-dot');
+  dot.style.left = (x + 2 * R2) / (4 * R2) * 100 + '%'; dot.style.top = (R2 - y) / (2 * R2) * 100 + '%';
+  $('c-where').textContent = `RA ${c.ra.toFixed(1)}\u00b0   Dec ${c.dec >= 0 ? '+' : ''}${c.dec.toFixed(1)}\u00b0`;
+}
+
 fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
   document.title = `${c.id} · Comet Catcher`;
   $('c-id').textContent = c.id;
@@ -127,6 +137,6 @@ fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Prom
   if (c.kind === 'comet' && n) { $('c-verdict').textContent = c.tags.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }
   $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.real ? 'Known comet · real SPHEREx data' : 'Known object') : 'Not in any catalog';
   if (c.kind === 'comet') { const p = $('c-patch'); p.href = `timelapse.html?ra=${c.ra}&dec=${c.dec}&det=D1&diff=1`; p.hidden = false; }
-  if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); } else $('c-empty').hidden = false;
+  if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); } else { where(c); $('c-empty').hidden = false; }
   talk(c);
 }).catch(err => { $('c-id').textContent = 'Comet not found'; console.warn(err); });

@@ -82,23 +82,14 @@
     el.querySelector(':scope > .cb')?.remove();
     const w = el.offsetWidth, hh = el.offsetHeight;
     if (!w || !hh) return;
-    const r = hh / 2, P = 2 * Math.max(w - hh, 0) + 2 * Math.PI * r, n = Math.max(6, Math.min(22, Math.round(P / 44)));
+    const r = hh / 2, P = 2 * Math.max(w - hh, 0) + 2 * Math.PI * r, n = Math.max(6, Math.min(16, Math.round(P / 56)));
     const s = svg('svg', { class: 'cb', width: w + PAD * 2, height: hh + PAD * 2, 'aria-hidden': 'true' });
-    // a soft outline that draws itself, with a loose scatter of stars along it and a few short constellation strokes
+    // a soft outline that draws itself, with a few stars sitting on it
     s.append(svg('rect', { class: 'cb-ring', x: PAD + .5, y: PAD + .5, width: w - 1, height: hh - 1, rx: r, ry: r, pathLength: 1 }));
-    const pts = Array.from({ length: n }, (_, i) => { const [x, y] = stadium(w, hh, P * (i + Math.random() * .5) / n); return [x + PAD + (Math.random() * 5 - 2.5), y + PAD + (Math.random() * 5 - 2.5)]; });
-    const star = (x, y, rad, i, extra = '') => {
-      const c = svg('circle', { cx: x, cy: y, r: rad, class: extra });
-      c.style.setProperty('--i', i); c.style.setProperty('--dx', (Math.random() * 40 - 20).toFixed(1) + 'px'); c.style.setProperty('--dy', (Math.random() * 40 - 20).toFixed(1) + 'px'); s.append(c);
-    };
-    pts.forEach(([x, y], i) => {
-      if (i % 3 === 0) {   // a short stroke leaving the outline, ending in a small star
-        const a = Math.random() * 6.283, len = 7 + Math.random() * 9, x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
-        const l = svg('line', { x1: x, y1: y, x2, y2, pathLength: 1 }); l.style.setProperty('--i', i); s.append(l);
-        star(x2, y2, .9, i, 'stray');
-      }
-      star(x, y, i % 4 === 0 ? 1.9 : 1.4, i);
-    });
+    for (let i = 0; i < n; i++) {
+      const [x, y] = stadium(w, hh, P * (i + .5) / n), c = svg('circle', { cx: x + PAD, cy: y + PAD, r: i % 4 === 0 ? 1.9 : 1.4 });
+      c.style.setProperty('--i', i); c.style.setProperty('--dx', (Math.random() * 30 - 15).toFixed(1) + 'px'); c.style.setProperty('--dy', (Math.random() * 30 - 15).toFixed(1) + 'px'); s.append(c);
+    }
     el.prepend(s);
     if (reduce) s.classList.add('in'); else requestAnimationFrame(() => requestAnimationFrame(() => s.classList.add('in')));
   }

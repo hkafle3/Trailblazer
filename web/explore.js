@@ -75,6 +75,7 @@ $('search').addEventListener('submit', e => {
 });
 
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
+let trailN = 0;
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
   const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
@@ -90,6 +91,11 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
     } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
+    if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
+      const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
+      const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
+      a.insertAdjacentHTML('beforeend', `<svg class="trail" aria-hidden="true"><defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}"><stop offset="0" stop-color="#ff9a4d" stop-opacity="1"/><stop offset="1" stop-color="#ff9a4d" stop-opacity="0"/></linearGradient></defs><path d="M0 0Q${cx.toFixed(1)} ${cy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}" stroke="url(#${gid})"/></svg>`);
+    }
     if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
@@ -160,8 +166,8 @@ Promise.all([cometsLoaded, exploredLoaded]).then(() => {
 // FRESH days glows, so SPHEREx's scanning strip keeps moving across the sky for the whole timeline.
 let showByDay = () => {};
 (async () => {
-  const meta = await getJson('data/coverage.json');
-  const img = new Image(); img.src = 'data/visits.png'; await img.decode();
+  const img = new Image(); img.src = 'data/visits.png';
+  const [meta] = await Promise.all([getJson('data/coverage.json'), img.decode()]);   // both at once
   const src = Object.assign(document.createElement('canvas'), { width: 720, height: 1080 }).getContext('2d', { willReadFrequently: true });
   src.drawImage(img, 0, 0);
   const px = src.getImageData(0, 0, 720, 1080).data;

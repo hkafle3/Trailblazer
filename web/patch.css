@@ -91,3 +91,6 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   #mapbox { left: 12px; bottom: 12px; }
   #hint { bottom: 230px; width: calc(100% - 24px); text-align: center; white-space: normal; }
 }
+
+/* While frames are being built the patch breathes instead of sitting there black. */
+body.busy #patch { animation: breathe 1.6s ease-in-out infinite; }

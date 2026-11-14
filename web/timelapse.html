@@ -220,7 +220,7 @@ const API = P.get('api') || '';   // the same Worker serves this page and /api (
 const live = new Map();
 let job = null;
 const statusEl = document.getElementById('status');
-function setStatus(text, err = false) { statusEl.textContent = text; statusEl.className = err ? 'err' : ''; }
+function setStatus(text, err = false) { statusEl.textContent = text; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); }
 // "269.4463 4.7671", "269.4463, +4.7671", "17h57m47s +04d46m02s", "17:57:47 +04:46:02" -> degrees
 function parseCoords(text) {
   const parts = text.trim().replace(/^ra\s*/i, '').replace(/\s*dec\s*/i, ' ').split(/[\s,]+(?=[+-]?\d)/).map(t => t.trim()).filter(Boolean);
