@@ -1,0 +1,13 @@
+{
+  "name": "comet-hunt",
+  "private": true,
+  "description": "Find comets in NASA SPHEREx images. NASA Space Apps 2026.",
+  "scripts": {
+    "dev": "wrangler dev --config worker/wrangler.toml",
+    "deploy": "wrangler deploy --config worker/wrangler.toml",
+    "test": "sh worker/test_contract.sh"
+  },
+  "devDependencies": {
+    "wrangler": "4.162.0"
+  }
+}

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patch near RA 77.0, Dec +30.4 · Comet Hunt</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page">
+
+<header class="topbar glass">
+  <a class="brand" href="explore.html"><span class="brand-mark"></span>Comet Hunt</a>
+  <nav><a class="on" href="explore.html">Explore</a><a href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
+  <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet or sky position" aria-label="Search"></label>
+  <a class="av" title="orbit_owl">OO</a>
+</header>
+
+<main class="shell">
+  <div class="crumbs">
+    <a href="explore.html">Explore</a><span class="faint">/</span>
+    <span class="mono">RA 77.0 &nbsp;Dec +30.4</span>
+    <span class="example right">Example dot on real SPHEREx photos</span>
+  </div>
+
+  <div class="patch-grid">
+    <section class="viewer">
+      <div class="dock glass">
+        <div class="seg" role="radiogroup" aria-label="How to compare the photos">
+          <label><input type="radio" name="mode" id="m-side" checked><span>Side by side</span></label>
+          <label><input type="radio" name="mode" id="m-blink"><span>Blink</span></label>
+          <label><input type="radio" name="mode" id="m-diff"><span>Remove still stars</span></label>
+        </div>
+        <label class="tool" style="--c:var(--known)"><input class="sw" type="checkbox" id="t-known" checked>Known objects</label>
+        <label class="tool"><input class="sw" type="checkbox" id="t-invert">Invert</label>
+        <label class="tool" title="Contrast"><svg class="ic"><use href="icons.svg#contrast"/></svg><input class="range" id="contrast" type="range" min="80" max="220" value="115" style="--p:25%" aria-label="Contrast"></label>
+      </div>
+
+      <div class="frames">
+        <figure class="frame earlier">
+          <figcaption><b>Earlier</b><span>8 Sep, 03:10</span><span class="mode-note">Later photo minus earlier photo. Still stars cancel out.</span></figcaption>
+          <div class="plate">
+            <img src="../../web/data/flip/rwaur/f0.png" alt="Earlier photo of the patch">
+            <span class="kn" style="left:50%;top:50%"><b>RW Aurigae</b></span>
+            <span class="ring earlier" style="left:26%;top:70%"></span>
+            <span class="dot tail" style="left:26%;top:70%"></span>
+            <span class="scale">2 arcmin</span>
+          </div>
+        </figure>
+        <figure class="frame later">
+          <figcaption><b>Later</b><span>8 Sep, 14:52</span></figcaption>
+          <div class="plate">
+            <img src="../../web/data/flip/rwaur/f1.png" alt="Later photo of the patch">
+            <span class="kn" style="left:50%;top:50%"><b>RW Aurigae</b></span>
+            <svg class="track" viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="30.4" y1="68.800" x2="51.6" y2="63.200"/></svg>
+            <span class="ring earlier ghost" style="left:26%;top:70%"></span>
+            <span class="ring" style="left:56%;top:62%"></span>
+            <span class="dot tail" style="left:56%;top:62%"></span>
+          </div>
+        </figure>
+      </div>
+
+      <div class="strip glass">
+        <a class="thumb earlier"><img src="../../web/data/flip/rwaur/f0.png" alt="">8 Sep 03:10</a>
+        <a class="thumb later"><img src="../../web/data/flip/rwaur/f1.png" alt="">8 Sep 14:52</a>
+        <span class="gap"></span>
+        <a class="thumb"><img src="../../web/data/flip/rwaur/f1.png" alt="">5 Mar 02:28</a>
+        <a class="thumb"><img src="../../web/data/flip/rwaur/f2.png" alt="">5 Mar 14:10</a>
+        <span class="gap"></span>
+        <a class="thumb"><img src="../../web/data/flip/rwaur/f2.png" alt="">11 Sep 01:46</a>
+        <a class="thumb"><img src="../../web/data/flip/rwaur/f0.png" alt="">11 Sep 13:28</a>
+      </div>
+    </section>
+
+    <aside class="rail glass">
+      <div class="dotlist" aria-label="Moving dots in this patch">
+        <a class="dotrow sel"><b>Dot A</b><span class="faint">no tags yet</span></a>
+        <a class="dotrow"><b>Dot B</b><span class="tag comet">comet &middot; 4</span></a>
+        <a class="dotrow"><b>Dot C</b><span class="tag glitch">glitch &middot; 2</span></a>
+      </div>
+
+      <div class="facts">
+        <div class="fact" title="How far it moved"><svg class="ic"><use href="icons.svg#move"/></svg><b>3.7'</b><span>moved</span></div>
+        <div class="fact" title="Time between the two photos"><svg class="ic"><use href="icons.svg#clock"/></svg><b>11.7 h</b><span>apart</span></div>
+        <div class="fact" title="The dot has a soft edge"><svg class="ic"><use href="icons.svg#fuzzy"/></svg><b>Fuzzy</b><span>edge</span></div>
+      </div>
+      <p class="chip" style="justify-self:start;--c:var(--known)"><svg class="ic" style="color:var(--known);width:15px;height:15px"><use href="icons.svg#known"/></svg>No known object at this spot</p>
+
+      <hr class="rule">
+
+      <form class="composer">
+        <h2 style="font-size:20px">What is Dot A?</h2>
+        <div class="tagpick" role="radiogroup" aria-label="Your tag">
+          <label><input type="radio" name="tag" checked><span class="tag comet">Comet</span></label>
+          <label><input type="radio" name="tag"><span class="tag asteroid">Asteroid</span></label>
+          <label><input type="radio" name="tag"><span class="tag glitch">Glitch</span></label>
+          <label><input type="radio" name="tag"><span class="tag unsure">Not sure</span></label>
+        </div>
+        <textarea rows="4" aria-label="Your comment">Fuzzy, and it moved between the two photos. Nothing in the catalog at this spot.</textarea>
+        <div class="row"><span class="faint" style="font-size:12.5px">Your tag is your vote.</span><button class="btn" type="button">Post</button></div>
+      </form>
+    </aside>
+  </div>
+</main>
+
+<script>
+  // Contrast slider feeds one CSS variable; the mode can be preset from the URL (#diff, #blink).
+  const c = document.getElementById("contrast");
+  c.oninput = () => { document.body.style.setProperty("--contrast", c.value / 100); c.style.setProperty("--p", (c.value - 80) / 1.4 + "%"); };
+  document.getElementById("m-" + location.hash.slice(1))?.click();
+</script>
+</body>
+</html>

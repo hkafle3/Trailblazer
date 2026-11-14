@@ -9,7 +9,7 @@
 // Goal (PLAN-live.md evaluator 2 and 4): for each baked target, the live pipeline's matched wavelength is within
 // 0.02 um of the baked one, its measured motion within 15% of the baked value where the target really moves,
 // and a spot shows its first frame in under 8 s and all frames in under 15 s. window.__live holds the summary.
-const API = new URLSearchParams(location.search).get('api') || 'http://127.0.0.1:8787';
+const API = new URLSearchParams(location.search).get('api') || '';   // same Worker as the page (npm run dev)
 const KEYS = ['barnard', 'epsindib', 'wise0855', 'rwaur', 'rdra'];
 const out = document.getElementById('out'), lines = [];
 const say = s => { lines.push(s); out.innerHTML = lines.join('\n'); };

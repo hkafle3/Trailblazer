@@ -2,7 +2,10 @@
 // IRSA's search (SIA) and ESA's Gaia archive send no CORS header and IRSA throws intermittent 502s, so this
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
-//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=      (examples and refusals: PLAN-live.md)
+//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
+//   GET /api/comets   GET /api/explored   (example data until D1 holds real labels; see docs/api.md)
+// The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
+import { COMETS, SUGGEST, exploredCells } from './example-data.js';
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
@@ -100,11 +103,20 @@ async function gaia(url) {
   }
 }
 
+// Comets people found plus known objects, for the map's markers
+const comets = () => json({ example: true, comets: COMETS }, 200, { 'Cache-Control': 'public, max-age=60' });
+
+// Which patch-sized cells people have checked, and one nobody has, for the heat map and "Unexplored patch"
+function explored() {
+  const { total, cells } = exploredCells();
+  return json({ example: true, total, checked: cells.length, cells, suggest: SUGGEST }, 200, { 'Cache-Control': 'public, max-age=60' });
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
-    const route = { '/api/images': images, '/api/gaia': gaia }[url.pathname];
+    const route = { '/api/images': images, '/api/gaia': gaia, '/api/comets': comets, '/api/explored': explored }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     const cache = caches.default, hit = await cache.match(request);
     if (hit) return hit;

@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPHEREx smooth-check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap">
+<style>
+:root{--bg:#05070b;--panel:rgba(16,20,28,.86);--line:#2a3445;--text:#e8ecf2;--muted:#9aa6b8;--accent:#ff9a4d;--blue:#6cb4ff;--ok:#7fe0b0;--bad:#ff8a80}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif;overflow:hidden}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+.panel{position:fixed;background:var(--panel);border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(6px)}
+#title{left:16px;top:16px;padding:12px 16px;max-width:420px}
+#title h1{margin:0;font:700 19px 'Space Grotesk',sans-serif}
+#title p{margin:2px 0 0;color:var(--muted);font-size:13px}
+#side{right:16px;top:16px;width:320px;padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+@media (min-width:761px){#side{right:352px}#flip{top:16px;bottom:auto}}
+h2{margin:0;font:600 13px Inter,sans-serif;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;font:12px 'IBM Plex Mono',monospace}
+.stats span{color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+button{min-height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:#141a24;color:var(--text);font:500 13px Inter,sans-serif;cursor:pointer}
+button:hover{border-color:#44526a}
+button.primary{background:var(--accent);border-color:var(--accent);color:#1a0e04;font-weight:600}
+button[aria-pressed=true]{border-color:var(--blue);color:#cfe6ff}
+label{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+input[type=range]{width:100%}
+#result{display:none;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+#result .verdict{font:700 16px 'Space Grotesk',sans-serif}
+#result table{width:100%;border-collapse:collapse;font:12px 'IBM Plex Mono',monospace}
+#result td{padding:2px 0}#result td:last-child{text-align:right}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+#flip{right:16px;bottom:16px;width:320px;padding:12px;display:flex;flex-direction:column;gap:8px}
+#flip canvas{width:296px;height:296px;image-rendering:pixelated;border-radius:8px;background:#000;display:block}
+#flipcap{font-size:12px;color:var(--muted)}
+#flipdate{font:500 13px 'IBM Plex Mono',monospace}
+#credit{left:16px;bottom:16px;padding:8px 12px;font-size:11px;color:var(--muted);max-width:520px}
+.lbl{position:fixed;font:500 11px Inter,sans-serif;color:#cfe6ff;pointer-events:none;white-space:nowrap;text-shadow:0 0 4px #000;transform:translate(8px,-50%)}
+#hud{position:fixed;left:16px;top:118px;font:12px 'IBM Plex Mono',monospace;color:var(--muted)}
+@media (max-width:760px){#title,#credit{display:none}#side{left:12px;right:12px;top:12px;width:auto;max-height:46%}#flip{left:12px;right:12px;bottom:12px;width:auto;flex-direction:row;flex-wrap:wrap;align-items:center}#flip canvas{width:120px;height:120px}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="title" class="panel"><h1>SPHEREx smooth-check</h1><p>Real SPHEREx all-sky tiles, real Gaia stars within 25 pc, and real SPHEREx images over time. Drag to look around, scroll to fly.</p></div>
+<div id="hud"></div>
+<div id="side" class="panel">
+  <div><h2>Live</h2></div>
+  <div class="stats" id="live"></div>
+  <div><h2>Targets</h2></div>
+  <div class="row" id="targets"></div>
+  <label>Star motion: <b id="yrs">now</b></label>
+  <input id="years" type="range" min="-20" max="20" step="0.1" value="0" aria-label="Thousands of years from now">
+  <button class="primary" id="bench">Run 10-second benchmark</button>
+  <div id="result">
+    <div class="verdict" id="verdict"></div>
+    <table id="rtable"></table>
+    <button id="copy">Copy results</button>
+  </div>
+</div>
+<div id="flip" class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:baseline"><b id="flipname">Pick a target</b><span id="flipdate"></span></div>
+  <canvas id="flipc" width="36" height="36"></canvas>
+  <div class="row"><button id="play" aria-pressed="true">Pause</button><button id="prev">Prev</button><button id="next">Next</button></div>
+  <div id="flipcap">Each frame is one SPHEREx survey visit.</div>
+</div>
+<div id="credit" class="panel">Sky: SPHEREx DR1 all-sky HiPS (Caltech/IPAC, NASA). Stars: ESA Gaia DR3. Frames: SPHEREx spectral images via IRSA. Proof page for a Space Apps team, not a finished product.</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createWorld, dirRaDec, D2R } from './sky.js';
+
+const P = new URLSearchParams(location.search);
+
+// ---------- renderer, camera ----------
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 1, 0.001, 5000);
+camera.position.set(0, 2, 8);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.minDistance = 0.05; controls.maxDistance = 60;
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+
+const world = createWorld({ renderer, scene, camera, local: P.has('local'), stress: +(P.get('stress') || 0) });
+const { starMat, timings } = world;
+const labels = [];
+function addLabel(text, posFn) { const el = document.createElement('div'); el.className = 'lbl'; el.textContent = text; document.body.appendChild(el); labels.push({ el, posFn }); }
+world.stars.then(({ n, pos, vel }) => {
+  const sun = new THREE.Vector3();
+  addLabel('Sun', () => sun);
+  // Barnard's Star is the Gaia source about 1.83 pc away near RA 269.4
+  let bi = -1;
+  for (let i = 0; i < n; i++) { const p = new THREE.Vector3().fromArray(pos, 3 * i), d = p.length(); if (d > 1.7 && d < 1.95 && Math.abs(Math.atan2(-p.z, p.x) / D2R + 360) % 360 > 260) bi = i; }
+  if (bi >= 0) addLabel("Barnard's Star", () => new THREE.Vector3().fromArray(pos, 3 * bi).addScaledVector(new THREE.Vector3().fromArray(vel, 3 * bi), starMat.uniforms.uKyr.value));
+});
+
+// ---------- flipbook ----------
+const TARGETS = [
+  { key: 'barnard', name: "Barnard's Star", ra: 269.4463, dec: 4.7671 },
+  { key: 'rdra', name: 'R Draconis', ra: 248.1674, dec: 66.7552 },
+  { key: 'wise0855', name: 'WISE 0855', ra: 133.7951, dec: -7.2451 }
+];
+const flipc = document.getElementById('flipc'), fctx = flipc.getContext('2d');
+const flip = { frames: [], i: 0, playing: true, last: 0, man: null, tSelect: 0, firstMs: null };
+const cache = new Map();
+async function loadTarget(key) {
+  if (!cache.has(key)) cache.set(key, (async () => {
+    const man = await (await fetch(`data/flip/${key}/manifest.json`)).json();
+    const frames = await Promise.all(man.frames.map(async f => createImageBitmap(await (await fetch(`data/flip/${key}/${f.file}`)).blob())));
+    return { man, frames };
+  })());
+  return cache.get(key);
+}
+TARGETS.forEach(t => loadTarget(t.key).catch(() => {}));   // preload, like the demo would
+function drawFlip() {
+  const f = flip.frames[flip.i]; if (!f) return;
+  flipc.width = f.width; flipc.height = f.height; fctx.imageSmoothingEnabled = false; fctx.drawImage(f, 0, 0);
+  // crosshair on the target
+  fctx.strokeStyle = 'rgba(255,154,77,.9)'; fctx.lineWidth = 0.6; const c = f.width / 2;
+  fctx.beginPath(); fctx.moveTo(c - 6, c); fctx.lineTo(c - 2.5, c); fctx.moveTo(c + 2.5, c); fctx.lineTo(c + 6, c); fctx.moveTo(c, c - 6); fctx.lineTo(c, c - 2.5); fctx.moveTo(c, c + 2.5); fctx.lineTo(c, c + 6); fctx.stroke();
+  const m = flip.man.frames[flip.i];
+  document.getElementById('flipdate').textContent = `${flip.i + 1}/${flip.frames.length}  ${m.start}`;
+  if (flip.firstMs == null) flip.firstMs = Math.round(performance.now() - flip.tSelect);
+}
+const tgtDir = new THREE.Vector3(), camGoal = { pos: null, fov: 60 };
+async function select(t) {
+  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === t.key));
+  flip.tSelect = performance.now(); flip.firstMs = null;
+  dirRaDec(t.ra * D2R, t.dec * D2R, tgtDir);
+  camGoal.pos = tgtDir.clone().multiplyScalar(-0.3); camGoal.fov = 3;
+  document.getElementById('flipname').textContent = t.name;
+  try {
+    const { man, frames } = await loadTarget(t.key);
+    Object.assign(flip, { man, frames, i: 0 });
+    document.getElementById('flipcap').textContent = `Each frame: ${man.frames[0].exposures} SPHEREx exposures from detector ${man.detector}, averaged per survey visit, ${man.grid * man.arcsec_per_pixel / 60} arcmin wide. ${man.note}.`;
+    drawFlip();
+  } catch { flip.frames = []; fctx.clearRect(0, 0, flipc.width, flipc.height); document.getElementById('flipcap').textContent = 'Frames for this target are not baked yet (run bake/flipbook.py).'; }
+}
+const tb = document.getElementById('targets');
+TARGETS.forEach(t => { const b = document.createElement('button'); b.textContent = t.name; b.dataset.key = t.key; b.setAttribute('aria-pressed', 'false'); b.onclick = () => select(t); tb.appendChild(b); });
+document.getElementById('play').onclick = e => { flip.playing = !flip.playing; e.target.textContent = flip.playing ? 'Pause' : 'Play'; e.target.setAttribute('aria-pressed', flip.playing); };
+document.getElementById('prev').onclick = () => { if (flip.frames.length) { flip.i = (flip.i - 1 + flip.frames.length) % flip.frames.length; drawFlip(); } };
+document.getElementById('next').onclick = () => { if (flip.frames.length) { flip.i = (flip.i + 1) % flip.frames.length; drawFlip(); } };
+document.getElementById('years').oninput = e => setYears(+e.target.value);
+function setYears(k) { starMat.uniforms.uKyr.value = k; document.getElementById('yrs').textContent = k === 0 ? 'now' : `${k > 0 ? '+' : ''}${(k * 1000).toLocaleString()} years`; }
+controls.addEventListener('start', () => { camGoal.pos = null; });
+canvas.addEventListener('wheel', () => { camGoal.pos = null; if (camera.fov < 60) { camera.fov = Math.min(60, camera.fov * 1.25); camera.updateProjectionMatrix(); } }, { passive: true });
+
+// ---------- benchmark: fixed 10 s path, then report ----------
+let bench = null;
+function benchPose(t) {   // t in seconds, returns {pos, fov, kyr}
+  const ease = x => x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x);
+  const b = TARGETS[0]; dirRaDec(b.ra * D2R, b.dec * D2R, tgtDir);
+  const az = 0.6 + t * 0.35, orbit = r => new THREE.Vector3(Math.cos(az) * r, r * 0.25, Math.sin(az) * r);
+  if (t < 3) return { pos: orbit(8), fov: 60, kyr: 0 };
+  if (t < 6) return { pos: orbit(8 + 22 * ease((t - 3) / 3)), fov: 60, kyr: 20 * ease((t - 3) / 3) };
+  const k = ease((t - 6) / 1.5), close = tgtDir.clone().multiplyScalar(-0.3);
+  close.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.max(0, t - 7.5) * 0.004);
+  return { pos: orbit(30).lerp(close, k), fov: 60 + (3 - 60) * k, kyr: 20 * (1 - k) };
+}
+function startBench() {
+  document.getElementById('result').style.display = 'none';
+  bench = { t0: performance.now(), dts: [], log: [], work: [], last: null, calls: 0, tris: 0, tex: 0, tilesBefore: timings.tiles.length, selected: false };
+  camGoal.pos = null; controls.enabled = false;
+}
+function pct(a, p) { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
+function finishBench() {
+  const d = bench.dts.slice(5), avg = d.reduce((a, b) => a + b, 0) / d.length, gl = renderer.getContext();
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const tiles = timings.tiles.slice(bench.tilesBefore);
+  const r = {
+    when: new Date().toISOString(), gpu: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'unknown',
+    screen: `${innerWidth}x${innerHeight} @${renderer.getPixelRatio()}x`, frames: d.length,
+    avg_ms: +avg.toFixed(2), p95_ms: +pct(d, 95).toFixed(2), p99_ms: +pct(d, 99).toFixed(2), worst_ms: +Math.max(...d).toFixed(1),
+    frames_over_33ms: d.filter(x => x > 33.4).length, refresh_hz: Math.round(1000 / pct(d, 50)),
+    dropped_frames: d.filter(x => x > 1.5 * pct(d, 50)).length,   // took longer than 1.5 screen refreshes
+    work_avg_ms: +(bench.work.slice(5).reduce((a, b) => a + b, 0) / (bench.work.length - 5)).toFixed(2),
+    work_p99_ms: +pct(bench.work.slice(5), 99).toFixed(2),
+    draw_calls_max: bench.calls, triangles_max: bench.tris, textures_max: bench.tex,
+    stars: starMat ? (scene.children.find(o => o.isPoints)?.geometry.attributes.position.count ?? 0) : 0,
+    allsky_load_ms: timings.allskyMs, sharp_tiles_loaded: tiles.length, sharp_tile_median_ms: tiles.length ? Math.round(pct(tiles, 50)) : null,
+    flipbook_first_frame_ms: flip.firstMs, flipbook_frames: flip.frames.length,
+    slowest: bench.log.slice(5).sort((a, b) => b.dt - a.dt).slice(0, 3)   // what was happening in the 3 slowest frames
+  };
+  // Pass rules work at any refresh rate (Safari caps at 60 Hz): almost no dropped frames, no freeze a person
+  // would notice (50 ms is 3 refreshes at 60 Hz), and our own JS work well under one 60 Hz frame.
+  const dropPct = 100 * r.dropped_frames / r.frames;
+  r.pass = dropPct <= 1 && r.worst_ms <= 50 && r.work_avg_ms < 8 && r.draw_calls_max < 150;
+  bench = null; controls.enabled = true;
+  const v = document.getElementById('verdict');
+  v.textContent = r.pass ? 'PASS: smooth on this machine' : 'FAIL: see the rows in red';
+  v.className = 'verdict ' + (r.pass ? 'ok' : 'bad');
+  const row = (k, val, good) => `<tr><td>${k}</td><td class="${good == null ? '' : good ? 'ok' : 'bad'}">${val}</td></tr>`;
+  document.getElementById('rtable').innerHTML =
+    row('Screen refresh', `${r.refresh_hz} Hz (one frame = ${(1000 / r.refresh_hz).toFixed(1)} ms)`, null) +
+    row('Dropped frames', `${r.dropped_frames} of ${r.frames} (goal &le; 1%)`, dropPct <= 1) +
+    row('Longest freeze', `${r.worst_ms} ms (goal &le; 50)`, r.worst_ms <= 50) +
+    row('Our work per frame', `${r.work_avg_ms} ms avg, ${r.work_p99_ms} p99 (goal &lt; 8)`, r.work_avg_ms < 8) +
+    row('Draw calls (max)', r.draw_calls_max, r.draw_calls_max < 150) +
+    row('Stars drawn', r.stars.toLocaleString(), null) + row('Whole-sky image load', `${r.allsky_load_ms} ms`, null) +
+    row('Sharp tiles streamed', `${r.sharp_tiles_loaded}, median ${r.sharp_tile_median_ms} ms`, null) +
+    row('Flipbook first frame', r.flipbook_first_frame_ms == null ? 'not baked' : `${r.flipbook_first_frame_ms} ms (goal &lt; 1000)`, r.flipbook_first_frame_ms == null ? null : r.flipbook_first_frame_ms < 1000) +
+    row('GPU', r.gpu.replace(/ANGLE \((.*)\)/, '$1').slice(0, 34), null);
+  document.getElementById('result').style.display = 'flex';
+  document.getElementById('copy').onclick = () => navigator.clipboard.writeText(JSON.stringify(r, null, 1));
+  window.__bench = r; console.log('BENCH', JSON.stringify(r));
+}
+document.getElementById('bench').onclick = startBench;
+
+// ---------- loop ----------
+const liveEl = document.getElementById('live'), recent = [];
+let prev = performance.now(), lastStats = 0;
+const v3 = new THREE.Vector3();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const frameStart = performance.now();
+  const dt = now - prev; prev = now;
+  recent.push(dt); if (recent.length > 120) recent.shift();
+  if (bench) {
+    const t = (now - bench.t0) / 1000;
+    bench.dts.push(dt);
+    const p = benchPose(t);
+    camera.position.copy(p.pos); camera.fov = p.fov; setYears(+p.kyr.toFixed(1));
+    if (t >= 6) camera.lookAt(camera.position.clone().add(tgtDir)); else camera.lookAt(0, 0, 0);
+    if (t >= 6 && !bench.selected) { bench.selected = true; select(TARGETS[0]); camGoal.pos = null; }
+    camera.updateProjectionMatrix();
+    if (t >= 10) finishBench();
+  } else {
+    if (camGoal.pos) {
+      camera.position.lerp(camGoal.pos, 0.08); camera.fov += (camGoal.fov - camera.fov) * 0.08; camera.updateProjectionMatrix();
+      controls.target.set(0, 0, 0);
+      camera.lookAt(camera.position.clone().add(tgtDir));
+    } else controls.update();
+  }
+  const tilesBefore = timings.tiles.length;
+  world.update(now, frameStart);
+  if (bench) bench.log.push({ t: +((now - bench.t0) / 1000).toFixed(2), dt: +dt.toFixed(1), tilesAdded: timings.tiles.length - tilesBefore, programs: renderer.info.programs.length });
+  if (flip.playing && flip.frames.length && now - flip.last > 450) { flip.last = now; flip.i = (flip.i + 1) % flip.frames.length; drawFlip(); }
+  renderer.render(scene, camera);
+  if (bench) { const i = renderer.info; bench.calls = Math.max(bench.calls, i.render.calls); bench.tris = Math.max(bench.tris, i.render.triangles); bench.tex = Math.max(bench.tex, i.memory.textures); }
+  for (const l of labels) {
+    const p = l.posFn(); v3.copy(p).project(camera);
+    const vis = v3.z < 1 && Math.abs(v3.x) < 1 && Math.abs(v3.y) < 1 && camera.position.distanceTo(p) > 0.5;
+    l.el.style.display = vis ? 'block' : 'none';
+    if (vis) l.el.style.left = `${(v3.x + 1) / 2 * innerWidth}px`, l.el.style.top = `${(1 - v3.y) / 2 * innerHeight}px`;
+  }
+  if (bench) bench.work.push(performance.now() - frameStart);   // our JS work this frame, any refresh rate
+  if (now - lastStats > 500) {
+    lastStats = now;
+    const a = recent.reduce((x, y) => x + y, 0) / recent.length, w = Math.max(...recent), i = renderer.info;
+    liveEl.innerHTML = `<span>fps</span><b>${(1000 / a).toFixed(0)}</b><span>frame avg</span><b>${a.toFixed(1)} ms</b><span>worst (2 s)</span><b>${w.toFixed(1)} ms</b><span>draw calls</span><b>${i.render.calls}</b><span>textures</span><b>${i.memory.textures}</b><span>sharp tiles</span><b>${world.sharpTiles()}</b>`;
+  }
+}
+requestAnimationFrame(frame);
+if (P.has('bench')) setTimeout(startBench, 2500);
+if (P.has('look')) {   // ?look=ra,dec,fov in degrees, e.g. the LMC: ?look=80.9,-69.8,40
+  const [ra, dec, fov] = P.get('look').split(',').map(Number);
+  dirRaDec(ra * D2R, dec * D2R, tgtDir); camGoal.pos = tgtDir.clone().multiplyScalar(-0.3); camGoal.fov = fov || 30;
+}
+</script>
+</body>
+</html>

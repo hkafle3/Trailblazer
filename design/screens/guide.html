@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to find a comet · Comet Hunt</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page">
+
+<header class="topbar glass">
+  <a class="brand" href="explore.html"><span class="brand-mark"></span>Comet Hunt</a>
+  <nav><a href="explore.html">Explore</a><a href="comet.html">Comets</a><a class="on" href="guide.html">Guide</a></nav>
+  <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet or sky position" aria-label="Search"></label>
+  <a class="av" title="orbit_owl">OO</a>
+</header>
+
+<main class="shell">
+  <div class="guide-grid">
+    <div>
+      <h1>How to find a comet</h1>
+      <p class="lede">Stars stay still between two photos. Comets move.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div><h3>Pick a patch</h3><p>Start where nobody has looked.</p></div>
+          <div class="pic"><span class="oval"></span></div>
+        </div>
+        <div class="step">
+          <div><h3>Remove the still stars</h3><p>Subtract one photo from the other.</p></div>
+          <div class="pic">
+            <span class="plate"><img src="../../web/data/flip/rwaur/f0.png" alt=""></span>
+            <svg class="ic" style="color:var(--ink-3)"><use href="icons.svg#arrow"/></svg>
+            <span class="plate sub"><img src="../../web/data/flip/rwaur/f0.png" alt=""><img src="../../web/data/flip/rwaur/f1.png" alt=""><span class="dot" style="left:62%;top:40%"></span></span>
+          </div>
+        </div>
+        <div class="step">
+          <div><h3>Blink the photos</h3><p>Look for a dot that jumps.</p></div>
+          <div class="pic">
+            <span class="plate"><img src="../../web/data/flip/rwaur/f0.png" alt=""><span class="ring earlier" style="--d:20px;left:30%;top:66%"></span></span>
+            <svg class="ic" style="color:var(--ink-3)"><use href="icons.svg#blink"/></svg>
+            <span class="plate"><img src="../../web/data/flip/rwaur/f1.png" alt=""><span class="ring" style="--d:20px;left:62%;top:40%"></span></span>
+          </div>
+        </div>
+        <div class="step">
+          <div><h3>Fuzzy or sharp?</h3><p>Fuzzy with a tail is a comet. Sharp is an asteroid.</p></div>
+          <div class="pic">
+            <span class="big fuzzy"><span class="dot tail"></span><small>comet</small></span>
+            <span class="big sharp"><span class="dot"></span><small>asteroid</small></span>
+          </div>
+        </div>
+        <div class="step">
+          <div><h3>Say what you think</h3><p>Comment with a tag. Your tag is your vote.</p></div>
+          <div class="pic"><span class="bubble"><span class="tag comet">comet</span><i></i></span></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="practice glass">
+      <div class="head"><span class="eyebrow">Practice 1 of 3</span><span class="example">Example dot</span></div>
+      <h2>One dot here moves.</h2>
+      <div class="plate">
+        <img src="../../web/data/flip/rwaur/f1.png" alt="Practice patch, first photo">
+        <span class="dot tail" style="left:38%;top:58%"></span>
+        <div class="b" style="position:absolute;inset:0;background:#000">
+          <img src="../../web/data/flip/rwaur/f2.png" alt="Practice patch, second photo">
+          <span class="dot tail" style="left:61%;top:44%"></span>
+        </div>
+        <span class="blinkbar">blinking</span>
+      </div>
+      <div class="row">
+        <a class="btn" href="patch.html">Start practice <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+        <a class="btn ghost">Show me</a>
+      </div>
+    </aside>
+  </div>
+</main>
+</body>
+</html>

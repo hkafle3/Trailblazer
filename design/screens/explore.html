@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comet Hunt</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="explore">
+
+<div class="map-wrap">
+  <div class="map">
+    <img class="sky" src="../../web/data/sky.jpg" alt="All-sky picture from SPHEREx">
+    <canvas class="cover" id="cover" width="1000" height="500"></canvas>
+    <canvas class="heat" id="heat" width="2000" height="1000"></canvas>
+    <svg class="grat" viewBox="0 0 2000 1000" preserveAspectRatio="none">
+      <path id="grat"/>
+      <path id="ecl" class="ecl"/>
+      <text dy="-10"><textPath href="#ecl" startOffset="5%">most comets travel near this line</textPath></text>
+    </svg>
+  </div>
+
+  <div class="marks">
+    <a class="mk known" data-ra="60" data-dec="21" title="Known comet"><i></i></a>
+    <a class="mk known" data-ra="122" data-dec="17" title="Known asteroid"><i></i></a>
+    <a class="mk known" data-ra="171" data-dec="4" title="Known comet"><i></i></a>
+    <a class="mk known" data-ra="282" data-dec="-24" title="Known asteroid"><i></i></a>
+    <a class="mk known" data-ra="346" data-dec="-7" title="Known comet"><i></i></a>
+    <a class="mk known" data-ra="35" data-dec="-38" title="Known comet"><i></i></a>
+    <a class="mk known" data-ra="215" data-dec="-8" data-day="70"><i></i><b>3I/ATLAS</b></a>
+
+    <a class="mk comet sel" href="comet.html" data-ra="328" data-dec="34" data-day="127" style="--tail:-150deg"><i></i></a>
+    <a class="mk comet left" href="comet.html" data-ra="18" data-dec="22" data-day="160" style="--tail:-35deg"><i></i><b>C-0152</b></a>
+    <a class="mk comet" href="comet.html" data-ra="95" data-dec="-12" data-day="245" style="--tail:-200deg"><i></i><b>C-0170</b></a>
+    <a class="mk comet open" href="comet.html" data-ra="300" data-dec="-30" data-day="210" style="--tail:-120deg"><i></i><b>C-0161</b></a>
+    <a class="mk comet open left" href="comet.html" data-ra="140" data-dec="48" data-day="330" style="--tail:-60deg"><i></i><b>C-0174</b></a>
+
+    <a class="mk patch" href="patch.html" data-ra="77" data-dec="30.4"><i></i><b>unexplored</b></a>
+
+    <a class="mapcard glass" id="card-comet" href="comet.html" data-ra="328" data-dec="34" data-day="127">
+      <div class="head"><h3>C-0147</h3><span class="tag comet">comet</span></div>
+      <div class="tally" title="12 comet, 1 asteroid, 1 not sure">
+        <i class="t-comet" style="--n:12"></i><i class="t-asteroid" style="--n:1"></i><i class="t-unsure" style="--n:1"></i>
+      </div>
+      <div class="head"><span class="mono muted">12 of 14 tags</span><svg class="ic"><use href="icons.svg#arrow"/></svg></div>
+    </a>
+
+    <div class="mapcard glass" id="card-patch" data-ra="77" data-dec="30.4">
+      <h3>Nobody has looked here</h3>
+      <p class="mono">RA 77.0 &nbsp;Dec +30.4 <svg class="ic"><use href="icons.svg#stack"/></svg>6</p>
+      <a class="btn small" href="patch.html">Open patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+    </div>
+  </div>
+</div>
+
+<header class="topbar glass">
+  <a class="brand" href="explore.html"><span class="brand-mark"></span>Comet Hunt</a>
+  <nav><a class="on" href="explore.html">Explore</a><a href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
+  <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet or sky position" aria-label="Search"></label>
+  <a class="av" title="orbit_owl">OO</a>
+</header>
+
+<div class="hero"><h1>Find the dots that move.</h1></div>
+
+<aside class="layers glass" aria-label="Map layers">
+  <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg>SPHEREx photos</span><input class="sw" type="checkbox" id="ly-photos" checked></label>
+  <label class="layer" style="--c:var(--people)"><span><svg class="ic"><use href="icons.svg#eye"/></svg>Explored by people</span><input class="sw" type="checkbox" id="ly-people"></label>
+  <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
+  <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#comet"/></svg>Comets found</span><input class="sw" type="checkbox" id="ly-comets" checked></label>
+  <label class="layer" style="--c:var(--known)"><span><svg class="ic"><use href="icons.svg#known"/></svg>Known objects</span><input class="sw" type="checkbox" id="ly-known" checked></label>
+</aside>
+
+<div class="timebar glass">
+  <button class="play" id="play" aria-label="Replay the sky filling in"><svg class="ic"><use href="icons.svg#play"/></svg></button>
+  <input class="range" id="time" type="range" min="0" max="529" value="529" aria-label="Date">
+  <div class="now"><b id="t-date">&nbsp;</b><span id="t-pct">&nbsp;</span></div>
+</div>
+
+<aside class="start glass">
+  <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%" title="Sky photographed by SPHEREx">
+    <svg class="ic lg"><use href="icons.svg#photo"/></svg><b>100%</b><i></i>
+  </div>
+  <div class="stat" id="people-meter" style="--c:var(--people);--p:12%" title="Patches checked by people">
+    <svg class="ic lg"><use href="icons.svg#eye"/></svg><b><span data-n="seen">412</span> <small>/ <span data-n="total">3,368</span> patches</small></b><i></i>
+  </div>
+  <a class="btn wide" href="patch.html">Unexplored patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+  <a class="link" href="guide.html"><svg class="ic"><use href="icons.svg#book"/></svg>How to find a comet</a>
+</aside>
+
+<script src="map.js"></script>
+</body>
+</html>

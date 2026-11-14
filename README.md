@@ -1,40 +1,48 @@
 # Comet Hunt
 
+![Explore](design/screens/shots/explore.png)
+
 A public web tool for NASA Space Apps 2026 ("Planet X and SPHEREx"). People explore the sky in real SPHEREx infrared images, spot dots that move between photos, tag them as comets, asteroids or glitches, and discuss each one. Working name.
+
+## Run it
+
+Needs Node 20 or newer.
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+Then open http://localhost:8787. One Cloudflare Worker serves both the app (`web/`) and the API (`/api/*`), the same way it will run once deployed. No Cloudflare account is needed to run it locally.
+
+Try it: drag the time slider to watch SPHEREx photograph the sky, turn on "Explored by people", then click anywhere on the map to open a live time-lapse of that patch.
 
 ## What is in here
 
 | Folder | What it holds |
 |---|---|
-| `web/` | The app. Plain HTML and JavaScript, no build step. `timelapse.html` is the sky map and time-lapse; `sky.js` is the shared 3D sky; `live/` reads SPHEREx photos in the browser; `tests/` checks the math. |
-| `worker/` | The Cloudflare Worker API: finds which SPHEREx photos cover a spot (`/api/images`) and looks up Gaia star motions (`/api/gaia`). |
-| `bake/` | Python scripts that prepare data: pre-built time-lapses for five test targets, the coverage map, the all-sky picture, and the science checks. |
-| `design/` | Mockups and the briefs that produced them. |
-| `docs/` | The architecture page and the live-search plan. |
-
-How the pieces connect, and what is still to build on Cloudflare (D1, R2, Turnstile, a nightly dot finder): open `docs/architecture.html`.
-
-## Run it locally
-
-```bash
-python3 -m http.server 8780 --directory web
-```
-
-```bash
-cd worker && npx wrangler@4.162.0 dev --port 8787
-```
-
-Then open http://localhost:8780/timelapse.html. The page calls the API at http://127.0.0.1:8787 by default; pass `?api=<url>` to use another.
+| `web/` | The app. Plain HTML and JavaScript, no build step. `index.html` + `explore.js` is the sky map; `timelapse.html` opens a patch; `comet.html` and `guide.html` are designs not yet wired up. |
+| `worker/` | The Cloudflare Worker: the API (`docs/api.md`) and the static file server. |
+| `bake/` | Python scripts that prepare data: the coverage map, the all-sky picture, pre-built time-lapses for five test targets, and the science checks. |
+| `design/` | The screen designs (`design/screens/`), earlier mockups and their briefs. |
+| `docs/` | `team.md` (who builds what, how to contribute), `api.md`, `architecture.html`, `prior-art.md`. |
 
 ## Checks
 
 - `python3 bake/verify.py`: measured star motions against Gaia and published values.
-- `web/tests/golden.html`: browser astronomy math against astropy.
-- `web/tests/live.html`: live search against the pre-built targets.
-- `worker/test_contract.sh`: the API's requests and refusals.
+- http://localhost:8787/tests/golden.html: browser astronomy math against astropy.
+- http://localhost:8787/tests/live.html: live search against the pre-built targets.
+- `npm test` (with `npm run dev` running): the API's requests, refusals and pages.
 
 ## Rebuilding data
 
 Downloaded photo cutouts (`bake/cache/`) and the raw coverage list (`bake/coverage/`) are not in git. `bake/coverage.py` rebuilds the coverage list in about 90 minutes; `bake/sky_assets.py` turns it into `web/data/coverage.png`.
 
 Data: SPHEREx from NASA/IPAC IRSA. Star motions from ESA Gaia.
+
+## Deploying (later)
+
+Needs a Cloudflare account (the hackathon sponsor's). Run `npx wrangler login` once, then `npm run deploy`. Comments and labels will need a D1 database (`npx wrangler d1 create comet-hunt`) and a Turnstile site key; neither is needed yet.

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C-0147 · Comet Hunt</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page">
+
+<header class="topbar glass">
+  <a class="brand" href="explore.html"><span class="brand-mark"></span>Comet Hunt</a>
+  <nav><a href="explore.html">Explore</a><a class="on" href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
+  <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet or sky position" aria-label="Search"></label>
+  <a class="av" title="orbit_owl">OO</a>
+</header>
+
+<main class="shell">
+  <div class="comet-head">
+    <h1>C-0147</h1>
+    <span class="chip likely">Likely comet</span>
+    <span class="chip cat"><svg class="ic" style="width:15px;height:15px"><use href="icons.svg#known"/></svg>Not in any catalog</span>
+    <a class="btn ghost" href="patch.html">Open its patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+  </div>
+
+  <div class="comet-grid">
+    <div class="col">
+      <section class="panel glass">
+        <div class="nights">
+          <figure><div class="plate"><img src="../../web/data/flip/epsindib/f0.png" alt=""><span class="ring earlier" style="left:34%;top:60%"></span><span class="dot tail" style="left:34%;top:60%;--len:9px"></span></div>28 Aug 03:10</figure>
+          <figure><div class="plate"><img src="../../web/data/flip/epsindib/f0.png" alt=""><span class="ring earlier" style="left:58%;top:46%"></span><span class="dot tail" style="left:58%;top:46%;--len:9px"></span></div>28 Aug 14:52</figure>
+          <figure><div class="plate"><img src="../../web/data/flip/rwaur/f2.png" alt=""><span class="ring earlier" style="left:40%;top:55%"></span><span class="dot tail" style="left:40%;top:55%;--len:12px"></span></div>29 Aug 02:40</figure>
+          <figure><div class="plate"><img src="../../web/data/flip/epsindib/f2.png" alt=""><span class="ring earlier" style="left:46%;top:62%"></span><span class="dot tail" style="left:46%;top:62%;--len:17px"></span></div>20 Feb 05:12</figure>
+          <figure><div class="plate"><img src="../../web/data/flip/epsindib/f4.png" alt=""><span class="ring earlier" style="left:66%;top:44%"></span><span class="dot tail" style="left:66%;top:44%;--len:17px"></span></div>20 Feb 16:50</figure>
+          <figure class="now"><div class="plate"><img src="../../web/data/flip/rwaur/f0.png" alt=""><span class="ring" style="left:52%;top:52%"></span><span class="dot tail" style="left:52%;top:52%;--len:20px"></span></div>21 Feb 04:31</figure>
+        </div>
+      </section>
+
+      <section class="glass measures">
+        <div title="Speed across the sky"><svg class="ic"><use href="icons.svg#speed"/></svg><b>19 <small>arcsec / hour</small></b></div>
+        <div title="Direction of travel"><svg class="ic"><use href="icons.svg#compass"/></svg><b>North-east</b></div>
+        <div title="First photographed"><svg class="ic"><use href="icons.svg#calendar"/></svg><b>28 Aug 2025</b></div>
+        <div title="Photos"><svg class="ic"><use href="icons.svg#stack"/></svg><b>6 <small>photos</small></b></div>
+      </section>
+
+      <section class="panel glass spectrum">
+        <div class="head"><h2>Light by wavelength</h2><span class="example">Example data</span></div>
+        <svg id="spec" viewBox="0 0 900 250" role="img" aria-label="Spectrum from 0.75 to 5 micrometers with a water bump at 2.7 and a tall carbon dioxide peak at 4.26">
+          <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff9a4d" stop-opacity=".28"/><stop offset="1" stop-color="#ff9a4d" stop-opacity="0"/></linearGradient></defs>
+        </svg>
+        <div class="legend"><span><i></i>C-0147</span><span><i></i>Bare rock, for comparison</span></div>
+      </section>
+    </div>
+
+    <aside class="talk glass">
+      <div class="verdict">
+        <h2>12 of 14 <span>say comet</span></h2>
+        <div class="tally"><i class="t-comet" style="--n:12"></i><i class="t-asteroid" style="--n:1"></i><i class="t-unsure" style="--n:1"></i></div>
+        <div class="tally-key">
+          <span class="t-comet">Comet <b>12</b></span><span class="t-asteroid">Asteroid <b>1</b></span><span class="t-glitch">Glitch <b>0</b></span><span class="t-unsure">Not sure <b>1</b></span>
+        </div>
+      </div>
+
+      <article class="comment">
+        <span class="av">OO</span>
+        <div class="who"><b>orbit_owl</b><time>2 h</time><span class="tag comet">comet</span></div>
+        <p>The tail points away from the Sun in all six photos.</p>
+      </article>
+      <article class="comment">
+        <span class="av">KK</span>
+        <div class="who"><b>kepler_kid</b><time>1 h</time><span class="tag comet">comet</span></div>
+        <p>Checked the catalogs. Nothing at this spot.</p>
+      </article>
+      <article class="comment">
+        <span class="av">DL</span>
+        <div class="who"><b>dustlane</b><time>48 min</time><span class="tag asteroid">asteroid</span></div>
+        <p>The February photos look sharp to me.</p>
+      </article>
+      <article class="comment">
+        <span class="av">MV</span>
+        <div class="who"><b>mira_v</b><time>20 min</time><span class="was">was not sure</span><span class="tag comet">comet</span></div>
+        <p>Strong carbon dioxide peak at 4.26.</p>
+      </article>
+      <article class="comment">
+        <span class="av">NN</span>
+        <div class="who"><b>nightshift_nel</b><time>5 min</time></div>
+        <p>Does anyone have the March photos yet?</p>
+      </article>
+
+      <form class="composer">
+        <div class="tagpick" role="radiogroup" aria-label="Your tag">
+          <label><input type="radio" name="tag"><span class="tag comet">Comet</span></label>
+          <label><input type="radio" name="tag"><span class="tag asteroid">Asteroid</span></label>
+          <label><input type="radio" name="tag"><span class="tag glitch">Glitch</span></label>
+          <label><input type="radio" name="tag"><span class="tag unsure">Not sure</span></label>
+        </div>
+        <textarea rows="2" placeholder="Add a comment" aria-label="Your comment"></textarea>
+        <div class="row"><span class="faint" style="font-size:12.5px">A tag is optional. It counts as your vote.</span><button class="btn small" type="button">Post</button></div>
+      </form>
+    </aside>
+  </div>
+</main>
+
+<script>
+  // Example spectrum: 102 SPHEREx channels from 0.75 to 5 micrometers.
+  const svg = document.getElementById("spec"), NS = "http://www.w3.org/2000/svg";
+  const X0 = 36, X1 = 890, Y0 = 44, Y1 = 214;
+  const sx = l => X0 + (l - .75) / 4.25 * (X1 - X0), sy = f => Y1 - f / .9 * (Y1 - Y0);
+  const gauss = (l, m, s) => Math.exp(-(((l - m) / s) ** 2) / 2);
+  const rock = l => .3 * Math.exp(-(l - .75) / 1.7) + .05 + .12 * Math.exp((l - 5) / .8);
+  const comet = (l, i) => rock(l) + .13 * gauss(l, 2.7, .09) + .74 * gauss(l, 4.26, .05) + .06 * gauss(l, 4.67, .05) + .012 * Math.sin(i * 12.9898) ;
+  const add = (tag, attrs, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text) e.textContent = text; svg.append(e); return e; };
+  for (const l of [1, 2, 3, 4, 5]) { add("line", { class: "grid", x1: sx(l), x2: sx(l), y1: Y0, y2: Y1 }); add("text", { x: sx(l), y: Y1 + 20, "text-anchor": "middle" }, l + " µm"); }
+  add("line", { class: "grid", x1: X0, x2: X1, y1: Y1, y2: Y1 });
+  const pts = [], base = [];
+  for (let i = 0; i < 102; i++) { const l = .75 * (5 / .75) ** (i / 101); pts.push([sx(l), sy(comet(l, i))]); base.push([sx(l), sy(rock(l))]); }
+  const path = a => a.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join("");
+  add("path", { class: "area", d: path(pts) + `L${X1} ${Y1}L${X0} ${Y1}Z` });
+  add("path", { class: "rock", d: path(base) });
+  add("path", { class: "curve", d: path(pts) });
+  for (const p of pts) add("circle", { cx: p[0], cy: p[1], r: 1.6 });
+  for (const [l, name, f] of [[2.7, "Water", comet(2.7, 0)], [4.26, "Carbon dioxide", comet(4.26, 0)]]) {
+    add("text", { class: "lab", x: sx(l), y: sy(f) - 24, "text-anchor": "middle" }, name);
+    add("text", { x: sx(l), y: sy(f) - 10, "text-anchor": "middle" }, l + " µm");
+  }
+</script>
+</body>
+</html>

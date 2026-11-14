@@ -1,3 +1,8 @@
-name = "spherex-api"
+# One Worker serves the app (web/) and the API (/api/*). Run from the repo root: npm run dev
+name = "comet-hunt"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
+
+# Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
+[assets]
+directory = "../web"
