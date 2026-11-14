@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPHEREx time-lapse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#04060c;--panel:rgba(10,14,24,.82);--line:rgba(160,190,230,.28);--text:#eef2f7;--muted:#a3b0c2;--now:#ff9a4d;--past:#7fb8ff;--patch:rgba(170,205,255,.75)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.45 Inter,system-ui,sans-serif;overflow:hidden}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+#stage{position:fixed;inset:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;pointer-events:none}
+#center{grid-column:2;display:flex;flex-direction:column;align-items:center;gap:22px;pointer-events:auto}
+#patch{width:var(--s);height:var(--s);border:1.5px solid var(--patch);background:#000;image-rendering:pixelated;display:block;box-shadow:0 0 60px rgba(0,0,0,.6)}
+:root{--s:min(64vh,46vw)}
+#timeline{display:flex;align-items:flex-start;gap:20px;width:calc(var(--s) + 70px)}
+#play{flex:none;width:64px;height:50px;border:1.5px solid var(--line);border-radius:6px;background:rgba(10,14,24,.6);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center}
+#play:hover{border-color:rgba(200,220,250,.6)}
+#track{position:relative;flex:1;height:64px}
+#rail{position:absolute;left:0;right:0;top:21px;height:3px;background:rgba(140,190,255,.75);border-radius:2px}
+.tick{position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;color:var(--past);font:500 16px Inter,sans-serif;cursor:pointer;padding:0;min-width:44px;white-space:nowrap}
+.tick .m{width:2px;height:22px;background:rgba(140,190,255,.9);margin-top:10px}
+.tick[aria-current=true]{color:var(--now)}
+.tick[aria-current=true] .m{width:22px;height:22px;border-radius:50%;background:var(--now);margin-top:11px;box-shadow:0 0 12px rgba(255,154,77,.6)}
+#panel{grid-column:3;justify-self:center;width:min(30vw,560px);background:var(--panel);border:1.5px solid var(--line);border-radius:10px;padding:8px 18px 14px;pointer-events:auto;backdrop-filter:blur(4px)}
+#panel h2{margin:12px 0 10px;font:700 clamp(22px,2.3vw,40px) Inter,sans-serif;letter-spacing:-.01em}
+.row{border-top:1px solid var(--line);padding:14px 2px}
+.row .k{font-size:clamp(15px,1.45vw,26px)}
+.row .v{font-size:13px;color:var(--muted);margin-top:4px}
+.row .v b{color:var(--text);font-weight:600}
+.ok{color:#8fe0b6}.warn{color:#ffc285}
+input[type=range]{width:100%;accent-color:var(--now);margin-top:12px}
+.toggle{display:flex;align-items:center;gap:18px;cursor:pointer;font-size:clamp(15px,1.45vw,26px)}
+.toggle input{position:absolute;opacity:0}
+.sw{width:76px;height:40px;border-radius:20px;border:1.5px solid var(--line);background:#141a26;position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;left:5px;top:5px;width:28px;height:28px;border-radius:50%;background:#c9d1dc;transition:left .2s}
+.toggle input:checked+.sw{background:#3a2a1c;border-color:var(--now)}
+.toggle input:checked+.sw::after{left:41px;background:var(--now)}
+.toggle input:focus-visible+.sw{outline:2px solid var(--past);outline-offset:2px}
+#caption{position:fixed;left:40px;bottom:30px;font-size:clamp(14px,1.3vw,24px)}
+#caption small{display:block;color:var(--muted);font-size:13px;margin-top:4px}
+#search{position:fixed;left:40px;top:24px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:min(720px,62vw);pointer-events:auto}   /* fixed width: shrink-to-fit wrapped the button when the status line was empty */
+#search input,#search select,#search button{min-height:42px;border-radius:7px;border:1.5px solid var(--line);background:rgba(10,14,24,.8);color:var(--text);font:500 15px Inter,sans-serif;padding:0 12px}
+#search input{flex:1 1 280px;min-width:0}
+#search button{background:var(--now);border-color:var(--now);color:#1a0e04;font-weight:600;cursor:pointer}
+#search label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#status{flex-basis:100%;font-size:13px;color:var(--muted);min-height:18px}
+#status.err{color:#ffb3a8}
+#targets{position:fixed;left:40px;top:100px;display:flex;flex-wrap:wrap;gap:10px;max-width:46vw;pointer-events:auto}
+#targets button{min-height:40px;padding:0 16px;border-radius:7px;border:1.5px solid var(--line);background:rgba(10,14,24,.7);color:var(--text);font:500 15px Inter,sans-serif;cursor:pointer}
+#targets button[aria-pressed=true]{border-color:var(--now);color:#ffd2ad;background:rgba(60,34,14,.55)}
+#legend{position:fixed;left:40px;bottom:92px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+#legend span{display:flex;align-items:center;gap:8px}
+#legend i{display:inline-block;width:12px;height:12px;border-radius:50%}
+body.sky #center,body.sky #panel,body.sky #caption,body.sky #legend{display:none}
+body:not(.sky) #skyui,body:not(.sky) .tmark{display:none !important}   /* the sky loop sets .tmark display inline */
+#skyui{position:fixed;inset:0;pointer-events:none}
+#hint{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:var(--panel);border:1.5px solid var(--line);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--muted)}
+#hint b{color:var(--text)}
+#mapbox{position:fixed;left:40px;bottom:30px;background:var(--panel);border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;pointer-events:auto}
+#mapbox h2{margin:0 0 8px;font:600 16px Inter,sans-serif}
+#skymap{display:block;width:min(400px,36vw);aspect-ratio:2/1;cursor:crosshair}
+#reticle{position:fixed;border:1.5px solid var(--now);box-shadow:0 0 0 1px rgba(0,0,0,.6);transform:translate(-50%,-50%);pointer-events:none;display:none}
+#readout{position:fixed;font:500 12px Inter,sans-serif;color:#ffd2ad;text-shadow:0 0 4px #000;pointer-events:none;transform:translate(14px,14px);display:none;white-space:nowrap}
+.tmark{position:fixed;transform:translate(-9px,-50%);pointer-events:none;display:flex;align-items:center;gap:8px;font:500 13px Inter,sans-serif;color:#cfe6ff;text-shadow:0 0 4px #000;white-space:nowrap}
+.tmark i{width:18px;height:18px;border:1.5px solid #cfe6ff;border-radius:50%;flex:none}
+#back{min-height:40px;padding:0 16px;border-radius:7px;border:1.5px solid var(--now);background:rgba(60,34,14,.55);color:#ffd2ad;font:600 15px Inter,sans-serif;cursor:pointer;pointer-events:auto}
+body.sky #back{display:none}
+canvas#gl{cursor:grab}
+canvas#gl.drag{cursor:grabbing}
+@media (max-width:900px){#stage{grid-template-columns:1fr;align-content:start;overflow:auto;pointer-events:auto;padding:16px 12px 32px;gap:18px}#search,#targets,#caption{position:static;max-width:none;width:auto}#center,#panel,#caption,#targets,#search{grid-column:1}#panel{width:100%}:root{--s:min(86vw,56vh)}#timeline{width:var(--s)}#legend{display:none}#mapbox{left:12px;bottom:12px}#hint{top:auto;bottom:230px;width:calc(100% - 24px);text-align:center}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="stage">
+  <form id="search" role="search">
+    <label for="coords">Sky coordinates</label>
+    <input id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671 or 17h57m47s +04d46m02s" autocomplete="off" spellcheck="false">
+    <label for="det">Detector</label>
+    <select id="det" aria-label="SPHEREx detector">
+      <option value="D1">D1 0.75–1.1 µm</option><option value="D2">D2 1.1–1.6 µm</option><option value="D3">D3 1.6–2.4 µm</option>
+      <option value="D4">D4 2.4–3.8 µm</option><option value="D5">D5 3.8–4.4 µm</option><option value="D6">D6 4.4–5.0 µm</option>
+    </select>
+    <button type="submit">Show time-lapse</button>
+    <div id="status" role="status" aria-live="polite"></div>
+  </form>
+  <div id="targets" role="group" aria-label="Challenge targets"><button id="back" type="button">Back to sky map</button></div>
+  <div id="center">
+    <canvas id="patch" width="720" height="720" role="img" aria-label="SPHEREx image of the target"></canvas>
+    <div id="timeline">
+      <button id="play" aria-label="Play time-lapse"><svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path id="playicon" d="M3 2l17 10L3 22z" fill="#eef2f7"/></svg></button>
+      <div id="track"><div id="rail"></div></div>
+    </div>
+  </div>
+  <aside id="panel" aria-label="What changed">
+    <h2>What changed</h2>
+    <div class="row"><div class="k" id="kMotion">Motion: measured vs Gaia</div><div class="v" id="vMotion">&nbsp;</div></div>
+    <div class="row"><div class="k" id="kWave">Wavelength matched</div><div class="v" id="vWave">&nbsp;</div></div>
+    <div class="row"><label class="k" for="fov" id="kFov">Field of view: 6 arcmin</label><input id="fov" type="range" min="1" max="12" step="0.5" value="6"></div>
+    <div class="row"><label class="toggle"><input id="diff" type="checkbox"><span class="sw"></span>Show difference</label><div class="v" id="vDiff">Orange: brighter than the first visit. Blue: dimmer. A moving star leaves a blue and orange pair.</div></div>
+  </aside>
+  <div id="caption">Each frame: one SPHEREx survey visit<small id="capsub">&nbsp;</small></div>
+</div>
+<div id="skyui">
+  <div id="hint"><b>Click any spot</b> to see how it changes over time. Drag to look around, scroll to zoom.</div>
+  <div id="mapbox"><h2>Sky map: click anywhere to fly there</h2><canvas id="skymap" width="480" height="240" role="img" aria-label="SPHEREx all-sky map"></canvas></div>
+  <div id="reticle"></div><div id="readout"></div>
+</div>
+<div id="legend">
+  <span><i style="background:var(--now)"></i>measured position, this visit</span>
+  <span><i style="background:var(--past)"></i>measured position, earlier visits</span>
+  <span><i style="border:2px solid #fff;width:12px;height:12px"></i>where Gaia (or a published motion) predicts it</span>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } from './sky.js';
+
+const TARGETS = [
+  { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
+  { key: 'rwaur', name: 'RW Aurigae' }, { key: 'rdra', name: 'R Draconis' }
+];
+const P = new URLSearchParams(location.search);
+
+// ---------- 3D star field behind everything ----------
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.001, 5000);
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const world = createWorld({ renderer, scene, camera });
+const look = new THREE.Vector3(1, 0, 0), lookGoal = new THREE.Vector3(1, 0, 0), up = new THREE.Vector3(0, 1, 0);
+
+// ---------- data ----------
+const cache = new Map();
+function prep(m) {
+  // Brightness range: up to the target's own peak, so a bright star keeps a compact core instead of a white block
+  let peak = 0;
+  for (const f of m.frames) if (f.x != null) for (let r = 0; r < m.grid; r++) for (let c = 0; c < m.grid; c++) {
+    const v = f.px[r * m.grid + c];
+    if (Number.isFinite(v) && Math.hypot(c - f.x, m.grid - 1 - r - f.y) < 3) peak = Math.max(peak, v);
+  }
+  m.hiDisplay = Math.max(m.stretch.hi, 0.8 * peak);
+  return m;
+}
+function load(key) {
+  if (!cache.has(key)) cache.set(key, fetch(`data/flip/${key}/manifest.json`).then(r => r.json()).then(m => {
+    m.frames.forEach(f => { const b = atob(f.data), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); f.px = new Float32Array(u.buffer); });
+    return prep(m);
+  }));
+  return cache.get(key);
+}
+TARGETS.forEach(t => load(t.key).catch(() => {}));   // preload: the demo never waits on the network
+
+const state = { m: null, i: 0, playing: false, last: 0, diff: false, fov: 6 };   // opens wide; slide down to 1.5 arcmin for a 2-pixel move to read clearly
+const patch = document.getElementById('patch'), ctx = patch.getContext('2d');
+const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthYear = s => `${MONTH[+s.slice(5, 7) - 1]} ${s.slice(0, 4)}`;
+
+function draw() {
+  const m = state.m; if (!m) return;
+  const G = m.grid, f = m.frames[state.i], ref = m.frames[0];
+  const crop = Math.round(state.fov * 60 / m.arcsec_per_pixel), o = (G - crop) / 2;
+  const W = patch.width, s = W / crop;
+  const img = ctx.createImageData(crop, crop), { lo, hi: fieldHi } = m.stretch, hi = m.hiDisplay;
+  // asinh scaled to the field, with the target's peak as white: a very bright star (Barnard, R Draconis) compresses
+  // the curve instead of crushing every other star in a wide view to black. Same curve as before when the peak is not brighter.
+  const A = Math.asinh(10 * (hi - lo) / (fieldHi - lo));
+  for (let r = 0; r < crop; r++) for (let c = 0; c < crop; c++) {
+    const k = (r + o) * G + (c + o), v = f.px[k], j = 4 * (r * crop + c);
+    if (state.diff) {
+      const d = v - ref.px[k];
+      if (!Number.isFinite(d)) { img.data.set([60, 60, 66, 255], j); continue; }
+      const a = Math.min(1, Math.abs(d) / Math.max(12, 0.25 * hi));   // 12 noise units, or a quarter of a bright star's peak
+      img.data.set(d > 0 ? [255 * a, 154 * a, 77 * a, 255] : [127 * a, 184 * a, 255 * a, 255], j);
+    } else {
+      // NaN next to the star means its core saturated the detector: draw it as the brightest value.
+      // NaN anywhere else is outside SPHEREx's coverage for that visit: draw it as "no data".
+      if (!Number.isFinite(v) && !(f.x != null && Math.hypot(c + o - f.x, G - 1 - (r + o) - f.y) < 7)) { img.data.set([22, 26, 34, 255], j); continue; }
+      const x = Number.isFinite(v) ? Math.asinh(Math.max(0, (v - lo) / (fieldHi - lo)) * 10) / A : 1;
+      const g = Math.min(1, x) * 255;
+      img.data.set([g, g * 0.97, g * 0.92, 255], j);
+    }
+  }
+  // nearest-neighbour upscale keeps SPHEREx's real 5 arcsec pixels honest
+  const tmp = new OffscreenCanvas(crop, crop); tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, W); ctx.drawImage(tmp, 0, 0, W, W);
+
+  const toPx = (x, y) => [(x - o + 0.5) * s, (G - 1 - y - o + 0.5) * s];   // FITS x,y (bottom origin) -> canvas
+  const predPx = fr => toPx((G - 1) / 2 - fr.pred_east / m.arcsec_per_pixel, (G - 1) / 2 + fr.pred_north / m.arcsec_per_pixel);
+  // ghost trail: earlier visits in blue, fading with age; this visit in orange
+  const shown = m.frames.slice(0, state.i + 1).filter(fr => fr.x != null);
+  // the arrow claims real motion, so draw it only when Gaia or a published motion says the target moves (R Draconis does not)
+  const moves = (m.gaia && m.gaia.total > 1) || m.ref;
+  if (moves && shown.length > 1) {   // arrow from the first measured position toward the current one
+    const [x0, y0] = toPx(shown[0].x, shown[0].y), [x1, y1] = toPx(shown.at(-1).x, shown.at(-1).y);
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len > 6) {
+      const ux = (x1 - x0) / len, uy = (y1 - y0) / len, nx = -uy, ny = ux, off = 0.09 * W;
+      const ax = x0 + nx * off, ay = y0 + ny * off, bx = x1 + nx * off, by = y1 + ny * off;
+      ctx.strokeStyle = 'rgba(160,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.fillStyle = 'rgba(160,200,255,.95)'; ctx.beginPath(); ctx.moveTo(bx + ux * 10, by + uy * 10); ctx.lineTo(bx - ux * 4 + nx * 6, by - uy * 4 + ny * 6); ctx.lineTo(bx - ux * 4 - nx * 6, by - uy * 4 - ny * 6); ctx.fill();
+    }
+  }
+  shown.forEach((fr, n) => {
+    const [x, y] = toPx(fr.x, fr.y), cur = fr === f, age = shown.length - 1 - n;
+    ctx.beginPath(); ctx.arc(x, y, cur ? 8 : 6.5, 0, 7);
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.stroke();   // dark outline: readable on a white star
+    if (cur) { ctx.shadowColor = 'rgba(255,154,77,.9)'; ctx.shadowBlur = 18; ctx.fillStyle = '#ff9a4d'; }
+    else { ctx.shadowBlur = 0; ctx.fillStyle = `rgba(127,184,255,${Math.max(0.35, 0.95 - 0.2 * (age - 1))})`; }
+    ctx.fill(); ctx.shadowBlur = 0;
+  });
+  if (f.pred_east != null) {   // predicted position for this date (Gaia, or a published motion)
+    const [gx, gy] = predPx(f);
+    for (const [color, width] of [['rgba(0,0,0,.85)', 5], ['#ffffff', 2]]) {   // dark outline keeps it visible on a white star
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.arc(gx, gy, 15, 0, 7); ctx.stroke();
+    }
+  }
+  document.querySelectorAll('.tick').forEach((t, n) => t.setAttribute('aria-current', n === state.i));
+  document.getElementById('capsub').textContent =
+    `${f.start} to ${f.end}: ${f.exposures} exposure${f.exposures > 1 ? 's' : ''} at ${f.lam.toFixed(3)} µm, combined, north up` +
+    (f.saturated_px ? '. White core: detector saturated' : '');
+  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff ? ', difference from first visit' : ''}`);
+}
+
+function panel(m) {
+  const mo = m.motion, g = m.gaia, el = document.getElementById('vMotion');
+  const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : m.ref ? { total: m.ref.total, label: m.ref.source, tol: 35 } : null;
+  document.getElementById('kMotion').textContent = `Motion: measured vs ${m.ref && !g ? 'published' : 'Gaia'}`;
+  const meas = mo ? `<b>${mo.total.toFixed(1)}${mo.err != null && Number.isFinite(mo.err) ? ` ± ${mo.err.toFixed(1)}` : ''}″/yr</b> measured over ${mo.years.toFixed(1)} yr` : '';
+  const seen = m.frames.filter(f => f.x != null).length;
+  if (m.frames.length < 2) el.innerHTML = 'Only one visit so far: a time-lapse needs two or more';
+  else if (mo && ref) {
+    const pct = Math.round(100 * mo.total / ref.total);
+    el.innerHTML = `${meas} · <b>${ref.total.toFixed(1)}″/yr</b> ${ref.label} <span class="${Math.abs(pct - 100) <= ref.tol ? 'ok' : 'warn'}">(${pct}%)</span>`;
+  } else if (g && g.total <= 1) el.innerHTML = `Gaia: <b>${g.total.toFixed(2)}″/yr</b>, too small to see in about a year of 5″ pixels`;
+  else if (g) el.innerHTML = `Gaia: <b>${g.total.toFixed(1)}″/yr</b>; too few clean positions here to measure it ourselves`;
+  else if (mo) el.innerHTML = `${meas} · ${m.key.startsWith('live') ? 'no Gaia star at this spot' : 'not in Gaia (too faint in visible light)'}`;
+  else if (m.frames.some(f => f.blob)) el.innerHTML = 'This star saturates the detector, so its position is too rough to measure a motion';
+  else el.innerHTML = `Source detected in ${seen} of ${m.frames.length} visits: a motion needs 3 or more, spanning 6 months`;
+  const matched = m.frames.filter(f => f.matched).length;
+  document.getElementById('kWave').textContent = `Wavelength matched: ${m.lam0.toFixed(2)} µm`;
+  document.getElementById('vWave').innerHTML = `<span class="${matched === m.frames.length ? 'ok' : 'warn'}">${matched} of ${m.frames.length} visits</span> within ${m.lam_tol.toFixed(3)} µm, detector ${m.detector}`;
+  // evenly spaced ticks, one per visit: visits can be a month or a year apart, and real-time spacing made labels collide
+  const track = document.getElementById('track'); track.querySelectorAll('.tick').forEach(t => t.remove());
+  m.frames.forEach((f, n) => {
+    const b = document.createElement('button'); b.className = 'tick'; b.style.left = `${8 + 84 * n / Math.max(1, m.frames.length - 1)}%`;
+    b.innerHTML = `<span class="m"></span>${monthYear(f.start)}`; b.setAttribute('aria-label', `Visit ${monthYear(f.start)}`);
+    b.onclick = () => { stop(); state.i = n; draw(); };
+    track.appendChild(b);
+  });
+}
+
+// opts.diff: open on the latest visit with the difference view on (what a click on the sky asks for)
+function show(m, query, opts = {}) {
+  setMode('lapse');
+  Object.assign(state, { m, i: opts.diff ? m.frames.length - 1 : 0, diff: !!opts.diff });
+  document.getElementById('diff').checked = !!opts.diff;
+  dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
+  panel(m); draw();
+  history.replaceState(null, '', query);
+}
+async function select(key, opts) {
+  job?.terminate(); job = null; setStatus(opts?.note || '');
+  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === key));
+  show(await load(key), `?target=${key}`, opts);
+}
+
+// ---------- live: any RA/Dec. The browser does the astronomy in a Web Worker (live/pipeline.js); a small
+// Cloudflare Worker (worker/) only finds the images. Results are kept for this session.
+const API = P.get('api') || (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://127.0.0.1:8787' : '');
+const live = new Map();
+let job = null;
+const statusEl = document.getElementById('status');
+function setStatus(text, err = false) { statusEl.textContent = text; statusEl.className = err ? 'err' : ''; }
+// "269.4463 4.7671", "269.4463, +4.7671", "17h57m47s +04d46m02s", "17:57:47 +04:46:02" -> degrees
+function parseCoords(text) {
+  const parts = text.trim().replace(/^ra\s*/i, '').replace(/\s*dec\s*/i, ' ').split(/[\s,]+(?=[+-]?\d)/).map(t => t.trim()).filter(Boolean);
+  if (parts.length !== 2) return null;
+  const sexa = (t, hours) => {
+    const n = t.match(/[+-]?\d+(\.\d+)?/g); if (!n) return NaN;
+    if (n.length === 1 && !/[hd:°]/i.test(t)) return Number(n[0]);
+    const sign = t.trim().startsWith('-') ? -1 : 1, [a, b = 0, c = 0] = n.map(x => Math.abs(Number(x)));
+    return sign * (a + b / 60 + c / 3600) * (hours ? 15 : 1);
+  };
+  const ra = sexa(parts[0], /[h:]/i.test(parts[0])), dec = sexa(parts[1], false);
+  return Number.isFinite(ra) && Number.isFinite(dec) ? { ra, dec } : null;
+}
+function search(ra, dec, det, opts = {}) {
+  if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
+  if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
+  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
+  if (live.has(key)) { setStatus(''); return show(live.get(key), query, opts); }
+  job?.terminate();
+  if (!API) return setStatus('Live search needs the image-finder service (add ?api= to the address)', true);
+  setStatus('Finding SPHEREx images of this spot...');
+  if (opts.diff) setMode('lapse');   // a sky click lands on the time-lapse right away; frames arrive in seconds
+  const t0 = performance.now(), w = job = new Worker('live/pipeline.js', { type: 'module' });
+  w.onmessage = ({ data: m }) => {
+    if (w !== job) return;
+    if (m.type === 'progress') setStatus(m.text + '...');
+    else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
+    else if (m.type === 'empty') { setStatus(`No SPHEREx images of this spot on ${det} yet. Try another detector.`, true); w.terminate(); }
+    else if (m.type === 'error') { setStatus(`${m.error}. The five targets above always work.`, true); w.terminate(); }
+    else if (m.type === 'done') {
+      w.terminate(); job = null;
+      live.set(key, prep(m.manifest));
+      setStatus(`${m.manifest.frames.length} visits, built in ${((performance.now() - t0) / 1000).toFixed(1)} s from NASA's public SPHEREx copy`);
+      show(live.get(key), query, opts);
+    }
+  };
+  w.postMessage({ ra, dec, det, api: API });
+}
+document.getElementById('search').onsubmit = e => {
+  e.preventDefault();
+  const c = parseCoords(document.getElementById('coords').value);
+  if (!c) return setStatus('Type RA and Dec, e.g. 269.4463 4.7671 or 17h57m47s +04d46m02s', true);
+  search(c.ra, c.dec, document.getElementById('det').value);
+};
+const tb = document.getElementById('targets');
+document.getElementById('back').onclick = () => {
+  setMode('sky'); stop();
+  if (state.m) { sky.ra = state.m.ra; sky.dec = state.m.dec; sky.fovGoal = 6; }
+  history.replaceState(null, '', '?view=sky');
+};
+TARGETS.forEach(t => { const b = document.createElement('button'); b.textContent = t.name; b.dataset.key = t.key; b.setAttribute('aria-pressed', 'false'); b.onclick = () => select(t.key); tb.appendChild(b); });
+
+const playBtn = document.getElementById('play'), icon = document.getElementById('playicon');
+function stop() { state.playing = false; icon.setAttribute('d', 'M3 2l17 10L3 22z'); playBtn.setAttribute('aria-label', 'Play time-lapse'); }
+playBtn.onclick = () => {
+  if (state.playing) return stop();
+  state.playing = true; state.last = 0; icon.setAttribute('d', 'M3 2h5v20H3zM14 2h5v20h-5z'); playBtn.setAttribute('aria-label', 'Pause time-lapse');
+};
+document.getElementById('fov').oninput = e => { state.fov = +e.target.value; document.getElementById('kFov').textContent = `Field of view: ${state.fov} arcmin`; draw(); };
+document.getElementById('diff').onchange = e => { state.diff = e.target.checked; draw(); };
+addEventListener('keydown', e => {
+  if (!state.m || e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); state.i = (state.i + (e.key === 'ArrowRight' ? 1 : -1) + state.m.frames.length) % state.m.frames.length; draw(); }
+});
+
+// ---------- sky mode: the whiteboard flow. Whole-sky map -> fly there -> click a spot -> its time-lapse ----------
+const sky = { ra: 266.4, dec: -28.9, fov: 60, fovGoal: 60, drag: null };   // starts on the Milky Way's centre
+function setMode(m) {
+  state.mode = m; document.body.classList.toggle('sky', m === 'sky');
+  if (m === 'sky') { stop(); camera.fov = sky.fov; camera.updateProjectionMatrix(); }
+}
+const gl = canvas, reticle = document.getElementById('reticle'), readout = document.getElementById('readout');
+const fmt = (ra, dec) => `RA ${ra.toFixed(4)}°  Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(4)}°`;
+// screen point -> [ra, dec] degrees, by casting a ray from the camera through that pixel
+function pointToRadec(x, y) {
+  const v = new THREE.Vector3(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1, 0.5).unproject(camera).sub(camera.position);
+  return radecFromDir(v);
+}
+// [ra, dec] degrees -> screen point, or null when behind the camera
+function radecToPoint(ra, dec) {
+  const v = dirRaDec(ra * D2R, dec * D2R, new THREE.Vector3()).multiplyScalar(500).add(camera.position).project(camera);
+  return v.z < 1 && Math.abs(v.x) <= 1.2 && Math.abs(v.y) <= 1.2 ? [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight] : null;
+}
+const degPerPx = () => camera.fov / innerHeight;
+gl.addEventListener('pointerdown', e => { if (state.mode !== 'sky') return; sky.drag = { x: e.clientX, y: e.clientY, ra: sky.ra, dec: sky.dec, moved: 0 }; gl.setPointerCapture(e.pointerId); gl.classList.add('drag'); });
+gl.addEventListener('pointermove', e => {
+  if (state.mode !== 'sky') return;
+  if (sky.drag) {
+    const dx = e.clientX - sky.drag.x, dy = e.clientY - sky.drag.y, d = degPerPx();
+    sky.drag.moved = Math.max(sky.drag.moved, Math.hypot(dx, dy));
+    sky.dec = Math.max(-89.9, Math.min(89.9, sky.drag.dec + dy * d));
+    sky.ra = ((sky.drag.ra + dx * d / Math.cos(sky.dec * D2R)) % 360 + 360) % 360;   // drag the sky with the pointer
+  }
+  const [ra, dec] = pointToRadec(e.clientX, e.clientY), box = Math.max(14, (state.fov / 60) / degPerPx());
+  Object.assign(reticle.style, { display: 'block', left: `${e.clientX}px`, top: `${e.clientY}px`, width: `${box}px`, height: `${box}px` });
+  Object.assign(readout.style, { display: 'block', left: `${e.clientX + box / 2}px`, top: `${e.clientY}px` });
+  readout.textContent = fmt(ra, dec);
+});
+gl.addEventListener('pointerleave', () => { reticle.style.display = readout.style.display = 'none'; });
+gl.addEventListener('pointerup', e => {
+  if (state.mode !== 'sky' || !sky.drag) return;
+  const moved = sky.drag.moved; sky.drag = null; gl.classList.remove('drag');
+  if (moved > 5) return;   // that was a drag, not a click
+  pickSpot(e.clientX, e.clientY);
+});
+gl.addEventListener('wheel', e => { if (state.mode !== 'sky') return; e.preventDefault(); sky.fovGoal = Math.max(1, Math.min(70, sky.fovGoal * Math.exp(e.deltaY * 0.0015))); }, { passive: false });
+// a click near one of the five challenge targets snaps to it: its frames are baked and open instantly
+async function pickSpot(x, y) {
+  const [ra, dec] = pointToRadec(x, y);
+  for (const t of TARGETS) {
+    const m = await load(t.key), p = radecToPoint(m.ra, m.dec);
+    if (p && Math.hypot(p[0] - x, p[1] - y) < 24) return select(t.key, { diff: true, note: `Snapped to ${m.name}` });
+  }
+  document.getElementById('coords').value = `${ra.toFixed(4)} ${dec.toFixed(4)}`;
+  search(ra, dec, document.getElementById('det').value, { diff: true });
+}
+// target markers on the sky
+const marks = TARGETS.map(t => { const el = document.createElement('div'); el.className = 'tmark'; el.innerHTML = `<i></i>${t.name}`; document.body.appendChild(el); return { t, el }; });
+
+// ---------- the oval: SPHEREx all-sky map in Mollweide projection, RA increasing to the left as on the sky ----------
+const mapEl = document.getElementById('skymap'), mctx = mapEl.getContext('2d'), MW = mapEl.width, MH = mapEl.height;
+const R2 = Math.SQRT2;
+function mollInverse(px, py) {   // map pixel -> [ra, dec] degrees, or null outside the oval
+  const x = (px / MW * 2 - 1) * 2 * R2, y = (1 - py / MH * 2) * R2;
+  if ((x / (2 * R2)) ** 2 + (y / R2) ** 2 > 1) return null;
+  const th = Math.asin(y / R2), lon = Math.PI * x / (2 * R2 * Math.cos(th)), lat = Math.asin((2 * th + Math.sin(2 * th)) / Math.PI);
+  return [((-lon / D2R) % 360 + 360) % 360, lat / D2R];
+}
+function mollForward(ra, dec) {   // [ra, dec] degrees -> map pixel
+  let lon = -(((ra + 180) % 360 + 360) % 360 - 180) * D2R, th = dec * D2R;
+  for (let i = 0; i < 30; i++) { const f = 2 * th + Math.sin(2 * th) - Math.PI * Math.sin(dec * D2R), df = 2 + 2 * Math.cos(2 * th); if (Math.abs(df) < 1e-12) break; th -= f / df; }
+  const x = 2 * R2 / Math.PI * lon * Math.cos(th), y = R2 * Math.sin(th);
+  return [(x / (2 * R2) + 1) / 2 * MW, (1 - y / R2) / 2 * MH];
+}
+let mapBase = null;
+{
+  const img = new Image(); img.crossOrigin = 'anonymous'; img.src = `${HIPS}/Norder3/Allsky.png`;
+  img.onload = () => {
+    const c = new OffscreenCanvas(img.width, img.height), cx = c.getContext('2d'); cx.drawImage(img, 0, 0);
+    const src = cx.getImageData(0, 0, img.width, img.height).data, cols = Math.floor(img.width / 64), out = mctx.createImageData(MW, MH);
+    for (let py = 0; py < MH; py++) for (let px = 0; px < MW; px++) {
+      const rd = mollInverse(px + 0.5, py + 0.5); if (!rd) continue;
+      const { k, u, v } = radec2tile(3, rd[0] * D2R, rd[1] * D2R), [cc, rr] = tileUV(u, v);
+      const sx = (k % cols) * 64 + Math.min(63, Math.floor(cc * 64)), sy = Math.floor(k / cols) * 64 + Math.min(63, Math.floor(rr * 64));
+      const i = 4 * (sy * img.width + sx), j = 4 * (py * MW + px);
+      out.data[j] = src[i]; out.data[j + 1] = src[i + 1]; out.data[j + 2] = src[i + 2]; out.data[j + 3] = 255;
+    }
+    mapBase = out;
+  };
+}
+function drawMap() {
+  mctx.clearRect(0, 0, MW, MH);
+  if (mapBase) mctx.putImageData(mapBase, 0, 0);
+  mctx.strokeStyle = 'rgba(160,190,230,.5)'; mctx.lineWidth = 1; mctx.beginPath(); mctx.ellipse(MW / 2, MH / 2, MW / 2 - 1, MH / 2 - 1, 0, 0, 7); mctx.stroke();
+  for (const { t } of marks) { const m = mapMarks[t.key]; if (!m) continue; const [x, y] = mollForward(m.ra, m.dec); mctx.fillStyle = '#cfe6ff'; mctx.beginPath(); mctx.arc(x, y, 3, 0, 7); mctx.fill(); }
+  const [vx, vy] = mollForward(sky.ra, sky.dec), r = Math.max(4, sky.fov / 360 * MW / 2);   // where you are looking
+  mctx.strokeStyle = '#ff9a4d'; mctx.lineWidth = 2; mctx.beginPath(); mctx.arc(vx, vy, r, 0, 7); mctx.stroke();
+}
+const mapMarks = {};
+window.__sky = { sky, pointToRadec, radecToPoint, mollForward, mollInverse, pickSpot };   // for tests/skymap checks
+TARGETS.forEach(t => load(t.key).then(m => { mapMarks[t.key] = m; }).catch(() => {}));
+mapEl.addEventListener('click', e => {
+  const b = mapEl.getBoundingClientRect(), rd = mollInverse((e.clientX - b.left) / b.width * MW, (e.clientY - b.top) / b.height * MH);
+  if (rd) { [sky.ra, sky.dec] = rd; sky.fovGoal = 6; }
+});
+
+// ---------- loop: the star field drifts slowly behind the time-lapse ----------
+function frame(now) {
+  requestAnimationFrame(frame);
+  const frameStart = performance.now();
+  if (state.mode === 'sky') {
+    // in sky mode the camera sits at the Sun, so every direction on screen is a true RA/Dec
+    sky.fov += (sky.fovGoal - sky.fov) * 0.15;
+    camera.fov = sky.fov; camera.updateProjectionMatrix();
+    dirRaDec(sky.ra * D2R, sky.dec * D2R, look); lookGoal.copy(look);
+    camera.position.set(0, 0, 0); camera.lookAt(look);
+    for (const { t, el } of marks) {
+      const m = mapMarks[t.key], p = m && radecToPoint(m.ra, m.dec);
+      el.style.display = p ? 'flex' : 'none';
+      if (p) { el.style.left = `${p[0]}px`; el.style.top = `${p[1]}px`; }
+    }
+    if (now - (sky.lastMap || 0) > 100) { sky.lastMap = now; drawMap(); }
+  } else {
+    if (camera.fov !== 50) { camera.fov = 50; camera.updateProjectionMatrix(); }
+    look.lerp(lookGoal, 0.04).normalize();
+    const side = new THREE.Vector3().crossVectors(look, up).normalize();
+    camera.position.copy(look).multiplyScalar(-0.6).addScaledVector(side, Math.sin(now / 9000) * 0.25);
+    camera.lookAt(camera.position.clone().add(look));
+  }
+  world.update(now, frameStart);
+  if (state.playing && state.m && now - state.last > 900) { state.last = now; state.i = (state.i + 1) % state.m.frames.length; draw(); }
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(frame);
+if (P.has('ra') && P.has('dec')) {
+  const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
+  document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
+  search(Number(P.get('ra')), Number(P.get('dec')), det);
+} else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'));
+else setMode('sky');   // the whiteboard flow starts at the whole sky
+</script>
+</body>
+</html>

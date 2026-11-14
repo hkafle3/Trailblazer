@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Golden test: browser WCS vs astropy</title>
+<style>body{background:#0b0e13;color:#e8ecf2;font:13px/1.5 ui-monospace,Menlo,monospace;padding:20px}.ok{color:#8fe0b6}.bad{color:#ff8a80}</style></head>
+<body>
+<h1 style="font:600 18px system-ui">Browser WCS vs astropy (golden.json)</h1>
+<pre id="out">running...</pre>
+<script type="module">
+// Goal: the browser finds the target's full-frame pixel within 0.05 px of astropy, and the wavelength
+// within 0.002 um, for every reference exposure. window.__golden holds the summary for scripts.
+import { imageHeader, worldToPix, pixToWorld, wavelengthAt } from '../live/fits.js';
+const out = document.getElementById('out'), lines = [];
+const [gold, maps] = await Promise.all([fetch('golden.json').then(r => r.json()), fetch('../data/wavemaps.json').then(r => r.json())]);
+let worstPx = 0, worstLam = 0, worstRound = 0, fails = 0;
+for (const g of gold) {
+  const h = await imageHeader(g.key);
+  const [x, y] = worldToPix(h, g.ra, g.dec);
+  const [ra2, dec2] = pixToWorld(h, x, y);   // round trip back to the sky
+  const [lam] = wavelengthAt(maps[g.det], x, y);
+  const dpx = Math.hypot(x - g.x, y - g.y), dlam = Math.abs(lam - g.lam);
+  const round = Math.hypot((ra2 - g.ra) * Math.cos(g.dec * Math.PI / 180), dec2 - g.dec) * 3600;
+  worstPx = Math.max(worstPx, dpx); worstLam = Math.max(worstLam, dlam); worstRound = Math.max(worstRound, round);
+  const ok = dpx < 0.05 && dlam < 0.002;
+  fails += !ok;
+  lines.push(`<span class="${ok ? 'ok' : 'bad'}">${ok ? 'PASS' : 'FAIL'}</span> ${g.det} pixel off by ${dpx.toFixed(4)} px, wavelength off by ${(dlam * 1000).toFixed(2)} nm, round trip ${round.toFixed(4)}"  ${g.key.split('/').pop()}`);
+  out.innerHTML = lines.join('\n');
+}
+window.__golden = { n: gold.length, fails, worstPx, worstLam, worstRound };
+lines.push(`\n${fails ? `<span class="bad">${fails} FAILED</span>` : '<span class="ok">ALL PASS</span>'}: worst pixel ${worstPx.toFixed(4)} px, worst wavelength ${(worstLam * 1000).toFixed(2)} nm, worst round trip ${worstRound.toFixed(4)}"`);
+out.innerHTML = lines.join('\n');
+</script>
+</body>
+</html>

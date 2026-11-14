@@ -1,0 +1,9 @@
+# downloaded or regenerated data
+bake/cache/
+bake/coverage/
+*.log
+# tooling
+__pycache__/
+.wrangler/
+node_modules/
+.DS_Store

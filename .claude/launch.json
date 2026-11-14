@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "comet-hunt-web", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8780", "--directory", "web"], "port": 8780 },
+    { "name": "comet-hunt-api", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "cd worker && npx --yes wrangler@4.162.0 dev --port ${PORT:-8788} --ip 127.0.0.1"], "port": 8788 }
+  ]
+}

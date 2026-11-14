@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Live pipeline vs baked frames</title>
+<style>body{background:#0b0e13;color:#e8ecf2;font:13px/1.5 ui-monospace,Menlo,monospace;padding:20px}.ok{color:#8fe0b6}.bad{color:#ff8a80}</style></head>
+<body>
+<h1 style="font:600 18px system-ui">Live browser pipeline vs the Python-baked frames</h1>
+<pre id="out">running...</pre>
+<script type="module">
+// Goal (PLAN-live.md evaluator 2 and 4): for each baked target, the live pipeline's matched wavelength is within
+// 0.02 um of the baked one, its measured motion within 15% of the baked value where the target really moves,
+// and a spot shows its first frame in under 8 s and all frames in under 15 s. window.__live holds the summary.
+const API = new URLSearchParams(location.search).get('api') || 'http://127.0.0.1:8787';
+const KEYS = ['barnard', 'epsindib', 'wise0855', 'rwaur', 'rdra'];
+const out = document.getElementById('out'), lines = [];
+const say = s => { lines.push(s); out.innerHTML = lines.join('\n'); };
+const tag = ok => `<span class="${ok ? 'ok' : 'bad'}">${ok ? 'PASS' : 'FAIL'}</span>`;
+let fails = 0; const rows = [];
+function run(ra, dec, det) {
+  return new Promise(res => {
+    const w = new Worker('../live/pipeline.js', { type: 'module' }), t = { first: null };
+    w.onmessage = ({ data: m }) => {
+      if (m.type === 'frame' && t.first == null) t.first = m.ms;
+      if (m.type === 'done' || m.type === 'error' || m.type === 'empty') { w.terminate(); res({ ...m, first: t.first }); }
+    };
+    w.postMessage({ ra, dec, det, api: API });
+  });
+}
+for (const key of KEYS) {
+  const baked = await fetch(`../data/flip/${key}/manifest.json`).then(r => r.json());
+  const live = await run(baked.ra, baked.dec, baked.detector);
+  if (live.type !== 'done') { fails++; say(`${tag(false)} ${baked.name}: ${live.type} ${live.error || ''}`); continue; }
+  const m = live.manifest, dl = Math.abs(m.lam0 - baked.lam0);
+  const moves = (baked.gaia && baked.gaia.total > 1) || baked.ref;
+  const dm = moves && m.motion && baked.motion ? Math.abs(m.motion.total - baked.motion.total) / baked.motion.total : null;
+  const okL = dl <= 0.02, okM = !moves || (dm != null && dm <= 0.15), okT = live.first < 8000 && live.ms < 15000;
+  fails += !okL + !okM + !okT;
+  say(`\n${baked.name} (${baked.detector}): ${m.frames.length} frames live vs ${baked.frames.length} baked`);
+  say(`  ${tag(okL)} matched wavelength ${m.lam0.toFixed(4)} vs ${baked.lam0.toFixed(4)} um`);
+  say(`  ${tag(okM)} motion ${m.motion ? m.motion.total.toFixed(2) : 'none'} vs ${baked.motion ? baked.motion.total.toFixed(2) : 'none'} arcsec/yr${moves ? '' : ' (target does not really move, not compared)'}`
+    + (m.gaia ? `, Gaia ${m.gaia.total.toFixed(2)}` : ''));
+  say(`  ${tag(okT)} first frame ${(live.first / 1000).toFixed(1)} s, all ${(live.ms / 1000).toFixed(1)} s`);
+  rows.push({ key, lam: m.lam0, motion: m.motion?.total ?? null, first_s: live.first / 1000, all_s: live.ms / 1000 });
+}
+window.__live = { fails, rows };
+say(`\n${fails ? `<span class="bad">${fails} FAILED</span>` : '<span class="ok">ALL PASS</span>'}`);
+</script>
+</body>
+</html>
