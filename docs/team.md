@@ -1,4 +1,4 @@
-# Working on Comet Hunt
+# Working on Comet Catcher
 
 ## The pieces and where they live
 

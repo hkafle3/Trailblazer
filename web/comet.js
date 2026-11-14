@@ -121,7 +121,7 @@ function spectrum(d) {
 }
 
 fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
-  document.title = `${c.id} · Comet Hunt`;
+  document.title = `${c.id} · Comet Catcher`;
   $('c-id').textContent = c.id;
   const n = c.tags.comet + c.tags.asteroid + c.tags.glitch + c.tags.unsure;
   if (c.kind === 'comet' && n) { $('c-verdict').textContent = c.tags.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }

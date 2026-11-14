@@ -208,13 +208,16 @@ let showByDay = () => {};
     $('t-date').textContent = when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
     $('t-pct').textContent = pass === 1 ? `${fmt(pct)} photographed` : `Pass ${pass} · ${fmt(now)}`;
     slider.style.setProperty('--p', d / meta.days * 100 + '%');
+    slider.parentNode.style.setProperty('--f', d / meta.days);
+    $('t-bubble').textContent = $('t-date').textContent;
     $('photo-meter').style.setProperty('--p', pct + '%');
     $('photo-meter').querySelector('b').textContent = Math.floor(pct) + '%';
     showByDay();
   }
   slider.max = meta.days;
   slider.value = meta.days;
-  slider.addEventListener('input', draw);
+  let queued = 0;   // many input events can arrive per frame while dragging: draw once per frame
+  slider.addEventListener('input', () => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; draw(); }); });
   draw();
 
   let timer = 0;

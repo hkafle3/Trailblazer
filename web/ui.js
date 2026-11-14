@@ -1,4 +1,4 @@
-// Comet Hunt shared UI: star field, constellation buttons, demo sign-in, search, skippable tour.
+// Comet Catcher shared UI: star field, constellation buttons, demo sign-in, search, skippable tour.
 // Plain script (no build step). Everything is optional decoration on top of working pages.
 // Other scripts can listen for the 'ch:user' event or read window.CH_USER ({name, via} or null).
 (() => {
@@ -17,6 +17,7 @@
     e.append(...kids); return e;
   };
   const isExplore = document.body.classList.contains('explore');
+  const noStars = document.body.classList.contains('nostars');   // pages with their own 3D star field
 
   // ---------------------------------------------------------------- star field
   function starfield() {
@@ -27,7 +28,7 @@
     const resize = () => {
       const dpr = Math.min(devicePixelRatio || 1, 2);
       W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      stars = Array.from({ length: Math.min(260, Math.round(W * H / 6500)) }, () => ({ x: Math.random() * W, y: Math.random() * H, z: Math.random(), ph: Math.random() * 6.28, sp: .4 + Math.random() * 1.4 }));
+      stars = Array.from({ length: Math.min(150, Math.round(W * H / 11000)) }, () => ({ x: Math.random() * W, y: Math.random() * H, z: Math.random(), ph: Math.random() * 6.28, sp: .4 + Math.random() * 1.4 }));
       if (reduce) draw(0);
     };
     function draw(t) {
@@ -39,7 +40,6 @@
         const tw = reduce ? .8 : .55 + .45 * Math.sin(t * .001 * s.sp + s.ph), a = (.25 + s.z * .7) * tw, r = .4 + s.z * 1.1;
         g.fillStyle = `rgba(${s.z > .85 ? '255,226,200' : '226,236,255'},${a})`;
         g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill();
-        if (s.z > .93) { g.fillStyle = `rgba(200,220,255,${a * .25})`; g.beginPath(); g.arc(x, y, r * 4, 0, 6.283); g.fill(); }
         if (Math.hypot(x - mx, y - my) < 150) near.push({ x, y });
       }
       // constellation lines between stars close to the pointer
@@ -57,7 +57,8 @@
         }
       }
     }
-    const loop = t => { draw(t); requestAnimationFrame(loop); };
+    let lastT = 0;
+    const loop = t => { requestAnimationFrame(loop); if (t - lastT < 33 || document.hidden) return; lastT = t; draw(t); };   // 30 fps is plenty for twinkling and keeps the page light
     addEventListener('resize', resize);
     resize();
     if (!reduce) {
@@ -128,7 +129,7 @@
     const sheet = h('div', { class: 'sheet glass', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'si-t' },
       h('button', { class: 'x', 'aria-label': 'Close', text: '×', onclick: closeModal }),
       h('div', { class: 'comet-mark' }, h('span', { class: 'brand-mark' })),
-      h('h2', { id: 'si-t', text: 'Join the hunt' }),
+      h('h2', { id: 'si-t', text: 'Join Comet Catcher' }),
       h('p', { text: 'Sign in to tag what you find and join the conversation about it.' }),
       gbtn, h('div', { class: 'or', text: 'or' }), form,
       h('p', { class: 'fine', text: 'Demo sign-in: no account is created and nothing leaves your browser. The Google button is a stand-in.' }));
@@ -182,7 +183,7 @@
 
   // ---------------------------------------------------------------- tour
   const STEPS = [
-    { title: 'Welcome to Comet Hunt', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. Anything that moves between photos is a comet or an asteroid. Take a one-minute look around, or skip it.' },
+    { title: 'Welcome to Comet Catcher', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. Anything that moves between photos is a comet or an asteroid. Take a one-minute look around, or skip it.' },
     { sel: '.map-wrap', title: 'The whole sky, flat', text: 'This is the entire sky unrolled like a world map. The bright band is our galaxy. Orange dots are comets people found, blue ones are already known.' },
     { sel: '.timebar', title: 'Watch it get photographed', text: 'Press play to see SPHEREx scan the sky, strip by strip, over its first year and a half.' },
     { sel: '.layers', title: 'More, when you want it', text: 'Layers hides the extras: coverage, where people have looked, comets and known objects. Leave them alone to start.' },
@@ -207,7 +208,7 @@
         h('div', { class: 'row' },
           s.last ? h('span') : h('button', { class: 'skip', type: 'button', text: 'Skip tour', onclick: () => end() }),
           i > 0 && !s.last ? h('button', { class: 'btn ghost small', type: 'button', text: 'Back', onclick: () => go(-1) }) : '',
-          h('button', { class: 'btn', type: 'button', text: s.last ? 'Start hunting' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) { end(); document.getElementById('go-unexplored')?.click(); } else go(1); } })));
+          h('button', { class: 'btn', type: 'button', text: s.last ? 'Start catching' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) { end(); document.getElementById('go-unexplored')?.click(); } else go(1); } })));
       card.querySelectorAll('.btn').forEach(b => delete b.dataset.cb); scanButtons();
       const t = s.sel && document.querySelector(s.sel); if (t) t.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
       place(); card.querySelector('.btn:last-child')?.focus({ preventScroll: true });
@@ -234,7 +235,7 @@
   window.CH_TOUR = startTour;
 
   // ---------------------------------------------------------------- boot
-  starfield();
+  if (!noStars) starfield();
   topbar();
   renderAuth();
   scanButtons();

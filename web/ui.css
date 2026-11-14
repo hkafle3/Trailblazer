@@ -1,4 +1,4 @@
-/* Comet Hunt: the "deep space" layer. Loaded after styles.css on every page that has the shared top bar.
+/* Comet Catcher: the "deep space" layer. Loaded after styles.css on every page that has the shared top bar.
    It adds, without changing what the colors mean:
    - a twinkling star field behind the page (ui.js) that draws constellations near the pointer
    - constellation buttons: every .btn is outlined by stars that fly in and join up (ui.js)
@@ -23,8 +23,9 @@ body.page { background: #04060b; }
   background:
     radial-gradient(140% 120% at 0% 0%, rgba(127, 184, 255, .14), transparent 55%),
     radial-gradient(120% 120% at 100% 100%, rgba(155, 140, 255, .09), transparent 60%),
-    rgba(12, 16, 28, .56);
+    rgba(11, 15, 26, .78);
   border-color: rgba(255, 255, 255, .11);
+  -webkit-backdrop-filter: none; backdrop-filter: none;   /* a live blur over an animated background is what made the page lag */
 }
 .panel, .rail, .talk, .practice { border-radius: 32px; }
 .plate { border-radius: 22px; }
@@ -86,7 +87,6 @@ body.page { background: #04060b; }
 .cb.in circle { transform: none; opacity: .9; }
 .cb:not(.in) line { stroke-dashoffset: 1; opacity: 0; }
 .cb.in line { transition: stroke-dashoffset .9s var(--ease) calc(var(--i) * 28ms + 250ms), opacity .4s, stroke .4s; }
-.cb.in circle:nth-of-type(3n) { animation: twinkle 3.4s ease-in-out infinite; animation-delay: calc(var(--i) * -310ms); }
 .btn:hover .cb line, .btn:focus-visible .cb line, .play:hover .cb line { opacity: 1; stroke: #fff; }
 .btn:hover .cb circle, .btn:focus-visible .cb circle, .play:hover .cb circle { opacity: 1; r: 2.1; }
 .cb .stray { fill: rgba(255, 255, 255, .6); }
@@ -136,8 +136,6 @@ body.explore .start .link:hover { color: #fff; }
 /* Map markers feel alive. */
 .mk i { transition: transform .25s var(--ease); }
 .mk:hover i { transform: scale(1.7); }
-.mk.comet i { animation: beat 3s ease-in-out infinite; }
-@keyframes beat { 50% { box-shadow: 0 0 0 5px rgba(255, 154, 77, .12), 0 0 20px var(--comet); } }
 .mk.patch i { border-radius: 50%; }
 .mk.patch::after { border-radius: 50%; }
 .mk b { transition: opacity .2s; }
@@ -251,3 +249,41 @@ body.explore .start .link:hover { color: #fff; }
   .topbar .authbox { flex: none; }
 }
 @media (max-width: 640px) { .topbar .authbox .av { display: grid; } }
+
+/* ---------- Inner pages share the home page's sky: dark, with stars, no photo behind ---------- */
+body.page { background: radial-gradient(80% 60% at 50% 0%, #0c1226, #05070e 70%, #03040a); }
+body.page::before { content: none; }
+body.page::after { background: radial-gradient(55% 45% at 8% 0%, rgba(127, 184, 255, .10), transparent 70%), radial-gradient(45% 45% at 100% 100%, rgba(155, 140, 255, .08), transparent 70%); }
+
+/* ---------- Time bar: a comet riding a string of stars ---------- */
+.timebar { height: 76px; padding: 0 26px 0 14px; gap: 18px; border-radius: 999px; }
+.timebar .play { width: 50px; height: 50px; }
+.timebar .track { position: relative; flex: 1; min-width: 0; height: 56px; --f: 1; }
+.timebar .range { position: absolute; left: 0; right: 0; top: 8px; width: 100%; height: 32px; margin: 0; }
+.timebar .range::-webkit-slider-runnable-track {
+  height: 14px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .12);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .6) 1px, transparent 1.8px) 4px 0 / 15px 14px repeat-x,
+    linear-gradient(90deg, rgba(127, 184, 255, .12), rgba(176, 205, 255, .6) var(--p), rgba(255, 255, 255, .07) var(--p));
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5), 0 0 24px -8px rgba(127, 184, 255, .5);
+}
+.timebar .range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 32px; height: 32px; margin-top: -10px; border-radius: 50%; border: 0;
+  background: radial-gradient(circle, #fff 0 24%, #ffe3c9 38%, rgba(255, 154, 77, .95) 58%, rgba(255, 154, 77, 0) 72%);
+  box-shadow: -30px 0 20px -12px rgba(255, 154, 77, .8), 0 0 26px rgba(255, 170, 110, .9);
+  transition: transform .2s var(--ease);
+}
+.timebar .range:active::-webkit-slider-thumb { transform: scale(1.18); }
+.timebar .range::-moz-range-track { height: 14px; border-radius: 14px; background: linear-gradient(90deg, rgba(127, 184, 255, .12), rgba(176, 205, 255, .6) var(--p), rgba(255, 255, 255, .07) var(--p)); border: 1px solid rgba(255, 255, 255, .12); }
+.timebar .range::-moz-range-progress { background: none; }
+.timebar .range::-moz-range-thumb { width: 28px; height: 28px; border: 0; border-radius: 50%; background: radial-gradient(circle, #fff 0 30%, rgba(255, 154, 77, .95) 62%, transparent 74%); box-shadow: -26px 0 18px -10px rgba(255, 154, 77, .8), 0 0 22px rgba(255, 170, 110, .9); }
+.timebar .ends { position: absolute; left: 6px; right: 6px; bottom: 0; display: flex; justify-content: space-between; font: 400 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.timebar .bubble { position: absolute; top: -6px; left: calc(16px + (100% - 32px) * var(--f)); transform: translate(-50%, -100%) scale(.9); padding: 5px 11px; border-radius: 999px; background: rgba(10, 14, 24, .94); border: 1px solid rgba(255, 255, 255, .16); font: 500 11px/1 var(--mono); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s var(--ease); }
+.timebar .track:hover .bubble, .timebar .track:focus-within .bubble { opacity: 1; transform: translate(-50%, -100%); }
+.timebar .now { width: 156px; }
+@media (max-width: 640px) {
+  .timebar { height: auto; border-radius: 34px; padding: 12px 18px 12px 12px; }
+  .timebar .track { grid-column: 2; height: 52px; }
+  .timebar .range { height: 40px; top: 4px; }
+  .timebar .ends { display: none; }
+}
