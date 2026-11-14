@@ -9,7 +9,7 @@
 | Comet page + tagged comments | Loads from D1. 3I/ATLAS has real SPHEREx photos, motion and spectrum (`bake/comet_3iatlas.py`) | `web/comet.html`, `web/comet.js` | `POST /api/comments` with a Turnstile token, then live tally (Durable Object) |
 | Guide + practice patch | Static design only | `web/guide.html` | Use IRSA's real 3I/ATLAS images as the practice patch |
 | API + database | Images, Gaia, comets and comments real (D1: `worker/migrations/`); explored is example data | `worker/src/`, `worker/migrations/` | Explored counter in D1: +1 per patch opened or tagged, `/api/explored` reads it (same shape) |
-| Known objects | Not started | | `/api/known` from IMCCE SkyBoT |
+| Known comets | 35 real comets from JPL, moving on the map, each matched to the SPHEREx photos that caught it (`bake/known_comets.py`) | `bake/known_comets.py`, `worker/migrations/0005_*` | Measure their spectra like 3I/ATLAS; circle known asteroids per patch with SkyBoT |
 | Dot finder | Not started | | Blink photo pairs taken hours apart, save moving dots as candidates. Runs in Python or the browser: a free Worker gets only 10 ms of compute per request |
 | Data prep | Works; coverage map built from all 272,962 SPHEREx photos | `bake/` | Per-cell visit dates so the map can show SPHEREx's moving sweep after the first full pass |
 | Pitch and demo | Not started | `docs/prior-art.md`, `docs/architecture.html` | Story: SPHEREx gives every find a spectrum |
