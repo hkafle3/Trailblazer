@@ -143,8 +143,15 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
     // live data from D1: never cached here, so a new comment shows at once
-    if (url.pathname === '/api/comets') return comets(url, env);
-    if (url.pathname.startsWith('/api/comets/')) return comet(decodeURIComponent(url.pathname.slice('/api/comets/'.length)), env);
+    if (url.pathname === '/api/comets' || url.pathname.startsWith('/api/comets/')) {
+      let id = null;
+      if (url.pathname !== '/api/comets') {
+        try { id = decodeURIComponent(url.pathname.slice('/api/comets/'.length)); }
+        catch { return json({ error: 'comet id is not valid' }, 400); }
+      }
+      try { return await (id === null ? comets(url, env) : comet(id, env)); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/explored': explored }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     const cache = caches.default, hit = await cache.match(request);

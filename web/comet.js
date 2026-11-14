@@ -79,7 +79,9 @@ function spectrum(d) {
   // Compressed brightness axis (asinh, linear near zero): December's coma is ~20x brighter than August's,
   // and a straight axis would flatten August to a line. Noise around zero stays readable either way.
   const S = 5, h = f => Math.asinh(f / S), top = h(Math.max(...all.map(p => p.flux)) * 1.15), bottom = h(Math.min(0, ...all.map(p => p.flux)));
-  // draw at about the screen's width so the 11-unit text stays readable on a phone (desktop keeps 900)
+  // draw at about the screen's width so the 11-unit text stays readable on a phone (desktop keeps 900);
+  // the panel must be visible first, or its width reads as 0
+  $('c-spec-panel').hidden = false;
   const W = Math.round(Math.min(900, Math.max(380, svg.clientWidth * 1.15)));
   svg.setAttribute('viewBox', `0 0 ${W} 250`);
   const X0 = 52, X1 = W - 10, Y0 = 30, Y1 = 214;

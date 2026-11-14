@@ -99,12 +99,23 @@ def coverage(step=0.5, samples=12):
     print(f"{len(rows)} images, MJD {t0} + {span} days, {np.isfinite(first).mean():.1%} of cells covered")
 
 
-def visits(codes, W, H, gap=20, keep=6):
-    """codes = cell * 1024 + day, sorted. A cell's visit starts where the cell changes or 20+ days have passed."""
+def visit_starts(codes, gap=20):
+    """(cell, start day) of every visit. codes = cell * 1024 + day, sorted; 20+ days apart starts a new visit."""
     cell, day = codes // 1024, codes % 1024
     start = np.ones(len(codes), bool)
-    start[1:] = (cell[1:] != cell[:-1]) | (day[1:] - day[:-1] > gap)
-    sc, sd = cell[start], day[start]
+    start[1:] = (cell[1:] != cell[:-1]) | (day[1:] - day[:-1] >= gap)
+    return cell[start], day[start]
+
+
+# check: photos on days 0, 20, 41 are three visits (each step is 20+ days); days 3 and 10 in the next cell are one
+_c, _d = visit_starts(np.array([7 * 1024 + 0, 7 * 1024 + 20, 7 * 1024 + 41, 8 * 1024 + 3, 8 * 1024 + 10]))
+assert list(_c) == [7, 7, 7, 8] and list(_d) == [0, 20, 41, 3], (_c, _d)
+
+
+def visits(codes, W, H, gap=20, keep=6):
+    """codes = cell * 1024 + day, sorted. A cell's visit starts where the cell changes or 20+ days have passed.
+"""
+    sc, sd = visit_starts(codes, gap)
     k = np.arange(len(sc)) - np.searchsorted(sc, sc)   # visit number within its cell: 0, 1, 2, ...
     m = k < keep
     v = np.zeros((keep, W * H), np.int64)

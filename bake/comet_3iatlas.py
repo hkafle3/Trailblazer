@@ -7,7 +7,7 @@ it, and read the wavelength SPHEREx saw at that spot. Each exposure is a differe
 measurements together are the comet's spectrum. IRSA warns the comet is faint at many wavelengths and
 spread out (not a point), so the circle is wide and every point carries its noise.
 
-Run: uv run -q --with astropy --with pillow --with certifi sh -c 'SSL_CERT_FILE=$(python -m certifi) exec python -u bake/comet_3iatlas.py'
+Run: uv run -q --with astropy --with pillow --with certifi --with reproject sh -c 'SSL_CERT_FILE=$(python -m certifi) exec python -u bake/comet_3iatlas.py'
 """
 import json, re, sys
 from concurrent.futures import ThreadPoolExecutor
@@ -29,6 +29,10 @@ DOCS = "https://irsa.ipac.caltech.edu/data/SPHEREx/docs/comet3iatlas/"
 SIZE = 600                       # cutout width, arcsec
 R_AP, R_IN, R_OUT = 4, 9, 14     # aperture and sky annulus radii, pixels (SPHEREx pixels are 6.15 arcsec)
 SR_PER_PIX = (6.15 / 206265) ** 2
+# FLAGS bits that mean "this pixel's value is not trustworthy" (bit numbers from the FLAGS header, MP_*):
+# transient, overflow, processing error, non-functional, missing data, hot, cold, nonlinear, persistence.
+# OUTLIER (19) and SOURCE (21) are left alone: a moving comet's own coma trips both.
+BAD = sum(1 << b for b in (0, 1, 2, 6, 9, 10, 11, 15, 17))
 
 
 def exposures():
@@ -65,6 +69,7 @@ def measure(e):
     with fits.open(cutout(e)) as h:
         img = h["IMAGE"].data.astype(float)
         var = h["VARIANCE"].data.astype(float) if "VARIANCE" in h else None
+        usable = np.isfinite(img) & ((h["FLAGS"].data.astype(np.int64) & BAD) == 0)
         w = WCS(h["IMAGE"].header)
         x, y = w.world_to_pixel_values(e["ra"], e["dec"])
         spectral = WCS(h["IMAGE"].header, fobj=h, key="W")
@@ -72,13 +77,15 @@ def measure(e):
         lam, bw = spectral.pixel_to_world_values(x, y)
     yy, xx = np.indices(img.shape)
     r = np.hypot(xx - x, yy - y)
-    ap, ring = (r <= R_AP) & np.isfinite(img), (r >= R_IN) & (r <= R_OUT) & np.isfinite(img)
-    if ap.sum() < 0.8 * np.pi * R_AP ** 2 or ring.sum() < 50:
-        return None   # comet too close to the cutout edge or masked
+    circle = r <= R_AP
+    ap, ring = circle & usable, (r >= R_IN) & (r <= R_OUT) & usable
+    if ap.sum() < 0.8 * circle.sum() or ring.sum() < 50:
+        return None   # comet near the cutout edge, or too many flagged pixels in the circle
     sky = np.median(img[ring])
     sky_err = 1.2533 * np.std(img[ring]) / np.sqrt(ring.sum())
-    flux = (img[ap] - sky).sum() * SR_PER_PIX * 1e9            # MJy/sr * sr -> mJy
-    noise = np.sqrt((var[ap].sum() if var is not None else 0) + (ap.sum() * sky_err) ** 2) * SR_PER_PIX * 1e9
+    fill = circle.sum() / ap.sum()   # flagged pixels count as the circle's average, not as zero or their bad value
+    flux = (img[ap] - sky).sum() * fill * SR_PER_PIX * 1e9            # MJy/sr * sr -> mJy
+    noise = np.sqrt((var[ap].sum() * fill if var is not None else 0) + (circle.sum() * sky_err) ** 2) * SR_PER_PIX * 1e9
     v = img[ap] - sky
     peak_frac = float(v.max() / v.sum()) if v.sum() > 0 else 0.0
     # The coma spreads its light (brightest pixel holds 6-10%); a background star or hot pixel concentrates it
