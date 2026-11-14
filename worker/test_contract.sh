@@ -48,4 +48,32 @@ assert shots and all(isinstance(p.get("ra"), (int, float)) and isinstance(p.get(
 PY
 then echo "PASS known comets: paths reach the last day, every photo has a position"
 else echo "FAIL known comets"; fails=$((fails + 1)); fi
+# POST /api/comments writes to D1, so it runs against the local dev server only (Turnstile test secret: any token passes)
+post() {   # name, json body, expected status, expected text in the body
+  out=$(curl -s -m 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data "$2" "$BASE/api/comments")
+  code=$(printf '%s' "$out" | tail -1); body=$(printf '%s' "$out" | sed '$d')
+  if [ "$code" = "$3" ] && printf '%s' "$body" | grep -q -- "$4"; then echo "PASS $1 ($code)"
+  else echo "FAIL $1: got $code, wanted $3 with '$4': $(printf '%s' "$body" | head -c 200)"; fails=$((fails + 1)); fi
+}
+case "$BASE" in
+  *127.0.0.1*|*localhost*|*\[::1\]*)
+    who="tester $$"; note="contract test $$ $(date +%s)"
+    post "post a tagged comment" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"comet\",\"body\":\"$note\",\"author\":\"$who\",\"turnstile\":\"x\"}" 201 '"tags":{"comet":'
+    check "posted comment is in the thread" "/api/comets/3I%2FATLAS" 200 "\"body\":\"$note\""
+    post "post on an id with a slash and spaces" "{\"comet_id\":\"C/2025 R2 (SWAN)\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"x\"}" 201 '"comet_id":"C/2025 R2 (SWAN)"'
+    post "missing body" "{\"comet_id\":\"3I/ATLAS\",\"author\":\"$who\",\"turnstile\":\"x\"}" 400 '"field":"body"'
+    post "blank body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"   \",\"author\":\"$who\",\"turnstile\":\"x\"}" 400 '"field":"body"'
+    long=$(python3 -c 'print("a" * 1001)')
+    post "too-long body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"$long\",\"author\":\"$who\",\"turnstile\":\"x\"}" 400 '"field":"body"'
+    post "bad tag" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"star\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"x\"}" 400 '"field":"tag"'
+    post "bad author name" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"<b>x</b>\",\"turnstile\":\"x\"}" 400 '"field":"author"'
+    post "missing turnstile token" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"$who\"}" 400 '"field":"turnstile"'
+    post "not JSON" "nope" 400 'body must be JSON'
+    post "unknown comet" "{\"comet_id\":\"C-9999\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"x\"}" 404 'no comet C-9999'
+    check "GET on the post route" "/api/comments" 405 'use POST'
+    burst="burst $$"
+    for i in 1 2 3 4 5; do curl -s -o /dev/null -X POST -H 'Content-Type: application/json' --data "{\"comet_id\":\"3I/ATLAS\",\"body\":\"burst $i\",\"author\":\"$burst\",\"turnstile\":\"x\"}" "$BASE/api/comments"; done
+    post "rate limit: 6th in a minute" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"burst 6\",\"author\":\"$burst\",\"turnstile\":\"x\"}" 429 'wait a minute' ;;
+  *) echo "SKIP POST /api/comments checks (not a local server)" ;;
+esac
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
