@@ -44,9 +44,12 @@ def candidates():
 
 def ephemeris(c):
     """Sky position (RA, Dec degrees) and total magnitude from Earth every STEP days, via JPL Horizons."""
-    f = CACHE / (c["pdes"].replace("/", "_").replace(" ", "_") + ".json")
+    # the window and step are in the name: a cache built for a different timeline is never reused
+    f = CACHE / (c["pdes"].replace("/", "_").replace(" ", "_") + f"_{MJD0}_{DAYS}_{STEP}.json")
     if f.exists():
-        return json.loads(f.read_text())
+        cached = json.loads(f.read_text())
+        if len(cached["rows"]) == len(range(0, DAYS + STEP + 1, STEP)) or cached["note"]:
+            return cached
     start = f"JD{MJD0 + 2400000.5}"
     stop = f"JD{MJD0 + DAYS + STEP + 2400000.5}"   # one step past the end, so the last coverage day is bracketed
     params = {"format": "json", "COMMAND": f"'DES={c['pdes']};CAP;NOFRAG'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
@@ -144,7 +147,8 @@ def main():
     from astropy.table import Table
     irsa = Table.read(ROOT / "bake/cache/3iatlas/obscore_3I_Atlas.vot")
     want = {str(r["obs_id"]) for r in irsa if str(r["spherex_detector"]).strip() in ("D1", "1")}
-    atlas = next(o for o in out if "2025 N1" in o["pdes"])
+    atlas = next((o for o in out if "2025 N1" in o["pdes"]), None)
+    assert atlas, "3I/ATLAS has no usable ephemeris, so the check cannot run"
     got = {s["obs"] for s in atlas["spherex"]}
     in_window = {s["obs"] for s in atlas["spherex"] if s["day"] < 240}   # through Dec 2025, IRSA's span
     print(f"3I/ATLAS check: IRSA lists {len(want)} D1 photos; we found {len(got)} ({len(in_window)} through Dec 2025); "

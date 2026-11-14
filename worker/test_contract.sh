@@ -21,8 +21,6 @@ check "tally counts each person once" "/api/comets/C-0147" 200 '"tags":{"comet":
 check "3I/ATLAS has real photos" "/api/comets/3I%2FATLAS" 200 '"photos":\[{"file"'
 check "3I/ATLAS has a spectrum" "/api/comets/3I%2FATLAS" 200 '"spectrum":{"2025-08":\[{"lam"'
 check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'
-check "known comets carry their JPL path" "/api/comets" 200 '"id":"C/2025 R2 (SWAN)","kind":"known".*"track":\[\[0,'
-check "known comet lists SPHEREx photos" "/api/comets/C%2F2025%20R2%20(SWAN)" 200 '"spherex":\[{"day":[0-9.]*,"obs":"[^"]*","ra":'
 check "malformed comet id" "/api/comets/%ZZ" 400 'comet id is not valid\|400 Bad Request'   # live: Cloudflare's edge refuses it before the Worker
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
@@ -31,4 +29,20 @@ check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below
 curl -s -m 30 -D - -o /dev/null "$BASE/api/images?ra=400&dec=4" | grep -qi 'access-control-allow-origin: \*' && echo "PASS CORS header present" || { echo "FAIL CORS header missing"; fails=$((fails + 1)); }
+# known comets, checked on the parsed JSON: every real known comet has a path through the last coverage day, and
+# every SPHEREx photo of C/2025 R2 (SWAN) carries the comet's position at that moment
+if python3 - "$BASE" <<'PY'
+import json, sys, urllib.request, urllib.parse
+base = sys.argv[1]
+get = lambda path: json.load(urllib.request.urlopen(base + path, timeout=60))
+known = [c for c in get("/api/comets")["comets"] if c["kind"] == "known" and c["real"]]
+assert len(known) >= 30, f"only {len(known)} real known comets"
+short = [c["id"] for c in known if not c.get("track") or c["track"][-1][0] < 529]
+assert not short, f"paths ending before day 529: {short}"
+swan = get("/api/comets/" + urllib.parse.quote("C/2025 R2 (SWAN)", safe=""))
+shots = swan["detail"]["spherex"]
+assert shots and all(isinstance(p.get("ra"), (int, float)) and isinstance(p.get("dec"), (int, float)) for p in shots), "photo without a position"
+PY
+then echo "PASS known comets: paths reach the last day, every photo has a position"
+else echo "FAIL known comets"; fails=$((fails + 1)); fi
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
