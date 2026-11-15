@@ -26,7 +26,7 @@
       <option value="D1">D1 0.75–1.1 µm</option><option value="D2">D2 1.1–1.6 µm</option><option value="D3">D3 1.6–2.4 µm</option>
       <option value="D4">D4 2.4–3.8 µm</option><option value="D5">D5 3.8–4.4 µm</option><option value="D6">D6 4.4–5.0 µm</option>
     </select>
-    <button class="btn" type="submit">Show time-lapse</button>
+    <button class="btn go" type="submit" aria-label="Go to this sky position" title="Go to this sky position"><svg class="ic" aria-hidden="true"><use href="icons.svg#arrow"/></svg></button>
     <div id="status" role="status" aria-live="polite"></div>
   </form>
   <div id="targets" role="group" aria-label="Challenge targets"><button id="back" type="button">&larr; Sky map</button></div>
@@ -70,13 +70,16 @@ const P = new URLSearchParams(location.search);
 
 // ---------- 3D star field behind everything ----------
 const canvas = document.getElementById('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// The star field is decoration: when the browser has WebGL off (a GPU crash, or hardware acceleration disabled),
+// skip it so the 2D time-lapse below still works instead of the whole page stopping here.
+let renderer = null;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); }
+catch { document.body.classList.add('nogl'); }
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, 1, 0.001, 5000);
-function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+function resize() { renderer?.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
-const world = createWorld({ renderer, scene, camera });
+const world = renderer && createWorld({ renderer, scene, camera });
 const look = new THREE.Vector3(1, 0, 0), lookGoal = new THREE.Vector3(1, 0, 0), up = new THREE.Vector3(0, 1, 0);
 
 // ---------- data ----------
@@ -193,7 +196,9 @@ function panel(m) {
   const track = document.getElementById('track'); track.querySelectorAll('.tick').forEach(t => t.remove());
   m.frames.forEach((f, n) => {
     const b = document.createElement('button'); b.className = 'tick'; b.style.left = `${8 + 84 * n / Math.max(1, m.frames.length - 1)}%`;
-    b.innerHTML = `<span class="m"></span>${monthYear(f.start)}`; b.setAttribute('aria-label', `Visit ${monthYear(f.start)}`);
+    // many visits (deep fields): month labels on the end ticks only, so they don't collide; every tick keeps its aria-label
+    b.innerHTML = `<span class="m"></span>${m.frames.length <= 5 || n === 0 || n === m.frames.length - 1 ? monthYear(f.start) : ''}`;
+    b.setAttribute('aria-label', `Visit ${monthYear(f.start)}`);
     b.onclick = () => { stop(); state.i = n; draw(); };
     track.appendChild(b);
   });
@@ -380,7 +385,12 @@ window.__sky = { sky, pointToRadec, radecToPoint, mollForward, mollInverse, pick
 TARGETS.forEach(t => load(t.key).then(m => { mapMarks[t.key] = m; }).catch(() => {}));
 mapEl.addEventListener('click', e => {
   const b = mapEl.getBoundingClientRect(), rd = mollInverse((e.clientX - b.left) / b.width * MW, (e.clientY - b.top) / b.height * MH);
-  if (rd) { [sky.ra, sky.dec] = rd; sky.fovGoal = 6; }
+  if (!rd) return;
+  if (!renderer) {   // no 3D sky to fly through: open that spot's time-lapse straight away
+    document.getElementById('coords').value = `${rd[0].toFixed(4)} ${rd[1].toFixed(4)}`;
+    return search(rd[0], rd[1], document.getElementById('det').value, { diff: true });
+  }
+  [sky.ra, sky.dec] = rd; sky.fovGoal = 6;
 });
 
 // ---------- loop: the star field drifts slowly behind the time-lapse ----------
@@ -406,9 +416,9 @@ function frame(now) {
     camera.position.copy(look).multiplyScalar(-0.6).addScaledVector(side, Math.sin(now / 9000) * 0.25);
     camera.lookAt(camera.position.clone().add(look));
   }
-  world.update(now, frameStart);
+  world?.update(now, frameStart);
   if (state.playing && state.m && now - state.last > 900) { state.last = now; state.i = (state.i + 1) % state.m.frames.length; draw(); }
-  renderer.render(scene, camera);
+  renderer?.render(scene, camera);
 }
 requestAnimationFrame(frame);
 if (P.has('ra') && P.has('dec')) {

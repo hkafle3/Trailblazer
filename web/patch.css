@@ -94,3 +94,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 
 /* While frames are being built the patch breathes instead of sitting there black. */
 body.busy #patch { animation: breathe 1.6s ease-in-out infinite; }
+
+/* the search's go button: an arrow, so it reads as "go to this spot", not as a second play button */
+#search .btn.go { width: 48px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+#search .btn.go .ic { width: 18px; height: 18px; }
