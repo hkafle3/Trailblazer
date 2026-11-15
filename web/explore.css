@@ -200,6 +200,35 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .topbar nav a::after { bottom: 1px; }
   body.explore .topbar .av { width: 44px; height: 44px; border: 4px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .85); }
 }
+/* ---------- desktops: pan and zoom (explore-desktop.js) ----------
+   Zoomed in, the sky can fill the window: the header gets the scrolling pages' dark fade and a dark band rises under
+   the timeline, so both stay readable over it. */
+.zoomctl { display: none; }
+@media (min-width: 641px) {
+  .xstage { -webkit-user-select: none; user-select: none; }
+  .xstage :is(img, a) { -webkit-user-drag: none; }
+  .xstage .pincard { -webkit-user-select: text; user-select: text; }   /* its RA and Dec can still be copied */
+  body.grabbing, body.grabbing * { cursor: grabbing !important; }
+  body.explore .pin { pointer-events: none; } body.explore .pincard { pointer-events: auto; }   /* a double click on a fresh pin reaches the sky */
+  body.explore .map:focus { outline: none; }
+  body.explore .map:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+  body.explore .map-wrap.deep-zoom .grat text { display: none; }   /* the ecliptic's label grows with the zoom */
+  body.explore.zoomed .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba(0, 0, 0, .7) 65%, transparent); }
+  body.explore .tl { z-index: 1; }
+  .xstage::after { content: ""; position: absolute; z-index: 0; left: -50vw; right: -50vw; top: calc(1060 * var(--e)); height: 100vh; background: linear-gradient(180deg, transparent, rgba(4, 6, 12, .55) calc(120 * var(--e)), rgba(4, 6, 12, .9) calc(210 * var(--e))); pointer-events: none; opacity: 0; transition: opacity .3s; }
+  body.zoomed .xstage::after { opacity: 1; }
+
+  /* bottom right, Layers' outlined look: the whole sky on its own, + and - in one box split by a rule */
+  .zoomctl { position: fixed; z-index: 5; right: 28px; bottom: 28px; display: flex; flex-direction: column; gap: 10px; }
+  .zoomctl button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fff; cursor: pointer; }
+  .zoomctl > button, .zoompair { border: 1.5px solid rgba(255, 255, 255, .85); border-radius: 10px; background: rgba(0, 0, 0, .55); }
+  .zoompair { display: flex; flex-direction: column; overflow: hidden; }
+  .zoompair button + button { border-top: 1px solid rgba(255, 255, 255, .45); }
+  .zoomctl button:hover:not(:disabled) { background: rgba(255, 255, 255, .08); }
+  .zoomctl button:disabled { color: rgba(255, 255, 255, .3); cursor: default; }
+  .zoomctl button:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+  .zoomctl svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+}
 /* ---------- the dive: zoom straight into a time-lapse (explore-dive.js) ----------
    .aim: a small frame in the photo's shape at the middle of the view, at the deepest zoom, with "Dive in" under it (the
    Layers button's outlined look). Its outline fills as a scroll or a pinch heads into the dive.
