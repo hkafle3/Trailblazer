@@ -17,47 +17,87 @@
   <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
 </header>
 
-<div id="stage">
-  <div id="left">
-  <form id="search" role="search">
-    <label for="coords">Sky coordinates</label>
-    <input id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false" enterkeyhint="go">
-    <label for="det">Detector</label>
-    <select id="det" aria-label="SPHEREx detector">
-      <option value="D1">D1 0.75–1.1 µm</option><option value="D2">D2 1.1–1.6 µm</option><option value="D3">D3 1.6–2.4 µm</option>
-      <option value="D4">D4 2.4–3.8 µm</option><option value="D5">D5 3.8–4.4 µm</option><option value="D6">D6 4.4–5.0 µm</option>
-    </select>
-    <div id="status" role="status" aria-live="polite"></div>
-  </form>
-  <div id="targets" role="group" aria-label="Challenge targets"><button id="back" type="button">&larr; Sky map</button></div>
-  </div>
-  <div id="center">
-    <canvas id="patch" width="720" height="720" role="img" aria-label="SPHEREx image of the target"></canvas>
-    <div id="timeline" class="glass">
-      <button id="play" class="btn plain" aria-label="Play time-lapse"><svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path id="playicon" d="M3 2l17 10L3 22z"/></svg></button>
-      <div id="track"><div id="rail"></div></div>
+<!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Layers, Others. Middle: the patch.
+     Right: the whole region as a mini-map, Discovered/Undiscovered, Descriptions. Bottom: Explore's month timeline. -->
+<div class="pstage" id="stage">
+  <!-- In reading order, which is the phone's one-column order: the photo, the timeline, Discovered and the mini-map,
+       Descriptions, Findings, then Options, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
+  <div class="pv-frame">
+    <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
+    <div id="legend" aria-hidden="true">
+      <div class="lg-row"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
+      <!-- Color Difference's key, only while it is on: square swatches, since it is the photo's pixels that are coloured -->
+      <div class="lg-row lg-key" id="diffkey"><span><i class="px" style="background:var(--comet)"></i>brighter</span><span><i class="px" style="background:var(--known)"></i>dimmer than the first visit</span></div>
     </div>
   </div>
-  <aside id="panel" class="glass" aria-label="What changed">
-    <h2>What changed</h2>
-    <div class="row"><div class="k" id="kMotion">Motion: measured vs Gaia</div><div class="v" id="vMotion">&nbsp;</div></div>
-    <div class="row"><div class="k">Known comets and asteroids</div><div class="v" id="vKnown" aria-live="polite">&nbsp;</div></div>
-    <div class="row"><div class="k" id="kWave">Wavelength matched</div><div class="v" id="vWave">&nbsp;</div></div>
-    <div class="row"><label class="k" for="fov" id="kFov">Field of view: 6 arcmin</label><input id="fov" class="range" style="--p:45.5%" type="range" min="1" max="12" step="0.5" value="6"></div>
-    <div class="row"><label class="toggle"><input id="diff" type="checkbox"><span class="tg"></span>Show difference</label><div class="v" id="vDiff">Orange: brighter than the first visit. Blue: dimmer. A moving star leaves a blue and orange pair.</div></div>
-  </aside>
-  <div id="caption">Each frame: one SPHEREx survey visit<small id="capsub">&nbsp;</small></div>
+
+  <!-- Explore's timeline: a tick per month, the date over the handle, a dot for each visit to this patch.
+       Drag to pick a visit; press the handle to play the visits in turn. -->
+  <div class="tl" id="tl">
+    <div class="tl-line" id="tl-line">
+      <div class="tl-ticks" id="tl-ticks" aria-hidden="true"></div>
+      <div id="tl-visits" aria-hidden="true"></div>
+      <output class="tl-date" id="t-date">&nbsp;</output>
+      <button class="tl-knob" id="play" type="button" role="slider" aria-label="Visit. Drag to pick a visit; press to play them in turn." aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <a class="pv-state" id="state" href="forums.html"><span id="state-label">Undiscovered</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+  <!-- the whole region SPHEREx cut out for this spot; the white box is the part in the big frame, the ring is the target -->
+  <div class="pv-mini"><canvas id="mini" width="868" height="594" role="img" aria-label="The whole region, with the part on screen outlined"></canvas></div>
+
+  <section class="pv-card pv-desc">
+    <h2>Descriptions</h2>
+    <div class="pv-scroll" role="region" aria-label="Descriptions">
+    <form id="search" role="search">
+      <label for="coords">Coordinates</label>
+      <input class="box" id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false" enterkeyhint="go">
+      <div class="sub"><label for="det">Band</label>
+        <select class="box" id="det" aria-label="SPHEREx detector">
+          <option value="D1">D1 0.75–1.1 µm</option><option value="D2">D2 1.1–1.6 µm</option><option value="D3">D3 1.6–2.4 µm</option>
+          <option value="D4">D4 2.4–3.8 µm</option><option value="D5">D5 3.8–4.4 µm</option><option value="D6">D6 4.4–5.0 µm</option>
+        </select></div>
+    </form>
+    <!-- beside the search in both modes: a bad position or a failed build is said here even before any patch shows -->
+    <div id="status" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- what this patch shows: the visit on screen, the motion measured, and known objects passing. Its own card, under
+       Others, so long lists have room; the heading stays put while the list scrolls -->
+  <section class="pv-card pv-found">
+    <h2>Findings</h2>
+    <div class="pv-scroll" role="region" aria-label="Findings">
+    <p class="pv-info" id="vName" hidden></p>
+    <p class="pv-info" id="vVisit"></p>
+    <p class="pv-info" id="vMotion"></p>
+    <p class="pv-info"><b>Known comets and asteroids</b><span id="vKnown" aria-live="polite"></span></p>
+    </div>
+  </section>
+
+  <section class="pv-card pv-options" aria-label="Options">
+    <h2>Options</h2>
+    <label class="pv-row" for="fov">Zoom <input id="fov" type="range" min="1" max="12" step="0.5" value="6" aria-valuetext="6 arcmin wide"></label>
+  </section>
+  <section class="pv-card pv-layers" aria-label="Layers">
+    <h2>Layers</h2>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-spec"><span>Spectral</span></label>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-heat"><span>Heat</span></label>
+  </section>
+  <section class="pv-card pv-others" aria-label="Others">
+    <h2>Others</h2>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="still"><span>Hide Stationary</span></label>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="diff" aria-describedby="diff-what"><span>Color Difference</span></label>
+    <span class="sr-only" id="diff-what">Colours the photo by change since the first visit. Orange: brighter. Blue: dimmer.</span>
+  </section>
 </div>
 <div id="skyui">
   <div id="hint" class="glass"><b>Click any spot</b> to see how it changes over time. Drag to look around, scroll to zoom.</div>
   <div id="mapbox" class="glass"><h2>Sky map: click anywhere to fly there</h2><canvas id="skymap" width="480" height="240" role="img" aria-label="SPHEREx all-sky map"></canvas></div>
   <div id="reticle"></div><div id="readout"></div>
-</div>
-<div id="legend" class="glass">
-  <span><i style="background:var(--comet)"></i>measured position, this visit</span>
-  <span><i style="background:var(--known)"></i>measured position, earlier visits</span>
-  <span><i style="border:2px solid #fff"></i>where Gaia (or a published motion) predicts it</span>
-  <span><i style="border:1.5px dashed var(--known)"></i>a known comet or asteroid passing (predicted)</span>
 </div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
@@ -107,47 +147,116 @@ function load(key) {
 }
 TARGETS.forEach(t => load(t.key).catch(() => {}));   // preload: the demo never waits on the network
 
-const state = { m: null, i: 0, playing: false, last: 0, diff: false, fov: 6 };   // opens wide; slide down to 1.5 arcmin for a 2-pixel move to read clearly
+const state = { m: null, i: 0, playing: false, last: 0, diff: false, still: false, heat: false, spec: false, fov: 6 };   // opens 6 arcmin wide; zoom to 1.5 for a 2-pixel move
 const patch = document.getElementById('patch'), ctx = patch.getContext('2d');
+const mini = document.getElementById('mini'), mini2d = mini.getContext('2d');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthYear = s => `${MONTH[+s.slice(5, 7) - 1]} ${s.slice(0, 4)}`;
 
-function draw() {
-  const m = state.m; if (!m) return;
-  const G = m.grid, f = m.frames[state.i], ref = m.frames[0];
-  const crop = Math.round(state.fov * 60 / m.arcsec_per_pixel);
-  const W = patch.width, s = W / crop;
-  // the view's first column and row in the grid. A moved photo starts part-way into a pixel, so one more column and
-  // row are drawn and the picture is placed by the fraction; outside the grid is sky not loaded yet.
-  const ox = (G - crop) / 2 - rc.pan[0], oy = (G - crop) / 2 - rc.pan[1], bx = Math.floor(ox), by = Math.floor(oy), n = crop + 1;
-  const img = ctx.createImageData(n, n), { lo, hi: fieldHi } = m.stretch, hi = m.hiDisplay;
+// ---------- discovered or not: Explore's comet markers add found=<id>; anything else is undiscovered ----------
+// The discovery belongs to the spot it was opened at (ra/dec in the same link): moving to other coordinates clears it.
+// The label, the link, the "Found as" line and the address (show()) change together.
+const spot = (ra, dec) => `${(+ra).toFixed(4)},${(+dec).toFixed(4)}`;
+let found = null, foundAt = null;
+function setFound(id, at = null) {
+  found = id; foundAt = at;
+  const el = document.getElementById('state'), n = document.getElementById('vName');
+  document.getElementById('state-label').textContent = found ? 'Discovered' : 'Undiscovered';
+  // Discovered: the arrow opens that comet's page. Undiscovered: the forums, to tell people what you see here.
+  el.href = found ? `comet.html?id=${encodeURIComponent(found)}` : 'forums.html';
+  el.setAttribute('aria-label', found ? `Discovered: ${found}. Open its page` : 'Undiscovered. Talk about it in the forums');
+  n.hidden = !found;
+  if (found) { n.innerHTML = 'Found as <b></b>'; n.querySelector('b').textContent = found; }
+  else if (P.has('found')) { const u = new URL(location.href); u.searchParams.delete('found'); history.replaceState(null, '', u); }   // the address too
+}
+const leaveFound = (ra, dec) => { if (found && spot(ra, dec) !== foundAt) setFound(null); };
+setFound(P.get('found'), P.has('ra') && P.has('dec') ? spot(P.get('ra'), P.get('dec')) : null);
+
+// ---------- layers ----------
+// Spectral: tint by the band's wavelength, 0.75 µm (blue) to 5 µm (red), the way infrared pictures are usually coloured.
+const RAMP = [[0, [120, 170, 255]], [.2, [110, 225, 255]], [.4, [140, 255, 170]], [.6, [255, 235, 120]], [.8, [255, 160, 80]], [1, [255, 95, 95]]];
+const HEAT = [[0, [120, 20, 10]], [.45, [235, 70, 30]], [.8, [255, 170, 60]], [1, [255, 245, 190]]];
+function ramp(t, stops = RAMP) {
+  t = Math.min(1, Math.max(0, t));
+  for (let n = 1; n < stops.length; n++) if (t <= stops[n][0]) {
+    const [t0, a] = stops[n - 1], [t1, b] = stops[n], f = (t - t0) / (t1 - t0);
+    return a.map((v, k) => v + f * (b[k] - v));
+  }
+  return stops.at(-1)[1];
+}
+// Per pixel across all visits: the median (what stays put) and a robust spread (how much it changes). Built once per patch.
+function stack(m) {
+  if (m.med) return;
+  const G = m.grid, N = m.frames.length, med = new Float32Array(G * G).fill(NaN), sd = new Float32Array(G * G), v = [];
+  for (let k = 0; k < G * G; k++) {
+    v.length = 0;
+    for (let n = 0; n < N; n++) { const x = m.frames[n].px[k]; if (Number.isFinite(x)) v.push(x); }
+    if (!v.length) continue;
+    v.sort((a, b) => a - b);
+    const mid = v[v.length >> 1]; med[k] = mid;
+    if (v.length > 1) { const dev = v.map(x => Math.abs(x - mid)).sort((a, b) => a - b); sd[k] = 1.4826 * dev[dev.length >> 1] + (v.at(-1) - v[0]) / (2 * v.length); }
+  }
+  const sorted = Array.from(sd).sort((a, b) => a - b);
+  m.med = med; m.sd = sd; m.heatHi = Math.max(1e-6, sorted[Math.floor(0.995 * (sorted.length - 1))]);
+}
+
+// colour of grid pixel (c, r) of frame f, written to data[j..j+3]
+function shade(m, f, c, r, data, j) {
+  const G = m.grid, k = r * G + c, v = f.px[k], ref = m.frames[0];
+  const { lo, hi: fieldHi } = m.stretch, hi = m.hiDisplay;
   // asinh scaled to the field, with the target's peak as white: a very bright star (Barnard, R Draconis) compresses
-  // the curve instead of crushing every other star in a wide view to black. Same curve as before when the peak is not brighter.
+  // the curve instead of crushing every other star in a wide view to black
   const A = Math.asinh(10 * (hi - lo) / (fieldHi - lo));
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const gr = r + by, gc = c + bx, k = gr * G + gc, v = f.px[k], j = 4 * (r * n + c);
-    if (gr < 0 || gc < 0 || gr >= G || gc >= G) { img.data.set([22, 26, 34, 255], j); continue; }
-    if (state.diff && state.i > 0) {   // the first visit is the reference: subtracted from itself it is all black, so show the photo
-      const d = v - ref.px[k];
-      if (!Number.isFinite(d)) { img.data.set([60, 60, 66, 255], j); continue; }
-      const a = Math.min(1, Math.abs(d) / Math.max(12, 0.25 * hi));   // 12 noise units, or a quarter of a bright star's peak
-      img.data.set(d > 0 ? [255 * a, 154 * a, 77 * a, 255] : [127 * a, 184 * a, 255 * a, 255], j);
-    } else {
-      // NaN next to the star means its core saturated the detector: draw it as the brightest value.
-      // NaN anywhere else is outside SPHEREx's coverage for that visit: draw it as "no data".
-      if (!Number.isFinite(v) && !(f.x != null && Math.hypot(gc - f.x, G - 1 - gr - f.y) < 7)) { img.data.set([22, 26, 34, 255], j); continue; }
-      const x = Number.isFinite(v) ? Math.asinh(Math.max(0, (v - lo) / (fieldHi - lo)) * 10) / A : 1;
-      const g = Math.min(1, x) * 255;
-      img.data.set([g, g * 0.97, g * 0.92, 255], j);
+  let rgb;
+  if (state.diff && f !== ref) {   // the first visit is the reference: subtracted from itself it is all black, so show the photo
+    const d = v - ref.px[k];
+    if (!Number.isFinite(d)) rgb = [60, 60, 66];
+    else { const a = Math.min(1, Math.abs(d) / Math.max(12, 0.25 * hi)); rgb = d > 0 ? [255 * a, 154 * a, 77 * a] : [127 * a, 184 * a, 255 * a]; }   // 12 noise units, or a quarter of a bright star's peak
+  } else {
+    // Hide Stationary: take away each pixel's median over all visits, so whatever stays put vanishes and only changes remain
+    const x0 = state.still ? v - m.med[k] : v;
+    // NaN next to the star means its core saturated the detector: draw it as the brightest value.
+    // NaN anywhere else is outside SPHEREx's coverage for that visit: draw it as "no data".
+    if (!Number.isFinite(x0) && !(f.x != null && Math.hypot(c - f.x, G - 1 - r - f.y) < 7)) rgb = [22, 26, 34];
+    else {
+      const x = Number.isFinite(x0) ? Math.asinh(Math.max(0, (x0 - (state.still ? 0 : lo)) / (fieldHi - lo)) * 10) / A : (state.still ? 0 : 1);
+      const g = Math.min(1, x);
+      rgb = state.spec ? ramp((f.lam - 0.75) / 4.25).map(t => g * t) : [255 * g, 247 * g, 235 * g];
     }
   }
-  // nearest-neighbour upscale keeps SPHEREx's real 5 arcsec pixels honest
-  const tmp = new OffscreenCanvas(n, n); tmp.getContext('2d').putImageData(img, 0, 0);
-  ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, W); ctx.drawImage(tmp, (bx - ox) * s, (by - oy) * s, n * s, n * s);
+  if (state.heat && m.sd) {   // Heat: the pixels that change most between visits glow, dark red to pale yellow
+    const h = Math.min(1, m.sd[k] / m.heatHi);
+    if (h > 0.2) { const a = 0.85 * (h - 0.2) / 0.8, hc = ramp(h, HEAT); rgb = rgb.map((t, n) => t * (1 - a) + hc[n] * a); }
+  }
+  data[j] = rgb[0]; data[j + 1] = rgb[1]; data[j + 2] = rgb[2]; data[j + 3] = 255;
+}
 
-  const toPx = (x, y) => [(x - ox + 0.5) * s, (G - 1 - y - oy + 0.5) * s];   // FITS x,y (bottom origin) -> canvas
+// the part of the region the big frame shows: fov arcmin wide, as tall as the frame's shape allows, centred.
+// ox, oy (the view's top-left in grid pixels) are exact, not whole: the frame's middle is the region's middle, and a
+// re-centre in progress moves the view by rc.pan (live/recenter.js) before its frames are built.
+function view(m) {
+  const G = m.grid, cw = Math.min(G, Math.max(2, Math.round(state.fov * 60 / m.arcsec_per_pixel))), ch = Math.min(G, Math.max(2, Math.round(cw * patch.height / patch.width)));
+  return { cw, ch, ox: (G - cw) / 2 - rc.pan[0], oy: (G - ch) / 2 - rc.pan[1] };
+}
+
+function draw() {
+  const m = state.m; if (!m) return;
+  if (state.still || state.heat) stack(m);
+  const G = m.grid, f = m.frames[state.i], v = view(m), { cw, ch, ox, oy } = v;
+  const W = patch.width, H = patch.height, sx = W / cw, sy = H / ch;
+  // the view can start part-way into a pixel, so one more column and row are drawn and placed by the fraction;
+  // outside the region is sky not loaded yet (a re-centre's frames are still building), drawn as "no data"
+  const bx = Math.floor(ox), by = Math.floor(oy), nw = cw + 1, nh = ch + 1, img = ctx.createImageData(nw, nh);
+  for (let r = 0; r < nh; r++) for (let c = 0; c < nw; c++) {
+    const gc = c + bx, gr = r + by, j = 4 * (r * nw + c);
+    if (gc < 0 || gr < 0 || gc >= G || gr >= G) img.data.set([22, 26, 34, 255], j); else shade(m, f, gc, gr, img.data, j);
+  }
+  // nearest-neighbour upscale keeps SPHEREx's real 5 arcsec pixels honest
+  const tmp = new OffscreenCanvas(nw, nh); tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, H); ctx.drawImage(tmp, (bx - ox) * sx, (by - oy) * sy, nw * sx, nh * sy);
+
+  const toPx = (x, y) => [(x - ox + 0.5) * sx, (G - 1 - y - oy + 0.5) * sy];   // FITS x,y (bottom origin) -> canvas
   const predPx = fr => toPx((G - 1) / 2 - fr.pred_east / m.arcsec_per_pixel, (G - 1) / 2 + fr.pred_north / m.arcsec_per_pixel);
-  // ghost trail: earlier visits in blue, fading with age; this visit in orange
   const shown = m.frames.slice(0, state.i + 1).filter(fr => fr.x != null);
   // the arrow claims real motion, so draw it only when Gaia or a published motion says the target moves (R Draconis does not)
   const moves = (m.gaia && m.gaia.total > 1) || m.ref;
@@ -155,13 +264,13 @@ function draw() {
     const [x0, y0] = toPx(shown[0].x, shown[0].y), [x1, y1] = toPx(shown.at(-1).x, shown.at(-1).y);
     const len = Math.hypot(x1 - x0, y1 - y0);
     if (len > 6) {
-      const ux = (x1 - x0) / len, uy = (y1 - y0) / len, nx = -uy, ny = ux, off = 0.09 * W;
+      const ux = (x1 - x0) / len, uy = (y1 - y0) / len, nx = -uy, ny = ux, off = 0.09 * H;
       const ax = x0 + nx * off, ay = y0 + ny * off, bx = x1 + nx * off, by = y1 + ny * off;
       ctx.strokeStyle = 'rgba(160,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
       ctx.fillStyle = 'rgba(160,200,255,.95)'; ctx.beginPath(); ctx.moveTo(bx + ux * 10, by + uy * 10); ctx.lineTo(bx - ux * 4 + nx * 6, by - uy * 4 + ny * 6); ctx.lineTo(bx - ux * 4 - nx * 6, by - uy * 4 - ny * 6); ctx.fill();
     }
   }
-  shown.forEach((fr, n) => {
+  shown.forEach((fr, n) => {   // ghost trail: earlier visits in blue, fading with age; this visit in orange
     const [x, y] = toPx(fr.x, fr.y), cur = fr === f, age = shown.length - 1 - n;
     ctx.beginPath(); ctx.arc(x, y, cur ? 8 : 6.5, 0, 7);
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.stroke();   // dark outline: readable on a white star
@@ -180,11 +289,16 @@ function draw() {
   // cross empty sky: it says a known object passed through, not that the dot under it is that object.
   if (knownQueue.some(j => j[1] === f)) knownQueue.sort((a, b) => (b[1] === f) - (a[1] === f));   // the frame on screen goes next
   if (f.known) {
-    ctx.font = `500 ${Math.round(W / 42)}px Geist, system-ui, sans-serif`; ctx.textBaseline = 'middle';
+    ctx.font = `400 ${Math.round(H / 34)}px "Space Mono", ui-monospace, monospace`; ctx.textBaseline = 'middle';
+    // what a name must not cover: the measured positions and the predicted ring (boxes), then each name placed so far
+    const taken = shown.map(fr => { const [x, y] = toPx(fr.x, fr.y); return [x - 12, y - 12, x + 12, y + 12]; });
+    if (f.pred_east != null) { const [gx, gy] = predPx(f); taken.push([gx - 19, gy - 19, gx + 19, gy + 19]); }
+    const rings = taken.length;   // for tests/patch checks: window.__labels = { rings, names }
+    const hits = r => r[0] < 0 || r[1] < 0 || r[2] > W || r[3] > H || taken.some(t => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
     for (const [name, b] of f.known.bodies) {
       const color = b.kind === 'comet' ? '#ff9a4d' : '#7fb8ff';
       const px = b.pts.map(([, ra, dec]) => { const [e, n] = offset(m, ra, dec); return toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel); });
-      const inView = px.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= W);   // the path is drawn even when only it crosses the view
+      const inView = px.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= H);   // the path is drawn even when only it crosses the view
       for (const [c, w] of [['rgba(0,0,0,.8)', 4], [color, 1.6]]) {
         ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash([5, 5]);
         if (px.length > 1) { ctx.beginPath(); px.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
@@ -192,53 +306,169 @@ function draw() {
         for (const [x, y] of px) { ctx.beginPath(); ctx.arc(x, y, px.length > 1 ? 4 : 11, 0, 7); ctx.stroke(); }
       }
       if (!inView.length) continue;   // a name only beside a position in view
-      const [lx, ly] = inView[0], left = lx > W * .7, tx = left ? lx - 16 : lx + 16;
-      ctx.textAlign = left ? 'right' : 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, tx, ly);
-      ctx.fillStyle = color; ctx.fillText(name, tx, ly);
+      // try each position in view, right of it, left, above and below; the first spot clear of the rings and other names
+      const tw = ctx.measureText(name).width, th = Math.round(H / 34) + 4, pad = 16;
+      let at = null;
+      for (const [lx, ly] of inView) for (const [dx, dy] of [[pad, 0], [-pad - tw, 0], [-tw / 2, -pad - th / 2], [-tw / 2, pad + th / 2]]) {
+        const r = [lx + dx, ly + dy - th / 2, lx + dx + tw, ly + dy + th / 2];
+        if (!at && !hits(r)) at = r;
+      }
+      if (!at) continue;   // nowhere clear: the list in Findings still names it
+      taken.push(at);
+      ctx.textAlign = 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, at[0], (at[1] + at[3]) / 2);
+      ctx.fillStyle = color; ctx.fillText(name, at[0], (at[1] + at[3]) / 2);
     }
     ctx.textAlign = 'left';
+    window.__labels = { rings: taken.slice(0, rings), names: taken.slice(rings) };
   }
   knownList(f);
-  document.querySelectorAll('.tick').forEach((t, n) => t.setAttribute('aria-current', n === state.i));
-  document.getElementById('capsub').textContent =
-    `${f.start} to ${f.end}: ${f.exposures} exposure${f.exposures > 1 ? 's' : ''} at ${f.lam.toFixed(3)} µm, combined, north up` +
-    (f.saturated_px ? '. White core: detector saturated' : '') + (state.diff && state.i === 0 ? '. The reference for the difference view' : '');
-  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from first visit' : ''}`);
+  drawMini(m, f, v);
+  showVisit(m, f);
+  moreBelow();
+  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
+}
+
+// ---------- mini-map: the whole region, the big frame's part outlined, the target ringed ----------
+function drawMini(m, f, v) {
+  const G = m.grid, MW = mini.width, MH = mini.height, S = MH - 40, x0 = (MW - S) / 2 - 30, y0 = 20, k = S / G;   // a little left of centre: the sizes go on the right
+  const img = mini2d.createImageData(G, G);
+  for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) shade(m, f, c, r, img.data, 4 * (r * G + c));
+  const tmp = new OffscreenCanvas(G, G); tmp.getContext('2d').putImageData(img, 0, 0);
+  mini2d.clearRect(0, 0, MW, MH); mini2d.imageSmoothingEnabled = false; mini2d.drawImage(tmp, x0, y0, S, S);
+  // dim the region outside the big frame's part, then outline that part in white
+  const bx = x0 + v.ox * k, by = y0 + v.oy * k, bw = v.cw * k, bh = v.ch * k;
+  mini2d.fillStyle = 'rgba(0,0,0,.5)'; mini2d.beginPath(); mini2d.rect(x0, y0, S, S); mini2d.rect(bx, by, bw, bh); mini2d.fill('evenodd');
+  mini2d.strokeStyle = 'rgba(255,255,255,.35)'; mini2d.lineWidth = 2; mini2d.strokeRect(x0, y0, S, S);
+  mini2d.strokeStyle = '#fff'; mini2d.lineWidth = 3; mini2d.strokeRect(bx, by, bw, bh);
+  // the target: where it was measured this visit, or the middle of the region
+  const tx = f.x != null ? f.x : (G - 1) / 2, ty = f.y != null ? f.y : (G - 1) / 2;
+  const px = x0 + (tx + 0.5) * k, py = y0 + (G - 1 - ty + 0.5) * k;
+  for (const [color, width] of [['rgba(0,0,0,.8)', 7], ['#ff9a4d', 3]]) { mini2d.strokeStyle = color; mini2d.lineWidth = width; mini2d.beginPath(); mini2d.arc(px, py, 11, 0, 7); mini2d.stroke(); }
+  // the sizes: the whole region beside it, the frame's part under it
+  const arcmin = G * m.arcsec_per_pixel / 60;
+  mini2d.fillStyle = 'rgba(255,255,255,.85)'; mini2d.font = '40px "Space Mono", ui-monospace, monospace'; mini2d.textBaseline = 'bottom';
+  mini2d.fillText(`${+arcmin.toFixed(1)}′`, x0 + S + 14, y0 + S);
+  mini2d.textBaseline = 'top'; mini2d.fillText(`${+(v.cw * m.arcsec_per_pixel / 60).toFixed(1)}′`, x0 + S + 14, y0);
+  mini.setAttribute('aria-label', `The whole ${+arcmin.toFixed(1)} arcmin region; the outlined box is the ${state.fov} arcmin the big frame shows, the ring is the target`);
+}
+
+function showVisit(m, f) {
+  document.getElementById('vVisit').innerHTML =
+    `<b>${monthYear(f.start)}</b>: ${f.exposures} exposure${f.exposures > 1 ? 's' : ''} at ${f.lam.toFixed(3)} µm` +
+    (f.saturated_px ? '. White core: detector saturated' : '') + (state.diff && state.i === 0 ? '. The reference for Color Difference' : '');
+  timeline.show(m, state.i);
 }
 
 function panel(m) {
   const mo = m.motion, g = m.gaia, el = document.getElementById('vMotion');
   const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : m.ref ? { total: m.ref.total, label: m.ref.source, tol: 35 } : null;
-  document.getElementById('kMotion').textContent = `Motion: measured vs ${m.ref && !g ? 'published' : 'Gaia'}`;
   const meas = mo ? `<b>${mo.total.toFixed(1)}${mo.err != null && Number.isFinite(mo.err) ? ` ± ${mo.err.toFixed(1)}` : ''}″/yr</b> measured over ${mo.years.toFixed(1)} yr` : '';
   const seen = m.frames.filter(f => f.x != null).length;
   if (m.frames.length < 2) el.innerHTML = 'Only one visit so far: a time-lapse needs two or more';
   else if (mo && ref) {
     const pct = Math.round(100 * mo.total / ref.total);
-    el.innerHTML = `${meas} · <b>${ref.total.toFixed(1)}″/yr</b> ${ref.label} <span class="${Math.abs(pct - 100) <= ref.tol ? 'ok' : 'warn'}">(${pct}%)</span>`;
-  } else if (g && g.total <= 1) el.innerHTML = `Gaia: <b>${g.total.toFixed(2)}″/yr</b>, too small to see in about a year of 5″ pixels`;
-  else if (g) el.innerHTML = `Gaia: <b>${g.total.toFixed(1)}″/yr</b>; too few clean positions here to measure it ourselves`;
-  else if (mo) el.innerHTML = `${meas} · ${m.key.startsWith('live') ? 'no Gaia star at this spot' : 'not in Gaia (too faint in visible light)'}`;
+    el.innerHTML = `Motion ${meas} · <b>${ref.total.toFixed(1)}″/yr</b> ${ref.label} <span class="${Math.abs(pct - 100) <= ref.tol ? 'ok' : 'warn'}">(${pct}%)</span>`;
+  } else if (g && g.total <= 1) el.innerHTML = `Gaia motion <b>${g.total.toFixed(2)}″/yr</b>, too small to see in about a year of 5″ pixels`;
+  else if (g) el.innerHTML = `Gaia motion <b>${g.total.toFixed(1)}″/yr</b>; too few clean positions here to measure it ourselves`;
+  else if (mo) el.innerHTML = `Motion ${meas} · ${m.key.startsWith('live') ? 'no Gaia star at this spot' : 'not in Gaia (too faint in visible light)'}`;
   else if (m.frames.some(f => f.blob)) el.innerHTML = 'This star saturates the detector, so its position is too rough to measure a motion';
-  else el.innerHTML = `Source detected in ${seen} of ${m.frames.length} visits: a motion needs 3 or more, spanning 6 months`;
+  else el.innerHTML = `Source seen in ${seen} of ${m.frames.length} visits: a motion needs 3 or more, spanning 6 months`;
   const matched = m.frames.filter(f => f.matched).length;
-  document.getElementById('kWave').textContent = `Wavelength matched: ${m.lam0.toFixed(2)} µm`;
-  document.getElementById('vWave').innerHTML = `<span class="${matched === m.frames.length ? 'ok' : 'warn'}">${matched} of ${m.frames.length} visits</span> within ${m.lam_tol.toFixed(3)} µm, detector ${m.detector}`;
-  // evenly spaced ticks, one per visit: visits can be a month or a year apart, and real-time spacing made labels collide
-  const track = document.getElementById('track'); track.querySelectorAll('.tick').forEach(t => t.remove());
-  // every month label only when the ticks are at least 80 px apart (a month label is about 60 px wide); otherwise the two ends
-  const roomy = m.frames.length < 2 || 0.84 * track.clientWidth / (m.frames.length - 1) >= 80;
-  m.frames.forEach((f, n) => {
-    const b = document.createElement('button'); b.className = 'tick'; b.style.left = `${8 + 84 * n / Math.max(1, m.frames.length - 1)}%`;
-    // every tick keeps its aria-label, labelled or not
-    b.innerHTML = `<span class="m"></span>${roomy || n === 0 || n === m.frames.length - 1 ? monthYear(f.start) : ''}`;
-    b.setAttribute('aria-label', `Visit ${monthYear(f.start)}`);
-    b.onclick = () => { stop(); state.i = n; draw(); };
-    track.appendChild(b);
-  });
+  document.getElementById('det').title = `Wavelength ${m.lam0.toFixed(2)} µm: ${matched} of ${m.frames.length} visits within ${m.lam_tol.toFixed(3)} µm, detector ${m.detector}`;
+  timeline.visits(m);
 }
 
-// opts.diff: open on the latest visit with the difference view on (what a click on the sky asks for)
+// ---------- timeline (Explore's): a tick per month across SPHEREx's data, a dot per visit, the date over the handle ----------
+const DAY = 864e5, MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+const mjdMs = mjd => (mjd - 40587) * DAY;
+const timeline = (() => {
+  const line = document.getElementById('tl-line'), ticks = document.getElementById('tl-ticks'), dots = document.getElementById('tl-visits');
+  const knob = document.getElementById('play'), date = document.getElementById('t-date');
+  let from = 0, span = 1, built = '', times = [];
+  const pos = t => (t - from) / span * 100 + '%';
+  function range(t0, t1) {   // a tick for every month from t0's month to t1
+    const s = new Date(t0), key = `${s.getUTCFullYear()}-${s.getUTCMonth()}-${t1}`;
+    if (key === built) return;
+    built = key; from = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1); span = t1 - from; ticks.textContent = '';
+    for (let y = s.getUTCFullYear(), mo = s.getUTCMonth(); Date.UTC(y, mo, 1) <= t1; mo === 11 ? (y++, mo = 0) : mo++) {
+      const t = document.createElement('span'); t.className = 'tl-tick'; t.style.left = pos(Date.UTC(y, mo, 1)); t.dataset.m = mo;
+      t.innerHTML = `<b>${MONTHS[mo]}</b>${mo === 0 ? `<small>${y}</small>` : ''}`; ticks.append(t);
+    }
+    thin();
+  }
+  // Month names only as often as they fit (a phone has about 14 px a month): every month, or every 2nd, 3rd, 6th or
+  // 12th, counted from January so January (with its year) always shows. The ticks themselves all stay.
+  function thin() {
+    const all = [...ticks.children];
+    if (all.length < 2) return;
+    const month = line.getBoundingClientRect().width / (span / (30.44 * DAY));   // px per month
+    const widest = Math.max(...all.map(t => t.querySelector('b').getBoundingClientRect().width));
+    const step = [1, 2, 3, 6, 12].find(n => n * month >= widest + 8) ?? 12;
+    for (const t of all) t.classList.toggle('quiet', t.dataset.m % step !== 0);
+  }
+  new ResizeObserver(thin).observe(line);
+  let cover = null;   // SPHEREx's whole data span: the same line Explore shows
+  const coverLoaded = fetch('data/coverage.json').then(r => r.json()).then(c => { cover = c; }).catch(() => {});
+  const api = {
+    async visits(m) {
+      await coverLoaded;
+      if (state.m !== m) return;
+      times = m.frames.map(f => mjdMs(f.mjd));
+      const t0 = Math.min(cover ? mjdMs(cover.mjd0) : Infinity, times[0]), t1 = Math.max(cover ? mjdMs(cover.mjd0 + cover.days) : -Infinity, times.at(-1));
+      range(t0, t1);
+      dots.textContent = '';
+      for (const t of times) { const d = document.createElement('i'); d.className = 'tl-visit'; d.style.left = pos(t); dots.append(d); }
+      knob.setAttribute('aria-valuemax', times.length - 1);
+      api.show(m, state.i);
+    },
+    show(m, i) {
+      if (!built || times.length !== m.frames.length) return;   // visits() calls back once the line is built
+      line.style.setProperty('--x', pos(times[i]));
+      date.textContent = new Date(times[i]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      knob.setAttribute('aria-valuenow', i);
+      knob.setAttribute('aria-valuetext', `Visit ${i + 1} of ${m.frames.length}, ${monthYear(m.frames[i].start)}`);
+    },
+    nearest(e) {   // the visit closest to the pointer
+      const b = line.getBoundingClientRect(), t = from + (e.clientX - b.left) / b.width * span;
+      let best = 0; times.forEach((x, n) => { if (Math.abs(x - t) < Math.abs(times[best] - t)) best = n; });
+      return best;
+    },
+  };
+  // a press on the handle that does not move plays/pauses; any drag, or a press on the line, picks a visit
+  const tl = document.getElementById('tl'), go = n => { if (state.m && n !== state.i) { state.i = n; draw(); } };
+  let down = null;
+  tl.addEventListener('pointerdown', e => {
+    if (e.button || !state.m) return;
+    down = { x: e.clientX, onKnob: knob.contains(e.target), moved: false };
+    tl.setPointerCapture(e.pointerId);
+    if (!down.onKnob) { down.moved = true; stop(); go(api.nearest(e)); }
+    e.preventDefault(); knob.focus({ preventScroll: true });
+  });
+  tl.addEventListener('pointermove', e => {
+    if (!down || (!down.moved && Math.abs(e.clientX - down.x) < 4)) return;
+    down.moved = true; stop(); go(api.nearest(e));
+  });
+  // a press plays/pauses on release; the click that follows a press or a drag is ignored (lastPress), so a click with no
+  // pointer before it (a screen reader or switch activating the button) is the only one that toggles there
+  let lastPress = -1e9;
+  tl.addEventListener('pointerup', e => { if (down && !down.moved) togglePlay(); if (down) lastPress = e.timeStamp; down = null; });
+  knob.addEventListener('click', e => { if (e.timeStamp - lastPress > 600) togglePlay(); });
+  tl.addEventListener('pointercancel', () => { down = null; });
+  knob.addEventListener('keydown', e => {
+    if (!state.m) return;
+    const N = state.m.frames.length, step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+    if (step) { stop(); go((state.i + step + N) % N); }
+    else if (e.key === 'Home') { stop(); go(0); }
+    else if (e.key === 'End') { stop(); go(N - 1); }
+    else if (e.key === 'Enter' || e.key === ' ') togglePlay();
+    else return;
+    e.preventDefault();
+  });
+  return api;
+})();
+
+// opts.diff: open on the latest visit with Color Difference on (what a click on the sky asks for)
+// opts.keep (a re-centre): stay on the visit and the layers that were on screen
 function show(m, query, opts = {}) {
   // a re-centre that lands while the photo is still being moved waits: the next move starts its own build
   if (opts.keep && rc.moving()) return;
@@ -249,12 +479,11 @@ function show(m, query, opts = {}) {
     lastCell = heatCell(m.ra, m.dec);
     fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra: m.ra, dec: m.dec }) }).catch(() => {});
   }
-  // opts.keep (a re-centre): stay on the visit and the view that were on screen
   Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.diff ? m.frames.length - 1 : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   panel(m); draw();
-  history.replaceState(null, '', query);
+  history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : ''));
   knownFor(m);
 }
 
@@ -272,7 +501,7 @@ function knownFor(m) {
     const f = m.frames[(state.i + k) % m.frames.length];
     for (const t of f.known.todo) knownQueue.push([m, f, t]);
   }
-  knownList(m.frames[state.i]);   // "Checking…" straight away, not a blank row until the first answer
+  knownList(m.frames[state.i]); moreBelow();   // "Checking…" straight away, not a blank row until the first answer
   while (knownBusy < 3 && knownQueue.length) knownNext();
 }
 async function knownNext() {
@@ -303,7 +532,7 @@ function offset(m, ra, dec) {
   return [Math.cos(d) * Math.sin(da) / cosc / D2R * 3600, (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(da)) / cosc / D2R * 3600];
 }
 const dayMonth = mjd => { const d = new Date((mjd - 40587) * 864e5); return `${d.getUTCDate()} ${MONTH[d.getUTCMonth()]}`; };
-// the panel's list: what passed through during this visit, one per line, comets first (names are text, never HTML)
+// the Descriptions list: what passed through during this visit, one per line, comets first (names are text, never HTML)
 function knownList(f) {
   const el = document.getElementById('vKnown'), k = f.known, n = (f.epochs ?? [f.mjd]).length;
   if (!k) return void (el.textContent = '');
@@ -314,7 +543,12 @@ function knownList(f) {
   el.replaceChildren(...rows.map(([name, b]) => {   // every one, as text (at most 8 asteroids plus the comets)
     const line = document.createElement('span'), dot = document.createElement('i');
     line.className = 'known-row'; dot.style.background = b.kind === 'comet' ? 'var(--comet)' : 'var(--known)';
-    line.append(dot, `${name} · ${b.kind}${b.kind === 'asteroid' && b.mag != null ? ` mag ${b.mag}` : ''} · ${[...new Set(b.pts.map(p => dayMonth(p[0])))].join(', ')}`);
+    const nm = document.createElement('span'), dt = document.createElement('span');
+    nm.className = 'nm'; dt.className = 'dt';
+    nm.textContent = name;
+    dt.textContent = `${b.kind}${b.kind === 'asteroid' && b.mag != null ? ` mag ${b.mag}` : ''} · ${[...new Set(b.pts.map(p => dayMonth(p[0])))].join(', ')}`;
+    line.title = `${name} · ${dt.textContent}`;   // the whole line, when the name or details are cut short
+    line.append(dot, nm, dt);
     return line;
   }));
   const note = [k.left ? `checking ${k.left} more times…` : '', k.failed ? `${k.failed} of ${n} times not checked` : ''].filter(Boolean);
@@ -323,9 +557,10 @@ function knownList(f) {
 async function select(key, opts) {
   cancel(); setStatus(opts?.note || '');
   if (!opts?.keep) { rc.reset(); draw(); }   // another target: a pending move of the photo is dropped
-  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === key));
   const m = await load(key);
+  leaveFound(m.ra, m.dec);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;   // the box always names the spot on screen
+  document.getElementById('det').value = m.detector;   // and the band is the one the target was baked in (D5 for Epsilon Indi B)
   show(m, `?target=${key}`, opts);
 }
 
@@ -334,8 +569,8 @@ async function select(key, opts) {
 const API = P.get('api') || '';   // the same Worker serves this page and /api (npm run dev); ?api= points elsewhere
 // the last LIVE_KEPT results, for an instant return to a spot (about 650 KB each); the least recently shown goes first
 const live = new Map(), LIVE_KEPT = 8;
-let lastCell = null;   // the heat-map cell of the last check posted
 function remember(key, m) { live.delete(key); live.set(key, m); if (live.size > LIVE_KEPT) live.delete(live.keys().next().value); return m; }
+let lastCell = null;   // the heat-map cell of the last check posted
 // One pipeline worker for the page's life, so a re-centre reuses the image list and the pixels it already read.
 // job is the number of the build in flight (0: none); a new build, or cancel(), replaces it.
 let builder = null, job = 0, builds = 0;
@@ -343,7 +578,17 @@ function cancel() { if (job) builder?.postMessage({ id: ++builds }); job = 0; }
 const statusEl = document.getElementById('status');
 // a short reason for the status line; the full error stays in its tooltip
 const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
-function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); }
+function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); moreBelow(); }
+// a card whose content runs past its height fades out at the bottom until it is scrolled to the end (patch.css .more)
+// It is also a Tab stop while it scrolls (tabindex 0), so the keyboard can reach rows below the fold; otherwise not.
+function moreBelow() {
+  for (const el of document.querySelectorAll('.pv-scroll')) {
+    el.classList.toggle('more', el.scrollHeight - el.scrollTop - el.clientHeight > 2);
+    if (el.scrollHeight > el.clientHeight + 2) el.tabIndex = 0; else el.removeAttribute('tabindex');
+  }
+}
+document.querySelectorAll('.pv-scroll').forEach(el => el.addEventListener('scroll', moreBelow, { passive: true }));
+addEventListener('resize', moreBelow);
 // "269.4463 4.7671", "269.4463, +4.7671", "17h57m47s +04d46m02s", "17:57:47 +04:46:02" -> degrees
 function parseCoords(text) {
   const parts = text.trim().replace(/^ra\s*/i, '').replace(/\s*dec\s*/i, ' ').split(/[\s,]+(?=[+-]?\d)/).map(t => t.trim()).filter(Boolean);
@@ -361,7 +606,8 @@ function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
   if (!opts.keep) { rc.reset(); draw(); }   // another search: a pending move of the photo is dropped
-  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  const was = [found, foundAt];   // a failed search goes back to the spot on screen, discovery label included
+  leaveFound(ra, dec);
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
   const t0 = performance.now(), id = job = ++builds;
@@ -369,7 +615,7 @@ function search(ra, dec, det, opts = {}) {
   setStatus('Finding SPHEREx images of this spot...');
   if (opts.diff) setMode('lapse');   // a sky click lands on the time-lapse right away; frames arrive in seconds
   // a failed search goes back to the spot the frames on screen describe, when there are frames on screen
-  const fail = (text, hint, full) => { job = 0; setStatus(text + (back() ? ' Back at the last spot.' : hint), true); if (full) statusEl.title = full; };
+  const fail = (text, hint, full) => { job = 0; setStatus(text + (back(was) ? ' Back at the last spot.' : hint), true); if (full) statusEl.title = full; };
   // the worker itself failed (pipeline.js or a module it imports did not load): start a new one next time
   builder.onerror = e => { e.preventDefault(); builder.terminate(); builder = null; if (id === job) fail('Could not load the image pipeline.', ' Try again in a moment.', e.message); };
   builder.onmessage = ({ data: m }) => {
@@ -377,7 +623,7 @@ function search(ra, dec, det, opts = {}) {
     if (m.type === 'progress') setStatus(m.text + '...');
     else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
     else if (m.type === 'empty') fail(`No SPHEREx images of this spot on ${det} yet.`, ' Try another detector.');
-    else if (m.type === 'error') fail(`${brief(m.error)}.`, ' The targets below always work.', m.error);
+    else if (m.type === 'error') fail(`${brief(m.error)}.`, ' The examples on the Explore page always work.', m.error);
     else if (m.type === 'done') {
       job = 0;
       remember(key, prep(m.manifest));
@@ -400,20 +646,22 @@ function recenter(pan) {
   history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${m.detector}`);   // the URL names the new spot at once
   search(ra, dec, m.detector, { keep: true });
 }
-// back to the view the frames on screen describe (photo, box, detector, URL): the photo and the panel always name
-// the same spot. A move still in progress makes its own build instead. True when it went back.
-function back() {
+// back to the view the frames on screen describe (photo, box, band, discovery, URL): the photo and the panel always
+// name the same spot. A move still in progress makes its own build instead. True when it went back.
+function back(was) {
   const m = state.m; if (!m || state.mode === 'sky' || rc.moving()) return false;
   rc.reset(); draw();
-  const baked = !m.key.startsWith('live');
+  if (was) setFound(...was);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;
   document.getElementById('det').value = m.detector;
-  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', baked && b.dataset.key === m.key));
-  history.replaceState(null, '', baked ? `?target=${m.key}` : `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}`);
+  const query = m.key.startsWith('live') ? `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}` : `?target=${m.key}`;
+  history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : ''));
   return true;
 }
+// grid pixels per CSS pixel across and down: the frame is not square, and its CSS size can differ from its pixels
+// (the exact box, not clientWidth's whole pixels, since pointer positions are fractional)
 const rc = recenterable(patch, {
-  scale: () => { if (!state.m) return null; const k = Math.round(state.fov * 60 / state.m.arcsec_per_pixel) / patch.getBoundingClientRect().width; return [k, k]; },
+  scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter });
 window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
@@ -425,20 +673,20 @@ document.getElementById('search').onsubmit = e => {
 };
 // a new detector reloads the spot on screen straight away (Enter in the box loads a typed position)
 document.getElementById('det').onchange = () => { if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit(); };
-const tb = document.getElementById('targets');
-document.getElementById('back').onclick = () => { location.href = 'explore.html'; };   // back to the Explore sky map
-TARGETS.forEach(t => { const b = document.createElement('button'); b.textContent = t.name; b.dataset.key = t.key; b.setAttribute('aria-pressed', 'false'); b.onclick = () => select(t.key); tb.appendChild(b); });
+// the target buttons live in the Explore page's Examples menu now (explore.html links here with ?target=)
 
-const playBtn = document.getElementById('play'), icon = document.getElementById('playicon');
-function stop() { state.playing = false; icon.setAttribute('d', 'M3 2l17 10L3 22z'); playBtn.setAttribute('aria-label', 'Play time-lapse'); }
-playBtn.onclick = () => {
-  if (state.playing) return stop();
-  state.playing = true; state.last = 0; icon.setAttribute('d', 'M3 2h5v20H3zM14 2h5v20h-5z'); playBtn.setAttribute('aria-label', 'Pause time-lapse');
-};
-document.getElementById('fov').oninput = e => { state.fov = +e.target.value; e.target.style.setProperty('--p', (state.fov - 1) / 11 * 100 + '%'); document.getElementById('kFov').textContent = `Field of view: ${state.fov} arcmin`; draw(); };
-document.getElementById('diff').onchange = e => { state.diff = e.target.checked; draw(); };
+const playBtn = document.getElementById('play');
+function stop() { state.playing = false; playBtn.classList.remove('on'); }
+function togglePlay() { if (state.playing) return stop(); state.playing = true; state.last = 0; playBtn.classList.add('on'); }
+// Zoom: drag right to zoom in. The bar fills as you do: 12 arcmin (the whole region) is empty, 1 arcmin is full.
+const fov = document.getElementById('fov');
+const setFov = () => { state.fov = 13 - +fov.value; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
+fov.value = 13 - state.fov; setFov();
+fov.oninput = () => { setFov(); draw(); };
+for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat'], ['ly-spec', 'spec']])
+  document.getElementById(id).onchange = e => { state[key] = e.target.checked; draw(); };
 addEventListener('keydown', e => {
-  if (!state.m || e.target.tagName === 'INPUT') return;
+  if (!state.m || /INPUT|SELECT/.test(e.target.tagName) || e.target === playBtn) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); state.i = (state.i + (e.key === 'ArrowRight' ? 1 : -1) + state.m.frames.length) % state.m.frames.length; draw(); }
 });
 

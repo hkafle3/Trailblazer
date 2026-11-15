@@ -58,7 +58,9 @@ async def main():
 
         async def view():   # the built spot and how the photo sits on screen
             return await pg.evaluate("""() => { const s = __lapse.state, m = s.m, r = document.getElementById('patch').getBoundingClientRect();
-              return { ra: m.ra, dec: m.dec, key: m.key, aps: m.arcsec_per_pixel, crop: Math.round(s.fov * 60 / m.arcsec_per_pixel),
+              return { ra: m.ra, dec: m.dec, key: m.key, aps: m.arcsec_per_pixel, ...(() => {   // the frame shows cw x ch grid pixels (not square), as the page's view() does
+                  const G = m.grid, p = document.getElementById('patch'), cw = Math.min(G, Math.max(2, Math.round(s.fov * 60 / m.arcsec_per_pixel)));
+                  const ch = Math.min(G, Math.max(2, Math.round(cw * p.height / p.width))); return { cw, kx: cw / r.width, ky: ch / r.height }; })(),
                 cx: r.left + r.width / 2, cy: r.top + r.height / 2, w: r.width, pan: __lapse.pan, year: m.frames[s.i].year, frames: m.frames.length,
                 gaia: m.gaia && m.gaia.total, motion: m.motion && m.motion.total, ok: !!document.querySelector('#vMotion .ok'),
                 url: location.search, box: document.getElementById('coords').value, status: document.getElementById('status').textContent,
@@ -79,12 +81,10 @@ async def main():
             cosc = math.sin(d0) * math.sin(d) + math.cos(d0) * math.cos(d) * math.cos(da)
             e = math.cos(d) * math.sin(da) / cosc / D2R * 3600
             n = (math.cos(d0) * math.sin(d) - math.sin(d0) * math.cos(d) * math.cos(da)) / cosc / D2R * 3600
-            k = v["w"] / v["crop"] / v["aps"]   # client px per arcsec
-            return v["cx"] - e * k, v["cy"] - n * k   # east is left, north is up
+            return v["cx"] - e / v["aps"] / v["kx"], v["cy"] - n / v["aps"] / v["ky"]   # east is left, north is up
 
         def moved(v, dx, dy):   # the centre after the photo moves dx, dy client px
-            k = v["crop"] / v["w"] * v["aps"]   # arcsec per client px
-            return deproject((v["ra"], v["dec"]), dx * k, dy * k)
+            return deproject((v["ra"], v["dec"]), dx * v["kx"] * v["aps"], dy * v["ky"] * v["aps"])   # grid px per client px, x and y
 
         def shown(v):   # the spot at the middle of the photo: the built centre moved by the pan
             return deproject((v["ra"], v["dec"]), v["pan"][0] * v["aps"], v["pan"][1] * v["aps"])
@@ -180,8 +180,8 @@ async def main():
         n0 = images(); await mark()
         await pg.mouse.move(v["cx"], v["cy"]); await pg.mouse.down()
         await pg.mouse.move(v["cx"] + dx, v["cy"] + dy, steps=12)
-        pan = (await view())["pan"]; k = v["crop"] / v["w"]
-        check(abs(pan[0] - dx * k) < 0.01 and abs(pan[1] - dy * k) < 0.01, f"drag: photo follows before release (pan {pan[0]:.2f}, {pan[1]:.2f} grid px)")
+        pan = (await view())["pan"]
+        check(abs(pan[0] - dx * v["kx"]) < 0.01 and abs(pan[1] - dy * v["ky"]) < 0.01, f"drag: photo follows before release (pan {pan[0]:.2f}, {pan[1]:.2f} grid px)")
         await pg.mouse.up()
         want = moved(v, dx, dy)
         dt = await rebuilt(); v = await view()
@@ -189,6 +189,25 @@ async def main():
         check(off <= PIXEL, f"drag: {dx}, {dy} px landed {off:.2f}\" from the expected centre, rebuilt in {dt:.1f} s")
         check(images() == n0, f"drag: no new /api/images request ({images() - n0} made)")
         check(url_and_box(v) < 0.5, f"drag: URL {v['url']} and box '{v['box']}' name the new centre")
+
+        # ---- layers follow the drag: with Heat and Color Difference on, the photo held 6 grid pixels right is the same
+        # picture moved by exactly 6 pixels (every layer is coloured through view(), so they move together)
+        await pg.click("label:has(#ly-heat)"); await pg.click("label:has(#diff)"); await pg.focus("#play"); await pg.keyboard.press("End")
+        await pg.wait_for_timeout(300); v = await view(); N = 6
+        await pg.evaluate("window.__img = (c => c.getContext('2d').getImageData(0, 0, c.width, c.height))(document.getElementById('patch'))")
+        await pg.mouse.move(v["cx"], v["cy"]); await pg.mouse.down(); await pg.mouse.move(v["cx"] + N / v["kx"], v["cy"], steps=6)
+        same = await pg.evaluate("""N => { const c = document.getElementById('patch'), now = c.getContext('2d').getImageData(0, 0, c.width, c.height), was = window.__img;
+          const m = __lapse.state.m, G = m.grid, cw = Math.min(G, Math.max(2, Math.round(__lapse.state.fov * 60 / m.arcsec_per_pixel))), ch = Math.min(G, Math.max(2, Math.round(cw * c.height / c.width)));
+          const sx = c.width / cw, sy = c.height / ch, ox = (G - cw) / 2, oy = (G - ch) / 2, px = (d, x, y) => d.data.slice(4 * (Math.floor(y) * c.width + Math.floor(x)), 4 * (Math.floor(y) * c.width + Math.floor(x)) + 3).join();
+          let n = 0, eq = 0;
+          for (let gr = Math.ceil(oy); gr < oy + ch - 1; gr++) for (let gc = Math.ceil(ox); gc < ox + cw - N - 1; gc++) {
+            n++; if (px(was, (gc - ox + .5) * sx, (gr - oy + .5) * sy) === px(now, (gc - ox + N + .5) * sx, (gr - oy + .5) * sy)) eq++;
+          }
+          return [eq, n, __lapse.state.heat, __lapse.state.diff, __lapse.state.i]; }""", N)
+        await mark(); await pg.mouse.up(); await rebuilt(); v = await view()
+        check(same[0] >= 0.97 * same[1] and same[2] and same[3] and same[4] > 0,
+              f"layers: Heat and Color Difference on, the held photo is the same picture moved {N} pixels ({same[0]} of {same[1]} sampled pixels match)")
+        await pg.click("label:has(#ly-heat)"); await pg.click("label:has(#diff)"); await pg.wait_for_timeout(200); v = await view()
 
         # ---- short tap: under 5 px of movement is a click on that spot, not a 3 px drag
         tx, ty = v["cx"] + 110, v["cy"] - 70
@@ -229,7 +248,7 @@ async def main():
         n0 = images(); await mark()
         await pg.focus("#patch"); await pg.keyboard.press("ArrowRight")
         nudged = (await view())["pan"]
-        want = moved(v, -v["crop"] / 8 * v["w"] / v["crop"], 0)
+        want = moved(v, -v["cw"] / 8 / v["kx"], 0)   # an eighth of the view across
         dt = await rebuilt(); v2 = await view()
         off = sep((v2["ra"], v2["dec"]), want)
         check(nudged[0] < 0 and off <= PIXEL and images() == n0,

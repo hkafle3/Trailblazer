@@ -1,78 +1,140 @@
-/* Patch viewer (timelapse.html): same look as Explore. The 3D star field is the backdrop; everything else floats on it.
-   Class and id names are the ones timelapse.html's script uses: #patch #play #track .tick #panel #targets #search ... */
-body.lapse { min-width: 0; overflow: hidden; background: #03040a; }
-body.lapse::after { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(75% 75% at 50% 50%, transparent 45%, rgba(3, 4, 10, .6)); }
+/* Patch viewer (timelapse.html), laid out from design/frontend-refactor/Explore.png (2462 x 1420 design pixels below the
+   header, the same frame as explore.css). .pstage is the design scaled to fit the window: --e is one design pixel.
+   Left: Options, Layers, Others. Middle: the patch. Right: the whole-region mini-map, Discovered/Undiscovered, Descriptions.
+   Bottom: the month timeline from Explore, with a dot for each SPHEREx visit to this patch.
+   The 3D star field (canvas#gl) is the backdrop. Sky mode (no patch chosen yet) keeps its own map and hint. */
+@import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap");
+
+:root { --panel-font: "Space Mono", ui-monospace, monospace; }
+body.lapse { min-width: 0; overflow: hidden; background: #000; }
 canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+/* looking at a patch: the star field sits at 20% on black, so the panels and the photo stand out.
+   Sky mode keeps it at full strength, since there the star field is what you click on. */
+body.lapse:not(.sky) canvas#gl { opacity: .2; }
 canvas#gl.drag { cursor: grabbing; }
-:root { --s: min(58vh, 44vw, calc(100vh - 302px)); }   /* 302 = the stage's top and bottom padding + the 26 px gap and 84 px timeline under the photo */
-#stage { position: fixed; inset: 0; z-index: 1; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; pointer-events: none; padding: 168px 0 24px; }   /* 168: the search bar and its status line end at 172; keep the photo clear of them */
-#center { grid-column: 2; display: flex; flex-direction: column; align-items: center; gap: 26px; pointer-events: auto; }
-#patch { width: var(--s); height: var(--s); border-radius: 22%; background: #000; image-rendering: pixelated; display: block; box-shadow: 0 0 0 1px rgba(255, 255, 255, .18), 0 0 90px rgba(127, 184, 255, .24), 0 30px 80px rgba(0, 0, 0, .7); }
 
-/* Timeline: a string of stars, one per visit, with a play button at the start. */
-#timeline { display: flex; align-items: center; gap: 14px; width: calc(var(--s) + 40px); padding: 10px 28px 10px 10px; border-radius: 999px; }
-#play { flex: none; width: 54px; height: 54px; padding: 0; border-radius: 50%; }
-#play svg { fill: currentColor; }
-#play path { fill: var(--ink); }
-#track { position: relative; flex: 1; height: 62px; }
-#rail { position: absolute; left: 8%; right: 8%; top: 20px; height: 2px; border-radius: 2px; background: repeating-linear-gradient(90deg, rgba(190, 215, 255, .8) 0 3px, transparent 3px 9px); }
-.tick { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; background: none; border: 0; color: var(--ink-2); font: 500 12px/1 var(--mono); cursor: pointer; padding: 6px 4px 0; min-width: 52px; white-space: nowrap; transition: color .2s; }
-.tick:hover { color: #fff; }
-.tick .m { width: 11px; height: 11px; margin-top: 9px; border-radius: 50%; background: #cfe0ff; box-shadow: 0 0 0 4px rgba(190, 215, 255, .12), 0 0 12px rgba(190, 215, 255, .7); transition: transform .25s var(--ease), background .25s; }
-.tick:hover .m { transform: scale(1.3); }
-.tick[aria-current=true] { color: var(--comet); }
-.tick[aria-current=true] .m { width: 20px; height: 20px; margin-top: 4px; background: radial-gradient(circle, #fff 0 25%, var(--comet) 55%); box-shadow: 0 0 0 5px rgba(255, 154, 77, .2), 0 0 22px var(--comet); }
-.tick:focus-visible { outline: 2px solid var(--known); outline-offset: 2px; border-radius: 12px; }
+.pstage {
+  --e: min(calc(100vw / 2462), calc(100vh / 1420));
+  position: fixed; z-index: 1; left: 50%; top: 0; width: calc(2462 * var(--e)); height: calc(1420 * var(--e)); transform: translateX(-50%);
+  pointer-events: none; font-family: var(--panel-font); color: #fff;
+}
+.pstage > * { position: absolute; pointer-events: auto; }
 
-/* What changed */
-#panel { grid-column: 3; justify-self: center; width: min(28vw, 460px); padding: 22px 34px 30px; pointer-events: auto; max-height: calc(100vh - 192px); overflow-y: auto; }   /* very short windows: the panel scrolls instead of pushing the timeline off screen */
-#panel h2 { margin: 12px 0 12px; font-size: 28px; }
-.row { border-top: 1px solid var(--line); padding: 16px 2px; }
-.row .k { font: 500 15px/1.3 var(--body); }
-.row .v { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
-.row .v b { color: var(--ink); font-weight: 600; }
-.ok { color: var(--people); } .warn { color: var(--comet); }
-#fov { display: block; width: 100%; margin-top: 14px; --fill: var(--known); }
-.toggle { position: relative; display: flex; align-items: center; gap: 14px; cursor: pointer; font: 500 15px var(--body); }   /* relative: the hidden checkbox stays inside the panel, so focusing it scrolls the panel to the switch */
-.toggle input { position: absolute; opacity: 0; }
-.tg { position: relative; flex: none; width: 46px; height: 26px; border-radius: 999px; background: rgba(255, 255, 255, .13); transition: background .25s, box-shadow .25s; }
-.tg::after { content: ""; position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; border-radius: 50%; background: rgba(255, 255, 255, .8); transition: transform .25s var(--ease), background .25s; }
-.toggle input:checked + .tg { background: var(--comet); box-shadow: 0 0 18px -2px var(--comet); }
-.toggle input:checked + .tg::after { transform: translateX(20px); background: #0a0d14; }
-.toggle input:focus-visible + .tg { outline: 2px solid var(--known); outline-offset: 3px; }
+/* ---------- cards: a straight white top rule, on black ---------- */
+.pv-card { margin: 0; padding: calc(27 * var(--e)) 0 calc(22 * var(--e)) calc(46 * var(--e)); background: #000; border: 0; border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 0; }
+.pv-card h2 { margin: 0 0 calc(26 * var(--e)); font: 400 calc(40 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; }
+.pv-options { left: calc(89 * var(--e)); top: calc(230 * var(--e)); width: calc(453 * var(--e)); }
+.pv-layers { left: calc(89 * var(--e)); top: calc(430 * var(--e)); width: calc(453 * var(--e)); }
+.pv-others { left: calc(89 * var(--e)); top: calc(694 * var(--e)); width: calc(453 * var(--e)); }
+.pv-row { display: flex; align-items: center; gap: calc(30 * var(--e)); height: calc(42 * var(--e)); margin: 0 0 calc(11 * var(--e)) calc(3 * var(--e)); font-size: calc(32 * var(--e)); color: #f2f2f2; white-space: nowrap; }
+label.pv-row { cursor: pointer; }
 
-/* Search and targets, top left */
-/* search, status line and target buttons share one fixed column, so the buttons always sit below the status line */
-#left { position: fixed; left: 40px; top: 96px; z-index: 2; display: flex; flex-direction: column; gap: 10px; width: min(660px, 46vw); pointer-events: none; }
-#search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; width: min(660px, 46vw); pointer-events: auto; }
-#search input, #search select { height: 48px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 15, 26, .8); color: var(--ink); font: 400 14px var(--body); padding: 0 22px; outline: 0; transition: border-color .2s; }
-#search input:focus, #search select:focus { border-color: rgba(255, 255, 255, .4); }
-#search input { min-width: 0; }
-/* our own chevron: 22 px from the edge, like the text on the left; 20 px between text and chevron */
-#search select { appearance: none; -webkit-appearance: none; padding-right: 53px; cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23c9d2e3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 22px center; background-size: 11px 8px; }
-#search select option { background: #0b0f1a; }
-#search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-#status { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); padding: 0 8px; text-shadow: 0 1px 8px #000; }
-#status:empty { height: 0; padding: 0; overflow: hidden; }   /* no room when empty, but still in the accessibility tree so its first message is announced */
+/* the checkbox from Explore's Layers, at design size */
+.cbx { -webkit-appearance: none; appearance: none; flex: none; width: calc(32 * var(--e)); height: calc(32 * var(--e)); min-width: 14px; min-height: 14px; margin: 0; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(4 * var(--e)); background: transparent; cursor: pointer; display: grid; place-items: center; }
+.cbx::after { content: ""; width: 55%; height: 55%; border-radius: 1px; background: var(--c, #fff); transform: scale(0); transition: transform .15s var(--ease); }
+.cbx:checked::after { transform: none; }
+.cbx:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Zoom: an outlined bar that fills as you zoom in */
+#fov { -webkit-appearance: none; appearance: none; width: calc(260 * var(--e)); height: calc(31 * var(--e)); min-height: 12px; margin: 0; box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(5 * var(--e)); cursor: pointer;
+  background: linear-gradient(rgba(255, 255, 255, .5), rgba(255, 255, 255, .5)) 0 0 / var(--p, 50%) 100% no-repeat; }
+#fov::-webkit-slider-thumb { -webkit-appearance: none; width: calc(8 * var(--e)); min-width: 4px; height: calc(31 * var(--e)); min-height: 12px; background: #fff; border: 0; border-radius: 0; }
+#fov::-moz-range-thumb { width: calc(8 * var(--e)); min-width: 4px; height: calc(25 * var(--e)); background: #fff; border: 0; border-radius: 0; }
+#fov:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* ---------- the patch ---------- */
+.pv-frame { left: calc(675 * var(--e)); top: calc(229 * var(--e)); width: calc(1146 * var(--e)); height: calc(902 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(10 * var(--e)); background: #000; overflow: hidden; }
+#patch { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 #status.err { color: var(--glitch); }
-#targets { display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(50vw - var(--s) / 2 - 64px); pointer-events: auto; }
-#targets button { height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 15, 26, .72); color: var(--ink-2); font: 500 13.5px var(--body); cursor: pointer; transition: color .2s, border-color .2s, background .2s, box-shadow .2s; }
-#targets button:hover { color: #fff; border-color: rgba(255, 255, 255, .35); }
-#targets button[aria-pressed=true] { color: #ffd2b0; border-color: rgba(255, 154, 77, .6); background: rgba(255, 154, 77, .14); box-shadow: 0 0 20px -6px var(--comet); }
-#targets button:focus-visible { outline: 2px solid var(--known); outline-offset: 2px; }
-body.sky #back { display: none; }
+#legend { position: absolute; right: calc(20 * var(--e)); bottom: calc(16 * var(--e)); display: flex; flex-direction: column; align-items: flex-end; gap: calc(10 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
+#legend .lg-row { display: flex; gap: calc(26 * var(--e)); }
+#legend span { display: flex; align-items: center; gap: calc(10 * var(--e)); }
+#legend i.px { border-radius: 0; }
+#legend .lg-key { display: none; }
+body:has(#diff:checked) #legend .lg-key { display: flex; }   /* the colour key, under the markers' row, only while Color Difference is on */
+#legend i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; }
+body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 
-#caption { position: fixed; left: 40px; bottom: 34px; z-index: 2; max-width: min(430px, 30vw); font: 500 14px/1.4 var(--body); color: var(--ink); text-shadow: 0 1px 10px #000; }
-#caption small { display: block; color: var(--ink-2); font-size: 12.5px; margin-top: 4px; }
-#legend { position: fixed; left: 40px; bottom: 112px; z-index: 2; display: grid; gap: 8px; padding: 18px 24px; font-size: 12.5px; color: var(--ink-2); }
-#legend span { display: flex; align-items: center; gap: 10px; }
-#legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; flex: none; }
-body.sky #center, body.sky #panel, body.sky #caption, body.sky #legend { display: none; }
+/* ---------- right column ---------- */
+.pv-mini { left: calc(1936 * var(--e)); top: calc(332 * var(--e)); width: calc(434 * var(--e)); height: calc(297 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(14 * var(--e)); overflow: hidden; }
+#mini { display: block; width: 100%; height: 100%; }
+
+.pv-state { left: calc(1927 * var(--e)); top: calc(680 * var(--e)); width: calc(451 * var(--e)); height: calc(102 * var(--e)); box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 calc(21 * var(--e)) 0 calc(49 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(16 * var(--e)); background: #000; color: #fff; text-decoration: none;
+  font: 400 calc(41 * var(--e)) / 1 var(--panel-font); letter-spacing: .02em; transition: background .2s; }
+.pv-state:hover { background: #141414; }
+.pv-state:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.pv-state .go { flex: none; width: calc(59 * var(--e)); height: calc(59 * var(--e)); min-width: 24px; min-height: 24px; border-radius: 50%; background: #ececec; color: #050505; display: grid; place-items: center; transition: transform .2s var(--ease); }
+.pv-state .go svg { width: 62%; height: 62%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pv-state:hover .go { transform: translateX(calc(4 * var(--e))); }
+
+.pv-desc { left: calc(1927 * var(--e)); top: calc(825 * var(--e)); width: calc(451 * var(--e)); box-sizing: border-box; }
+.pv-desc .pv-scroll { max-height: calc(240 * var(--e)); }   /* the card ends above the timeline's date label */
+/* Findings, under Others: as wide as the left cards, down to the bottom of the design frame */
+.pv-found { left: calc(89 * var(--e)); top: calc(955 * var(--e)); width: calc(453 * var(--e)); }
+.pv-found .pv-scroll { max-height: calc(330 * var(--e)); }
+.pv-found:has(#vVisit:empty) { display: none; }   /* nothing found yet (no patch, or the build failed): no empty card */
+.pv-found .pv-info:first-child, .pv-found [hidden] + .pv-info { margin-top: 0; }
+/* a card's content scrolls under its heading. When there is more below, a white bar on the right shows how much
+   (Zoom's square white thumb, as a line) and the last line fades out */
+.pv-scroll { overflow-y: auto; padding-right: calc(30 * var(--e)); }
+.pv-scroll::-webkit-scrollbar { width: max(3px, calc(5 * var(--e))); }
+.pv-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .15); }
+.pv-scroll::-webkit-scrollbar-thumb { background: #fff; }
+.pv-scroll:focus-visible { outline: 2px solid #fff; outline-offset: 2px; -webkit-mask-image: none; mask-image: none; }   /* reached by Tab when it scrolls; the fade would hide the outline */
+.pv-scroll.more:not(:focus-visible) { -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent); }
+#status { margin: calc(16 * var(--e)) 0 0; font: 400 calc(20 * var(--e)) / 1.4 var(--panel-font); color: #cfd6e4; }
+#status:empty { margin: 0; }
+.pv-desc h2 { margin-bottom: calc(32 * var(--e)); }
+.pv-desc label { display: block; font-size: calc(32 * var(--e)); line-height: 1; color: #f2f2f2; }
+.pv-desc .box { display: block; width: calc(364 * var(--e)); height: calc(31 * var(--e)); min-height: 14px; margin: calc(21 * var(--e)) 0 0 calc(3 * var(--e)); box-sizing: border-box; padding: 0 calc(10 * var(--e));
+  border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(5 * var(--e)); background: transparent; color: #fff; font: 400 calc(19 * var(--e)) / 1 var(--panel-font); outline: 0; }
+.pv-desc .box:focus { background: rgba(255, 255, 255, .08); }
+.pv-desc select.box { appearance: none; -webkit-appearance: none; cursor: pointer; }
+.pv-desc select.box option { background: #0b0f1a; }
+.pv-desc .sub { display: flex; align-items: center; gap: calc(14 * var(--e)); margin-top: calc(14 * var(--e)); font-size: calc(22 * var(--e)); color: #cfd6e4; }
+.pv-desc .sub .box { flex: 1; width: auto; margin: 0; }
+.pv-desc .sub { overflow: hidden; }   /* the Band label's line box ran 4 px past the row and made the card scroll */
+.pv-info { margin: calc(16 * var(--e)) 0 0; font: 400 calc(20 * var(--e)) / 1.4 var(--panel-font); color: #cfd6e4; }
+.pv-info b { color: #fff; font-weight: 400; }
+.ok { color: var(--people); } .warn { color: var(--comet); }
+/* known comets and asteroids (timelapse.html knownList): under the heading, one per line, a dot in the overlay's colours */
+#vKnown { display: block; margin-top: calc(6 * var(--e)); }
+.pv-info:has(> #vKnown:empty) { display: none; }   /* no heading before there is a patch to check (errors, empty spots) */
+/* each object: the dot and its name on one line, what it is and when under the name, cut short with the full text in a tooltip */
+.known-row { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: calc(10 * var(--e)); align-items: center; margin-top: calc(8 * var(--e)); }
+.known-row i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; }
+.known-row .nm { color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.known-row .dt { grid-column: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.known-row.faint { display: block; color: var(--ink-3); }
+
+/* ---------- timeline: the same as Explore's, plus a dot for each visit ---------- */
+.tl-tick.quiet b { visibility: hidden; }   /* too narrow for every month: timeline.thin() keeps every 2nd, 3rd, 6th or 12th, January always */
+.tl { z-index: 2; left: calc(568 * var(--e)); top: calc(1215 * var(--e)); width: calc(1420 * var(--e)); font-family: var(--head-font); font-weight: 300; color: #e8e8e8; user-select: none; touch-action: none; }
+.tl-line { position: relative; height: max(1px, calc(2 * var(--e))); background: #c9c9c9; cursor: pointer; }
+.tl-line::before { content: ""; position: absolute; left: 0; right: 0; top: calc(-24 * var(--e)); bottom: calc(-70 * var(--e)); }
+.tl-tick { position: absolute; top: 0; width: 0; }
+.tl-tick::before { content: ""; position: absolute; left: calc(-1 * var(--e)); top: 0; width: max(1px, calc(2 * var(--e))); height: calc(20 * var(--e)); background: #c9c9c9; }
+.tl-tick b { position: absolute; top: calc(44 * var(--e)); left: 0; transform: translate(-50%, -50%); font: 300 calc(20 * var(--e)) / 1 var(--head-font); white-space: nowrap; }
+.tl-tick small { position: absolute; top: calc(75 * var(--e)); left: 0; transform: translate(-50%, -50%); font: 300 calc(16 * var(--e)) / 1 var(--head-font); color: #cfcfcf; }
+.tl-visit { position: absolute; top: 50%; width: calc(12 * var(--e)); height: calc(12 * var(--e)); min-width: 5px; min-height: 5px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); box-shadow: 0 0 calc(10 * var(--e)) rgba(255, 255, 255, .6); pointer-events: none; }
+.tl-date { position: absolute; top: calc(-46 * var(--e)); left: var(--x, 100%); transform: translate(-50%, -50%); font: 300 calc(20 * var(--e)) / 1 var(--head-font); white-space: nowrap; pointer-events: none; }
+.tl-knob {
+  position: absolute; top: 50%; left: var(--x, 100%); width: calc(40 * var(--e)); height: calc(40 * var(--e)); min-width: 22px; min-height: 22px;
+  transform: translate(-50%, -50%); padding: 0; border: 0; border-radius: 50%; background: #ececec; color: #050505; cursor: grab;
+  display: grid; place-items: center; transition: box-shadow .2s, transform .2s var(--ease);
+}
+.tl-knob:hover { box-shadow: 0 0 0 calc(8 * var(--e)) rgba(255, 255, 255, .14); }
+.tl-knob:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.08); }
+.tl-knob:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.tl-knob svg { width: 62%; height: 62%; fill: currentColor; }
+.tl-knob .i-play { margin-left: -6%; }
+.tl-knob .i-pause, .tl-knob.on .i-play { display: none; }
+.tl-knob.on .i-pause { display: block; }
+
+/* ---------- sky mode: only the coordinates box stays, next to the whole-sky map and hint ---------- */
+body.sky .pstage > :not(.pv-desc) { display: none; }
 body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* the sky loop sets .tmark display inline */
-
-/* Sky mode: whole-sky star field you can drag, a small map, and a hint */
 #skyui { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
 #hint { position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); padding: 12px 22px; border-radius: 999px; font-size: 14px; color: var(--ink-2); white-space: nowrap; }
 #hint b { color: var(--ink); }
@@ -84,32 +146,34 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 .tmark { position: fixed; z-index: 1; transform: translate(-11px, -50%); pointer-events: none; display: flex; align-items: center; gap: 10px; font: 500 12.5px var(--mono); color: #d8e8ff; text-shadow: 0 1px 8px #000; white-space: nowrap; }
 .tmark i { width: 22px; height: 22px; border: 1.5px solid var(--known); border-radius: 50%; flex: none; box-shadow: 0 0 14px rgba(127, 184, 255, .6); }
 
+/* ---------- phones and narrow windows: one column, the page scrolls, in the markup's order (reading order) ---------- */
 @media (max-width: 900px) {
-  #stage { grid-template-columns: 1fr; align-content: start; overflow: auto; pointer-events: auto; padding: 84px 12px 32px; gap: 18px; }
-  #left { display: contents; }
-  #search, #targets, #caption { position: static; max-width: none; width: auto; }
-  #search { grid-template-columns: 1fr; }
-  #center, #panel, #caption, #targets, #search { grid-column: 1; }
-  #panel { width: 100%; max-height: none; overflow: visible; }
-  :root { --s: min(86vw, 56vh); }
-  #timeline { width: var(--s); padding-right: 16px; }
-  #legend { display: none; }
+  body.lapse { overflow: auto; }
+  .pstage { --e: .5px; position: relative; left: auto; transform: none; width: auto; height: auto; display: flex; flex-direction: column; gap: 22px; padding: 76px 16px 40px; font-size: 15px; }
+  .pstage > * { position: relative; left: auto; top: auto; width: auto; }
+  .pv-frame { aspect-ratio: 1146 / 902; height: auto; }
+  .tl { margin: 40px 18px 50px; --e: .55px; }
+  .pv-state { height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
+  .pv-mini { width: min(100%, 434px); height: auto; aspect-ratio: 434 / 297; }
+  .pv-scroll { max-height: none !important; padding-right: 0; }
+  .pv-card { padding: 14px 0 0 18px; border-top-width: 1.5px; }
+  .pv-card h2 { font-size: 20px; margin-bottom: 12px; }
+  .pv-row, .pv-desc label { font-size: 15px; height: 32px; gap: 14px; }
+  #fov { width: 180px; height: 16px; }
+  .pv-desc .box { width: min(100%, 320px); height: 34px; font-size: 14px; margin-top: 10px; }
+  .pv-desc .sub, .pv-info { font-size: 13px; }
+  #status { font-size: 12px; }
+  /* the legend fits the narrow frame: it spans the frame's width and its items wrap onto more rows, each item whole */
+  #legend { font-size: 11px; left: 8px; right: 8px; bottom: 8px; padding: 6px 10px; }
+  #legend .lg-row { flex-wrap: wrap; justify-content: flex-end; gap: 6px 12px; }
+  #legend span { white-space: nowrap; }
   #mapbox { left: 12px; bottom: 12px; }
   #hint { bottom: 230px; width: calc(100% - 24px); text-align: center; white-space: normal; }
 }
 
-/* While frames are being built the patch breathes instead of sitting there black. */
-body.busy #patch { animation: breathe 1.6s ease-in-out infinite; }
-
-/* the search's go button: an arrow, so it reads as "go to this spot", not as a second play button */
-
-/* the panel's known comets and asteroids (timelapse.html knownList): one per line, a dot in the map's colours */
-.known-row { display: flex; align-items: center; gap: 8px; }
-.known-row i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.known-row.faint { color: var(--ink-3); }
-
-/* The photo can be dragged or clicked to re-centre (live/recenter.js): a grab hand, and a touch drag moves the
-   photo instead of scrolling the page. */
-#patch { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* The photo can be dragged or clicked to re-centre (live/recenter.js): a grab hand, and a touch drag moves the photo
+   instead of scrolling the page. Its keyboard focus rings the frame, as the other controls are ringed (the frame clips
+   anything drawn outside the canvas). */
+#patch { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; outline: none; }
 #patch.drag { cursor: grabbing; }
-#patch:focus-visible { outline: 2px solid var(--known); outline-offset: 6px; }
+.pv-frame:has(#patch:focus-visible) { outline: 2px solid #fff; outline-offset: 3px; }
