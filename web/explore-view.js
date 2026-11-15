@@ -17,7 +17,7 @@
 //   skyAt(px, py)          [ra, dec] under a window point, or null off the oval;  toScreen(ra, dec) the reverse
 //   onView(fn)             fn({ W, X, Y, zoom }) after every change (zoom is W / min, 1 = whole sky)
 //   W, X, Y, A, MAXW       live read-only values; atMin(), atMax()
-//   hooks.stop()           set by explore.js: stops the coverage replay. Call it on any pan or zoom.
+//   hooks.stop()           set by explore.js: stops the coverage replay. Pans and zooms leave it playing; leaving the map stops it.
 import { fwd, inv } from './skymap.js';
 
 // the deepest zoom: one pixel of the screen per pixel of the sharpest SPHEREx sky tiles (HiPS order 5, 12.9 arcsec),

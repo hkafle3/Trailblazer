@@ -66,7 +66,16 @@ $('map').addEventListener('dblclick', () => {
   if (!desktop()) return;
   if (before) showPin(...(shown = before)); else { pin.hidden = true; shown = null; }
 });
-$('map').addEventListener('pointerdown', () => stopReplay());   // a touch on the sky stops the replay (stopReplay is set below)
+// a single click or tap on the sky or a marker pauses the replay; pans, zooms and double clicks leave it playing.
+// The pause waits out the double-click window, and a second press inside it (a double click or tap zooms) cancels it.
+// Drags and pinches make no click (explore-desktop.js and explore-phone.js swallow it). stopReplay is set below.
+let pauseQ = 0;
+const mapWrap = document.querySelector('.map-wrap');
+mapWrap.addEventListener('pointerdown', () => clearTimeout(pauseQ));
+mapWrap.addEventListener('click', e => {
+  if (e.detail > 1 || !e.target.closest('#map, .mk')) return;
+  clearTimeout(pauseQ); pauseQ = setTimeout(() => stopReplay(), 400);
+});
 $('map').addEventListener('pointermove', e => {   // live coordinates beside the pointer (hidden on touch by CSS)
   const rd = skyAt(e);
   readout.hidden = !rd;

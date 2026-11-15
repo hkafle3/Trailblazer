@@ -11,7 +11,7 @@ const phone = matchMedia('(max-width: 640px)');
 const $ = id => document.getElementById(id);
 const stage = document.querySelector('.xstage'), wrap = document.querySelector('.map-wrap');
 const sheet = $('csheet'), hint = $('maphint'), whole = $('whole'), HEAD = 60;
-export { hooks };   // explore.js sets stop: a first touch on the map stops the replay
+export { hooks };   // explore.js sets stop: it stops the replay
 
 let touched = false;
 // whole sky: the oval exactly as wide as the screen. The comet sheet's top is the bottom edge while it is open
@@ -57,7 +57,7 @@ let last = null, moved = 0, many = false, downAt = 0, lastTap = null, swallowUnt
 const snap = () => { const p = [...pts.values()], m = [(p[0][0] + (p[1] ?? p[0])[0]) / 2, (p[0][1] + (p[1] ?? p[0])[1]) / 2]; return { m, d: p[1] ? Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]) : 0 }; };
 stage.addEventListener('pointerdown', e => {
   if (!phone.matches || e.target.closest('.tl') || (e.pointerType === 'mouse' && e.button)) return;
-  cancel(); hooks.stop(); hideHint(); measure(area());
+  cancel(); hideHint(); measure(area());   // the replay keeps playing; a single tap pauses it (explore.js)
   if (!pts.size) { moved = 0; many = false; downAt = performance.now(); }
   pts.set(e.pointerId, [e.clientX, e.clientY]);
   if (pts.size > 1) many = true;

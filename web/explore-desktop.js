@@ -3,7 +3,7 @@
 // is a drag that pans, and its release clicks nothing. The wheel and trackpad zoom around the pointer, a double click
 // zooms in 2x, and the +, - and whole-sky buttons (bottom right) or the + - 0 and arrow keys do the same.
 // The whole sky is the oval where the page's CSS puts it; nothing here writes to the page until the first pan or zoom.
-import { W, X, Y, A, hooks, measure, set, zoomAt, glide, glideZoom, cancel, onView, atMin, atMax } from './explore-view.js';
+import { W, X, Y, A, measure, set, zoomAt, glide, glideZoom, cancel, onView, atMin, atMax } from './explore-view.js';
 import { restore } from './explore-dive.js';   // back from a time-lapse, or a reload: the map where it was
 import * as view from './explore-view.js';
 
@@ -22,7 +22,7 @@ function area() {
 }
 function begin() {   // before the first pan or zoom: start from the oval the CSS placed
   if (!on) { for (const p of ['width', 'left', 'top']) wrap.style[p] = ''; measure(area()); set(A.min, A.x0, A.y0); on = true; }
-  cancel(); hooks.stop();
+  cancel();   // the replay keeps playing while you look around (explore.js pauses it on a single click)
 }
 const whole = (ms = 300) => glide(A.min, A.x0, A.y0, ms);
 const mid = () => [A.w / 2, (A.t + A.b) / 2];
