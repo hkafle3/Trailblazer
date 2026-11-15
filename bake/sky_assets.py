@@ -95,8 +95,35 @@ def coverage(step=0.5, samples=12):
     Image.fromarray(img.reshape(H, W, 4), "RGBA").save(OUT / "coverage.png")
     visits(np.unique(np.concatenate(seen)), W, H)
     span = int(days.max()) + 1
-    json.dump({"mjd0": float(t0), "days": span, "images": len(rows), "step": step}, (OUT / "coverage.json").open("w"))
+    json.dump({"mjd0": float(t0), "days": span, "images": len(rows), "step": step, "deep_fields": deep_fields(count, W, H, step)},
+              (OUT / "coverage.json").open("w"))
     print(f"{len(rows)} images, MJD {t0} + {span} days, {np.isfinite(first).mean():.1%} of cells covered")
+
+
+def deep_fields(count, W, H, step):
+    """SPHEREx's two deep fields sit on the ecliptic poles, where every scan circle crosses. For each: its position and
+    the median photos per 0.5-degree cell within 2 degrees, against the whole sky's median (D1 photos). Cells with no
+    photo count as 0, and medians stay unrounded, so the page's "Nx" is rounded only once, from the true ratio."""
+    dec = 90 - (np.arange(H) + 0.5) * step
+    ra = (np.arange(W) + 0.5) * step
+    RA, DEC = np.meshgrid(np.radians(ra), np.radians(dec))
+    e = np.radians(23.4393)
+    beta = np.degrees(np.arcsin(np.sin(DEC) * np.cos(e) - np.cos(DEC) * np.sin(e) * np.sin(RA))).ravel()
+    return [dict(name=name, ra=ra0, dec=dec0, photos=float(np.median(count[sel])), sky=float(np.median(count)))
+            for name, ra0, dec0, sel in (("North ecliptic pole", 270.0, 66.5607, beta > 88), ("South ecliptic pole", 90.0, -66.5607, beta < -88))]
+
+
+def _check_deep_fields():
+    W, H = 720, 360
+    count = np.full(W * H, 5)
+    f = deep_fields(count, W, H, 0.5)
+    assert f[0]["photos"] == f[1]["photos"] == 5.0 and f[0]["sky"] == 5.0
+    count[:W * 4] = 0   # the top 2 degrees (north celestial pole area) never photographed: still counted, as zeros
+    assert deep_fields(count, W, H, 0.5)[0]["photos"] == 5.0   # the north *ecliptic* pole is at Dec +66.6, unaffected
+    assert deep_fields(np.zeros(W * H, int), W, H, 0.5)[0]["sky"] == 0.0   # an empty sky must not crash
+
+
+_check_deep_fields()
 
 
 def visit_starts(codes, gap=20):

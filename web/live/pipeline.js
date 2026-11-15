@@ -15,10 +15,12 @@ async function pool(items, n, fn) {   // run fn over items, at most n at a time 
   return out;
 }
 
-function visits(imgs, gap = 20) {
+// A visit is a run of images with no gap over `gap` days. The deep fields (ecliptic poles) are photographed every few
+// days all year, so a visit also ends after `span` days, and only `most` visits, spread over the whole record, are kept.
+function visits(imgs, gap = 20, span = 14, most = 8) {
   const out = [];
-  for (const x of imgs) (out.length && x.t - out.at(-1).at(-1).t <= gap) ? out.at(-1).push(x) : out.push([x]);
-  return out;
+  for (const x of imgs) (out.length && x.t - out.at(-1).at(-1).t <= gap && x.t - out.at(-1)[0].t <= span) ? out.at(-1).push(x) : out.push([x]);
+  return out.length <= most ? out : Array.from({ length: most }, (_, k) => out[Math.round(k * (out.length - 1) / (most - 1))]);
 }
 
 const median = a => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[s.length >> 1] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
