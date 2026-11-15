@@ -20,6 +20,7 @@ function talk(c) {
   $('t-head').innerHTML = '';
   if (n) { $('t-head').append(`${t.comet} of ${n} `, el('span', null, 'say comet')); }
   else $('t-head').textContent = 'No tags yet';
+  if (c.kind === 'comet' && n) { $('c-verdict').textContent = t.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }
   document.querySelector('.verdict .tally').hidden = !n;
   document.querySelector('.verdict .tally-key').hidden = !n;
   for (const k of ['comet', 'asteroid', 'glitch', 'unsure']) {
@@ -27,6 +28,7 @@ function talk(c) {
     document.querySelector(`[data-t=${k}]`).textContent = t[k];
   }
   const list = $('t-list');
+  list.replaceChildren();
   for (const m of c.comments.filter(m => m.body)) list.append(comment(m));   // tags without text still count as votes
   if (!c.comments.some(m => m.body)) list.append(el('p', 'faint', 'Nobody has said anything yet.'));
   function comment(m) {
@@ -140,15 +142,65 @@ function known(c) {
   box.hidden = false;
 }
 
+// The API's rule for names; a stored name that breaks it (e.g. "Zoë") falls back to the nickname field
+const NAME = /^[A-Za-z0-9 _.-]{1,24}$/;
+let nameRefused = false;   // set when the API refused the stored name
+function userName() {
+  let n = window.CH_USER?.name;
+  if (!n) try { n = JSON.parse(localStorage.getItem('ch.user'))?.name; } catch {}
+  n = typeof n === 'string' ? n.trim() : '';
+  return !nameRefused && NAME.test(n) ? n : null;
+}
+
+function composer(c) {
+  const form = document.querySelector('.composer'), text = form.querySelector('textarea'), nick = form.querySelector('.nick');
+  const btn = form.querySelector('button'), note = $('c-note'), hint = note.textContent;
+  let submitting = false;
+  const sync = () => {
+    nick.hidden = !!userName();
+    for (const x of form.querySelectorAll('input')) x.disabled = submitting;
+    text.readOnly = submitting;
+    btn.disabled = submitting || !text.value.trim() || (!nick.hidden && !nick.value.trim());
+  };
+  const say = (msg, err) => { note.textContent = msg; note.classList.toggle('err', !!err); };
+  text.addEventListener('input', sync); nick.addEventListener('input', sync);
+  window.addEventListener('ch:user', () => { nameRefused = false; sync(); });
+  sync();
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (btn.disabled) return;
+    const token = window.turnstile?.getResponse() || form.querySelector('[name=cf-turnstile-response]')?.value;
+    if (!token) return say('One moment, checking you are human…', true);
+    const sent = text.value, tag = form.querySelector('[name=tag]:checked')?.value;
+    const stored = userName(), author = stored || nick.value.trim();
+    submitting = true; sync();
+    try {
+      const r = await fetch('/api/comments', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comet_id: c.id, body: sent, author, turnstile: token, ...(tag ? { tag } : {}) }) });
+      const out = await r.json().catch(() => ({}));
+      if (r.status === 400 && out.field === 'author' && stored) nameRefused = true;   // show the nickname field instead
+      if (!r.ok) throw new Error(out.error || `Could not post (${r.status})`);
+      c.comments.push(out.comment); c.tags = out.tags;
+      talk(c);
+      if (text.value === sent) { text.value = ''; form.querySelectorAll('[name=tag]').forEach(x => { x.checked = false; }); }
+      say(hint);
+    } catch (err) {
+      say(err.message, true);
+    } finally {
+      window.turnstile?.reset();   // a token works once
+      submitting = false; sync();
+    }
+  });
+}
+
 fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
   document.title = `${c.id} · Comet Hunt`;
   $('c-id').textContent = c.id;
-  const n = c.tags.comet + c.tags.asteroid + c.tags.glitch + c.tags.unsure;
-  if (c.kind === 'comet' && n) { $('c-verdict').textContent = c.tags.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }
   $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : c.real ? 'Known comet · JPL catalog' : 'Known object') : 'Not in any catalog';
   if (c.kind === 'comet') { const p = $('c-patch'); p.href = `timelapse.html?ra=${c.ra}&dec=${c.dec}&det=D1&diff=1`; p.hidden = false; }
   if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); }
   else if (c.detail?.spherex) known(c);
   else $('c-empty').hidden = false;
   talk(c);
+  composer(c);
 }).catch(err => { $('c-id').textContent = 'Comet not found'; console.warn(err); });
