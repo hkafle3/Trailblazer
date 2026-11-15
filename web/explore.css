@@ -11,10 +11,9 @@ body.explore { background: radial-gradient(90% 80% at 50% 40%, #0b1120, #04060c 
   position: fixed; left: 50%; top: 0; width: calc(2462 * var(--e)); height: calc(1420 * var(--e)); transform: translateX(-50%);
 }
 
-/* ---------- the map: the sky oval on its black plate ---------- */
+/* ---------- the map: the sky oval straight on the page background ---------- */
 body.explore .map-wrap { left: calc(249 * var(--e)); top: calc(234 * var(--e)); width: calc(2016 * var(--e)); transform: none; animation: map-in .9s var(--ease) both; }
-body.explore .map-wrap::before { inset: 0; border: 0; border-radius: 0; background: #000; z-index: -1; }
-body.explore .map-wrap::after { content: none; }
+body.explore .map-wrap::before, body.explore .map-wrap::after { content: none; }
 body.explore .map { box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 0 80px rgba(127, 184, 255, .12); }
 @keyframes map-in { from { opacity: 0; transform: scale(.97); } }
 
@@ -51,7 +50,7 @@ body.explore .layers > summary:hover { background: rgba(255, 255, 255, .08); }
 body.explore .layers > summary .chev { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; transition: transform .3s var(--ease); }
 body.explore .layers[open] > summary .chev { transform: rotate(180deg); }
 body.explore .layers-body {
-  position: absolute; left: 0; bottom: 58px; width: 270px; padding: 18px 24px 16px; border-radius: 14px 14px 10px 10px;
+  position: absolute; left: 0; bottom: 58px; width: 270px; padding: 18px 24px 16px; border-radius: 0 0 10px 10px;   /* square top: the white rule runs straight end to end */
   border: 0; border-top: 2px solid #fff; background: rgba(4, 6, 12, .9); box-shadow: 0 20px 50px -20px #000; font-family: var(--panel-font);
 }
 body.explore .layers-body h2 { margin: 0 0 12px; font: 400 21px/1 var(--panel-font); letter-spacing: .02em; color: #fff; }
@@ -61,6 +60,14 @@ body.explore .layers .layer { display: flex; align-items: center; justify-conten
 .cbx:checked::after { transform: none; }
 .cbx:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 body.explore .heat-key { padding: 2px 0 8px 34px; }
+
+/* Examples: same look as Layers, one button-height (44px) plus a 12px gap above it */
+body.explore .layers.examples { bottom: 84px; }
+body.explore .examples .example { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 0; font-size: 14.5px; color: #f2f2f2; text-decoration: none; }
+body.explore .examples .example .ic { width: 16px; height: 16px; opacity: .55; transition: opacity .2s, transform .2s var(--ease); }
+body.explore .examples .example:hover { color: #fff; }
+body.explore .examples .example:hover .ic { opacity: 1; transform: translateX(3px); }
+body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 3px; }
 
 /* ---------- phones: map, timeline and layers stack ---------- */
 @media (max-width: 640px) {

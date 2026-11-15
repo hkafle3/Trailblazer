@@ -103,8 +103,11 @@ async def main():
         await explore(ex, "/explore.html")
         await ex.focus("#play"); await ex.keyboard.press("PageDown"); await ex.wait_for_timeout(200)
         hrefs = await ex.eval_on_selector_all('#marks a[href^="comet.html"]', "as => as.map(a => a.getAttribute('href'))")
-        assert len(hrefs) >= 78 and all(h.endswith(f"&day={DEFAULT - 30}") for h in hrefs), "links do not follow the timeline"   # 72 known, 5 example, the card
-        print(f"PASS timeline: after moving back 30 days all {len(hrefs)} comet links (example comets and the card too) carry day {DEFAULT - 30}")
+        assert len(hrefs) >= 72 and all(h.endswith(f"&day={DEFAULT - 30}") for h in hrefs), "links do not follow the timeline"   # the 72 known comets
+        # comets people found (5 examples) and the featured card open the patch viewer as Discovered (Ming's design), at their place
+        found = await ex.eval_on_selector_all('#marks a[href*="found="]', "as => as.map(a => [a.id === 'card-comet' ? document.querySelector('#card-comet [data-f=id]').textContent : a.querySelector('b').textContent, a.getAttribute('href')])")
+        assert len(found) >= 6 and all(h.startswith("timelapse.html?ra=") and urllib.parse.parse_qs(h.split("?")[1])["found"] == [n] for n, h in found), f"found comets link to {found}"
+        print(f"PASS timeline: after moving back 30 days all {len(hrefs)} known comet links carry day {DEFAULT - 30}; {len(found)} found-comet links (the card too) open the patch viewer as Discovered")
 
         # a comet too faint for Explore to show on a day still shows, dimmed, when found from its page
         await explore(ex, "/explore.html?day=120")
@@ -119,17 +122,18 @@ async def main():
 
         # an example comet has no path: it stays where Explore draws it, with no date
         await explore(ex, "/explore.html")
-        at = await ex.evaluate(FRAC, [await ex.query_selector("#map"), await ex.query_selector('.mk.comet[href^="comet.html?id=C-0147"] i')])
+        c0147 = '.mk.comet:has(b:text-is("C-0147"))'
+        at = await ex.evaluate(FRAC, [await ex.query_selector("#map"), await ex.query_selector(c0147 + ' i')])
         dot = await comet_page(pg, "comet.html?id=C-0147", "C-0147", at, None, "example")
         await find_on_map(pg, "C-0147", dot, DEFAULT, "example")
         dot = await comet_page(pg, "comet.html?id=C-0147&day=120", "C-0147", at, None, "example, day 120")
         await find_on_map(pg, "C-0147", dot, 120, "example, day 120")
-        await explore(ex, "/explore.html?day=300")   # its link carries the day too, so the round trip comes back to that day
-        href = await ex.get_attribute('.mk.comet[href^="comet.html?id=C-0147"]', "href")
-        assert href == "comet.html?id=C-0147&day=300", f"C-0147 links to {href} on day 300"
-        dot = await comet_page(pg, href, "C-0147", at, None, "example, from day 300")
-        await find_on_map(pg, "C-0147", dot, 300, "example, from day 300")
-        print("PASS example comet C-0147 keeps its fixed place on its page and after Find on map, and its link keeps the day")
+        await explore(ex, "/explore.html?day=300")   # its marker opens the patch viewer, as Discovered, at the place Explore draws it
+        q = urllib.parse.parse_qs((await ex.get_attribute(c0147, "href")).split("?")[1])
+        assert q["found"] == ["C-0147"] and close(mollweide(float(q["ra"][0]), float(q["dec"][0])), at), f"C-0147 links to {q}, drawn at {at}"
+        dot = await comet_page(pg, "comet.html?id=C-0147&day=300", "C-0147", at, None, "example, day 300")
+        await find_on_map(pg, "C-0147", dot, 300, "example, day 300")
+        print("PASS example comet C-0147 keeps its fixed place on its page and after Find on map, and its marker opens that place as Discovered")
 
         # a click while the replay runs opens the day that was clicked, once, however many clicks follow
         await explore(ex, "/explore.html")
@@ -187,7 +191,7 @@ async def main():
         await ex.route("**/api/comets", list_tracks)
         await explore(ex, "/explore.html?day=300")
         hrefs = await ex.eval_on_selector_all('#marks a[href^="comet.html"]', "as => as.map(a => a.getAttribute('href'))")
-        assert len(hrefs) >= 78 and all(h.endswith("&day=300") for h in hrefs) and len(await ex.evaluate(SHOWN)) >= 12, "Explore stopped placing comets when one path was empty"
+        assert len(hrefs) >= 72 and all(h.endswith("&day=300") for h in hrefs) and len(await ex.evaluate(SHOWN)) >= 12, "Explore stopped placing comets when one path was empty"
         await ex.unroute("**/api/comets")
         print("PASS odd paths: an empty path keeps the fixed place and the page still loads, a one-point path is that point, Explore carries on")
 

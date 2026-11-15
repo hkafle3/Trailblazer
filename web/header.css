@@ -80,5 +80,4 @@ body.page .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba
 
 /* inner pages: start content below the header, which grows with the window (older pages used fixed 88-100 px offsets) */
 .shell { padding-top: max(88px, calc(var(--head-h) + 16px)); }
-#left { top: max(96px, calc(var(--head-h) + 12px)); }
 .practice { top: max(100px, calc(var(--head-h) + 16px)); }
