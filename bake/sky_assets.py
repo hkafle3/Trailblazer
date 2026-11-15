@@ -95,8 +95,26 @@ def coverage(step=0.5, samples=12):
     Image.fromarray(img.reshape(H, W, 4), "RGBA").save(OUT / "coverage.png")
     visits(np.unique(np.concatenate(seen)), W, H)
     span = int(days.max()) + 1
-    json.dump({"mjd0": float(t0), "days": span, "images": len(rows), "step": step}, (OUT / "coverage.json").open("w"))
+    json.dump({"mjd0": float(t0), "days": span, "images": len(rows), "step": step, "deep_fields": deep_fields(count, W, H, step)},
+              (OUT / "coverage.json").open("w"))
     print(f"{len(rows)} images, MJD {t0} + {span} days, {np.isfinite(first).mean():.1%} of cells covered")
+
+
+def deep_fields(count, W, H, step):
+    """SPHEREx's two deep fields sit on the ecliptic poles, where every scan circle crosses. For each: its position and
+    the median photos per 0.5-degree cell within 2 degrees, against the whole sky's median (D1 photos)."""
+    dec = 90 - (np.arange(H) + 0.5) * step
+    ra = (np.arange(W) + 0.5) * step
+    RA, DEC = np.meshgrid(np.radians(ra), np.radians(dec))
+    e = np.radians(23.4393)
+    beta = np.degrees(np.arcsin(np.sin(DEC) * np.cos(e) - np.cos(DEC) * np.sin(e) * np.sin(RA))).ravel()
+    covered = count > 0
+    sky = float(np.median(count[covered]))
+    out = []
+    for name, ra0, dec0, sel in (("North ecliptic pole", 270.0, 66.5607, beta > 88), ("South ecliptic pole", 90.0, -66.5607, beta < -88)):
+        here = float(np.median(count[covered & sel]))
+        out.append(dict(name=name, ra=ra0, dec=dec0, photos=int(here), sky=int(sky)))
+    return out
 
 
 def visit_starts(codes, gap=20):

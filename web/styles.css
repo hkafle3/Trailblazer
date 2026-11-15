@@ -534,3 +534,8 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 #c-empty .visits { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
 #c-empty h2 { font-size: 20px; }
 .mk.known.faint { opacity: .35; }   /* a known comet too faint to see on this date */
+
+/* SPHEREx deep fields (ecliptic poles): a pale dashed ring, part of the SPHEREx photos layer */
+.mk.deep i { left: -13px; top: -13px; width: 26px; height: 26px; border: 1.5px dashed rgba(234, 241, 255, .75); box-shadow: 0 0 14px rgba(234, 241, 255, .25); }
+.mk.deep b { left: 18px; top: -8px; color: rgba(234, 241, 255, .9); }
+body:has(#ly-photos:not(:checked)) .mk.deep { display: none; }

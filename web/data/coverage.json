@@ -1,1 +1,1 @@
-{"mjd0": 60789.0, "days": 529, "images": 272962, "step": 0.5}
+{"mjd0": 60789.0, "days": 529, "images": 272962, "step": 0.5, "deep_fields": [{"name": "North ecliptic pole", "ra": 270.0, "dec": 66.5607, "photos": 420, "sky": 8}, {"name": "South ecliptic pole", "ra": 90.0, "dec": -66.5607, "photos": 62, "sky": 8}]}

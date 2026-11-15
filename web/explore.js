@@ -181,10 +181,26 @@ Promise.all([cometsLoaded, exploredLoaded]).then(() => {
 // The visit days for every pixel of the oval are looked up once, so moving the slider only compares numbers.
 // Each frame: never photographed = dark; photographed = a veil that clears with each pass; any visit in the last
 // FRESH days glows, so SPHEREx's scanning strip keeps moving across the sky for the whole timeline.
+// SPHEREx's two deep fields, on the ecliptic poles where every scan circle crosses: the densest time-lapses and the
+// most complete spectra. Numbers come from the real photo counts (bake/sky_assets.py deep_fields); a click opens one.
+function deepFields(fields) {
+  for (const f of fields) {
+    const a = document.createElement('a'), times = Math.round(f.photos / f.sky);
+    a.className = 'mk deep';
+    a.href = patchUrl(f.ra, f.dec);
+    a.title = `${f.name}: SPHEREx photographs here about ${times}x as often as a typical patch (${f.photos} photos vs ${f.sky}). Click to open it.`;
+    a.innerHTML = '<i></i>';
+    const b = document.createElement('b'); b.textContent = `Deep field ${times}x`; a.append(b);
+    place(a, f.ra, f.dec);
+    $('marks').append(a);
+  }
+}
+
 let showByDay = () => {};
 (async () => {
   const img = new Image(); img.src = 'data/visits.png';
   const [meta] = await Promise.all([getJson('data/coverage.json'), img.decode()]);   // both at once
+  deepFields(meta.deep_fields ?? []);
   const src = Object.assign(document.createElement('canvas'), { width: 720, height: 1080 }).getContext('2d', { willReadFrequently: true });
   src.drawImage(img, 0, 0);
   const px = src.getImageData(0, 0, 720, 1080).data;
