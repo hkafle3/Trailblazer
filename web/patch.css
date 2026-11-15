@@ -20,8 +20,8 @@ canvas#gl.drag { cursor: grabbing; }
 }
 .pstage > * { position: absolute; pointer-events: auto; }
 
-/* ---------- cards: a white top rule that curls down at both ends, on black ---------- */
-.pv-card { margin: 0; padding: calc(27 * var(--e)) 0 calc(22 * var(--e)) calc(46 * var(--e)); background: #000; border: 0; border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(20 * var(--e)) calc(20 * var(--e)) 0 0; }
+/* ---------- cards: a straight white top rule, on black ---------- */
+.pv-card { margin: 0; padding: calc(27 * var(--e)) 0 calc(22 * var(--e)) calc(46 * var(--e)); background: #000; border: 0; border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 0; }
 .pv-card h2 { margin: 0 0 calc(26 * var(--e)); font: 400 calc(40 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; }
 .pv-options { left: calc(89 * var(--e)); top: calc(230 * var(--e)); width: calc(453 * var(--e)); }
 .pv-layers { left: calc(89 * var(--e)); top: calc(430 * var(--e)); width: calc(453 * var(--e)); }
