@@ -149,10 +149,10 @@ async function gaia(url) {
   const p = position(url);
   if (p.error) return json(p, 400);
   const irsa = `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?${new URLSearchParams({ catalog: 'gaia_dr3_source', spatial: 'cone',
-    objstr: `${p.ra} ${p.dec}`, radius: '144', radunits: 'arcsec', outfmt: '1', selcols: 'ra,dec,pmra,pmdec,phot_g_mean_mag',
+    objstr: `${p.ra} ${p.dec}`, radius: '144', radunits: 'arcsec', outfmt: '1', selcols: 'ra,dec,pmra,pmdec,phot_g_mean_mag,source_id',
     constraints: 'pmra is not null and phot_g_mean_mag < 19' })}`;   // both sources: G < 19, fainter than SPHEREx measures; keeps crowded fields small
   const esa = `https://gea.esac.esa.int/tap-server/tap/sync?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv',
-    QUERY: `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND phot_g_mean_mag < 19 AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))` })}`;
+    QUERY: `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g, source_id FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND phot_g_mean_mag < 19 AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))` })}`;
   const ok = (source, stars) => json({ epoch: 2016.0, source, stars }, 200, { 'Cache-Control': 'public, max-age=86400' });
   try { return ok('IRSA', ipacStars(await fetchRetry(irsa, 2, 10000))); } catch (e) { console.warn('IRSA Gaia', e); }
   try {
@@ -162,12 +162,13 @@ async function gaia(url) {
   }
 }
 
-// ESA's CSV for the query above: five plain numbers a row (ra, dec, pmra, pmdec, g), read straight like ipacStars
+// ESA's CSV for the query above: five plain numbers a row (ra, dec, pmra, pmdec, g) and the Gaia DR3 id, read straight like
+// ipacStars. The id stays text: 19 digits are more than a JavaScript number holds exactly.
 function esaStars(text) {
   const lines = text.trim().split('\n');
-  if (lines[0]?.replace(/\s/g, '') !== 'ra,dec,pmra,pmdec,g') throw new Error('ESA sent no table');
+  if (lines[0]?.replace(/\s/g, '') !== 'ra,dec,pmra,pmdec,g,source_id') throw new Error('ESA sent no table');
   const stars = [];
-  for (let i = 1; i < lines.length; i++) { const [ra, dec, pmra, pmdec, g] = lines[i].split(',').map(Number); stars.push({ ra, dec, pmra, pmdec, g }); }
+  for (let i = 1; i < lines.length; i++) { const v = lines[i].split(','), [ra, dec, pmra, pmdec, g] = v.map(Number); stars.push({ ra, dec, pmra, pmdec, g, id: v[5].trim() }); }
   return stars;
 }
 
@@ -178,15 +179,15 @@ function ipacStars(text) {
   const lines = text.split('\n'), head = lines.find(l => l.startsWith('|'));
   if (!head) throw new Error('IRSA sent no table');
   const cols = head.split('|').map(c => c.trim()).filter(Boolean);
-  const [iRa, iDec, iPmra, iPmdec, iG] = ['ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag'].map(k => cols.indexOf(k));
-  if ([iRa, iDec, iPmra, iPmdec, iG].includes(-1)) throw new Error('IRSA table is missing a column');
+  const [iRa, iDec, iPmra, iPmdec, iG, iId] = ['ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag', 'source_id'].map(k => cols.indexOf(k));
+  if ([iRa, iDec, iPmra, iPmdec, iG, iId].includes(-1)) throw new Error('IRSA table is missing a column');
   const stars = [];
   for (const l of lines) {
     const c0 = l.charCodeAt(0);
     if (!l || c0 === 92 || c0 === 124) continue;   // \ or |
     const v = l.trim().split(/\s+/);
     const pmra = +v[iPmra], pmdec = +v[iPmdec];   // "null" -> NaN
-    if (pmra === pmra && pmdec === pmdec) stars.push({ ra: +v[iRa], dec: +v[iDec], pmra, pmdec, g: +v[iG] });
+    if (pmra === pmra && pmdec === pmdec) stars.push({ ra: +v[iRa], dec: +v[iDec], pmra, pmdec, g: +v[iG], id: v[iId] });
   }
   return stars;
 }

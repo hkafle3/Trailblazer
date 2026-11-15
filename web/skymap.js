@@ -7,7 +7,8 @@ export const wrap = d => ((d + 180) % 360 + 360) % 360 - 180;
 export function fwdLon(lon, dec) {
   const lat = dec * RAD;
   let t = lat;
-  for (let i = 0; i < 10 && Math.abs(dec) < 89.9; i++) t -= (2 * t + Math.sin(2 * t) - Math.PI * Math.sin(lat)) / (2 + 2 * Math.cos(2 * t));
+  // Newton's method, run until it settles: it is slow within a degree of the poles, and the deep zoom shows the difference
+  if (Math.abs(dec) < 90 - 1e-9) for (let i = 0; i < 60; i++) { const d = (2 * t + Math.sin(2 * t) - Math.PI * Math.sin(lat)) / (2 + 2 * Math.cos(2 * t)); t -= d; if (Math.abs(d) < 1e-13) break; }
   const x = (2 * R2 / Math.PI) * lon * RAD * Math.cos(t), y = R2 * Math.sin(t);
   return [(x + 2 * R2) / (4 * R2), (R2 - y) / (2 * R2)];
 }

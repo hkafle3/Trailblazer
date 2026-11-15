@@ -23,7 +23,7 @@
 // Reduced motion: no flight. The time-lapse simply takes the map's place, and back swaps the map in again.
 import { fwd, RAD } from './skymap.js';
 import * as view from './explore-view.js';
-import { radec2tile, tileUV, tileUrl } from './healpix.js';
+import { tilePos, tileUrl } from './healpix.js';
 
 const $ = id => document.getElementById(id);
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
@@ -33,14 +33,15 @@ const skyImg = document.querySelector('#map .sky'), cover = $('cover');
 
 const DET = 'D1';            // the detector every other patch link on Explore opens (the six cover a spot about equally)
 const AIM_W = 66;            // the aim's width in px; its shape is the photo's (1146 x 902)
-const IN_MS = 2200, OUT_MS = 1500;
+const IN_MS = 1900, OUT_MS = 1400;
 const PUSH = Math.log(2.2);  // how much further "zoom" a scroll must ask for at the deepest level: about 4 wheel notches
 const PINCH = Math.log(1.6); // and a pinch: fingers 1.6x further apart
 const GAP = 180;             // ms without wheel events that ends one scroll
-// SPHEREx sky tiles (HiPS) between the map picture and the photo, as two cutouts round the spot: a wide one from
-// order 3 tiles (51 arcsec a pixel) and a close one from order 5 (12.9 arcsec, the sharpest there is). Each step in the
-// chain map > wide > close > photo is 4 to 12 times sharper than the one before, so the sky stays crisp all the way in.
-const SKIES = [{ order: 3, fov: 11, n: 560 }, { order: 5, fov: 3, n: 800 }];
+// The sky inside the flying frame: SPHEREx sky tiles (HiPS) cut out round the spot, north up like the photo. The map's
+// deepest zoom shows the sharpest tiles there are (order 5, 12.9 arcsec a pixel, explore-deep.js), so one cutout at
+// that order carries the picture from the map's own sharpness to where the photo (5 arcsec a pixel) takes over.
+// A list, so a wider, coarser cutout can be added if the map's deepest zoom ever stops short of the tiles again.
+const SKIES = [{ order: 5, fov: 3, n: 800 }];
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const smooth = x => { x = clamp01(x); return x * x * x * (x * (6 * x - 15) + 10); };
@@ -85,7 +86,7 @@ function tanSky(ra0, dec0, east, north) {
   const c = Math.atan(rho), s = Math.sin(c), co = Math.cos(c);
   return [ra0 * RAD + Math.atan2(x * s, rho * Math.cos(d0) * co - y * Math.sin(d0) * s), Math.asin(co * Math.sin(d0) + y * s * Math.cos(d0) / rho)];
 }
-const cutAt = (ra, dec, { order, fov, n }, i, j) => radec2tile(order, ...tanSky(ra, dec, -(i + .5 - n / 2) * fov / n, -(j + .5 - n / 2) * fov / n));
+const cutAt = (ra, dec, { order, fov, n }, i, j) => tilePos(order, ...tanSky(ra, dec, -(i + .5 - n / 2) * fov / n, -(j + .5 - n / 2) * fov / n));
 function cutTiles(ra, dec, sky) {   // the tiles a cutout touches (sampled every 16 px), loading
   const need = new Set(), n = sky.n;
   for (let j = 0; j <= n; j += 16) for (let i = 0; i <= n; i += 16) need.add(cutAt(ra, dec, sky, Math.min(i, n - 1), Math.min(j, n - 1)).k);
@@ -96,9 +97,9 @@ async function cutout(ra, dec, sky) {
   if (![...got.values()].some(Boolean)) return null;   // the tile server is away: the dive goes on without this layer
   const out = new ImageData(SKY_N, SKY_N), o = out.data;
   for (let j = 0; j < SKY_N; j++) for (let i = 0; i < SKY_N; i++) {
-    const { k, u, v } = cutAt(ra, dec, sky, i, j), t = got.get(k);
+    const { k, c, r } = cutAt(ra, dec, sky, i, j), t = got.get(k);
     if (!t) continue;
-    const [c, r] = tileUV(u, v), q = 4 * (Math.min(511, Math.floor(r * 512)) * 512 + Math.min(511, Math.floor(c * 512))), p = 4 * (j * SKY_N + i);
+    const q = 4 * (Math.min(511, Math.floor(r * 512)) * 512 + Math.min(511, Math.floor(c * 512))), p = 4 * (j * SKY_N + i);
     o[p] = t[q]; o[p + 1] = t[q + 1]; o[p + 2] = t[q + 2];
     o[p + 3] = 255 * (1 - smooth((Math.hypot(i + .5 - SKY_N / 2, j + .5 - SKY_N / 2) / (SKY_N / 2) - .8) / .2));   // a soft round edge
   }
@@ -266,6 +267,7 @@ async function start(pushEntry = true, spot = here()) {
   document.body.classList.add('diving', 'flying');
   d.c = view.toScreen(d.ra, d.dec); d.M0 = mapScale(d.ra, d.dec); d.s0 = Math.sqrt(Math.abs(d.M0[0] * d.M0[3] - d.M0[1] * d.M0[2]));
   d.o = `${d.c[0] - view.X}px ${d.c[1] - view.Y}px`;
+  d.tint = getComputedStyle(skyImg).filter;
   const loaded = await Promise.race([d.ready.then(() => true), new Promise(r => setTimeout(r, 5000))]);
   if (dive !== d || d.phase !== 'in') return;   // backed out while it loaded
   const r = photoRect(d);
@@ -309,7 +311,8 @@ function paint(d) {
   // inside it: the sky, in degrees from the spot, through M (north swings up as a goes to 1)
   const a = smooth((e - .05) / .45), M = d.M0.map((m, i) => s * ((1 - a) * m / d.s0 + (i === 0 || i === 3 ? a : 0)));
   const k = cv.width / w, ox = cv.width / 2, oy = cv.height / 2;
-  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.fillStyle = '#04060c'; g.fillRect(0, 0, cv.width, cv.height);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.filter = 'none'; g.fillStyle = '#04060c'; g.fillRect(0, 0, cv.width, cv.height);
+  // the sky layers get the sky picture's colour filter (d.tint, styles.css), so the frame starts as a piece of the map; the photo is drawn plain
   // each layer fades in as it grows to cover the frame, over the one before
   const skyOn = SKIES.map((sky, i) => (d.skies[i] ? smooth((sky.fov * s / w - .9) / .9) : 0)), shot = d.shot, shotOn = shot ? smooth((shot.deg * s / w - .8) / .8) : 0;
   // the map picture (and its veil of sky not photographed yet) underneath; with no tiles at all it fades to dark
@@ -324,13 +327,14 @@ function paint(d) {
       const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height, q = view.W / iw;   // map px per image px
       if (!iw || alpha < .01) continue;
       const sx = Math.max(0, u * iw - half / q - 1), sy = Math.max(0, v * ih - half / q - 1), sw = Math.min(iw, u * iw + half / q + 1) - sx, sh = Math.min(ih, v * ih + half / q + 1) - sy;
-      g.globalAlpha = alpha;
+      g.globalAlpha = alpha; g.filter = img === skyImg ? d.tint : 'none';
       g.drawImage(img, sx, sy, sw, sh, (sx - u * iw) * q, (sy - v * ih) * q, sw * q, sh * q);
     }
   }
   g.setTransform(M[0] * k, M[2] * k, M[1] * k, M[3] * k, ox, oy);
-  g.imageSmoothingEnabled = true;
+  g.imageSmoothingEnabled = true; g.filter = d.tint;
   SKIES.forEach(({ fov }, i) => { if (skyOn[i] > .01) { g.globalAlpha = skyOn[i]; g.drawImage(d.skies[i], -fov / 2, -fov / 2, fov, fov); } });
+  g.filter = 'none';
   if (shotOn > .01) { g.globalAlpha = shotOn; g.imageSmoothingEnabled = false; g.drawImage(shot.cv, -shot.deg / 2, -shot.degH / 2, shot.deg, shot.degH); }
 }
 const others = () => [...document.body.children].filter(el => el !== dive?.f && el !== box && el.tagName !== 'SCRIPT');

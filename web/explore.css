@@ -257,5 +257,8 @@ body.flying::after { content: ""; position: fixed; inset: 0; z-index: 30; }   /*
 body.explore:has(.dive-frame.on) { touch-action: auto; }   /* phones: the time-lapse in the frame scrolls */
 @media (prefers-reduced-motion: reduce) { body.explore .map-wrap, .tl { animation: none; } body.explore .map-wrap, #aim-ring { transition: none; } }
 
+/* deep zoom (explore-deep.js): sharp sky tiles on a canvas the size of the window, right above the sky picture */
+.map .hips { inset: auto; pointer-events: none; }
+
 /* the map takes over from the homepage sky oval (same view-transition-name) */
 body.explore .map { view-transition-name: sky; }
