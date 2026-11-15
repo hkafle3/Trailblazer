@@ -31,9 +31,14 @@ onView(() => {
   $('zoom-out').disabled = $('zoom-whole').disabled = atMin();
   $('zoom-in').disabled = atMax();
 });
-phone.addEventListener('change', () => { on = false; document.body.classList.remove('zoomed'); });   // the phone file takes .map-wrap over
+function controls(min = true) { $('zoom-out').disabled = $('zoom-whole').disabled = min; $('zoom-in').disabled = false; }
+phone.addEventListener('change', () => {   // the phone file takes .map-wrap over, or hands it back as the CSS oval
+  cancel(); drop(); on = false;
+  document.body.classList.remove('zoomed'); controls();
+});
 addEventListener('resize', () => {   // keep the zoom and the middle of the view
   if (!desk() || !on) return;
+  cancel();
   const z = W / A.min, [mx, my] = mid(), u = (mx - X) / W, v = (my - Y) / W;
   for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
   measure(area());
@@ -42,8 +47,11 @@ addEventListener('resize', () => {   // keep the zoom and the middle of the view
 });
 
 // ---- click or drag: the pointer is captured only once a press becomes a drag, so clicks keep their targets ----
-let press = null, swallow = false;
-addEventListener('pointerdown', () => { swallow = false; }, true);
+let press = null, swallowUntil = 0;
+function drop() {   // end a press without a click
+  if (press?.drag) { stage.releasePointerCapture?.(press.id); document.body.classList.remove('grabbing'); }
+  press = null;
+}
 stage.addEventListener('pointerdown', e => {
   if (!desk() || e.button || e.target.closest('.tl, .pincard')) return;
   press = { id: e.pointerId, x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, drag: false };
@@ -51,6 +59,7 @@ stage.addEventListener('pointerdown', e => {
 });
 addEventListener('pointermove', e => {
   if (!press || e.pointerId !== press.id) return;
+  if (!desk()) return drop();
   if (!press.drag) {
     if (Math.hypot(e.clientX - press.x0, e.clientY - press.y0) < 5) return;
     press.drag = true; begin();
@@ -59,17 +68,17 @@ addEventListener('pointermove', e => {
   set(W, X + e.clientX - press.lx, Y + e.clientY - press.ly);
   press.lx = e.clientX; press.ly = e.clientY;
 });
-function up(e) {
+addEventListener('pointerup', e => {
   if (!press || e.pointerId !== press.id) return;
   if (press.drag) {
-    swallow = true; document.body.classList.remove('grabbing');
+    swallowUntil = performance.now() + 300;   // the click this release makes, if any
     if (atMin()) whole(200);   // the whole sky springs back to its place
   }
-  press = null;
-}
-addEventListener('pointerup', up);
-addEventListener('pointercancel', up);
-addEventListener('click', e => { if (swallow) { swallow = false; e.preventDefault(); e.stopPropagation(); } }, true);   // a drag's release is not a click
+  drop();
+});
+addEventListener('pointerdown', () => { swallowUntil = 0; }, true);   // a new press is a new click
+addEventListener('pointercancel', e => { if (press && e.pointerId === press.id) drop(); });
+addEventListener('click', e => { if (performance.now() < swallowUntil) { swallowUntil = 0; e.preventDefault(); e.stopPropagation(); } }, true);   // a drag's release is not a click
 // links and the sky picture would start the browser's own drag-and-drop
 stage.addEventListener('dragstart', e => { if (desk()) e.preventDefault(); });
 
