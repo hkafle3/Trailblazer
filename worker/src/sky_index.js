@@ -1,16 +1,20 @@
 // Our own index of SPHEREx level-2 images, built by bake/sky_index.py from the image headers on NASA's S3 bucket.
 // It answers what IRSA's SIA search answered for /api/images: which images of one detector cover a sky position.
 // One file per detector (d1.bin .. d6.bin). Its head lists, per sky cell, where that cell's rows start; a request reads
-// the head (once per Worker instance) and one cell's rows. `read(name, offset, length)` returns an ArrayBuffer, so the
-// storage (R2, static files, a test's local file) is the caller's choice.
+// the head (once per Worker instance) and one cell's rows. The storage is the caller's choice: `read(name, offset,
+// length)` resolves to { buf: ArrayBuffer, etag, size } (size: the whole file's), from R2 or a test's local file.
 //
 // A row is one image in one cell: its start time, its footprint as four great-circle edges (unit normals, the image
 // is where every n . p >= 0) and the pieces of its obs_id and S3 key. The footprint is IRSA's own s_region (the outer
 // pixel edges' corners); SIA counts an image when its 0.001 degree search circle touches that polygon, and so do we.
+//
+// Anything wrong with what a read returns (a short read, a file replaced between reads, a value no index holds) throws:
+// a wrong answer would be cached for a day and saved, so the caller falls back to IRSA instead.
 
 const ROW = 64, COLLS = ['spherex_dr1', 'spherex_qr3', 'spherex_dr1_deep', 'spherex_qr3_deep'];
 const COLL_END = COLLS.map(c => `","coll":"${c}"}`);   // the end of a row's JSON text
-const RAD = Math.PI / 180, TOL = -Math.sin(0.001 * RAD);   // SIA's search circle: within 0.001 deg of every edge
+const RAD = Math.PI / 180, R = 0.001 * RAD;   // SIA's search circle, 0.001 deg
+const TOL = -Math.sin(R), NEAR = Math.cos(R);   // within R of an edge's great circle; within R of a vertex
 
 // Sky cells: 51 bands of Dec from the north pole, each cut into about 3.5 degree steps of RA (the heat map's grid,
 // cellAt in index.js). bake/sky_index.py has the Python twin; both must agree.
@@ -32,63 +36,122 @@ export const eclipticLat = (ra, dec) => {
 
 const heads = new Map();   // file name -> parsed head (a promise, so concurrent requests share one read)
 
-async function head(read, name) {
-  const fixed = new DataView(await read(name, 0, 24));
-  if (fixed.getUint32(0, true) !== 0x49594b53 || fixed.getUint32(4, true) !== 2) throw new Error(`${name} is not a version 2 sky index`);
-  const det = fixed.getUint32(8, true), cells = fixed.getUint32(12, true), fbytes = fixed.getUint32(20, true);
+// exactly `length` bytes of the file, from the same version of it (etag) when one is given
+async function get(read, name, offset, length, etag) {
+  const r = await read(name, offset, length);
+  if (!(r?.buf instanceof ArrayBuffer) || r.buf.byteLength !== length) throw new Error(`${name}: wanted ${length} bytes at ${offset}, got ${r?.buf?.byteLength}`);
+  if (etag !== undefined && r.etag !== etag) throw new Error(`${name} was replaced while it was being read`);
+  return r;
+}
+
+async function head(read, name, det) {
+  const fixed = await get(read, name, 0, 24), v = new DataView(fixed.buf), etag = fixed.etag;
+  if (v.getUint32(0, true) !== 0x49594b53 || v.getUint32(4, true) !== 2) throw new Error(`${name} is not a version 2 sky index`);
+  const cells = v.getUint32(12, true), rows = v.getUint32(16, true), fbytes = v.getUint32(20, true);
+  if (v.getUint32(8, true) !== Number(det)) throw new Error(`${name} is for another detector`);
   if (cells !== GRID[BANDS - 1][0] + GRID[BANDS - 1][1]) throw new Error(`${name} uses another cell grid`);
-  const size = 24 + 4 * (cells + 1) + fbytes, buf = await read(name, 0, size);
+  const size = 24 + 4 * (cells + 1) + fbytes, rowsAt = size + (-size & 7);
+  if (fixed.size !== rowsAt + rows * ROW) throw new Error(`${name} is ${fixed.size} bytes, its head says ${rowsAt + rows * ROW}`);
+  const buf = (await get(read, name, 0, size, etag)).buf;
   const first = new Uint32Array(buf.slice(24, 24 + 4 * (cells + 1)));
+  if (first[0] !== 0 || first[cells] !== rows || first.some((f, c) => c && f < first[c - 1])) throw new Error(`${name} has a broken cell table`);
   const periods = new Map();
   const folders = new TextDecoder().decode(new Uint8Array(buf, 24 + 4 * (cells + 1), fbytes)).split('\n').map(f => {
-    if (!/^[\w.\/-]+$/.test(f)) throw new Error(`${name} has a folder that would need JSON escaping`);
-    const [, , period, version] = f.split('/');
+    const [rel, l2, period, version, more] = f.split('/');
+    // no character needs JSON escaping in a key, an obs_id or a collection
+    if (!/^[\w.\/-]+$/.test(f) || !/^(dr1|qr3)$/.test(rel) || l2 !== 'level2' || !period || !version || more !== undefined) throw new Error(`${name} has a bad folder`);
     if (!periods.has(period)) periods.set(period, periods.size);
     const pre = `${f}/${det}/level2_${period}_`, post = `D${det}_spx_${version}.fits`;
     // a, b: the constant text around a row's "rest" (seq_sub) in the JSON writer
     return { pre, post, period, p: periods.get(period), a: `,"key":"${pre}`, b: `${post}","obs":"${period}_` };
   });
-  return { det, first, folders, rowsAt: size + (-size & 7) };
+  return { etag, first, folders, rowsAt };
 }
-
-// The file's head is parsed once per Worker instance. When the file is replaced, the caller's read notices (R2's etag
-// changes) and calls skyForget, so the next answer reads the new head.
-export const skyForget = det => heads.delete(`d${det}.bin`);
 
 // The parsed head of one detector's file, read once per Worker instance (a failed read is retried next time)
 export function skyHead(read, det) {
   const name = `d${det}.bin`;
-  if (!heads.has(name)) heads.set(name, head(read, name).catch(e => { heads.delete(name); throw e; }));
+  if (!heads.has(name)) {
+    const h = head(read, name, det).catch(e => { if (heads.get(name) === h) heads.delete(name); throw e; });
+    heads.set(name, h);
+  }
   return heads.get(name);
+}
+
+// unit vector
+const unit = (x, y, z) => { const l = Math.hypot(x, y, z); return [x / l, y / l, z / l]; };
+
+// Is p (x, y, z) within R of the polygon, though outside it (some edge's n . p < 0)? The nearest point of a convex
+// polygon is a corner, or a point inside one edge's segment; widening each edge on its own (all n . p >= TOL) would
+// also take points diagonally off a corner, up to R * sqrt(2) away. Corners come back as the crossing of neighbouring
+// edges, the one on p's side. Only rows already within TOL of every edge get here.
+function nearOutside(f32, j, x, y, z, d) {
+  const n = k => [f32[j + 3 * k], f32[j + 3 * k + 1], f32[j + 3 * k + 2]];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], p = [x, y, z];
+  const corner = k => {   // where edge k - 1 meets edge k (edge k runs from corner k to corner k + 1)
+    const v = unit(...cross(n((k + 3) % 4), n(k)));
+    return dot(v, p) < 0 ? v.map(c => -c) : v;
+  };
+  const cs = [0, 1, 2, 3].map(corner);
+  if (cs.some(v => dot(v, p) >= NEAR)) return true;
+  for (let k = 0; k < 4; k++) {
+    if (d[k] >= 0) continue;
+    const e = n(k), a = cs[k], b = cs[(k + 1) % 4];
+    // p projects inside the segment a..b when it is between the planes through the edge normal and each end
+    const ma = cross(e, a), mb = cross(e, b);
+    if (dot(ma, p) * dot(ma, b) >= 0 && dot(mb, p) * dot(mb, a) >= 0) return true;   // and then its distance is asin(-d) <= R
+  }
+  return false;
 }
 
 // Which rows of (ra, dec)'s cell are the answer: row numbers in answer order, one per obs_id, and the number of matching
 // images per collection searched. Rows are stored in time order, so the answer comes out sorted. An obs_id seen again
 // in a lower (earlier listed) collection takes the place of the first one, as /api/images keeps DR1 first; only then is
 // a re-sort needed. Plain numbers only: the two writers below turn the rows into objects or straight into JSON text.
-async function pick(read, ra, dec, det) {
-  const name = `d${det}.bin`, h = await skyHead(read, det), c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
-  const deep = Math.abs(eclipticLat(ra, dec)) > 75;
-  const collections = Object.fromEntries((deep ? COLLS : COLLS.slice(0, 2)).map(k => [k, 0]));
-  if (!n) return { h, rows: [], collections };
-  const buf = await read(name, h.rowsAt + h.first[c] * ROW, n * ROW);
-  const f64 = new Float64Array(buf), f32 = new Float32Array(buf), u16 = new Uint16Array(buf), u8 = new Uint8Array(buf);
-  const x = Math.cos(dec * RAD) * Math.cos(ra * RAD), y = Math.cos(dec * RAD) * Math.sin(ra * RAD), z = Math.sin(dec * RAD);
-  const rows = [], at = new Map();   // at: obs number -> place in rows
-  let resort = false;
-  for (let i = 0; i < n; i++) {
-    const coll = u8[i * ROW + 61];
-    if (coll >= 2 && !deep) continue;
-    let j = i * 16 + 2, ok = true;
-    for (let e = 0; e < 4 && ok; e++, j += 3) ok = f32[j] * x + f32[j + 1] * y + f32[j + 2] * z >= TOL;
-    if (!ok) continue;
-    collections[COLLS[coll]]++;
-    const id = (h.folders[u16[i * 32 + 28]].p * 10000 + u16[i * 32 + 29]) * 10 + u8[i * ROW + 60], had = at.get(id);
-    if (had === undefined) { at.set(id, rows.length); rows.push(i); }
-    else if (coll < u8[rows[had] * ROW + 61]) { rows[had] = i; resort = true; }
+async function pickOnce(read, ra, dec, det) {
+  const name = `d${det}.bin`, hp = skyHead(read, det), h = await hp;
+  try {
+    const c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
+    const deep = Math.abs(eclipticLat(ra, dec)) > 75;
+    const collections = Object.fromEntries((deep ? COLLS : COLLS.slice(0, 2)).map(k => [k, 0]));
+    if (!n) return { h, rows: [], collections };
+    const buf = (await get(read, name, h.rowsAt + h.first[c] * ROW, n * ROW, h.etag)).buf;
+    const f64 = new Float64Array(buf), f32 = new Float32Array(buf), u16 = new Uint16Array(buf), u8 = new Uint8Array(buf);
+    const x = Math.cos(dec * RAD) * Math.cos(ra * RAD), y = Math.cos(dec * RAD) * Math.sin(ra * RAD), z = Math.sin(dec * RAD);
+    const rows = [], at = new Map(), d = [0, 0, 0, 0];   // at: obs number -> place in rows; d: the row's n . p per edge
+    let resort = false;
+    for (let i = 0; i < n; i++) {
+      const coll = u8[i * ROW + 61];
+      if (coll > 3) throw new Error(`${name}: row ${h.first[c] + i} has collection ${coll}`);
+      if (coll >= 2 && !deep) continue;
+      let j = i * 16 + 2, out = false, far = false;
+      for (let e = 0; e < 4; e++, j += 3) {
+        const v = f32[j] * x + f32[j + 1] * y + f32[j + 2] * z;
+        if (!Number.isFinite(v)) throw new Error(`${name}: row ${h.first[c] + i} has a broken footprint`);
+        d[e] = v; out ||= v < 0; far ||= v < TOL;
+        if (far) break;
+      }
+      if (far || (out && !nearOutside(f32, i * 16 + 2, x, y, z, d))) continue;
+      const fo = h.folders[u16[i * 32 + 28]], seq = u16[i * 32 + 29], sub = u8[i * ROW + 60], t = f64[i * 8];
+      if (!fo || seq > 9999 || sub > 9 || !(t > 50000 && t < 80000)) throw new Error(`${name}: row ${h.first[c] + i} has a value no index holds`);
+      collections[COLLS[coll]]++;
+      const id = (fo.p * 10000 + seq) * 10 + sub, had = at.get(id);
+      if (had === undefined) { at.set(id, rows.length); rows.push(i); }
+      else if (coll < u8[rows[had] * ROW + 61]) { rows[had] = i; resort = true; }
+    }
+    if (resort) rows.sort((a, b) => f64[a * 8] - f64[b * 8]);
+    return { h, rows, collections, f64, u16, u8 };
+  } catch (e) {
+    if (heads.get(name) === hp) heads.delete(name);   // this head may be stale: the next try reads it again
+    throw e;
   }
-  if (resort) rows.sort((a, b) => f64[a * 8] - f64[b * 8]);
-  return { h, rows, collections, f64, u16, u8 };
+}
+
+// A file replaced since this instance read its head shows as a different etag (or a range past its end): one more try
+// with a fresh head. A second failure goes to the caller.
+async function pick(read, ra, dec, det) {
+  try { return await pickOnce(read, ra, dec, det); } catch { return await pickOnce(read, ra, dec, det); }
 }
 
 // one row's fields; t is MJD-BEG to 6 decimals, the way SIA writes t_min. The file already holds it rounded (version

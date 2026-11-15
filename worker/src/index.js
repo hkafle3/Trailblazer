@@ -6,7 +6,7 @@
 //   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
-import { skyImagesJson, skyForget, eclipticLat } from './sky_index.js';
+import { skyImagesJson, eclipticLat } from './sky_index.js';
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
@@ -101,14 +101,12 @@ async function images(url, env) {
   // (no binding, a missing file, an R2 error). Same answer: checked against IRSA at 47 D1 positions, 0 differences.
   // The answer is written as JSON text straight from the index rows (the same bytes json() would give), which halves
   // the CPU of a deep-field answer of about 1 MB.
-  // Any failure drops this instance's parsed head, and the second try reads it again: a file replaced since the head
-  // was read (r2Read notices a new etag, or a range past the end of a smaller file) then answers from the new file.
-  for (let i = 0; i < 2; i++) {
-    try {
-      return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1)),
-        { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400' } });
-    } catch (e) { console.warn('sky index', e); skyForget(det.slice(1)); skyEtags.delete(`d${det.slice(1)}.bin`); }
-  }
+  // skyImagesJson checks every read and tries once more with a fresh head (a file replaced meanwhile); if it still
+  // cannot answer, IRSA does.
+  try {
+    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1)),
+      { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400' } });
+  } catch (e) { console.warn('sky index', e); }
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches
   const colls = Math.abs(eclipticLat(p.ra, p.dec)) > 75 ? [...WIDE, ...DEEP] : WIDE;
   // On 2026-11-15 IRSA's search failed most requests with an instant 502 and answered about one in three after ~21 s,
@@ -135,18 +133,13 @@ async function images(url, env) {
   return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts, source: 'IRSA' }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
 }
 
-// skyImagesJson reads byte ranges of d1.bin .. d6.bin from the R2 bucket bound as SKY. Each file's etag is kept from
-// its last read in this instance: a different one means the file was replaced (a rebuilt index) and the head parsed
-// from the old file no longer fits, so the read fails and images() tries again with a fresh head.
-const skyEtags = new Map();
+// skyImagesJson reads byte ranges of d1.bin .. d6.bin from the R2 bucket bound as SKY, each with the file's etag and
+// size so it can tell a replaced or short file
 const r2Read = env => async (name, offset, length) => {
   if (!env.SKY) throw new Error('no SKY binding');
   const o = await env.SKY.get(name, { range: { offset, length } });
   if (!o) throw new Error(`${name} is not in the sky index bucket`);
-  const was = skyEtags.get(name);
-  skyEtags.set(name, o.etag);
-  if (was !== undefined && was !== o.etag) throw new Error(`${name} was replaced`);
-  return o.arrayBuffer();
+  return { buf: await o.arrayBuffer(), etag: o.etag, size: o.size };
 };
 
 // Gaia DR3 stars in a 0.04 degree cone, with proper motions. Gaia positions are for 2016.0 and fast stars move far by

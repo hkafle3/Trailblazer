@@ -9,7 +9,7 @@ import { skyImages, skyImagesJson, skyHead, cellAt } from './src/sky_index.js';
 
 const [dir, det = '1', only, mode] = process.argv.slice(2);
 const file = readFileSync(`${dir}/d${det}.bin`);
-const read = async (name, off, len) => file.buffer.slice(file.byteOffset + off, file.byteOffset + off + len);
+const read = async (name, off, len) => ({ buf: file.buffer.slice(file.byteOffset + off, file.byteOffset + off + len), etag: 'file', size: file.length });
 const answer = (ra, dec) => skyImagesJson(read, ra, dec, det);   // the text /api/images sends
 
 if (only) {   // child: one cold answer; mode "head" reads the head first, as a Worker instance that already answered once has

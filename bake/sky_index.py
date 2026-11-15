@@ -5,7 +5,10 @@ sky cell, read by worker/src/sky_index.js. Each image is its footprint polygon, 
 edges (pixel 0.5 and 2040.5) joined by great circles. That is IRSA's own s_region, and SIA's point search matches it
 (see the evaluator, bake/sky_index_eval.py). A point counts when it lies within SIA's 0.001 degree circle of the polygon.
 
-  uv run --with numpy python bake/sky_index.py HEADERS.jsonl OUT_DIR
+  uv run --with numpy python bake/sky_index.py HEADERS.jsonl OUT_DIR KEYS.tsv
+
+KEYS.tsv is the bucket listing the headers were read from (key<TAB>size). Before writing a detector's file, every key
+of that detector in the listing must have exactly one header row, and no row may be missing from the listing.
 
 File layout (little endian), version 2:
   "SKYI" u32 version, u32 detector, u32 cells, u32 rows, u32 folder_bytes
@@ -97,8 +100,32 @@ def normals(C):
 
 
 def inside(N, p, r_deg=0.001):
-    """Boolean per image: point p (unit vector) within r_deg of the polygon (each edge's half-space, widened by r)."""
+    """Boolean per image: p within r_deg of every edge's great circle. A superset of covers(): it also takes points
+    diagonally off a corner, up to r * sqrt(2) away. Fine for choosing cells, not for answers."""
     return ((N @ p) >= -math.sin(math.radians(r_deg))).all(-1)
+
+
+def outside_distance(c, n, p):
+    """Angle (radians) from p to one polygon (corners c, normals n, each (4, 3)) for p outside it: the nearest of its
+    corners and of the points inside an edge's segment (when p projects between the segment's ends)."""
+    best = min(math.acos(min(1.0, float(v @ p))) for v in c)
+    for k in range(4):
+        if n[k] @ p >= 0:
+            continue
+        a, b = c[k], c[(k + 1) % 4]
+        ma, mb = np.cross(n[k], a), np.cross(n[k], b)
+        if (ma @ p) * (ma @ b) >= 0 and (mb @ p) * (mb @ a) >= 0:
+            best = min(best, math.asin(min(1.0, -float(n[k] @ p))))
+    return best
+
+
+def covers(C, N, p, r_deg=0.001):
+    """Boolean per image: p inside the polygon or within r_deg of it, as SIA's search circle touching s_region."""
+    d = N @ p
+    out = (d >= 0).all(-1)
+    for i in np.nonzero(inside(N, p, r_deg) & ~out)[0]:
+        out[i] = outside_distance(C[i], N[i], p) <= math.radians(r_deg)
+    return out
 
 
 def cells_of(H, C, N):
@@ -166,8 +193,19 @@ def build(meta, H, out_dir):
             "rows_per_cell_max": int(sizes.max()), "max_cell": int(sizes.argmax()), "cells_per_image": len(order) / len(meta)}
 
 
+def complete(meta, keys_path, det):
+    """The detector's keys in the listing, minus those with a header row, and rows with no or a repeated key."""
+    listed = {k for k in (l.split("\t")[0].strip() for l in open(keys_path)) if KEY_RE.match(k) and KEY_RE.match(k).group(5) == str(det)}
+    have = [m["key"] for m in meta if m["det"] == det]
+    return sorted(listed - set(have)), sorted(set(have) - listed), len(have) - len(set(have))
+
+
 if __name__ == "__main__":
     meta, H = load(sys.argv[1])
     for d in sorted({m["det"] for m in meta}):   # one detector at a time keeps memory to one detector's rows
+        missing, unlisted, repeated = complete(meta, sys.argv[3], d)
+        if missing or unlisted or repeated:
+            sys.exit(f"D{d}: {len(missing)} listed images have no header (e.g. {missing[:2]}), {len(unlisted)} headers are "
+                     f"not in the listing, {repeated} repeated; no index file written")
         sel = [i for i, m in enumerate(meta) if m["det"] == d]
         print(json.dumps(build([meta[i] for i in sel], {k: v[sel] for k, v in H.items()}, sys.argv[2])), flush=True)

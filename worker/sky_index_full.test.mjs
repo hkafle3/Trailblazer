@@ -4,7 +4,7 @@
 // Its own file because skyImages keeps one parsed head per file name, and the fixture test uses d1.bin too.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openSync, readSync } from 'node:fs';
+import { openSync, readSync, fstatSync } from 'node:fs';
 import { skyImages, skyImagesJson, skyHead, cellAt } from './src/sky_index.js';
 
 const dir = process.env.SKY_INDEX_DIR;
@@ -12,7 +12,7 @@ const fds = {};
 const read = async (name, off, len) => {
   const b = Buffer.alloc(len);
   readSync(fds[name] ??= openSync(`${dir}/${name}`, 'r'), b, 0, len, off);
-  return b.buffer.slice(b.byteOffset, b.byteOffset + len);
+  return { buf: b.buffer.slice(b.byteOffset, b.byteOffset + len), etag: 'file', size: fstatSync(fds[name]).size };
 };
 
 for (const det of [1, 2, 3, 4, 5, 6]) {

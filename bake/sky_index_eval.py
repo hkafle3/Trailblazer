@@ -30,12 +30,12 @@ WIDE, DEEP = X.COLLS[:2], X.COLLS[2:]
 def run_index(index_dir, det, points):
     """Answers of worker/src/sky_index.js for [(ra, dec)], run in node exactly as the Worker calls it."""
     js = f"""
-import {{ readFileSync, readSync, openSync }} from 'node:fs';
+import {{ readFileSync, readSync, openSync, fstatSync }} from 'node:fs';
 import {{ skyImages }} from {json.dumps(str(ROOT / 'worker/src/sky_index.js'))};
 const fds = {{}};
 const read = async (name, off, len) => {{
   const fd = fds[name] ??= openSync({json.dumps(str(index_dir))} + '/' + name, 'r'), b = Buffer.alloc(len);
-  readSync(fd, b, 0, len, off); return b.buffer.slice(b.byteOffset, b.byteOffset + len);
+  readSync(fd, b, 0, len, off); return {{ buf: b.buffer.slice(b.byteOffset, b.byteOffset + len), etag: 'file', size: fstatSync(fd).size }};
 }};
 const out = [];
 for (const [ra, dec] of JSON.parse(readFileSync(0, 'utf8'))) out.push(await skyImages(read, ra, dec, {det}));
@@ -62,18 +62,25 @@ class Margins:
         meta, H = X.load(headers)
         sel = [i for i, m in enumerate(meta) if m["det"] == det]
         self.meta = [meta[i] for i in sel]
-        self.N = X.normals(X.corners({k: v[sel] for k, v in H.items()}))
+        self.C = X.corners({k: v[sel] for k, v in H.items()})
+        self.N = X.normals(self.C)
         self.by_obs = defaultdict(list)
         for i, m in enumerate(self.meta):
             self.by_obs[m["obs"]].append(i)
 
     def margin(self, obs, ra, dec):
+        """Signed distance to the polygon: inside, to the nearest edge (+); outside, to the nearest corner or segment (-)."""
         p = X.unit(ra, dec)
-        return [round(float(np.degrees(np.arcsin(np.min(self.N[i] @ p)))) * 3600, 2) for i in self.by_obs.get(obs, [])]
+        out = []
+        for i in self.by_obs.get(obs, []):
+            d = self.N[i] @ p
+            a = math.asin(float(d.min())) if (d >= 0).all() else -X.outside_distance(self.C[i], self.N[i], p)
+            out.append(round(math.degrees(a) * 3600, 2))
+        return out
 
     def inside_all(self, ra, dec, deep):
         """Brute force over every image (no cells): the index's answer without the index, to check the bucketing."""
-        ok = X.inside(self.N, X.unit(ra, dec))
+        ok = X.covers(self.C, self.N, X.unit(ra, dec))
         return {self.meta[i]["obs"]: self.meta[i]["coll"] for i in np.nonzero(ok)[0] if deep or self.meta[i]["coll"] in WIDE}
 
 
@@ -157,8 +164,8 @@ def main():
         sia = any(x["obs_id"] == p["obs"] and x["energy_bandpassname"] == f"SPHEREx-D{det}" for rows in pc.values() for x in rows)
         idx = any(x["obs"] == p["obs"] for g, c in zip(got, cases) if (round(c[1], 6), round(c[2], 6)) == (round(p["ra"], 6), round(p["dec"], 6)) for x in g["images"])
         m = M.margin(p["obs"], p["ra"], p["dec"])[0]
-        wcs = X.LO <= p["px"] <= X.HI and X.LO <= p["py"] <= X.HI
-        print(f"  {p['obs']} {p['edge']:24s} pixel ({p['px']:8.2f}, {p['py']:8.2f}) inside WCS box {str(wcs):5s} polygon margin {m:7.2f}\" "
+        pix = f"pixel ({p['px']:8.2f}, {p['py']:8.2f}) inside WCS box {str(X.LO <= p['px'] <= X.HI and X.LO <= p['py'] <= X.HI):5s}" if "px" in p else f"{'':44s}"
+        print(f"  {p['obs']} {p['edge']:28s} {pix} polygon margin {m:7.2f}\" "
               f"| SIA lists it {str(sia):5s} index {str(idx):5s}" + ("" if sia == idx else "  MISMATCH"))
         bad += sia != idx
 

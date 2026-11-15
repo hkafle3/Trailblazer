@@ -164,6 +164,8 @@ def main():
     print(f"{len(keys)} to read, {len(done)} already done", flush=True)
     st = asyncio.run(run(keys, out_f, conc, nbytes, log=lambda s: print(s, flush=True)))
     print(f"done ok {st['ok']} failed {st['failed']} retries {RETRIES[0]} in {st['secs']:.0f}s ({st['ok'] / st['secs']:.0f}/s)", flush=True)
+    if st["failed"]:   # an index built from this file would silently miss those images: run again, it resumes
+        sys.exit(f"{st['failed']} files failed; run again to read them")
 
 
 def check(path):   # parser and SIP against astropy on a saved header: uv run --with astropy python bake/sky_headers.py --check FILE
