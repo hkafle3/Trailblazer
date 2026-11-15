@@ -42,14 +42,15 @@ async def check_day(pg, day, why):
     """Faint comets on: every known comet has a marker at skymap.js's place, the faint ones as specks. Returns the markers."""
     shown, want = await pg.evaluate(SHOWN), await pg.evaluate(EXPECT, day)
     names = {s["name"] for s in shown}
+    keep = {"3I/ATLAS", await pg.evaluate("document.querySelector('#marks .mk.sel b')?.textContent")}   # always findable, dimmed when faint: 3I/ATLAS and the featured comet
     assert len(want) == 72 and names == set(want), f"{why}: {len(names)} of {len(want)} known comets have a marker, missing {set(want) - names}"
     for s in shown:
         u, v, mag = want[s["name"]]
         assert abs(s["at"][0] - u) <= TOL and abs(s["at"][1] - v) <= TOL, f"{why}: {s['name']} is at {s['at']}, skymap.js puts it at {[u, v]}"
         assert s["href"] == f"comet.html?id={urllib.parse.quote(s['name'], safe='()')}&day={day}", f"{why}: {s['name']} links to {s['href']}"
         faint = mag is None or mag > 16
-        assert s["speck"] == (faint and s["name"] != "3I/ATLAS"), f"{why}: {s['name']} (magnitude {mag}) speck={s['speck']}"
-    bright, specks = [s for s in shown if not s["speck"] and s["name"] != "3I/ATLAS"], [s for s in shown if s["speck"]]
+        assert s["speck"] == (faint and s["name"] not in keep), f"{why}: {s['name']} (magnitude {mag}) speck={s['speck']}"
+    bright, specks = [s for s in shown if not s["speck"] and s["name"] not in keep], [s for s in shown if s["speck"]]
     assert specks, f"{why}: no faint comet to test with"
     if bright:
         assert max(s["op"] for s in specks) < min(s["op"] for s in bright) and max(s["w"] for s in specks) < min(s["w"] for s in bright), \
