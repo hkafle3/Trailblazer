@@ -1,0 +1,16 @@
+# Cloudflare static assets: the live site sent HTML as plain "text/html", so browsers guessed the encoding.
+# One rule per page (each is served at its name without .html), so data files keep their own types.
+/
+  Content-Type: text/html; charset=utf-8
+/explore
+  Content-Type: text/html; charset=utf-8
+/comet
+  Content-Type: text/html; charset=utf-8
+/forums
+  Content-Type: text/html; charset=utf-8
+/timelapse
+  Content-Type: text/html; charset=utf-8
+/guide
+  Content-Type: text/html; charset=utf-8
+/bench
+  Content-Type: text/html; charset=utf-8
