@@ -185,10 +185,11 @@ Promise.all([cometsLoaded, exploredLoaded]).then(() => {
 // most complete spectra. Numbers come from the real photo counts (bake/sky_assets.py deep_fields); a click opens one.
 function deepFields(fields) {
   for (const f of fields) {
+    if (!(f.sky > 0)) continue;   // no typical count to compare against
     const a = document.createElement('a'), times = Math.round(f.photos / f.sky);
     a.className = 'mk deep';
     a.href = patchUrl(f.ra, f.dec);
-    a.title = `${f.name}: SPHEREx photographs here about ${times}x as often as a typical patch (${f.photos} photos vs ${f.sky}). Click to open it.`;
+    a.title = `${f.name}: SPHEREx photographs here about ${times}x as often as a typical patch (${Math.round(f.photos)} photos vs ${Math.round(f.sky)}). Click to open it.`;
     a.innerHTML = '<i></i>';
     const b = document.createElement('b'); b.textContent = `Deep field ${times}x`; a.append(b);
     place(a, f.ra, f.dec);
