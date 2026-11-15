@@ -81,7 +81,8 @@ body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 .pv-scroll::-webkit-scrollbar { width: max(3px, calc(5 * var(--e))); }
 .pv-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .15); }
 .pv-scroll::-webkit-scrollbar-thumb { background: #fff; }
-.pv-scroll.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent); }
+.pv-scroll:focus-visible { outline: 2px solid #fff; outline-offset: 2px; -webkit-mask-image: none; mask-image: none; }   /* reached by Tab when it scrolls; the fade would hide the outline */
+.pv-scroll.more:not(:focus-visible) { -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent); }
 #status { margin: calc(16 * var(--e)) 0 0; font: 400 calc(20 * var(--e)) / 1.4 var(--panel-font); color: #cfd6e4; }
 #status:empty { margin: 0; }
 .pv-desc h2 { margin-bottom: calc(32 * var(--e)); }
@@ -108,6 +109,7 @@ body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 .known-row.faint { display: block; color: var(--ink-3); }
 
 /* ---------- timeline: the same as Explore's, plus a dot for each visit ---------- */
+.tl-tick.quiet b { visibility: hidden; }   /* too narrow for every month: timeline.thin() keeps every 2nd, 3rd, 6th or 12th, January always */
 .tl { z-index: 2; left: calc(568 * var(--e)); top: calc(1215 * var(--e)); width: calc(1420 * var(--e)); font-family: var(--head-font); font-weight: 300; color: #e8e8e8; user-select: none; touch-action: none; }
 .tl-line { position: relative; height: max(1px, calc(2 * var(--e))); background: #c9c9c9; cursor: pointer; }
 .tl-line::before { content: ""; position: absolute; left: 0; right: 0; top: calc(-24 * var(--e)); bottom: calc(-70 * var(--e)); }
@@ -144,18 +146,15 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 .tmark { position: fixed; z-index: 1; transform: translate(-11px, -50%); pointer-events: none; display: flex; align-items: center; gap: 10px; font: 500 12.5px var(--mono); color: #d8e8ff; text-shadow: 0 1px 8px #000; white-space: nowrap; }
 .tmark i { width: 22px; height: 22px; border: 1.5px solid var(--known); border-radius: 50%; flex: none; box-shadow: 0 0 14px rgba(127, 184, 255, .6); }
 
-/* ---------- phones and narrow windows: one column, the page scrolls ---------- */
+/* ---------- phones and narrow windows: one column, the page scrolls, in the markup's order (reading order) ---------- */
 @media (max-width: 900px) {
   body.lapse { overflow: auto; }
   .pstage { --e: .5px; position: relative; left: auto; transform: none; width: auto; height: auto; display: flex; flex-direction: column; gap: 22px; padding: 76px 16px 40px; font-size: 15px; }
   .pstage > * { position: relative; left: auto; top: auto; width: auto; }
-  .pv-frame { order: 1; aspect-ratio: 1146 / 902; height: auto; }
-  .tl { order: 2; margin: 40px 18px 50px; --e: .55px; }
-  .pv-state { order: 3; height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
-  .pv-mini { order: 4; width: min(100%, 434px); height: auto; aspect-ratio: 434 / 297; }
-  .pv-desc { order: 5; }
-  .pv-found { order: 6; }
-  .pv-options { order: 7; } .pv-layers { order: 8; } .pv-others { order: 9; }
+  .pv-frame { aspect-ratio: 1146 / 902; height: auto; }
+  .tl { margin: 40px 18px 50px; --e: .55px; }
+  .pv-state { height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
+  .pv-mini { width: min(100%, 434px); height: auto; aspect-ratio: 434 / 297; }
   .pv-scroll { max-height: none !important; padding-right: 0; }
   .pv-card { padding: 14px 0 0 18px; border-top-width: 1.5px; }
   .pv-card h2 { font-size: 20px; margin-bottom: 12px; }

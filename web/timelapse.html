@@ -20,21 +20,8 @@
 <!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Layers, Others. Middle: the patch.
      Right: the whole region as a mini-map, Discovered/Undiscovered, Descriptions. Bottom: Explore's month timeline. -->
 <div class="pstage" id="stage">
-  <section class="pv-card pv-options" aria-label="Options">
-    <h2>Options</h2>
-    <label class="pv-row" for="fov">Zoom <input id="fov" type="range" min="1" max="12" step="0.5" value="6" aria-valuetext="6 arcmin wide"></label>
-  </section>
-  <section class="pv-card pv-layers" aria-label="Layers">
-    <h2>Layers</h2>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-spec"><span>Spectral</span></label>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-heat"><span>Heat</span></label>
-  </section>
-  <section class="pv-card pv-others" aria-label="Others">
-    <h2>Others</h2>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="still"><span>Hide Stationary</span></label>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="diff"><span>Color Difference</span></label>
-  </section>
-
+  <!-- In reading order, which is the phone's one-column order: the photo, the timeline, Discovered and the mini-map,
+       Descriptions, Findings, then Options, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
   <div class="pv-frame">
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
     <div id="legend" aria-hidden="true">
@@ -44,13 +31,27 @@
     </div>
   </div>
 
+  <!-- Explore's timeline: a tick per month, the date over the handle, a dot for each visit to this patch.
+       Drag to pick a visit; press the handle to play the visits in turn. -->
+  <div class="tl" id="tl">
+    <div class="tl-line" id="tl-line">
+      <div class="tl-ticks" id="tl-ticks" aria-hidden="true"></div>
+      <div id="tl-visits" aria-hidden="true"></div>
+      <output class="tl-date" id="t-date">&nbsp;</output>
+      <button class="tl-knob" id="play" type="button" role="slider" aria-label="Visit. Drag to pick a visit; press to play them in turn." aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <a class="pv-state" id="state" href="forums.html"><span id="state-label">Undiscovered</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
   <!-- the whole region SPHEREx cut out for this spot; the white box is the part in the big frame, the ring is the target -->
   <div class="pv-mini"><canvas id="mini" width="868" height="594" role="img" aria-label="The whole region, with the part on screen outlined"></canvas></div>
-  <a class="pv-state" id="state" href="forums.html"><span id="state-label">Undiscovered</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
 
-  <section class="pv-card pv-desc" aria-label="Descriptions">
+  <section class="pv-card pv-desc">
     <h2>Descriptions</h2>
-    <div class="pv-scroll">
+    <div class="pv-scroll" role="region" aria-label="Descriptions">
     <form id="search" role="search">
       <label for="coords">Coordinates</label>
       <input class="box" id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false" enterkeyhint="go">
@@ -67,9 +68,9 @@
 
   <!-- what this patch shows: the visit on screen, the motion measured, and known objects passing. Its own card, under
        Others, so long lists have room; the heading stays put while the list scrolls -->
-  <section class="pv-card pv-found" aria-label="Findings">
+  <section class="pv-card pv-found">
     <h2>Findings</h2>
-    <div class="pv-scroll">
+    <div class="pv-scroll" role="region" aria-label="Findings">
     <p class="pv-info" id="vName" hidden></p>
     <p class="pv-info" id="vVisit"></p>
     <p class="pv-info" id="vMotion"></p>
@@ -77,19 +78,20 @@
     </div>
   </section>
 
-  <!-- Explore's timeline: a tick per month, the date over the handle, a dot for each visit to this patch.
-       Drag to pick a visit; press the handle to play the visits in turn. -->
-  <div class="tl" id="tl">
-    <div class="tl-line" id="tl-line">
-      <div class="tl-ticks" id="tl-ticks" aria-hidden="true"></div>
-      <div id="tl-visits" aria-hidden="true"></div>
-      <output class="tl-date" id="t-date">&nbsp;</output>
-      <button class="tl-knob" id="play" type="button" role="slider" aria-label="Visit. Drag to pick a visit; press to play them in turn." aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
-        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
-        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
-      </button>
-    </div>
-  </div>
+  <section class="pv-card pv-options" aria-label="Options">
+    <h2>Options</h2>
+    <label class="pv-row" for="fov">Zoom <input id="fov" type="range" min="1" max="12" step="0.5" value="6" aria-valuetext="6 arcmin wide"></label>
+  </section>
+  <section class="pv-card pv-layers" aria-label="Layers">
+    <h2>Layers</h2>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-spec"><span>Spectral</span></label>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-heat"><span>Heat</span></label>
+  </section>
+  <section class="pv-card pv-others" aria-label="Others">
+    <h2>Others</h2>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="still"><span>Hide Stationary</span></label>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="diff"><span>Color Difference</span></label>
+  </section>
 </div>
 <div id="skyui">
   <div id="hint" class="glass"><b>Click any spot</b> to see how it changes over time. Drag to look around, scroll to zoom.</div>
@@ -380,10 +382,22 @@ const timeline = (() => {
     if (key === built) return;
     built = key; from = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1); span = t1 - from; ticks.textContent = '';
     for (let y = s.getUTCFullYear(), mo = s.getUTCMonth(); Date.UTC(y, mo, 1) <= t1; mo === 11 ? (y++, mo = 0) : mo++) {
-      const t = document.createElement('span'); t.className = 'tl-tick'; t.style.left = pos(Date.UTC(y, mo, 1));
+      const t = document.createElement('span'); t.className = 'tl-tick'; t.style.left = pos(Date.UTC(y, mo, 1)); t.dataset.m = mo;
       t.innerHTML = `<b>${MONTHS[mo]}</b>${mo === 0 ? `<small>${y}</small>` : ''}`; ticks.append(t);
     }
+    thin();
   }
+  // Month names only as often as they fit (a phone has about 14 px a month): every month, or every 2nd, 3rd, 6th or
+  // 12th, counted from January so January (with its year) always shows. The ticks themselves all stay.
+  function thin() {
+    const all = [...ticks.children];
+    if (all.length < 2) return;
+    const month = line.getBoundingClientRect().width / (span / (30.44 * DAY));   // px per month
+    const widest = Math.max(...all.map(t => t.querySelector('b').getBoundingClientRect().width));
+    const step = [1, 2, 3, 6, 12].find(n => n * month >= widest + 8) ?? 12;
+    for (const t of all) t.classList.toggle('quiet', t.dataset.m % step !== 0);
+  }
+  new ResizeObserver(thin).observe(line);
   let cover = null;   // SPHEREx's whole data span: the same line Explore shows
   const coverLoaded = fetch('data/coverage.json').then(r => r.json()).then(c => { cover = c; }).catch(() => {});
   const api = {
@@ -541,7 +555,13 @@ const statusEl = document.getElementById('status');
 const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
 function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); moreBelow(); }
 // a card whose content runs past its height fades out at the bottom until it is scrolled to the end (patch.css .more)
-function moreBelow() { for (const el of document.querySelectorAll('.pv-scroll')) el.classList.toggle('more', el.scrollHeight - el.scrollTop - el.clientHeight > 2); }
+// It is also a Tab stop while it scrolls (tabindex 0), so the keyboard can reach rows below the fold; otherwise not.
+function moreBelow() {
+  for (const el of document.querySelectorAll('.pv-scroll')) {
+    el.classList.toggle('more', el.scrollHeight - el.scrollTop - el.clientHeight > 2);
+    if (el.scrollHeight > el.clientHeight + 2) el.tabIndex = 0; else el.removeAttribute('tabindex');
+  }
+}
 document.querySelectorAll('.pv-scroll').forEach(el => el.addEventListener('scroll', moreBelow, { passive: true }));
 addEventListener('resize', moreBelow);
 // "269.4463 4.7671", "269.4463, +4.7671", "17h57m47s +04d46m02s", "17:57:47 +04:46:02" -> degrees

@@ -90,12 +90,43 @@ async def main():
         await pg.goto(f"{BASE}/timelapse.html?ra=77.3058&dec=27.3551&det=D1&diff=1&found=C-0147")
         await pg.wait_for_function(ready, timeout=180000)
         assert (await pg.text_content("#state-label")) == "Discovered" and await pg.get_attribute("#state", "href") == "comet.html?id=C-0147" and "found=C-0147" in pg.url, "Discovered not shown"
+        # a Findings list longer than its card is a named region the keyboard can reach, with a white outline
+        knob = pg.locator("#play"); await knob.focus(); await knob.press("End")
+        await pg.wait_for_function("(t => t && !/checking/i.test(t))(document.getElementById('vKnown')?.textContent)", timeout=180000)
+        sc = await pg.evaluate("(e => [e.scrollHeight > e.clientHeight + 2, e.tabIndex, e.getAttribute('role'), e.getAttribute('aria-label')])(document.querySelector('.pv-found .pv-scroll'))")
+        if sc[0]:
+            assert sc[1:] == [0, "region", "Findings"], f"the scrolling Findings list is not a reachable region: {sc}"
+            await pg.focus("#det"); await pg.keyboard.press("Tab")
+            got = await pg.evaluate("(e => [e.matches('.pv-found .pv-scroll'), getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineColor])(document.activeElement)")
+            assert got == [True, "solid", "rgb(255, 255, 255)"], f"Tab after Band does not land on Findings with a white outline: {got}"
+            print("PASS findings: the long list is a Findings region, next after Band on Tab, with a white outline")
+        else: print("NOTE findings: this visit's list fits, so the scroll region was not exercised")
         await pg.select_option("#det", "D2"); await pg.wait_for_timeout(300)   # another band at the same spot keeps it
         assert (await pg.text_content("#state-label")) == "Discovered", "a band change dropped the discovery"
         await pg.fill("#coords", "269.4463 4.7671"); await pg.press("#coords", "Enter"); await pg.wait_for_timeout(300)
         assert (await pg.text_content("#state-label")) == "Undiscovered" and await pg.get_attribute("#state", "href") == "forums.html", "new coordinates still say Discovered"
         assert "found=" not in pg.url and await pg.is_hidden("#vName"), f"new coordinates keep the discovery: {pg.url}"
         print("PASS discovery: kept for a band change, dropped from the label, link, Found as line and address at new coordinates")
+
+        # phones: Tab follows the one column from top to bottom (the markup is in that order)
+        await pg.set_viewport_size({"width": 390, "height": 844})
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready)
+        await pg.focus("#play"); order = ["play"]
+        for _ in range(12):
+            await pg.keyboard.press("Tab"); order.append(await pg.evaluate("document.activeElement.id || document.activeElement.className"))
+        want = ["play", "state", "coords", "det", "fov", "ly-spec", "ly-heat", "still", "diff"]
+        seen = [x for x in order if x in want]
+        assert seen[:len(want)] == want, f"Tab order on a phone: {order}"
+        print("PASS phone tab order: timeline, Discovered, Coordinates, Band, Zoom, then the four toggles, as they appear")
+
+        # month names on the timeline never touch, from a narrow phone to a desktop
+        TOUCH = """() => { const r = [...document.querySelectorAll('.tl-tick:not(.quiet) b')].map(b => b.getBoundingClientRect()).sort((a, b) => a.left - b.left), bad = [];
+            for (let i = 1; i < r.length; i++) if (r[i].left < r[i - 1].right + 2) bad.push(Math.round(r[i - 1].right - r[i].left)); return [r.length, bad]; }"""
+        for w, h in [(320, 700), (390, 844), (768, 1024), (1440, 900)]:
+            await pg.set_viewport_size({"width": w, "height": h}); await pg.wait_for_timeout(300)
+            n, bad = await pg.evaluate(TOUCH)
+            assert n >= 4 and not bad, f"{w} px: {n} month names, overlaps {bad}"
+        print("PASS timeline labels: month names thin out and never touch at 320, 390, 768 and 1440 px")
 
         assert not errors, f"page errors: {errors}"
         await b.close()
