@@ -164,6 +164,10 @@ Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 
 
 Gaia DR3 stars within 0.04 degrees, with proper motions and Gaia G brighter than 19 (fainter stars are below what SPHEREx measures, and the cut keeps crowded fields such as Baade's Window to about 3,200 stars), for checking measured star motion. Read from IRSA's copy of Gaia DR3 (its Gator catalog service, about 1.5 s); ESA's own archive is the fallback, tried once for up to 8 s. `source` says which answered (`"IRSA"` or `"ESA"`). `503` when both are down. The time-lapse waits at most 8 s for this and otherwise shows its frames without the Gaia comparison.
 
+### Saved answers (D1 `searches`, all three outside searches)
+
+Every complete answer from `/api/images`, `/api/gaia` and `/api/known` is also saved in D1 under its path and the parameters it reads (`ra`, `dec`, `det`, `t`, `v`; others are ignored). When the outside service fails (a `5xx`) or `/api/images` answers only in part, the last saved answer to that exact search is sent instead: `200`, the same JSON, `Cache-Control: no-store` and an `X-Saved-At` time. A search never answered before still gets the `503`; a bad request still gets its `400`. Added after IRSA's image search answered 502 for most of 2026-11-15.
+
 ## Planned (not built)
 
 - `GET /api/comets/:id`: one comet with its dots, photos, measurements and comment thread.
