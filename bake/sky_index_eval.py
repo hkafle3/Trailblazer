@@ -136,7 +136,7 @@ def main():
         need = X.COLLS if deep else WIDE
         if not all(c in pc for c in need):
             print(f"skip ({ra}, {dec}): SIA answer incomplete, has {sorted(pc)}"); continue
-        cases.append((f"sia {names.get((ra, dec), '')}", ra, dec, worker_answer(pc, det), None))
+        cases.append((f"sia {names.get((ra, dec), '')}", ra, dec, worker_answer({c: pc[c] for c in need}, det), None))
 
     # 3. the research folder's SIA sample (spherex_qr3 only)
     sample = ev / "sia_qr3_sample.csv"
