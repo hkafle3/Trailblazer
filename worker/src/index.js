@@ -424,8 +424,11 @@ export default {
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
-    const key = new URL(url); key.searchParams.set('cache', 'v2');
-    const cache = caches.default, hit = await cache.match(key), id = savedKey(url);
+    // keyed like the saved copy (only the parameters a search reads), so junk parameters cannot force fresh searches;
+    // the old full-URL key is tried once on a miss, so answers cached before 2026-11-15 still serve (and get saved)
+    const id = savedKey(url), key = new URL(url.origin + id), old = new URL(url);
+    key.searchParams.set('cache', 'v2'); old.searchParams.set('cache', 'v2');
+    const cache = caches.default, hit = await cache.match(key) || await cache.match(old);
     if (hit) { ctx.waitUntil(backfill(env, id, hit.clone()).catch(e => console.warn('saving cached search', e))); return hit; }
     const res = await withSaved(route, url, id, env, ctx);
     if (complete(res)) ctx.waitUntil(cache.put(key, res.clone()));
@@ -442,14 +445,17 @@ const complete = res => res.status === 200 && !/no-store/.test(res.headers.get('
 // characters), so junk parameters or long spellings of the same number add no rows and keys stay short
 const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 't', 'v'].filter(n => url.searchParams.has(n))
   .map(n => { const v = url.searchParams.get(n); return [n, n === 'det' ? v.slice(0, 2) : n === 'v' ? v.slice(0, 8) : String(Number(v))]; }));
-// room for this answer after the one it replaces is gone (the triggers count the same way; the CHECK is the hard cap)
-const room = async (env, id, size) => (await env.DB.prepare('SELECT (SELECT n FROM saved_bytes) - coalesce((SELECT sum(length(CAST(body AS BLOB)) + 2 * length(CAST(key AS BLOB)) + 64) FROM searches WHERE key = ?), 0) AS n')
-  .bind(id).first()).n + size <= SAVED_MAX;
 
 // One transaction, newest answer wins: an older saved answer is deleted and the new parts go in, unless a newer answer
-// is already there (a late save of an old cached answer changes nothing). Past the byte cap an insert fails and all of it rolls back.
-async function save(env, id, body, at = Date.now()) {
-  if (!await room(env, id, body.length)) return;   // ponytail: a full store takes no new searches; evict the oldest if that ever bites
+// is already there (a late save of an old cached answer changes nothing). Past the byte cap an insert fails and all of it
+// rolls back. An answer saved less than a day before this one is kept as it is: each data center's cache misses on its
+// own, and rewriting a 2 MB answer for each would spend D1's daily writes. text() is read only when the save goes ahead.
+async function save(env, id, text, at) {
+  const r = await env.DB.prepare('SELECT (SELECT n FROM saved_bytes) AS n, (SELECT saved_at FROM searches WHERE key = ? AND part = 0) AS at, ' +
+    'coalesce((SELECT sum(length(CAST(body AS BLOB)) + 2 * length(CAST(key AS BLOB)) + 64) FROM searches WHERE key = ?), 0) AS old').bind(id, id).first();
+  if (r.at !== null && r.at > at - 86400e3) return;
+  const body = await text();
+  if (r.n - r.old + body.length > SAVED_MAX) return;   // ponytail: a full store takes no new searches; evict the oldest if that ever bites
   const parts = [];
   for (let i = 0; i < body.length; i += PART) parts.push(body.slice(i, i + PART));   // a deep field's answer can pass 2 MB
   await env.DB.batch([env.DB.prepare('DELETE FROM searches WHERE key = ? AND saved_at < ?').bind(id, at),
@@ -457,22 +463,19 @@ async function save(env, id, body, at = Date.now()) {
       .bind(id, i, b, at, id, at))]);
 }
 
-// a cached answer newer than the saved one (or with none saved: answers cached before saving existed, or a save that
-// failed while D1 was down) is saved on its next cache hit, so it survives an outage too
+// a cached answer with none saved (answers cached before saving existed, or a save that failed while D1 was down), or
+// more than a day newer than the saved one, is saved on its next cache hit, so it survives an outage too
 async function backfill(env, id, hit) {
-  if (!complete(hit)) return;
-  const at = Number(hit.headers.get('X-Answered-At')) || Date.parse(hit.headers.get('Date')) || 0;
-  const row = await env.DB.prepare('SELECT saved_at FROM searches WHERE key = ? AND part = 0').bind(id).first();
-  if ((row && row.saved_at >= at) || !await room(env, id, 0)) return;
-  await save(env, id, await hit.text(), at);
+  if (complete(hit)) await save(env, id, () => hit.text(), Number(hit.headers.get('X-Answered-At')) || Date.parse(hit.headers.get('Date')) || 0);
 }
 
 async function withSaved(route, url, id, env, ctx) {
   const res = await route(url);
   if (complete(res)) {
-    const at = Date.now(), body = await res.clone().text();
+    const at = Date.now();
     res.headers.set('X-Answered-At', String(at));   // kept with the cached copy, so a later backfill knows its age
-    ctx.waitUntil(save(env, id, body, at).catch(e => console.warn('saving search', e)));   // D1 down: just not saved this time
+    const copy = res.clone();   // read after the answer has gone out, so saving never delays or endangers it
+    ctx.waitUntil(save(env, id, () => copy.text(), at).catch(e => console.warn('saving search', e)));   // D1 down: just not saved this time
     return res;
   }
   if (res.status !== 200 && res.status < 500) return res;   // a bad request stays an error

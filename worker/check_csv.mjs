@@ -85,6 +85,7 @@ const s2 = await ask(answer(503, { error: 'down' }), 'det=D1&dec=2&ra=1&junk=7')
 const s3 = await ask(answer(200, { images: [1] }, 'no-store'), 'ra=1&dec=2&det=D1');
 const s4 = await ask(answer(400, { error: 'bad' }), 'ra=1&dec=2&det=D1');
 const s5 = await ask(answer(503, { error: 'down' }), 'ra=9&dec=2&det=D1');
+sql.prepare('UPDATE searches SET saved_at = saved_at - 2 * 86400e3').run();   // the saved answer is two days old
 await ask(answer(200, { images: [7] }), 'ra=1&dec=2&det=D1');   // a newer, shorter answer replaces every part of the old one
 const s6 = await ask(answer(503, { error: 'down' }), 'ra=1&dec=2&det=D1');
 dbDown = true; const s7 = await ask(answer(503, { error: 'down' }), 'ra=1&dec=2&det=D1'); dbDown = false;
@@ -99,7 +100,8 @@ const okSaved = bigText.length > 2e6 && s1[0] === 200 && s2[0] === 200 && s2[1] 
 // a late save of yesterday's cached answer never replaces a newer one
 await saved.backfill({ DB }, '/api/known?ra=1', new Response('{"old":1}', { headers: { 'Cache-Control': 'public, max-age=86400', Date: 'Sat, 14 Nov 2026 10:00:00 GMT' } }));
 sql.prepare("UPDATE searches SET body = '{\"new\":1}', saved_at = ? WHERE key = '/api/known?ra=1'").run(Date.now());
-const late = new Function('CORS', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return save;')(CORS);
+const saveFn = new Function('CORS', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return save;')(CORS);
+const late = (env, id, body, at = Date.now()) => saveFn(env, id, async () => body, at), DAY = 86400e3;
 await late({ DB }, '/api/known?ra=1', '{"old":1}', Date.parse('2026-11-14T10:00:00Z'));
 const okOrder = sql.prepare("SELECT body FROM searches WHERE key = '/api/known?ra=1'").get().body === '{"new":1}';
 // the 100 MB cap holds even for two saves at once that each saw room: one fits, the other rolls back whole
@@ -116,17 +118,21 @@ const okRace = sql.prepare("SELECT count(DISTINCT key) k FROM searches WHERE key
 const longKey = saved.savedKey(new URL('https://x/api/gaia?ra=80.6900000000000000000000000000001&dec=31.76&v=' + 'z'.repeat(15000)));
 const okKey = longKey === '/api/gaia?ra=80.69&dec=31.76&v=zzzzzzzz';
 // a replacement near the cap is judged on the space it adds, not its whole size
-sql.prepare('UPDATE saved_bytes SET n = 99000000').run(); await late({ DB }, '/api/g', 'x'.repeat(900000));   // fills to about 99.9 MB
-await late({ DB }, '/api/g', 'y'.repeat(800000), Date.now() + 1);
+sql.prepare('UPDATE saved_bytes SET n = 99000000').run(); await late({ DB }, '/api/g', 'x'.repeat(900000), DAY);   // fills to about 99.9 MB
+await late({ DB }, '/api/g', 'y'.repeat(800000), 3 * DAY);
 const okReplace = sql.prepare("SELECT substr(body, 1, 1) c FROM searches WHERE key = '/api/g'").get()?.c === 'y';
-// a newer cached answer replaces an older saved one (its save had failed while D1 was down)
+// a cached answer over a day newer replaces the saved one (its save had failed while D1 was down); within a day, or
+// older, nothing is written
 sql.prepare('UPDATE saved_bytes SET n = 0').run();
-await late({ DB }, '/api/h', '{"a":1}', 1000);
-await saved.backfill({ DB }, '/api/h', new Response('{"b":2}', { headers: { 'Cache-Control': 'public, max-age=86400', 'X-Answered-At': '2000' } }));
-const okNewer = sql.prepare("SELECT body FROM searches WHERE key = '/api/h'").get().body === '{"b":2}';
-await saved.backfill({ DB }, '/api/h', new Response('{"a":1}', { headers: { 'Cache-Control': 'public, max-age=86400', 'X-Answered-At': '1000' } }));
+const cached = (body, at) => new Response(body, { headers: { 'Cache-Control': 'public, max-age=86400', 'X-Answered-At': String(at) } });
+await late({ DB }, '/api/h', '{"a":1}', DAY);
+await saved.backfill({ DB }, '/api/h', cached('{"c":3}', DAY + 3600e3));
+const okDay = sql.prepare("SELECT body FROM searches WHERE key = '/api/h'").get().body === '{"a":1}';
+await saved.backfill({ DB }, '/api/h', cached('{"b":2}', 3 * DAY));
+const okNewer = okDay && sql.prepare("SELECT body FROM searches WHERE key = '/api/h'").get().body === '{"b":2}';
+await saved.backfill({ DB }, '/api/h', cached('{"a":1}', DAY));
 const okNewer2 = okNewer && sql.prepare("SELECT body FROM searches WHERE key = '/api/h'").get().body === '{"b":2}';
-console.log(`${okKey && okReplace && okNewer2 ? 'PASS' : 'FAIL'} saved searches: short keys, replacements near the cap, a newer cached answer replaces an older saved one`); fail += !(okKey && okReplace && okNewer2);
+console.log(`${okKey && okReplace && okNewer2 ? 'PASS' : 'FAIL'} saved searches: short keys, replacements near the cap, a cached answer over a day newer replaces the saved one, nothing rewritten within a day`); fail += !(okKey && okReplace && okNewer2);
 console.log(`${okOrder && okCap && okRace ? 'PASS' : 'FAIL'} saved searches: the newest answer wins, the 100 MB cap holds for one save or two at once`); fail += !(okOrder && okCap && okRace);
 console.log(`${okSaved ? 'PASS' : 'FAIL'} saved searches: a ${(bigText.length / 1e6).toFixed(1)} MB answer kept in parts and served on a failure or partial answer, replaced whole, never for a bad request or unsaved search; cached answers backfilled`); fail += !okSaved;
 process.exit(fail ? 1 : 0);
