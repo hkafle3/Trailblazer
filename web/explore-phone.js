@@ -156,7 +156,10 @@ const day = () => +$('time').value;
 const fmt = (d, o = { month: 'short', day: 'numeric', year: 'numeric' }) => dayDate(d, o);
 const radec = (ra, dec) => `RA ${ra.toFixed(1)}° Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(1)}°`;
 const patchUrl = (ra, dec) => `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=D1&diff=1`;
-const where = m => { const c = m.comet; return c?.track?.length ? trackAt(c.track, day()) : c ? [c.ra, c.dec] : null; };
+const where = m => {   // a comet from its path or place; a patch or deep field from the RA and Dec in its link
+  const c = m.comet, q = new URL(m.href, location.href).searchParams;
+  return c?.track?.length ? trackAt(c.track, day()) : c ? [c.ra, c.dec] : q.has('ra') ? [+q.get('ra'), +q.get('dec')] : null;
+};
 const q = f => sheet.querySelector(`[data-f=${f}]`);
 
 function fill() {
@@ -186,7 +189,7 @@ function fill() {
   q('pathrow').hidden = !c?.track?.length;
   q('open').href = m.href; q('openlabel').textContent = c?.kind === 'known' ? 'Open comet page' : c?.candidate ? 'Open its page' : 'Open this patch';
   q('patch').hidden = !pos || !c;
-  if (pos) { q('patch').href = patchUrl(...pos); q('patchlabel').textContent = `See this patch on ${fmt(d, { month: 'short', day: 'numeric' })}`; }
+  if (pos) { q('patch').href = patchUrl(...pos); q('patchlabel').textContent = c?.track?.length ? `See this patch on ${fmt(d, { month: 'short', day: 'numeric' })}` : 'See this patch'; }
   drawPath();
 }
 function drawPath() {   // the picked comet's JPL path, dotted, across the whole SPHEREx timeline (split where RA wraps)
