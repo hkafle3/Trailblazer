@@ -112,11 +112,12 @@ Refusals:
 
 | Request | Status | Body |
 |---|---|---|
+| body over 1024 bytes (checked while reading, whatever `Content-Length` says) | 413 | `{"error": "body too large", "field": "body"}` |
 | body is not JSON | 400 | `{"error": "body must be JSON", "field": "body"}` |
 | `ra` missing, not a number, or outside 0 to 360 | 400 | `{"error": "ra must be 0 to 360", "field": "ra"}` |
 | `dec` missing, not a number, or outside -90 to 90 | 400 | `{"error": "dec must be -90 to 90", "field": "dec"}` |
 | GET (or any method but POST) | 405 | `{"error": "use POST"}` with `Allow: POST` |
-| more than 10 checks a minute from one IP (Cloudflare rate limit, `CHECKS_LIMIT` in wrangler.toml) | 429 | `{"error": "too many checks, wait a minute"}` |
+| more than 10 requests a minute from one IP (Cloudflare rate limit, `CHECKS_LIMIT` in wrangler.toml; it runs before the body is read, so every request counts, refused ones included) | 429 | `{"error": "too many checks, wait a minute"}` |
 | database down | 503 | `{"error": "database is not answering, try again"}` |
 
 No sign-in or human check: a count is low stakes. The rate limit keeps a script from spending the database's daily writes; the worst it can do then is light up cells on the map.
