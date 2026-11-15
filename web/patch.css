@@ -91,6 +91,7 @@ body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
   padding: calc(12 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); pointer-events: none;
   font: 400 calc(20 * var(--e)) / 1 var(--panel-font); color: #fff; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
 body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4s, visibility 0s .4s; }
+#ld-text { min-width: 24ch; text-align: right; }   /* one width for every step, so names placed clear of it stay clear */
 #ld-line { display: block; width: 100%; min-width: calc(200 * var(--e)); height: max(1.5px, calc(3 * var(--e)));
   background: linear-gradient(#fff, #fff) 0 0 / var(--p, 0%) 100% no-repeat, rgba(255, 255, 255, .25); transition: background-size .4s; }
 @media (prefers-reduced-motion: reduce) { #loading, body.busy #loading, #ld-line { transition: none; } }
