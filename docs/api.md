@@ -21,6 +21,7 @@ Markers for the Explore map: comets people found (`kind: "comet"`) and known obj
 - `ra`, `dec`: degrees. `day`: days since the coverage start (MJD 60789, 24 Apr 2025); the marker appears once the time slider reaches it.
 - `tags`: votes, counted from the `comments` table. A tag is part of a comment, and only each person's latest tag counts.
 - `co2`, `photos` (known comets): the carbon dioxide verdict of a measured comet (`detected`, `quiet` or `unclear`; `null` until its spectrum is measured) and how many SPHEREx photos it is in. The Comets page lists them.
+- `thumb` (measured comets): one of the photos its page shows, the one where the comet is brightest (`data/comets/<dir>/<file>`); `null` for the rest. The Comets page uses it for the measured comets' cards.
 - `track` (known comets): `[[day, ra, dec, magnitude], ...]` every 10 days from JPL Horizons. The map moves the marker along it and shows it only while magnitude is 16 or brighter. Built by `bake/known_comets.py`.
 
 ## GET /api/comets/:id (D1)
