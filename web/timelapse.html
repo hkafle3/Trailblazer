@@ -70,13 +70,16 @@ const P = new URLSearchParams(location.search);
 
 // ---------- 3D star field behind everything ----------
 const canvas = document.getElementById('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// The star field is decoration: when the browser has WebGL off (a GPU crash, or hardware acceleration disabled),
+// skip it so the 2D time-lapse below still works instead of the whole page stopping here.
+let renderer = null;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); }
+catch { document.body.classList.add('nogl'); }
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, 1, 0.001, 5000);
-function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+function resize() { renderer?.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
-const world = createWorld({ renderer, scene, camera });
+const world = renderer && createWorld({ renderer, scene, camera });
 const look = new THREE.Vector3(1, 0, 0), lookGoal = new THREE.Vector3(1, 0, 0), up = new THREE.Vector3(0, 1, 0);
 
 // ---------- data ----------
@@ -406,9 +409,9 @@ function frame(now) {
     camera.position.copy(look).multiplyScalar(-0.6).addScaledVector(side, Math.sin(now / 9000) * 0.25);
     camera.lookAt(camera.position.clone().add(look));
   }
-  world.update(now, frameStart);
+  world?.update(now, frameStart);
   if (state.playing && state.m && now - state.last > 900) { state.last = now; state.i = (state.i + 1) % state.m.frames.length; draw(); }
-  renderer.render(scene, camera);
+  renderer?.render(scene, camera);
 }
 requestAnimationFrame(frame);
 if (P.has('ra') && P.has('dec')) {
