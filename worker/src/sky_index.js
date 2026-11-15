@@ -47,13 +47,18 @@ async function head(read, name) {
   return { det, first, folders, rowsAt: size + (-size & 7) };
 }
 
+// The parsed head of one detector's file, read once per Worker instance (a failed read is retried next time)
+export function skyHead(read, det) {
+  const name = `d${det}.bin`;
+  if (!heads.has(name)) heads.set(name, head(read, name).catch(e => { heads.delete(name); throw e; }));
+  return heads.get(name);
+}
+
 // The images of one detector covering (ra, dec): [{ t, key, obs, coll }] sorted by t, one per obs_id (DR1 first, as
 // /api/images keeps it), and the number of matching images per collection searched. t is MJD-BEG to 6 decimals, the
 // way SIA writes t_min (toFixed rounds the exact value, as SIA does; t * 1e6 rounding missed some by 1e-6).
 export async function skyImages(read, ra, dec, det) {
-  const name = `d${det}.bin`;
-  if (!heads.has(name)) heads.set(name, head(read, name).catch(e => { heads.delete(name); throw e; }));
-  const h = await heads.get(name), c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
+  const name = `d${det}.bin`, h = await skyHead(read, det), c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
   const deep = Math.abs(eclipticLat(ra, dec)) > 75;
   const collections = Object.fromEntries((deep ? COLLS : COLLS.slice(0, 2)).map(k => [k, 0]));
   if (!n) return { images: [], collections };

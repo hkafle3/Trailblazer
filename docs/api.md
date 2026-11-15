@@ -150,15 +150,19 @@ No sign-in or human check: a count is low stakes. The rate limit keeps a script 
 
 ## GET /api/images?ra=&dec=&det=
 
-The SPHEREx photos covering a point, from IRSA's search, cached for a day. The browser then reads the pixels straight from NASA's public S3 bucket (`web/live/fits.js`).
+The SPHEREx photos covering a point, cached for a day. The browser then reads the pixels straight from NASA's public S3 bucket (`web/live/fits.js`).
 
 ```json
 { "ra": 269.4463, "dec": 4.7671, "det": "D1",
   "images": [ { "t": 60914.21, "key": "dr1/level2/.../image.fits", "obs": "...", "coll": "spherex_dr1" } ],
-  "collections": { "spherex_dr1": 31, "spherex_qr3": 32 } }
+  "collections": { "spherex_dr1": 31, "spherex_qr3": 32 }, "source": "index" }
 ```
 
-Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 to 90"}`, `400 {"error":"det must be D1 to D6"}`, and `503` with `retry_after` when IRSA's search is down (an empty `images` list always means "no photos here", never "search failed").
+`source` says who answered. `"index"` is our own index of every level-2 image (`bake/sky_index.py` builds it from the image headers on NASA's S3 bucket; one file per detector in the R2 bucket `comet-hunt-sky-index`, read by `worker/src/sky_index.js`). It gives the same answer IRSA's search gives: an image counts when the 0.001 degree circle around the point touches its footprint polygon (IRSA's `s_region`), one row per `obs`, DR1 first, the deep collections only within 15 degrees of the ecliptic poles. `"IRSA"` is IRSA's search (SIA), used only when the index cannot answer (its file is missing or R2 fails). Answers cached or saved before the index arrived have no `source`.
+
+The index is a snapshot of the bucket as listed on 2026-11-15 (DR1, and QR3 through week 2026W40_2A). Photos from weeks published after that are missing from `"index"` answers until the index is rebuilt; a scheduled refresh is not built yet.
+
+Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 to 90"}`, `400 {"error":"det must be D1 to D6"}`, and `503` with `retry_after` when the index cannot answer and IRSA's search is down (an empty `images` list always means "no photos here", never "search failed").
 
 ## GET /api/gaia?ra=&dec=
 

@@ -147,7 +147,7 @@ def main():
     bad = sum(compare(n, ra, dec, g, w, M, abs(X_beta(ra, dec)) > 75, cl) for (n, ra, dec, w, cl), g in zip(cases, got))
 
     # edge probes: does SIA list the probe's own image? (needs that position's SIA answer in sia/)
-    probes = json.load(open(ev / "edgepts.json")) if (ev / "edgepts.json").exists() else []
+    probes = [p for p in json.load(open(ev / "edgepts.json")) if p.get("det", 1) == det] if (ev / "edgepts.json").exists() else []
     if probes:
         print("\nedge probes: the image the point was placed against, by SIA and by the index")
     for p in probes:
@@ -180,11 +180,14 @@ def main():
                 found += 1
             else:
                 m = M.margin(o, float(r["comet_ra"]), float(r["comet_dec"]))
+                if not hit and not m:   # the headers cover every dr1 and qr3 file of this detector in the bucket listing
+                    notes.append(f"miss {o}: no dr1 or qr3 file of this detector (qr2 had one), so neither SIA's dr1/qr3 nor the index has it")
+                    continue
                 ok = not hit and m and max(m) < -3.5
                 notes.append(f"{'miss' if not hit else 't differs'} {o} margin {m}\"" + ("" if ok else " UNEXPLAINED"))
                 bad += not ok
         colls = sorted({r["obs_collection"].strip() for r in rows})
-        print(f"{'3I/ATLAS obscore, D' + str(det) + ' rows':42s} rows {len(rows)} ({', '.join(colls)}) found with same obs_id and t {found}"
+        print(f"{'3I/ATLAS obscore, D' + str(det) + ' rows':42s} rows {len(rows)} ({', '.join(colls)}) found with same obs_id and t {found}, missing {len(rows) - found}"
               + ("  OK" if all("UNEXPLAINED" not in n for n in notes) else ""))
         for n in notes:
             print("    " + n)

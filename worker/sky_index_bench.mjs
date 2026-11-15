@@ -1,18 +1,21 @@
 // CPU of one /api/images answer from the sky index, on the cells with the most rows (the ecliptic poles' deep fields).
 // Times skyImages plus the JSON.stringify the Worker does; reads come from memory, as an R2 body already received would.
 //   node worker/sky_index_bench.mjs INDEX_DIR [det]
-// Each point runs in a fresh child process too ("cold": head parse and unoptimised code, like a new Worker instance).
+// Each point also runs in fresh child processes: "cold" (head read and unoptimised code, a new Worker instance) and
+// "cold, head cached" (head already read, code not yet warm: the second request an instance gets).
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { skyImages, cellAt } from './src/sky_index.js';
+import { skyImages, skyHead, cellAt } from './src/sky_index.js';
 
-const [dir, det = '1', only] = process.argv.slice(2);
+const [dir, det = '1', only, mode] = process.argv.slice(2);
 const file = readFileSync(`${dir}/d${det}.bin`);
 const read = async (name, off, len) => file.buffer.slice(file.byteOffset + off, file.byteOffset + off + len);
 const answer = async (ra, dec) => JSON.stringify({ ra, dec, det: `D${det}`, ...(await skyImages(read, ra, dec, det)) });
 
-if (only) {   // child: one cold answer
-  const [ra, dec] = only.split(',').map(Number), t0 = performance.now(), c0 = process.cpuUsage();
+if (only) {   // child: one cold answer; mode "head" reads the head first, as a Worker instance that already answered once has
+  const [ra, dec] = only.split(',').map(Number);
+  if (mode === 'head') await skyHead(read, det);
+  const t0 = performance.now(), c0 = process.cpuUsage();
   const n = (await answer(ra, dec)).length, c = process.cpuUsage(c0);
   console.log(JSON.stringify({ ms: performance.now() - t0, cpu_ms: (c.user + c.system) / 1000, bytes: n }));
 } else {
@@ -26,13 +29,18 @@ if (only) {   // child: one cold answer
   }
   console.log(`rows per cell: max ${sizes[0][0]}, then ${sizes.slice(1, 4).map(s => s[0]).join(', ')}`);
   for (const [ra, dec, name] of pts) {
-    const cold = JSON.parse(execFileSync(process.execPath, [new URL(import.meta.url).pathname, dir, det, `${ra},${dec}`]).toString());
+    const child = mode => {   // median of 5 fresh processes
+      const r = Array.from({ length: 5 }, () => JSON.parse(execFileSync(process.execPath, [new URL(import.meta.url).pathname, dir, det, `${ra},${dec}`, mode]).toString()));
+      const med = k => r.map(x => x[k]).sort((a, b) => a - b)[2];
+      return { ms: med('ms'), cpu_ms: med('cpu_ms'), bytes: r[0].bytes };
+    };
+    const cold = child('none'), coldHead = child('head');
     await answer(ra, dec);
     const times = [];
     for (let i = 0; i < 50; i++) { const t0 = performance.now(); await answer(ra, dec); times.push(performance.now() - t0); }
     times.sort((a, b) => a - b);
     const r = await skyImages(read, ra, dec, det);
     console.log(`${name.padEnd(24)} (${ra.toFixed(2)}, ${dec.toFixed(2)}) cell ${cellAt(ra, dec)} rows ${first[cellAt(ra, dec) + 1] - first[cellAt(ra, dec)]} images ${r.images.length} ` +
-      `json ${(cold.bytes / 1024).toFixed(0)} KB | cold ${cold.ms.toFixed(2)} ms (cpu ${cold.cpu_ms.toFixed(2)}) | warm median ${times[25].toFixed(2)} ms, max ${times[49].toFixed(2)} ms`);
+      `json ${(cold.bytes / 1024).toFixed(0)} KB | cold (median of 5) ${cold.ms.toFixed(2)} ms (cpu ${cold.cpu_ms.toFixed(2)}) | cold, head cached ${coldHead.ms.toFixed(2)} ms (cpu ${coldHead.cpu_ms.toFixed(2)}) | warm median ${times[25].toFixed(2)} ms, max ${times[49].toFixed(2)} ms`);
   }
 }
