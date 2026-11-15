@@ -21,7 +21,7 @@
 //   M, straight(), plain() the straightening in force (see below), whether there is any, and take it off the page
 //   onView(fn)             fn({ W, X, Y, zoom, M, C }) after every change (zoom is W / min, 1 = whole sky; C is M's pivot)
 //   W, X, Y, A, MAXW       live read-only values; atMin(), atMax()
-//   hooks.stop()           set by explore.js: stops the coverage replay. Call it on any pan or zoom.
+//   hooks.stop()           set by explore.js: stops the coverage replay. Pans and zooms leave it playing; leaving the map stops it.
 import { fwd, fwdLon, inv, wrap as wrap180, RAD } from './skymap.js';
 
 // the deepest zoom: one pixel of the screen per pixel of the sharpest SPHEREx sky tiles (HiPS order 5, 12.9 arcsec),

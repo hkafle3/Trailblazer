@@ -11,7 +11,7 @@ const phone = matchMedia('(max-width: 640px)');
 const $ = id => document.getElementById(id);
 const stage = document.querySelector('.xstage'), wrap = document.querySelector('.map-wrap');
 const sheet = $('csheet'), hint = $('maphint'), whole = $('whole'), HEAD = 60;
-export { hooks };   // explore.js sets stop: a first touch on the map stops the replay
+export { hooks };   // explore.js sets stop: it stops the replay
 
 let touched = false;
 // whole sky: the oval exactly as wide as the screen. The comet sheet's top is the bottom edge while it is open
@@ -57,7 +57,7 @@ let last = null, moved = 0, many = false, downAt = 0, lastTap = null, swallowUnt
 const snap = () => { const p = [...pts.values()], m = [(p[0][0] + (p[1] ?? p[0])[0]) / 2, (p[0][1] + (p[1] ?? p[0])[1]) / 2]; return { m, d: p[1] ? Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]) : 0 }; };
 stage.addEventListener('pointerdown', e => {
   if (!phone.matches || e.target.closest('.tl') || (e.pointerType === 'mouse' && e.button)) return;
-  cancel(); hooks.stop(); hideHint(); measure(area());
+  cancel(); hideHint(); measure(area());   // the replay keeps playing; a single tap pauses it (explore.js)
   if (!pts.size) { moved = 0; many = false; downAt = performance.now(); }
   pts.set(e.pointerId, [e.clientX, e.clientY]);
   if (pts.size > 1) many = true;
@@ -209,12 +209,24 @@ function closePeek() {
   picked?.classList.remove('pick'); picked = null; drawPath();
   if (A) set(W, X, Y);   // without the sheet the oval must fit the full map area again
 }
+// Tap circles (44 px) overlap when dots sit close, and the one on top would take the tap. So a tap goes to the visible dot
+// nearest the finger, among dots whose tap circle holds it (a tap on a name or a trail far from any other dot keeps its
+// marker); a comet beats a deep field or the unexplored patch when they are within 1 px of each other
+function nearest(m, x, y) {
+  let best = m, bd = 23;
+  for (const k of document.querySelectorAll('#marks .mk')) {
+    if (k.hidden || k.style.visibility === 'hidden' || getComputedStyle(k).display === 'none') continue;
+    const r = k.querySelector('i').getBoundingClientRect(), d = Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y) + (k.comet ? 0 : 1);
+    if (d < bd) { best = k; bd = d; }
+  }
+  return best;
+}
 // explore.js calls this for a click on a marker: on phones it opens the sheet and keeps the page
 export function tap(e) {
   if (!phone.matches) return false;
   const m = e.target.closest('.mk');
   if (!m || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
-  e.preventDefault(); openPeek(m);
+  e.preventDefault(); openPeek(e.detail ? nearest(m, e.clientX, e.clientY) : m);   // detail 0: Enter on a focused marker, which is meant
   return true;
 }
 sheet.querySelector('.sheet-x').addEventListener('click', closePeek);

@@ -1,6 +1,7 @@
 """Browser check of Explore's sky replay and Faint comets layer, in headless Chrome. Needs the app up (npm run dev).
 Replay: /explore opens playing it from day 0, and it ends on the last day; a link with ?day= and less motion open still;
-a first click on the sky, the timeline or the handle stops it where it is.
+a single click on the sky pauses it where it is once the double-click window has passed (and drops a pin); a click on
+the timeline or the handle stops it at once.
 Faint comets off (the default): the known comets shown are exactly the ones bright enough on the day (magnitude 16 or
 brighter) plus 3I/ATLAS. On: all 72 known comets have a marker on the default day, on day 120 and after the timeline moves, the faint
 ones dimmer and smaller, each where skymap.js puts it (within 1%), named on hover and keyboard focus, linking to its
@@ -81,15 +82,17 @@ async def main():
         await calm.close()
         print(f"PASS replay: /explore plays from day {first} and ends on day {DEFAULT}; ?day=120 and less motion stay still")
 
-        # the first touch stops it: a click on the sky (which drops a pin), on the timeline's line, or on the handle
+        # a single click on the sky (which drops a pin) pauses it after the 400 ms a double click may take; a click on the
+        # timeline's line or on the handle stops it at once
         for what, touch in [("the sky", "#map"), ("the timeline", "#tl-line"), ("the handle", "#play")]:
             await pg.goto(BASE + "/explore"); await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_timeout(200)
             box = await pg.locator(touch).bounding_box()
             await pg.mouse.click(box["x"] + box["width"] * (.5 if touch != "#tl-line" else .3), box["y"] + box["height"] / 2)
+            if touch == "#map": await pg.wait_for_timeout(500)
             at = await pg.evaluate(DAY); await pg.wait_for_timeout(300)
             assert not await pg.evaluate(PLAYING) and await pg.evaluate(DAY) == at < DEFAULT, f"a click on {what} did not stop the replay (day {at}, then {await pg.evaluate(DAY)})"
             if touch == "#map": assert await pg.is_visible("#pin .pincard"), "a click on the sky during the replay dropped no pin"
-        print("PASS replay: a click on the sky, the timeline or the handle stops it where it is")
+        print("PASS replay: a click on the sky pauses it where it is, after the double-click window; the timeline or the handle stops it at once")
 
         # on a phone the featured card folds into the sheet a tap opens (explore-phone.js): on day 200, where 3I/ATLAS is
         # near the map's right edge, tapping it opens its sheet in view and the map glides its dot onto the screen

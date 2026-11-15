@@ -1,5 +1,6 @@
 """Explore on a desktop (1440 x 900, mouse): pan and zoom the way map apps do (web/explore-desktop.js on web/explore-view.js).
-Checks: a wheel and a first drag each stop the replay; the page never scrolls, zoomed in or not; the wheel zooms around the
+Checks: during the replay a wheel zoom, a drag, a double click, + and -, and a search fly-to each leave it playing (the day
+keeps advancing), a single click pauses it and drops the pin, and the handle resumes it; the page never scrolls, zoomed in or not; the wheel zooms around the
 pointer (a marker's distance from it grows by the zoom within 3%) and dots and names keep their pixel size; a drag of
 (-120, -60) moves every marker, the pin and the featured card by it within 2 px and drops no pin; a short click drops a
 pin at the clicked RA and Dec (within 0.5 degrees) and the pointer readout shows the zoomed position; a double click zooms
@@ -11,6 +12,7 @@ from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 PLAYING = "document.getElementById('play').classList.contains('on')"
+DAY = "+document.getElementById('time').value"
 WRAP = "(() => { const r = document.querySelector('.map-wrap').getBoundingClientRect(); return [r.left, r.top, r.width]; })()"
 # visible markers in the window: name, dot centre, dot size, name font size
 MARKS = """() => [...document.querySelectorAll('#marks .mk')].filter(m => getComputedStyle(m).display !== 'none' && m.style.visibility !== 'hidden' && !m.hidden)
@@ -72,21 +74,38 @@ async def main():
         errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
 
-        # ---- the replay stops on the first wheel and on the first drag ----
-        await explore(pg, "/explore.html")
-        assert await pg.evaluate(PLAYING), "the replay is not playing on open"
-        await pg.mouse.move(720, 450); await pg.mouse.wheel(0, -60); await settle(pg, 200)
-        assert not await pg.evaluate(PLAYING), "a wheel did not stop the replay"
+        # ---- looking around leaves the replay playing; a single click pauses it, the handle resumes it ----
+        async def playing(what, ms=600):   # ms is past the 400 ms a click waits before it pauses
+            d0 = await pg.evaluate(DAY); await settle(pg, ms)
+            assert await pg.evaluate(PLAYING) and await pg.evaluate(DAY) > d0, f"{what} stopped the replay (day {d0}, then {await pg.evaluate(DAY)})"
         await explore(pg, "/explore.html")
         assert await pg.evaluate(PLAYING), "the replay is not playing on open"
         ex, ey = await pg.evaluate(EMPTY, [500, 300, 1000, 650])
         w0 = await pg.evaluate(WRAP)
         await drag(pg, ex, ey, -120, -60)
-        assert not await pg.evaluate(PLAYING), "a drag did not stop the replay"
         assert await pg.evaluate(PIN) is None, "a drag dropped a pin"
-        await settle(pg)
+        await playing("a drag", 450)
         assert all(abs(a - b) < 1 for a, b in zip(await pg.evaluate(WRAP), w0)), "a drag on the whole sky did not spring back"
-        print("PASS replay: a first wheel and a first drag each stop it; a drag on the whole sky drops no pin and springs back")
+        await pg.mouse.move(720, 450); await pg.mouse.wheel(0, -200); await playing("a wheel zoom", 300)
+        assert (await pg.evaluate(WRAP))[2] > w0[2] * 1.2, "the wheel did not zoom"
+        ex, ey = await pg.evaluate(EMPTY, [400, 250, 1040, 650]); w1 = (await pg.evaluate(WRAP))[2]
+        await pg.mouse.dblclick(ex, ey); await playing("a double click")
+        assert (await pg.evaluate(WRAP))[2] > w1 * 1.9, "the double click did not zoom 2x"
+        await explore(pg, "/explore.html")
+        await pg.click("#zoom-in"); await playing("+", 400)
+        await pg.click("#zoom-out"); await playing("-", 400)
+        await pg.click("#xs-q"); await pg.fill("#xs-q", "83.82 -5.39"); await pg.wait_for_timeout(50); await pg.keyboard.press("Enter")
+        await playing("a search fly-to", 700)
+        assert await pg.evaluate(PIN), "the search dropped no pin"
+        await explore(pg, "/explore.html")
+        ex, ey = await pg.evaluate(EMPTY, [500, 300, 1000, 650])
+        await pg.mouse.click(ex, ey); await settle(pg, 500)
+        at = await pg.evaluate(DAY); await settle(pg, 300)
+        assert not await pg.evaluate(PLAYING) and await pg.evaluate(DAY) == at < 529, f"a single click did not pause the replay (day {at}, then {await pg.evaluate(DAY)})"
+        got, want = radec(await pg.evaluate(PIN) or ""), await sky_at(pg, ex, ey)
+        assert abs(got[0] - want[0]) < .5 and abs(got[1] - want[1]) < .5, f"the click's pin is at {got}, not {want}"
+        await pg.click("#play"); await playing("the handle", 300)
+        print("PASS replay: a drag (no pin, springs back), wheel zoom, double click, + and - and a search fly-to leave it playing; a click pauses it and drops the pin; the handle resumes it")
 
         await explore(pg, "/explore.html?day=529")
         await pg.evaluate("Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))")

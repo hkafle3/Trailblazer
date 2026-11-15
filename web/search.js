@@ -107,13 +107,13 @@ function fly(ra, dec) {
 function pick(r) {
   if (!r) return;
   if (r.kind === 'sesame') return lookUp(r.q);
-  view.stop();   // the replay stops, so a comet stays where it was found
   let text = input.value.trim();
   const pin = (ra, dec, name, href) => {
     if (phone.matches && !$('csheet').hidden) $('csheet').querySelector('.sheet-x').click();   // a comet's sheet would cover the pin card
     fly(ra, dec); hooks.showPin(ra, dec, name, href);
   };
   if (r.kind === 'comet') {
+    view.stop();   // the replay stops, so the comet stays where it was found (a place or a star keeps it playing)
     const mk = markers().find(k => k.comet === r.c);
     text = r.c.id;
     if (phone.matches) mk?.click();   // explore-phone.js opens its sheet and glides it into view
