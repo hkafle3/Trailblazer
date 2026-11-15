@@ -390,6 +390,9 @@ function readVisit(v) {
   if (typeof start !== 'string' || !DATE.test(start) || !Number.isFinite(Date.parse(start))) return null;
   if (typeof end !== 'string' || !DATE.test(end) || !Number.isFinite(Date.parse(end)) || end < start) return null;
   if (typeof mjd !== 'number' || !(mjd >= MJD0 - 30 && mjd <= MJD0 + 3000)) return null;
+  // the dates are this visit's: its mean time falls in its first to last day, and a visit spans at most 14 days (live/pipeline.js visits())
+  const first = Date.parse(start) / 864e5 + 40587, last = Date.parse(end) / 864e5 + 40587;
+  if (!(mjd >= first && mjd < last + 1 && last - first <= 14)) return null;
   if (!Number.isInteger(exposures) || exposures < 1 || exposures > 1000) return null;
   if (typeof lam !== 'number' || !(lam >= 0.7 && lam <= 5.1)) return null;
   if (epochs !== undefined && !(Array.isArray(epochs) && epochs.length <= 100 && epochs.every(t => typeof t === 'number' && Math.abs(t - mjd) <= 30))) return null;
