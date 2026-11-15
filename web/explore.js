@@ -152,12 +152,12 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
       const n = votes(featured), t = featured.tags;
       what.textContent = n < 5 || t.comet / n < 0.6 ? 'candidate' : 'likely comet';
       card.querySelector('[data-f=when]').textContent = `${t.comet} of ${n} tags`;
-      place(card, featured.ra, featured.dec);
     } else {   // its CO2 verdict, as on its page (bake/comet_spectrum.py); followTracks() places it and writes the date
       what.textContent = { detected: 'CO2 glow detected', quiet: 'No gas glow' }[featured.co2] ?? 'No clear signal';
       what.classList.add(featured.co2 === 'detected' ? 'comet' : 'unsure');
-      cardTrack = featured.track;
+      cardTrack = featured.track?.length ? featured.track : null;   // no path (or an empty one): its fixed place, no date
     }
+    if (!cardTrack) card.classList.toggle('left', place(card, featured.ra, featured.dec) > 0.75);
     card.hidden = false;
   }
   followTracks(+$('time').value);

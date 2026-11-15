@@ -16,12 +16,13 @@ check "bad detector" "/api/images?ra=10&dec=4&det=D9" 400 'det must be D1 to D6'
 check "missing ra" "/api/images?dec=4" 400 'ra must be 0 to 360'
 check "Gaia near Barnard's Star" "/api/gaia?ra=269.4463&dec=4.7671" 200 '"pmdec":10362'
 check "comets list from D1" "/api/comets" 200 '"id":"3I/ATLAS"'
-check "example comets marked" "/api/comets" 200 '"example":true'
-check "tally counts each person once" "/api/comets/C-0147" 200 '"tags":{"comet":12,"asteroid":1,"glitch":0,"unsure":1}'
+# every row is a real object with real data: the seeded example comets were removed (migration 0014)
+if curl -s -m 120 "$BASE/api/comets" | python3 -c 'import json, sys; c = json.load(sys.stdin)["comets"]; sys.exit(not c or any(x["real"] is not True or "example" in x for x in c))'
+then echo "PASS /api/comets has only real rows"; else echo "FAIL /api/comets has rows that are not real (or none)"; fails=$((fails + 1)); fi
 check "3I/ATLAS has real photos" "/api/comets/3I%2FATLAS" 200 '"photos":\[{"file"'
 check "3I/ATLAS has a spectrum" "/api/comets/3I%2FATLAS" 200 '"spectrum":{"2025-08":\[{"lam"'
 check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'
-check "forum threads" "/api/threads" 200 '"body":"The tail points away from the Sun in all six photos."'
+check "forum threads" "/api/threads" 200 '"threads":\['
 check "Forums search box" "/forums.html" 200 'id="q"'
 # a malformed id must get our JSON error from the Worker; on the live site Cloudflare's edge refuses it first
 case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is not valid"' ;; *) bad_id='400 Bad Request' ;; esac
@@ -61,7 +62,7 @@ print(f"suggest: 20 requests, {len(seen)} different cells, all least-checked, |b
 PY
 then echo "PASS explored suggests a least-checked cell outside the galactic plane and polar caps, varying between requests"
 else echo "FAIL explored suggestion"; fails=$((fails + 1)); fi
-check "forums feed" "/api/posts" 200 '"comet_id":'
+check "forums feed" "/api/posts" 200 '"posts":\['
 check "GET on the checks route" "/api/checks" 405 'use POST'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "Comets list page served" "/comet.html" 200 'id="c-list"'
@@ -135,6 +136,23 @@ case "$BASE" in
     who="tester $$"; note="contract test $$ $(date +%s)"
     post "post a tagged comment" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"comet\",\"body\":\"$note\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"tags":{"comet":'
     check "posted comment is in the thread" "/api/comets/3I%2FATLAS" 200 "\"body\":\"$note\""
+    check "posted comment is in the Forums threads" "/api/threads" 200 "\"body\":\"$note\""
+    check "posted comment is in the Forums feed" "/api/posts" 200 "\"body\":\"$note\""
+    # the tally counts each person once, by their latest tag: two new people tag 3I/ATLAS, A says comet then asteroid, B says comet
+    if python3 - "$BASE" <<'PY'
+import json, os, random, sys, urllib.request
+base, pid = sys.argv[1], os.getpid()
+def call(path, body=None):
+    req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
+    return json.load(urllib.request.urlopen(req, timeout=30))
+tags = lambda: call("/api/comets/3I%2FATLAS")["tags"]
+before = tags()
+for who, tag in [("tally a %d" % pid, "comet"), ("tally a %d" % pid, "asteroid"), ("tally b %d" % pid, "comet")]:
+    call("/api/comments", {"comet_id": "3I/ATLAS", "tag": tag, "body": "", "author": who, "turnstile": "XXXX.DUMMY.TOKEN.XXXX.%x" % random.getrandbits(48)})
+after = tags()
+assert {k: after[k] - before[k] for k in after} == {"comet": 1, "asteroid": 1, "glitch": 0, "unsure": 0}, (before, after)
+PY
+    then echo "PASS tally counts each person once (their latest tag)"; else echo "FAIL tally counts each person once"; fails=$((fails + 1)); fi
     post "post on an id with a slash and spaces" "{\"comet_id\":\"C/2025 R2 (SWAN)\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"comet_id":"C/2025 R2 (SWAN)"'
     post "missing body" "{\"comet_id\":\"3I/ATLAS\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
     post "blank body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"   \",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'

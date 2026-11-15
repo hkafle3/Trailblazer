@@ -1,5 +1,5 @@
 """Browser check for one comet's page (comet.html?id=) in Ming's style, in headless Chrome. Needs the app up (npm run dev).
-For a measured comet (3I/ATLAS, C/2025 R2 (SWAN)), a known unmeasured one (240P/NEAT), an example (C-0147) and a missing id:
+For a measured comet (3I/ATLAS, C/2025 R2 (SWAN)), a known unmeasured one (240P/NEAT) and a missing id:
 the page shows its parts, no element carries the older rounded-glass classes, and nothing runs past the window at 390,
 800 and 1440 px. Expected values come from GET /api/comets/:id, never from the page.
 Run: uv run -q --with playwright python web/tests/comet_page_ui.py [base url]   (default http://127.0.0.1:8787)"""
@@ -7,7 +7,7 @@ import asyncio, sys, urllib.parse
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
-IDS = ["3I/ATLAS", "C/2025 R2 (SWAN)", "240P/NEAT", "C-0147", "C-9999"]
+IDS = ["3I/ATLAS", "C/2025 R2 (SWAN)", "240P/NEAT", "C-9999"]
 OLD = ".glass, .panel, .btn, .chip, .tag, .tagpick, .tally, .tally-key, .nights, .empty-card"   # the rounded-glass page's parts
 # what the page shows, read the same way for every comet
 READ = """() => { const $ = s => document.querySelector(s), on = e => !!e && !e.closest('[hidden]') && e.getClientRects().length > 0;
@@ -68,8 +68,7 @@ async def main():
                     elif d.get("spherex") is not None:   # known, not measured: one link per SPHEREx visit
                         assert "photographed it" in g["empty"] and g["visits"] and all(h.startswith("timelapse.html?ra=") for h in g["visits"]), f"{why}: visits {g['visits']}"
                         assert not g["photos"] and g["measures"] is None, f"{why}: measured parts show"
-                    else:   # an example comet: the sentence, and its patch
-                        assert "Example comet" in g["empty"] and g["patch"], f"{why}: example box {g['empty']!r}, patch {g['patch']}"
+                    else: raise AssertionError(f"{why}: neither measured nor photographed by SPHEREx")
                 r = await pg.evaluate(CLIPPED)
                 assert r["overflow"] <= 0 and not r["out"], f"{why}: overflow {r['overflow']}, past the edge {r['out']}"
             assert not errors, f"{w}px: page errors {errors}"

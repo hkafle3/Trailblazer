@@ -1,8 +1,8 @@
 """Browser check that a comet sits in the same place on Explore and on its own page, in headless Chrome. Needs the app up (npm run dev).
 For known comets on three timeline days: Explore's link carries the day, the comet page's mini map puts its dot where Explore
 drew the comet (within 1% of the map's width and height) and shows that date, and "Find on map" lands back on Explore on
-that day with the comet in the same place, named. Also: no ?day= means the timeline's default day, an example comet keeps
-its fixed place, and a comet too faint to show on Explore still shows when found from its page. Then the edges: every
+that day with the comet in the same place, named. Also: no ?day= means the timeline's default day, the featured card is
+3I/ATLAS (a real comet in /api/comets) beside its dot with its verdict and that date, and a comet too faint to show on Explore still shows when found from its page. Then the edges: every
 link follows the timeline, a click during the replay opens the day that was clicked, paths split where they cross the
 map's edge, empty and one-point paths, and no page-to-page transition for people who ask for less motion.
 Run: uv run -q --with playwright python web/tests/map_ui.py [base url]   (default http://127.0.0.1:8787)"""
@@ -104,10 +104,9 @@ async def main():
         await ex.focus("#play"); await ex.keyboard.press("PageDown"); await ex.wait_for_timeout(200)
         hrefs = await ex.eval_on_selector_all('#marks a[href^="comet.html"]', "as => as.map(a => a.getAttribute('href'))")
         assert len(hrefs) >= 72 and all(h.endswith(f"&day={DEFAULT - 30}") for h in hrefs), "links do not follow the timeline"   # the 72 known comets
-        # comets people found (5 examples) and the featured card open the patch viewer as Discovered (Ming's design), at their place
-        found = await ex.eval_on_selector_all('#marks a[href*="found="]', "as => as.map(a => [a.id === 'card-comet' ? document.querySelector('#card-comet [data-f=id]').textContent : a.querySelector('b').textContent, a.getAttribute('href')])")
-        assert len(found) >= 6 and all(h.startswith("timelapse.html?ra=") and urllib.parse.parse_qs(h.split("?")[1])["found"] == [n] for n, h in found), f"found comets link to {found}"
-        print(f"PASS timeline: after moving back 30 days all {len(hrefs)} known comet links carry day {DEFAULT - 30}; {len(found)} found-comet links (the card too) open the patch viewer as Discovered")
+        card = await ex.get_attribute("#card-comet", "href")
+        assert card == f"comet.html?id=3I%2FATLAS&day={DEFAULT - 30}" and card in hrefs, f"the featured card links to {card}"
+        print(f"PASS timeline: after moving back 30 days all {len(hrefs)} comet links (the featured card too) carry day {DEFAULT - 30}")
 
         # a comet too faint for Explore to show on a day still shows, dimmed, when found from its page
         await explore(ex, "/explore.html?day=120")
@@ -120,20 +119,20 @@ async def main():
         assert await pg.locator(".mk.focus.faint").count() == 1, f"{name} is not dimmed while too faint to see"
         print(f"PASS faint: {name}, hidden on Explore on day 120, shows dimmed and named after Find on map")
 
-        # an example comet has no path: it stays where Explore draws it, with no date
-        await explore(ex, "/explore.html")
-        c0147 = '.mk.comet:has(b:text-is("C-0147"))'
-        at = await ex.evaluate(FRAC, [await ex.query_selector("#map"), await ex.query_selector(c0147 + ' i')])
-        dot = await comet_page(pg, "comet.html?id=C-0147", "C-0147", at, None, "example")
-        await find_on_map(pg, "C-0147", dot, DEFAULT, "example")
-        dot = await comet_page(pg, "comet.html?id=C-0147&day=120", "C-0147", at, None, "example, day 120")
-        await find_on_map(pg, "C-0147", dot, 120, "example, day 120")
-        await explore(ex, "/explore.html?day=300")   # its marker opens the patch viewer, as Discovered, at the place Explore draws it
-        q = urllib.parse.parse_qs((await ex.get_attribute(c0147, "href")).split("?")[1])
-        assert q["found"] == ["C-0147"] and close(mollweide(float(q["ra"][0]), float(q["dec"][0])), at), f"C-0147 links to {q}, drawn at {at}"
-        dot = await comet_page(pg, "comet.html?id=C-0147&day=300", "C-0147", at, None, "example, day 300")
-        await find_on_map(pg, "C-0147", dot, 300, "example, day 300")
-        print("PASS example comet C-0147 keeps its fixed place on its page and after Find on map, and its marker opens that place as Discovered")
+        # the featured card: 3I/ATLAS, a real measured comet, beside its dot on each day, with its CO2 verdict and that date
+        api = {c["id"]: c for c in json.loads(await ex.evaluate("fetch('/api/comets').then(r => r.text())"))["comets"]}
+        atlas = api["3I/ATLAS"]
+        assert atlas["real"] and atlas["co2"], f"3I/ATLAS in /api/comets: real {atlas['real']}, co2 {atlas['co2']}"
+        verdict = {"detected": "CO2 glow detected", "quiet": "No gas glow"}.get(atlas["co2"], "No clear signal")
+        for day in DAYS:
+            await explore(ex, f"/explore.html?day={day}")
+            g = await ex.evaluate("""() => { const c = document.getElementById('card-comet'), m = [...document.querySelectorAll('.mk.known')].find(a => a.querySelector('b')?.textContent === '3I/ATLAS');
+                const f = k => c.querySelector(`[data-f=${k}]`).textContent;
+                return { shown: !c.hidden && getComputedStyle(c).display !== 'none' && getComputedStyle(c).visibility !== 'hidden', id: f('id'), what: f('what'), when: f('when'), href: c.getAttribute('href'),
+                  at: [c.style.left, c.style.top], dot: m && [m.style.left, m.style.top], sel: m?.classList.contains('sel') }; }""")
+            want = {"shown": True, "id": "3I/ATLAS", "what": verdict, "when": f"Position on {date_text(day)}", "href": f"comet.html?id=3I%2FATLAS&day={day}"}
+            assert {k: g[k] for k in want} == want and g["at"] == g["dot"] and g["sel"], f"day {day}: featured card {g}"
+        print(f"PASS featured card: 3I/ATLAS (real, {verdict}) sits by its dot on days {', '.join(map(str, DAYS))} with that date and links to its page on it")
 
         # a click while the replay runs opens the day that was clicked, once, however many clicks follow
         await explore(ex, "/explore.html")
@@ -155,7 +154,7 @@ async def main():
         print("PASS keyboard: Enter on a comet opens its page on the timeline's day")
 
         # every path: no line across the map where it crosses the edge, and the comet's dot is on the line
-        await pg.goto(BASE + "/comet.html?id=C-0147")
+        await pg.goto(BASE + "/comet.html?id=3I%2FATLAS")
         bad, split = await pg.evaluate("""async () => { const m = await import('/skymap.js'), { comets } = await (await fetch('/api/comets')).json(), bad = [], split = [];
             for (const c of comets.filter(c => c.track?.length)) {
               const subs = m.trackPath(c.track).split('M').filter(Boolean).map(s => s.split('L').map(p => p.split(' ').map(Number)));

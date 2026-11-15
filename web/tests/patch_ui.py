@@ -86,10 +86,12 @@ async def main():
         assert await st.is_visible() and "Type RA and Dec" in await st.text_content(), "sky mode: the status line is not seen"
         print("PASS status: in sky mode a bad position is said beside the search")
 
-        # a discovery belongs to its spot: other coordinates drop it from the label, the link and the address together
-        await pg.goto(f"{BASE}/timelapse.html?ra=77.3058&dec=27.3551&det=D1&diff=1&found=C-0147")
+        # a discovery belongs to its spot: other coordinates drop it from the label, the link and the address together.
+        # found=TEST-1 is a made-up id, as in recenter_ui.py: a real candidate's Discovered state follows its own visit
+        # (discuss.js, checked by discuss_ui.py), while this checks the address-level label alone
+        await pg.goto(f"{BASE}/timelapse.html?ra=77.3058&dec=27.3551&det=D1&diff=1&found=TEST-1")
         await pg.wait_for_function(ready, timeout=180000)
-        assert (await pg.text_content("#state-label")) == "Discovered" and await pg.get_attribute("#state", "href") == "comet.html?id=C-0147" and "found=C-0147" in pg.url, "Discovered not shown"
+        assert (await pg.text_content("#state-label")) == "Discovered" and await pg.get_attribute("#state", "href") == "comet.html?id=TEST-1" and "found=TEST-1" in pg.url, "Discovered not shown"
         await pg.select_option("#det", "D2"); await pg.wait_for_timeout(300)   # another band at the same spot keeps it
         assert (await pg.text_content("#state-label")) == "Discovered", "a band change dropped the discovery"
         await pg.fill("#coords", "269.4463 4.7671"); await pg.press("#coords", "Enter"); await pg.wait_for_timeout(300)
