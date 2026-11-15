@@ -1046,12 +1046,14 @@ function specWhere(gaiaDown) {
 }
 // Checked against 2MASS and WISE (web/tests/spectrum_catalog.mjs): isolated stars match within about 10%, but stars
 // inside the 18.45″ circle add their light (a neighbour with half the star's light read 1.5 times too bright), and a
-// much brighter star nearby can too. Gaia says whether either is so here (G band, so roughly).
+// much brighter star nearby can too (R Draconis lifted stars 127″ away 2 to 6 times). Gaia says whether either is so here (G band, so roughly).
 function specNeighbours(stars, me, year) {
   const [ra, dec] = gaiaAt(me, year), far = s => { const [a, d] = gaiaAt(s, year); return Math.hypot(((a - ra + 540) % 360 - 180) * Math.cos(dec * D2R), d - dec) * 3600; };
   const others = stars.filter(s => s !== me && s.id !== me.id);
   const share = others.filter(s => far(s) < 25).reduce((a, s) => a + 10 ** (-0.4 * (s.g - me.g)), 0);
-  const big = others.filter(s => s.g < me.g - 3 && far(s) < 120).sort((a, b) => a.g - b.g)[0];
+  // a star much brighter anywhere in Gaia's cone (144″): R Draconis, a red giant, lifted stars 127″ away 2 to 6 times
+  // in the infrared, where it is far brighter than its visible G says
+  const big = others.filter(s => s.g < me.g - 3).sort((a, b) => a.g - b.g)[0];
   const say = [share >= 0.1 ? `Stars within 25″ add about ${Math.round(100 * share)}% to its light (Gaia), so its points read high.` : '',
     big ? `A star ${(me.g - big.g).toFixed(0)} magnitudes brighter is ${Math.round(far(big))}″ away; its glow can add light too.` : ''].filter(Boolean);
   specEl('spec-warn').textContent = say.join(' ');
