@@ -39,7 +39,6 @@ body {
   color: var(--ink);
   font: 400 14px/1.45 var(--body);
   -webkit-font-smoothing: antialiased;
-  min-width: 1100px;
 }
 a { color: inherit; text-decoration: none; }
 button, input, textarea { font: inherit; color: inherit; }
@@ -403,6 +402,7 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
   .nights { grid-template-columns: repeat(3, 1fr); }
   .search { width: 200px; }
 }
+@media (max-width: 860px) { .comet-grid { grid-template-columns: minmax(0, 1fr); } .nights { grid-template-columns: repeat(6, 1fr); } }   /* too narrow for the comments beside the photos: they go underneath, and the photos fit one row */
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 
 /* ---------- Icons (icons.svg) ---------- */
@@ -441,7 +441,6 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 .mk.sel b { display: none; }               /* the featured comet's name is on its card (explore.js adds it for phones) */
 
 @media (max-width: 640px) {
-  body { min-width: 0; }
   .wide-only { display: none; }
   .layer em { text-transform: capitalize; }
 
@@ -517,23 +516,78 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 .mk.deep b { left: 18px; top: -8px; color: rgba(234, 241, 255, .9); }
 body:has(#ly-photos:not(:checked)) .mk.deep { display: none; }
 
-/* Comets tab: the list of known comets (comet.js list()) */
-#c-list { max-width: 860px; margin: 0 auto; }
-#c-list h1 { font-size: 54px; margin: 0 0 6px; }
-#c-list > p { margin: 0 0 22px; }
-.clist { padding: 14px 12px; }
-.crow { display: grid; grid-template-columns: 1fr auto 92px; align-items: center; gap: 16px; padding: 13px 16px; border-radius: 12px; color: var(--ink); text-decoration: none; }
-.crow + .crow { background: linear-gradient(rgba(255, 255, 255, .06), rgba(255, 255, 255, .06)) 16px 0 / calc(100% - 32px) 1px no-repeat; }   /* a straight divider, inset from the rounded ends */
-.crow:hover, .crow:focus-visible { background: rgba(255, 255, 255, .05); }   /* hides the divider above too */
-.crow b { font: 500 14px var(--mono); }
-.crow .co2 { font-size: 13px; color: var(--ink-3); }
-.crow .co2.detected { color: var(--comet); }
-.crow .co2.quiet, .crow .co2.unclear { color: var(--ink-2); }
-.crow .n { font-size: 13px; color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
-@media (max-width: 640px) {
-  #c-list h1 { font-size: 36px; }
-  .crow { grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px; }
-  .crow b { grid-column: 1 / -1; }
+/* Comets tab (comet.js list()): one shelf per answer, from the approved mockup (direction A, "Shelves").
+   Ming's pieces: the Forums search box and selects (forums.css), the patch viewer's outlined arrow button (.pv-state)
+   for measured comets, Forums' black box for sky tiles, and Explore's Layers button (44 px, 10 px corners) for Too faint. */
+.shell.comets { --e: calc(100vw / 2462); max-width: 1500px; padding: calc(var(--head-h) + 40px) 5vw 60px; font-family: var(--panel-font); color: #fff; }
+#c-list .filters { display: flex; flex-wrap: wrap; gap: 8px 48px; margin-top: 18px; }
+#c-list .filters .f-row { margin: 0; }
+#c-list .box { background: #000; border: 2px solid #fff; border-radius: 6px; }
+#c-list .n { font-variant-numeric: tabular-nums; color: #b5b5b5; }
+#c-list .shelf { margin-top: 40px; }
+#c-list .shelf > h2, #c-list .none { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; font: 400 20px var(--panel-font); letter-spacing: .03em; }
+#c-list .shelf > h2 .n { font-size: 16px; }
+#c-list .none { color: #b5b5b5; font-size: 16px; }
+/* the result glyphs: a filled dot is measured (orange: CO2 glow), a hollow ring could be measured, a grey speck is too faint */
+#c-list .g { flex: none; display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+#c-list .g-co2 { background: var(--comet); box-shadow: 0 0 0 3px rgba(255, 154, 77, .22), 0 0 12px var(--comet); }
+#c-list .g-flat { background: #fff; }
+#c-list .g-open { border: 1.5px solid #fff; }
+#c-list .g-faint { width: 6px; height: 6px; margin: 3px; background: #8a93a6; opacity: .7; }
+/* measured: the outlined arrow button, with the comet's photo in a ring of its result's colour */
+#c-list .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 24px; }
+#c-list .card { --tone: #fff; display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 6px 14px; align-items: center; padding: 16px 16px 16px 18px; border: 2px solid #fff; border-radius: 16px; background: #000; transition: background .25s var(--ease); }
+#c-list .card.s-co2 { --tone: var(--comet); }
+#c-list :is(.card, .tile):hover { background: #0b0f1a; }
+#c-list :is(.card, .tile, .faintlist a):focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+#c-list .card .ph { grid-row: 1 / 4; width: 72px; height: 72px; border-radius: 50%; overflow: hidden; background: #000; box-shadow: 0 0 0 1.5px var(--tone); }
+#c-list .card .ph img { display: block; width: 100%; height: 100%; object-fit: cover; filter: brightness(1.25) contrast(1.1); }
+#c-list .card b { font: 700 13px/1.35 var(--panel-font); }
+#c-list .card .v { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tone); }
+#c-list .card .v .g { width: 10px; height: 10px; }
+#c-list .card .n { font-size: 13px; }
+#c-list .card .go { grid-column: 3; grid-row: 1 / 4; width: 30px; height: 30px; border-radius: 50%; background: #ececec; color: #050505; display: grid; place-items: center; transition: transform .2s var(--ease); }
+#c-list .go svg, #c-list .ic { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+#c-list .go svg { width: 62%; height: 62%; stroke-width: 1.6; }
+#c-list .card:hover .go { transform: translateX(3px); }
+/* could be measured: Forums' black box holding the comet page's mini map, the comet a hollow ring on its dotted path */
+#c-list .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px; }
+#c-list .tile { display: grid; gap: 10px; min-width: 0; padding: 14px 14px 12px; border-width: 1.5px; transition: background .25s var(--ease); }
+#c-list .tile .skymini { display: block; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); filter: none; view-transition-name: none; }   /* one per comet: only the comet page's map glides */
+#c-list .tile .skymini path { stroke: rgba(255, 255, 255, .75); stroke-width: 2; }
+#c-list .tile .skymini i { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: #000; border: 2.5px solid #fff; box-shadow: none; box-sizing: border-box; }
+#c-list .tile b { font: 400 13px var(--panel-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#c-list .tile .n { font-size: 12px; margin-top: -6px; }
+/* too faint: Explore's Layers button, one speck per comet beside it; it opens to a top-ruled list */
+#c-list details.shelf > summary { list-style: none; display: flex; align-items: center; gap: 22px; cursor: pointer; }
+#c-list details.shelf > summary::-webkit-details-marker { display: none; }
+#c-list .menubtn { display: inline-flex; align-items: center; gap: 12px; height: 44px; padding: 0 18px; border-radius: 10px; border: 1.5px solid rgba(255, 255, 255, .85); background: rgba(0, 0, 0, .55); font: 400 15px var(--panel-font); white-space: nowrap; }
+#c-list summary:hover .menubtn { background: rgba(255, 255, 255, .08); }
+#c-list summary:focus-visible { outline: none; }
+#c-list summary:focus-visible .menubtn { outline: 2px solid #fff; outline-offset: 3px; }
+#c-list .chev { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; transition: transform .3s var(--ease); }
+#c-list details[open] .chev { transform: rotate(180deg); }
+#c-list .specks { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+#c-list .specks i { width: 5px; height: 5px; border-radius: 50%; background: #8a93a6; opacity: .55; }
+#c-list .faintlist { columns: 4; column-gap: 40px; margin-top: 18px; padding: 22px 26px; border-top: 2px solid #fff; font-size: 13.5px; color: #8a93a6; }   /* square ends: the white rule runs straight */
+#c-list .faintlist a { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; break-inside: avoid; }
+#c-list .faintlist a:hover { color: #fff; }
+#c-list .faintlist .ic { width: 16px; height: 16px; stroke-width: 1.8; opacity: .55; transition: opacity .2s, transform .2s var(--ease); }
+#c-list .faintlist a:hover .ic { opacity: 1; transform: translateX(3px); }
+@media (max-width: 1100px) { #c-list .faintlist { columns: 2; } }
+@media (max-width: 760px) { .shell.comets { --e: .42px; } #c-list .filters .f-row { width: 100%; } }   /* as Forums on a phone (forums.css): one row each, label left, select right */
+@media (max-width: 860px) {
+  .shell.comets { padding: calc(var(--head-h) + 20px) 16px 40px; }
+  #c-list .filters { gap: 8px 24px; margin-top: 14px; }
+  #c-list .shelf { margin-top: 30px; }
+  #c-list .shelf > h2 { font-size: 16px; margin-bottom: 12px; }
+  #c-list .cards { grid-template-columns: 1fr; gap: 12px; }
+  #c-list .card { grid-template-columns: 64px minmax(0, 1fr) auto; padding: 12px 14px; gap: 2px 14px; }
+  #c-list .card .ph { width: 64px; height: 64px; }
+  #c-list .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #c-list .tile { padding: 10px; }
+  #c-list .faintlist { columns: 1; padding: 16px 4px; }
+  #c-list .specks { display: none; }
 }
 
 /* known comets on the sky: the name shows on hover (explore.js adds .peek); a bigger invisible target than the 6px dot */

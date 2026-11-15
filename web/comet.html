@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
+<link rel="stylesheet" href="search.css">   <!-- Ming's Forums search box and selects (.f-search, .f-row, .f-box) -->
 <!-- also in header.css; Chrome only honours it reliably when it is in the page itself, so the Explore map can glide into the mini map -->
 <style>
 @view-transition { navigation: auto; }
@@ -21,10 +22,34 @@
 </header>
 
 <main class="shell">
+  <!-- The Comets tab (comet.js list()): one shelf per answer. Search and the filter row change every shelf. -->
   <section id="c-list" hidden>
-    <h1>Comets</h1>
-    <p class="faint" id="l-sub"></p>
-    <div class="clist glass" id="l-rows"></div>
+    <form class="f-search" role="search" onsubmit="return false">
+      <label class="sr-only" for="l-q">Search comets</label>
+      <svg class="f-search-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+      <input id="l-q" type="search" placeholder="Search comets" autocomplete="off" spellcheck="false" enterkeyhint="search">
+    </form>
+    <div class="filters">
+      <label class="f-row" for="l-region">Region
+        <select class="f-box" id="l-region">
+          <option value="">All sky</option>
+          <option value="north">Northern sky</option>
+          <option value="south">Southern sky</option>
+          <option value="ecliptic">Near the ecliptic</option>
+        </select>
+      </label>
+      <label class="f-row" for="l-sort">Sort
+        <select class="f-box" id="l-sort">
+          <option value="">Result</option>
+          <option value="photos">Most photos</option>
+          <option value="name">Name</option>
+        </select>
+      </label>
+    </div>
+    <section class="shelf" id="s-m"><h2><i class="g g-flat"></i>Measured <span class="n"></span></h2><div class="cards"></div></section>
+    <section class="shelf" id="s-o"><h2><i class="g g-open"></i>Could be measured <span class="n"></span></h2><div class="tiles"></div></section>
+    <details class="shelf" id="s-f"><summary><span class="menubtn"><i class="g g-faint"></i>Too faint <span class="n"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span><span class="specks" aria-hidden="true"></span></summary><div class="faintlist"></div></details>
+    <p class="none" id="l-none" hidden>No comets match.</p>
   </section>
 
   <div class="comet-head">

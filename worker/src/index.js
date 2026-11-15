@@ -267,13 +267,15 @@ const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, d
 
 // Comets people found plus known objects, for the map's markers
 async function comets(url, env) {
-  // for the Comets list: the CO2 verdict of a measured comet and how many SPHEREx photos it is in (read inside D1, so the
-  // Worker never parses the large detail column)
+  // for the Comets list: the CO2 verdict of a measured comet, how many SPHEREx photos it is in, and its thumbnail (the
+  // brightest of the photos its page shows). Read inside D1, so the Worker never parses the large detail column.
   const [rows, tags] = await Promise.all([env.DB.prepare(`SELECT id, kind, ra, dec, day, tail, real, track,
     json_extract(detail, '$.co2_verdict') AS co2, COALESCE(json_extract(detail, '$.exposures'), json_array_length(detail, '$.spherex')) AS photos,
-    json_extract(detail, '$.faint') AS faint
+    json_extract(detail, '$.faint') AS faint,
+    'data/comets/' || json_extract(detail, '$.dir') || '/' || (SELECT json_extract(p.value, '$.file') FROM json_each(detail, '$.photos') p
+      ORDER BY json_extract(p.value, '$.flux') DESC LIMIT 1) AS thumb
     FROM comets`).all(), tallies(env.DB)]);
-  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint } : {}) })) });
+  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, thumb: c.thumb } : {}) })) });
 }
 
 // One comet for its page: position, tags, the measured detail (photos, spectrum) and its discussion

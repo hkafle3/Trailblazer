@@ -1,6 +1,6 @@
 // Comet page: one comet from /api/comets/:id (D1). Real comets carry measured photos and a SPHEREx spectrum
 // in `detail` (bake/comet_spectrum.py); example comets have only their discussion.
-import { fwd, trackAt, trackPath, dayParam, dayDate, MJD0 } from './skymap.js';
+import { fwd, trackAt, trackPath, dayParam, dayDate, MJD0, RAD } from './skymap.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');   // no id: the list of known comets
 const MJD_UNIX = 40587, day = dayParam();   // ?day=: the date on Explore's timeline when this page was opened from the map
@@ -231,24 +231,79 @@ function composer(c) {
   });
 }
 
-// The Comets tab: every known comet SPHEREx photographed, measured ones first, then by how often it was photographed
-const CO2 = { detected: ['CO2 glow detected', 'detected'], quiet: ['No gas glow', 'quiet'], unclear: ['Not enough signal', 'unclear'] };
+// The Comets tab: every known comet SPHEREx photographed, on one of three shelves. Measured comets get a photo card with
+// their CO2 result, the ones that could still be measured get a small sky map (placed by skymap.js, as Explore and the
+// comet page place them on `day`), and the faint ones fold away. Search and the filter row change every shelf.
+const RESULT = { detected: ['CO2 glow', 'co2'], quiet: ['No gas glow', 'flat'], unclear: ['No clear signal', 'flat'] };
+const shelf = c => (c.co2 ? 'm' : c.faint ? 'f' : 'o');
+// regions as on Forums (forums.js): north/south by Dec, near the ecliptic within 15 degrees of it; here at the comet's place on `day`
+const eclLat = (ra, dec) => Math.asin(Math.sin(dec * RAD) * Math.cos(23.44 * RAD) - Math.cos(dec * RAD) * Math.sin(23.44 * RAD) * Math.sin(ra * RAD)) / RAD;
+const REGION = { north: ([, dec]) => dec >= 0, south: ([, dec]) => dec < 0, ecliptic: ([ra, dec]) => Math.abs(eclLat(ra, dec)) < 15 };
+const byPhotos = (a, b) => (b.photos ?? 0) - (a.photos ?? 0);
+const SORT = {   // "Result": a CO2 glow first; then, and on the other shelves, the most photographed first
+  '': (a, b) => (b.co2 === 'detected') - (a.co2 === 'detected') || byPhotos(a, b),
+  photos: byPhotos,
+  name: (a, b) => a.id.localeCompare(b.id),
+};
+const ARROW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>';
+const svgEl = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+const photosText = c => `${c.photos ?? 0} photos`;
+
+function card(c, href) {   // Ming's outlined arrow button (patch viewer .pv-state), with the comet's photo
+  const a = el('a', `card s-${RESULT[c.co2][1]}`), ph = el('span', 'ph'), img = el('img'), v = el('span', 'v'), go = el('span', 'go');
+  a.href = href; a.dataset.id = c.id; a.dataset.co2 = c.co2;
+  img.src = c.thumb; img.alt = ''; ph.append(img);
+  v.append(el('i', `g g-${RESULT[c.co2][1]}`), RESULT[c.co2][0]);
+  go.innerHTML = ARROW;
+  a.append(ph, el('b', null, c.id), v, el('span', 'n', photosText(c)), go);
+  return a;
+}
+
+function tile(c, href, at) {   // the comet page's mini map (.skymini) in small: the path, and the comet on `day`
+  const a = el('a', 'tile box'), sky = el('span', 'skymini'), svg = svgEl('svg', { viewBox: '0 0 2000 1000', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+  a.href = href; a.dataset.id = c.id;
+  svg.append(svgEl('path', { d: trackPath(c.track) }));
+  const [u, v] = fwd(at[0], at[1]), dot = el('i');
+  dot.style.left = u * 100 + '%'; dot.style.top = v * 100 + '%';
+  a.dataset.u = u; a.dataset.v = v;
+  sky.append(svg, dot);
+  a.append(sky, el('b', null, c.id), el('span', 'n', photosText(c)));
+  a.title = c.id;
+  return a;
+}
+
 function list() {
   document.querySelector('.comet-head').hidden = document.querySelector('.comet-grid').hidden = true;
+  document.querySelector('main').classList.add('comets');
   $('c-list').hidden = false;
   document.title = 'Comets · Trailblazer';
   fetch('/api/comets').then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(({ comets }) => {
-    const rank = c => (c.co2 === 'detected' ? 0 : c.co2 ? 1 : 2);
-    const known = comets.filter(c => c.kind === 'known' && c.real).sort((a, b) => rank(a) - rank(b) || (b.photos ?? 0) - (a.photos ?? 0));
-    $('l-sub').textContent = `${known.length} known comets in SPHEREx photos. ${known.filter(c => c.co2).length} have a measured spectrum.`;
-    $('l-rows').replaceChildren(...known.map(c => {
-      const a = el('a', 'crow'), [text, cls] = CO2[c.co2] ?? ['Not measured yet', 'none'];
-      a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
-      a.append(el('b', null, c.id), el('span', `co2 ${cls}`, text), el('span', 'n', (c.photos ? `${c.photos} photos` : '') + (c.faint ? ' · likely too faint to see' : '')));
-      if (c.faint) a.title = 'Predicted too faint to see clearly in SPHEREx photos';
-      return a;
-    }));
-  }).catch(err => { $('l-sub').textContent = 'Comets are unavailable right now.'; console.warn(err); });
+    const known = comets.filter(c => c.kind === 'known' && c.real).map(c => ({ ...c, at: trackAt(c.track, day) ?? [c.ra, c.dec] }));
+    const href = c => `comet.html?id=${encodeURIComponent(c.id)}&day=${day}`;
+    const render = () => {
+      const q = $('l-q').value.trim().toLowerCase(), region = REGION[$('l-region').value], sort = SORT[$('l-sort').value];
+      const shown = known.filter(c => (!q || c.id.toLowerCase().includes(q)) && (!region || region(c.at))).sort(sort);
+      const on = k => shown.filter(c => shelf(c) === k);
+      const fill = (k, items) => {
+        const s = $(`s-${k}`);
+        s.querySelector('.n').textContent = items.length;
+        s.hidden = !items.length;
+        return s;
+      };
+      fill('m', on('m')).querySelector('.cards').replaceChildren(...on('m').map(c => card(c, href(c))));
+      fill('o', on('o')).querySelector('.tiles').replaceChildren(...on('o').map(c => tile(c, href(c), c.at)));
+      const f = fill('f', on('f'));
+      f.querySelector('.specks').replaceChildren(...on('f').map(() => el('i')));
+      f.querySelector('.faintlist').replaceChildren(...on('f').map(c => {
+        const a = el('a', null, c.id); a.href = href(c); a.dataset.id = c.id;
+        a.insertAdjacentHTML('beforeend', ARROW.replace('<svg', '<svg class="ic"'));
+        return a;
+      }));
+      $('l-none').hidden = shown.length > 0;
+    };
+    for (const k of ['l-q', 'l-region', 'l-sort']) $(k).addEventListener('input', render);
+    render();
+  }).catch(err => { $('l-none').textContent = 'Comets are unavailable right now.'; $('l-none').hidden = false; console.warn(err); });
 }
 
 if (!id) list();
