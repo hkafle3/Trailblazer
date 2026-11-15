@@ -132,6 +132,7 @@ export function discuss(page) {
   async function open() {
     const m = state.m, f = m.frames[state.i];
     sheet ??= build();
+    page.stop();   // the sheet is about this visit: playback would move on and close it
     openOn = [m, f];
     document.body.classList.add('talking');
     // the thumbnail: the middle of the photo on screen, the dot ringed
