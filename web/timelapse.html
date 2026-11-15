@@ -96,6 +96,7 @@
     <h2 id="spec-h">Spectrum<button class="close" id="spec-close" type="button" aria-label="Close the spectrum"><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button></h2>
     <div class="pv-scroll" role="region" aria-label="Spectrum">
       <p class="pv-info" id="spec-where"></p>
+      <p class="pv-info warn" id="spec-warn" hidden></p>
       <p class="pv-info" id="spec-status" role="status" aria-live="polite"></p>
       <i class="spec-line" id="spec-line" aria-hidden="true"></i>
       <svg id="spec-chart" role="img" aria-label="Spectrum chart"></svg>
@@ -104,7 +105,7 @@
         <label class="spec-log"><input class="cbx" type="checkbox" id="spec-log">Log scale</label>
         <button class="spec-csv" id="spec-csv" type="button" disabled>Download CSV</button>
       </div>
-      <p class="pv-info spec-note">Each dot is one SPHEREx exposure, light in a circle 18″ wide minus the sky around it. Absolute brightness is approximate. A step between two detectors can come from the instrument, not the star. Hollow dots may be off: hover for why. Ticks on the axis are wavelengths with no usable exposure.</p>
+      <p class="pv-info spec-note">Each dot is one SPHEREx exposure: the light in a circle 37″ across, minus the sky around it. Absolute brightness is approximate, and stars inside the circle add their light. A step between two detectors can come from the instrument, not the star. Hollow dots may be off: hover for why. Ticks on the axis are wavelengths with no usable exposure.</p>
     </div>
   </section>
 
@@ -960,7 +961,7 @@ Object.defineProperties(window.__lapse, { channels: { value: CHANNELS }, builds:
 // channels, all six detectors. A Gaia star at the spot gives its id, and its motion moves the circle exposure by exposure
 // (Barnard's Star moves 10″ a year). Drags and arrow keys still re-centre. &spec=ra,dec reopens it.
 const SPEC_COLOURS = Object.fromEntries(SP_BANDS.map(([lo, hi], n) => [`D${n + 1}`, `rgb(${colourOf((lo + hi) / 2).map(Math.round).join(',')})`]));
-const spec = { mode: false, at: null, gaia: null, res: null, ctl: null, log: false, n: 0 };
+const spec = { mode: false, at: null, gaia: null, res: null, ctl: null, log: false, n: 0, bright: false };
 let specMaps = null;
 const specEl = id => document.getElementById(id);
 const specQ = () => spec.at ? `&spec=${spec.at.ra.toFixed(5)},${spec.at.dec.toFixed(5)}` : '';
@@ -999,7 +1000,7 @@ async function openSpec(ra, dec, year = 2026) {
   spec.ctl?.abort();
   const ctl = spec.ctl = new AbortController(), n = ++spec.n, mine = () => n === spec.n;
   if (document.body.classList.contains('talking')) document.querySelector('#talk .close')?.click();   // one card in the right column
-  spec.at = { ra, dec }; spec.gaia = null; spec.res = null;
+  spec.at = { ra, dec }; spec.gaia = null; spec.res = null; spec.bright = false; specEl('spec-warn').hidden = true;
   document.body.classList.add('speccing');
   if (matchMedia('(max-width: 640px)').matches) tabs.querySelector('[data-t=info]').click();   // phones: the card is the Info tab
   specEl('spec-csv').disabled = true;
@@ -1019,6 +1020,7 @@ async function openSpec(ra, dec, year = 2026) {
       specUrl();
     }
     specWhere(g == null);
+    if (spec.gaia) specNeighbours(g.stars, spec.gaia, year);
     specMaps ??= fetch('data/wavemaps.json').then(r => { if (!r.ok) throw new Error(`wavelength maps: HTTP ${r.status}`); return r.json(); }).catch(e => { specMaps = null; throw e; });
     const maps = await specMaps;
     const at = spec.gaia ? t => gaiaAt(spec.gaia, yearOf(t)) : () => [ra, dec];
@@ -1026,7 +1028,8 @@ async function openSpec(ra, dec, year = 2026) {
     if (!mine()) return;
     spec.res = res;
     const doubt = res.points.filter(p => p.doubt).length, sat = res.gaps.filter(g => /saturated/.test(g.why)).length;
-    const bright = sat >= 10 && sat > res.gaps.length / 2 ? `SPHEREx saturates on this star at ${sat} of 102 wavelengths: it is too bright to measure cleanly. Fainter stars work.` : '';
+    spec.bright = sat >= 10 && sat > res.gaps.length / 2;
+    const bright = spec.bright ? `SPHEREx saturates on this star at ${sat} of 102 wavelengths: it is too bright to measure cleanly. Fainter stars work.` : '';
     specStatus(res.points.length ? `${bright ? `${bright} ` : ''}${res.points.length} of 102 channels measured${doubt ? `, ${doubt} doubtful (hollow)` : ''}${res.gaps.length ? `, ${res.gaps.length} gaps` : ''}. From ${res.covering} exposures.`
       : bright || `No usable exposure of this spot (${res.found} exposures searched).`);
     specEl('spec-csv').disabled = !res.points.length;
@@ -1041,6 +1044,19 @@ function specWhere(gaiaDown) {
   el.append(document.createElement('br'), s ? Object.assign(document.createElement('b'), { textContent: `Gaia DR3 ${s.id ?? ''}` }) : gaiaDown ? 'Gaia did not answer' : 'No Gaia star within 8″');
   if (s) el.append(` · G ${s.g.toFixed(1)}`);
 }
+// Checked against 2MASS and WISE (web/tests/spectrum_catalog.mjs): isolated stars match within about 10%, but stars
+// inside the 18.45″ circle add their light (a neighbour with half the star's light read 1.5 times too bright), and a
+// much brighter star nearby can too. Gaia says whether either is so here (G band, so roughly).
+function specNeighbours(stars, me, year) {
+  const [ra, dec] = gaiaAt(me, year), far = s => { const [a, d] = gaiaAt(s, year); return Math.hypot(((a - ra + 540) % 360 - 180) * Math.cos(dec * D2R), d - dec) * 3600; };
+  const others = stars.filter(s => s !== me && s.id !== me.id);
+  const share = others.filter(s => far(s) < 25).reduce((a, s) => a + 10 ** (-0.4 * (s.g - me.g)), 0);
+  const big = others.filter(s => s.g < me.g - 3 && far(s) < 120).sort((a, b) => a.g - b.g)[0];
+  const say = [share >= 0.1 ? `Stars within 25″ add about ${Math.round(100 * share)}% to its light (Gaia), so its points read high.` : '',
+    big ? `A star ${(me.g - big.g).toFixed(0)} magnitudes brighter is ${Math.round(far(big))}″ away; its glow can add light too.` : ''].filter(Boolean);
+  specEl('spec-warn').textContent = say.join(' ');
+  specEl('spec-warn').hidden = !say.length;
+}
 function specStatus(text, p = null) {
   specEl('spec-status').textContent = text;
   specEl('spec-line').style.setProperty('--p', p == null ? '' : `${Math.round(100 * p)}%`);
@@ -1053,7 +1069,7 @@ function specUrl() {
   history.replaceState(null, '', u);
 }
 function closeSpec() {
-  spec.ctl?.abort(); spec.n++; spec.at = spec.gaia = spec.res = null;
+  spec.ctl?.abort(); spec.n++; spec.at = spec.gaia = spec.res = null; spec.bright = false;
   document.body.classList.remove('speccing'); specMode(false); specUrl(); draw();
   specEl('spec-mode').focus();
 }
@@ -1082,6 +1098,7 @@ function specRing(toPx, f) {
 function specChart() {
   const svg = specEl('spec-chart'), NS = 'http://www.w3.org/2000/svg', res = spec.res;
   svg.replaceChildren();
+  svg.classList.toggle('greyed', spec.bright);   // too bright: the dots left are not a spectrum, so they are drawn grey
   const add = (tag, attrs, title) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (title) e.append(Object.assign(document.createElementNS(NS, 'title'), { textContent: title })); svg.append(e); return e; };
   const W = Math.max(240, Math.round(svg.clientWidth || 300)), H = Math.round(Math.min(260, Math.max(150, W * (innerWidth <= 640 ? 0.52 : 0.8))));
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.style.aspectRatio = `${W} / ${H}`;
@@ -1113,10 +1130,14 @@ function specChart() {
     if (!spec.log) add('line', { class: 'err', x1: x, x2: x, y1: sy(p.flux - p.err), y2: sy(p.flux + p.err), stroke: c });
     add('circle', { class: p.doubt ? 'pt doubt' : 'pt', cx: x, cy: sy(p.flux), r: p.doubt ? 2.8 : 2.4, ...(p.doubt ? { stroke: c } : { fill: c }) }, tip);
   }
+  if (spec.bright) {
+    add('text', { class: 'why', x: (X0 + X1) / 2, y: (Y0 + Y1) / 2 - 6, 'text-anchor': 'middle' }).textContent = 'Too bright to measure:';
+    add('text', { class: 'why', x: (X0 + X1) / 2, y: (Y0 + Y1) / 2 + 10, 'text-anchor': 'middle' }).textContent = 'SPHEREx saturates on it';
+  }
   const off = res.points.length - pts.length;
   if (off) add('text', { x: X1, y: Y0 + 10, 'text-anchor': 'end' }).textContent = `${off} at or under zero not shown`;
-  svg.setAttribute('aria-label', `Spectrum: ${res.points.length} measurements from 0.75 to 5 micrometres${res.points.length ? `, brightest ${Math.max(...res.points.map(p => p.flux)).toFixed(0)} millijansky` : ''}`);
-  specEl('spec-key').innerHTML = res.points.length ? Object.entries(SPEC_COLOURS).map(([d, c]) => `<span><i style="background:${c}"></i>${d}</span>`).join('') + '<span><i class="hollow"></i>doubtful</span>' : '';
+  svg.setAttribute('aria-label', spec.bright ? 'Spectrum: too bright to measure, SPHEREx saturates on this star' : `Spectrum: ${res.points.length} measurements from 0.75 to 5 micrometres${res.points.length ? `, brightest ${Math.max(...res.points.map(p => p.flux)).toFixed(0)} millijansky` : ''}`);
+  specEl('spec-key').innerHTML = res.points.length && !spec.bright ? Object.entries(SPEC_COLOURS).map(([d, c]) => `<span><i style="background:${c}"></i>${d}</span>`).join('') + '<span><i class="hollow"></i>doubtful</span>' : '';
 }
 addEventListener('resize', () => { if (spec.at) specChart(); });
 // for tests/spectrum_ui.py: the CSV text, and where a sky spot or a FITS pixel of the photo is on screen (CSS px)
