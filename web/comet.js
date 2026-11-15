@@ -1,5 +1,5 @@
 // Comet page: one comet from /api/comets/:id (D1). Real comets carry measured photos and a SPHEREx spectrum
-// in `detail` (bake/comet_spectrum.py); example comets have only their discussion.
+// in `detail` (bake/comet_spectrum.py); the rest carry the SPHEREx photos JPL's path crosses.
 import { fwd, trackAt, trackPath, dayParam, dayDate, MJD0, RAD } from './skymap.js';
 import { visitShots, knownPhoto, paint, pool } from './live/cutout.js';
 const $ = id => document.getElementById(id);
@@ -181,7 +181,7 @@ function spectrum(d) {
 }
 
 // "Where it is": the comet on the all-sky picture, placed exactly as Explore places it (skymap.js). A comet with a
-// JPL path shows the path, its place on `day` and that date; one without (example comets) keeps its fixed place.
+// JPL path shows the path, its place on `day` and that date; one without keeps its fixed place.
 // "Find on map" opens Explore on the same day with this comet picked out.
 function where(c) {
   const at = trackAt(c.track, day), [ra, dec] = at ?? [c.ra, c.dec], [u, v] = fwd(ra, dec), dot = $('c-mini-dot');
@@ -200,7 +200,6 @@ function where(c) {
 // each with a link that opens that patch on that date. Its spectrum is not measured yet.
 function known(c) {
   const shots = c.detail.spherex, box = $('c-empty');
-  box.querySelector(':scope > p')?.remove();   // the example-comet sentence is wrong here
   const first = box.querySelector('.actions');   // the new lines go above the button
   box.insertBefore(el('h2', null, shots.length ? `SPHEREx photographed it ${shots.length} times` : 'Not in a SPHEREx photo yet'), first);
   // one link per visit (photos less than 5 days after the previous one are one visit), on the visit's photo the strip
@@ -391,12 +390,10 @@ else fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() :
   if (c.candidate) return location.replace(`candidate.html?id=${encodeURIComponent(c.id)}`);   // a dot reported from a time-lapse has its own page
   document.title = `${c.id} · Trailblazer`;
   $('c-id').textContent = c.id;
-  $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : c.real ? 'Known comet · JPL catalog' : 'Known object') : 'Not in any catalog';
-  if (c.kind === 'comet') { const p = $('c-patch'); p.href = `timelapse.html?ra=${c.ra}&dec=${c.dec}&det=D1&diff=1`; p.hidden = false; }
+  $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : 'Known comet · JPL catalog') : 'Not in any catalog';
   where(c);
   if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); }
   else if (c.detail?.spherex) known(c);
-  else $('c-empty').hidden = false;
   talk(c);
   composer(c);
 }).catch(err => {   // a 404 is a wrong name; anything else is the network or the database

@@ -38,7 +38,6 @@
     const head = el('div', 't-head');
     head.append(lit(el('h3'), t.id, ws));
     head.append(el('span', `t-chip ${t.kind}`, t.kind === 'known' ? 'Known comet' : 'Found by people'));
-    if (!t.real) head.append(el('span', 't-chip example', 'example'));
     const open = el('a', 't-open'); open.href = url; open.setAttribute('aria-label', `Open the ${t.id} thread`);
     open.append(el('span', null, 'Open thread'));
     const go = el('span', 'go'); go.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>'; open.append(go);

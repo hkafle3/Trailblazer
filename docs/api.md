@@ -8,13 +8,13 @@ Database: `npm run dev` applies the migrations to a local copy first, so it work
 
 ## GET /api/comets (D1)
 
-Markers for the Explore map: comets people found (`kind: "comet"`) and known objects (`kind: "known"`), read from the `comets` table. `example: true` marks seeded example rows; `real: true` marks real objects with real data (3I/ATLAS).
+Markers for the Explore map: comets people found (`kind: "comet"`) and known objects (`kind: "known"`), read from the `comets` table. Every row is real (`real: true`): the seeded example comets were removed in migration 0014. A comet people found is a candidate someone reported from a time-lapse (`candidate: true`, ids `C-0175` and up).
 
 ```json
 { "comets": [
-  { "id": "C-0147", "kind": "comet", "ra": 328, "dec": 34, "day": 127, "tail": -150, "real": false, "example": true,
-    "tags": { "comet": 12, "asteroid": 1, "glitch": 0, "unsure": 1 } },
-  { "id": "3I/ATLAS", "kind": "known", "ra": 247.109, "dec": -16.84, "day": 99, "real": true, "example": false }
+  { "id": "C-0175", "kind": "comet", "ra": 77.3, "dec": 27.4, "day": 120, "tail": -150, "real": true,
+    "tags": { "comet": 3, "asteroid": 1, "glitch": 0, "unsure": 0 }, "candidate": true, "det": "D1", "visit": "2025-08-22", "author": "orbit_owl", "created_at": 1763200000000 },
+  { "id": "3I/ATLAS", "kind": "known", "ra": 247.109, "dec": -16.84, "day": 99, "real": true, "co2": "detected", "photos": 259 }
 ] }
 ```
 
@@ -26,7 +26,7 @@ Markers for the Explore map: comets people found (`kind: "comet"`) and known obj
 
 ## GET /api/comets/:id (D1)
 
-One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `detail` (null for example comets) and `comments`, oldest first.
+One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `detail` and `comments`, oldest first.
 
 ```json
 { "id": "3I/ATLAS", "kind": "known", "real": true, "tags": { "comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0 },
@@ -47,9 +47,9 @@ Refusals: `404 {"error":"no comet C-9999"}`, `400 {"error":"comet id is not vali
 The Forums page's threads: every comet with at least one written comment, newest activity first. Votes with no text are left out of `comments` (they are counted in `tags`).
 
 ```json
-{ "threads": [ { "id": "C-0147", "kind": "comet", "ra": 77.3, "dec": 30.4, "day": 120, "real": false,
-    "tags": { "comet": 12, "asteroid": 1, "glitch": 0, "unsure": 1 }, "last": 1762994000000,
-    "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun in all six photos.", "created_at": 1762992800000 } ] } ] }
+{ "threads": [ { "id": "3I/ATLAS", "kind": "known", "ra": 247.109, "dec": -16.84, "day": 99, "real": true,
+    "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 }, "last": 1763200000000,
+    "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The CO2 glow shows in the August photos.", "created_at": 1763200000000 } ] } ] }
 ```
 
 - `last`: the newest comment's `created_at` (unix ms). `comments` are oldest first.
@@ -291,6 +291,6 @@ Every complete answer from `/api/images`, `/api/gaia` and `/api/known` is also s
 The Forums feed: the 200 newest comments that have text, across every comet, newest first. Never cached.
 
 ```json
-{ "posts": [ { "comet_id": "C-0147", "author": "mira_v", "tag": "comet", "body": "Strong carbon dioxide peak at 4.26.",
-  "created_at": 1762998800000, "kind": "comet", "ra": 328, "dec": 34, "real": false } ] }
+{ "posts": [ { "comet_id": "3I/ATLAS", "author": "mira_v", "tag": "comet", "body": "Strong carbon dioxide peak at 4.26.",
+  "created_at": 1763200000000, "kind": "known", "ra": 247.109, "dec": -16.84, "real": true } ] }
 ```

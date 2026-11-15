@@ -39,7 +39,7 @@
 .cpage .spectrum .lab { font: 400 12px var(--panel-font); fill: #fff; }
 .cpage .spectrum .legend { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: calc(14 * var(--e)); }
 
-/* example and known comets: the box with his info lines; each SPHEREx visit a white-outlined pill (his Spectral chips,
+/* known comets: the box with his info lines; each SPHEREx visit a white-outlined pill (his Spectral chips,
    patch.css .sp-chip, without the remove mark); the way out his arrow button */
 .cpage .empty-box { display: grid; gap: calc(22 * var(--e)); justify-items: start; }
 .cpage .empty-box .pv-info { margin: 0; }
@@ -65,7 +65,6 @@
   .cpage > .left, .cpage .comet-grid:not([hidden]), .cpage > .right { display: contents; }
   .cpage > * > *, .cpage .comet-grid > * { min-width: 0; }
   .cpage .comet-head { order: 0; }
-  .cpage #c-patch { order: 1; }
   .cpage #c-map { order: 2; }
   .cpage .col { order: 3; }
   .cpage .verdict { order: 4; }
