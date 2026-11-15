@@ -60,13 +60,15 @@ function parseCsv(text) {
 // Any line where that shortcut could be wrong sends the whole answer through the full parser.
 const SPX_COLS = ['obs_id', 't_min', 'access_url', 'energy_bandpassname', 'dataproduct_subtype'];
 function spherexRows(text) {
-  const lines = text.split('\n'), head = lines[0].replace(/\r$/, '').split(',');
+  if (text.includes('\r')) return parseCsv(text);   // IRSA ends lines with \n alone; anything else takes the careful path
+  const lines = text.split('\n'), head = lines[0].split(',');
   const ix = SPX_COLS.map(k => head.indexOf(k)), need = Math.max(...ix) + 1;
-  if (ix.includes(-1) || lines[0].includes('"')) return parseCsv(text);   // unexpected layout: be correct, not fast
+  // unexpected layout (a column missing or named twice, a quoted header): be correct, not fast
+  if (ix.includes(-1) || ix.some(i => head.indexOf(head[i], i + 1) !== -1) || lines[0].includes('"')) return parseCsv(text);
   const out = [];
   for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].replace(/\r$/, '');
-    if (!line) continue;
+    const line = lines[i];
+    if (!line.includes(',')) continue;   // the full parser skips one-field lines too
     const f = line.split(',', need), q = line.indexOf('"');
     if (q !== -1) {   // a quote among our columns, or an odd count (a field running onto the next line): parse it all properly
       let end = need - 1, n = 0;
