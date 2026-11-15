@@ -70,7 +70,6 @@ body.sky #back { display: none; }
 #legend span { display: flex; align-items: center; gap: 10px; }
 #legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; flex: none; }
 body.sky #center, body.sky #panel, body.sky #caption, body.sky #legend { display: none; }
-body:has(#status.err) #legend { display: none; }   /* nothing is drawn after an error, and the buttons may need its room */
 body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* the sky loop sets .tmark display inline */
 
 /* Sky mode: whole-sky star field you can drag, a small map, and a hint */
