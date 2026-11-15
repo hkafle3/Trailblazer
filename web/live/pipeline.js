@@ -157,7 +157,7 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
     const seen = frames.filter(f => f.east != null), slack = seen.some(f => f.blob) ? 2 * PIX : 4;
     const pred = (s, f) => { const dt = f.year - 2016; return [(s.ra - ra) * 3600 * Math.cos(s.dec * D2R) + s.pmra / 1000 * dt, (s.dec - dec) * 3600 + s.pmdec / 1000 * dt]; };
     let gaia = null, bestOff = Infinity;
-    for (const s of seen.length ? await gaiaP : []) {
+    for (const s of seen.length ? await Promise.race([gaiaP, new Promise(r => setTimeout(() => r([]), 8000))]) : []) {   // Gaia late: show the frames without it
       const off = seen.reduce((a, f) => { const [e, n] = pred(s, f); return a + Math.hypot(e - f.east, n - f.north); }, 0) / seen.length;
       if (off < bestOff) { bestOff = off; gaia = s; }
     }

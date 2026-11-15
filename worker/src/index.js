@@ -21,11 +21,11 @@ function position(url) {
 }
 
 // IRSA answers 502 now and then; a few quick retries with jitter get through (measured 2026-11-14)
-async function fetchRetry(url, tries = 5) {
+async function fetchRetry(url, tries = 5, ms = 20000) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
       const text = await r.text();
       if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return text;
       last = `HTTP ${r.status}`;
@@ -120,18 +120,41 @@ async function images(url) {
   return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
 }
 
+// Gaia DR3 stars in a 0.04 degree cone, with proper motions. Gaia positions are for 2016.0 and fast stars move far by
+// now; the browser propagates and matches. IRSA's copy of Gaia DR3 (its Gator catalog service, about 1.5 s) comes first:
+// ESA's own archive stopped answering on 2026-11-14 and every lookup then hung for a minute. ESA is the fallback.
 async function gaia(url) {
   const p = position(url);
   if (p.error) return json(p, 400);
-  // a 0.04 degree cone: Gaia positions are for 2016.0 and fast stars move far by now; the browser propagates and matches
-  const q = `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))`;
+  const irsa = `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?${new URLSearchParams({ catalog: 'gaia_dr3_source', spatial: 'cone',
+    objstr: `${p.ra} ${p.dec}`, radius: '144', radunits: 'arcsec', outfmt: '1', selcols: 'ra,dec,pmra,pmdec,phot_g_mean_mag' })}`;
+  const esa = `https://gea.esac.esa.int/tap-server/tap/sync?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv',
+    QUERY: `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))` })}`;
+  const ok = (source, stars) => json({ epoch: 2016.0, source, stars }, 200, { 'Cache-Control': 'public, max-age=86400' });
+  try { return ok('IRSA', ipacStars(await fetchRetry(irsa, 2, 10000))); } catch (e) { console.warn('IRSA Gaia', e); }
   try {
-    const text = await fetchRetry(`https://gea.esac.esa.int/tap-server/tap/sync?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv', QUERY: q })}`, 3);
-    const stars = parseCsv(text).map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v)])));
-    return json({ epoch: 2016.0, stars }, 200, { 'Cache-Control': 'public, max-age=86400' });
+    const rows = parseCsv(await fetchRetry(esa, 1, 8000));
+    return ok('ESA', rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v)]))));
   } catch {
     return json({ error: 'Gaia archive is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
   }
+}
+
+// IRSA's IPAC table: header lines start with \ or |, the first | line names the columns, values are space separated
+// and "null" when empty. Stars without a proper motion are dropped, as the ESA query did.
+function ipacStars(text) {
+  const lines = text.split('\n'), head = lines.find(l => l.startsWith('|'));
+  if (!head) throw new Error('IRSA sent no table');
+  const cols = head.split('|').map(c => c.trim()).filter(Boolean), at = k => cols.indexOf(k);
+  const want = { ra: at('ra'), dec: at('dec'), pmra: at('pmra'), pmdec: at('pmdec'), g: at('phot_g_mean_mag') };
+  if (Object.values(want).includes(-1)) throw new Error('IRSA table is missing a column');
+  const stars = [];
+  for (const l of lines) {
+    if (!l.trim() || l.startsWith('\\') || l.startsWith('|')) continue;
+    const v = l.trim().split(/\s+/), star = Object.fromEntries(Object.entries(want).map(([k, i]) => [k, Number(v[i])]));
+    if (v[want.pmra] !== 'null' && Number.isFinite(star.pmra) && Number.isFinite(star.pmdec)) stars.push(star);
+  }
+  return stars;
 }
 
 // Tag tallies per comet: each person's latest tag is their vote (so nobody counts twice)
