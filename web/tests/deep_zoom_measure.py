@@ -7,10 +7,8 @@ Widths are CSS px; the deepest is 90600 / devicePixelRatio.
   4 smoothness  an 8 s flight from the whole sky to the deepest width, a 2 s rest while tiles arrive, a 6 s pan with a short
                 rest every second, a 2 s rest: 95% of frames within 17 ms, none over 50 ms
   5 data        at most 3 MB of tiles for a settled deepest view on the phone; at most 20 MB over the whole desktop run above
-With DZ_NO_DIVE_WARMUP=1 the dive's load-ahead at the deepest zoom (explore-dive.js: sky cutouts and the time-lapse page) is
-switched off, to tell its cost from the map's own.
 Run: uv run -q --with playwright python web/tests/deep_zoom_measure.py [base url]   (default http://127.0.0.1:8787)"""
-import asyncio, json, os, sys, urllib.request
+import asyncio, json, sys
 from playwright.async_api import async_playwright
 import deep_zoom_ui as T
 from deep_zoom_ui import check, go, settled, open_page, STARS
@@ -35,13 +33,6 @@ FLIGHT = """async ([ra, dec]) => { const { v, d, s, k } = await __dz(); if (__wi
   await run(6000, q => { const seg = Math.min(5, Math.floor(q * 6)), p = (seg + Math.min(1, (q * 6 - seg) / .8)) / 6; v.set(v.W, X0 - p * far, Y0 + p * far * .4); });   // six moves, a 0.2 s rest after each
   await run(2000, () => {});
   return { fr, reached, max: v.MAXW, bytes: d.stats.bytes - b0, loaded: d.stats.loaded - n0, covered: d.state().covered }; }"""
-WARM = "cutouts(round4(s[0]), round4(s[1])); prepare();"
-async def no_warmup(pg):
-    if not os.environ.get("DZ_NO_DIVE_WARMUP"): return
-    async def handle(route):
-        r = await route.fetch(); src = await r.text(); assert WARM in src, "explore-dive.js changed"
-        await route.fulfill(response=r, body=src.replace(WARM, ""))
-    await pg.route("**/explore-dive.js", handle)
 def pct(a, p): a = sorted(a); return a[min(len(a) - 1, int(len(a) * p / 100))]
 
 async def main():
@@ -61,7 +52,7 @@ async def main():
             out[name + "_fill"] = dict(ms=s["ms"], tiles=s["loaded"], MB=round(s["bytes"] / 1e6, 2), order=s["order"], W=v["W"])
             await pg.context.close()
             # 4: smoothness, and 5: data over the run
-            pg = await open_page(b, w, h, dpr, phone, less_motion=False, before=no_warmup)
+            pg = await open_page(b, w, h, dpr, phone, less_motion=False)
             if phone: await (await pg.context.new_cdp_session(pg)).send("Emulation.setCPUThrottlingRate", dict(rate=4))
             r = await pg.evaluate(FLIGHT, list(STARS["Barnard"])); fr = r["fr"]; p95 = pct(fr, 95); worst = max(fr)
             check(p95 <= 17 and worst <= 50 and abs(r["reached"] - r["max"]) < .5, f"smoothness ({name}{', CPU 4x' if phone else ''})",

@@ -39,7 +39,7 @@ function start() {
 }
 function stop() {   // back to a desktop width: hand everything back to the desktop CSS
   pts.clear();   // a pinch still on the screen must not move the desktop's map
-  closePeek();   // first: closing the sheet sets the view once more
+  closePeek(false);   // the map is being handed back: no new view from here
   for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
   wrap.classList.remove('deep-zoom'); plain();
   document.querySelectorAll('.mk.nm-off').forEach(m => m.classList.remove('nm-off'));
@@ -203,11 +203,11 @@ function bringIntoView() {   // glide so the picked marker sits in the middle of
   glide(W, ...place(parseFloat(m.style.left) / 100, parseFloat(m.style.top) / 100, A.w / 2, (A.t + top) / 2));
 }
 const detent = d => { sheet.dataset.detent = d; bringIntoView(); };
-function closePeek() {
+function closePeek(fit = true) {
   if (sheet.hidden) return;
   sheet.hidden = true; sheet.style.transform = '';
   picked?.classList.remove('pick'); picked = null; drawPath();
-  if (A) set(W, X, Y);   // without the sheet the oval must fit the full map area again
+  if (fit && A) set(W, X, Y);   // without the sheet the oval must fit the full map area again
 }
 // Tap circles (44 px) overlap when dots sit close, and the one on top would take the tap. So a tap goes to the visible dot
 // nearest the finger, among dots whose tap circle holds it (a tap on a name or a trail far from any other dot keeps its
