@@ -17,11 +17,11 @@
   <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
 </header>
 
-<!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Layers, Others. Middle: the patch.
+<!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Spectral, Layers, Others. Middle: the patch.
      Right: the whole region as a mini-map, Discovered/Undiscovered, Descriptions. Bottom: Explore's month timeline. -->
 <div class="pstage" id="stage">
   <!-- In reading order, which is the phone's one-column order: the photo, the timeline, Discovered and the mini-map,
-       Descriptions, Findings, then Options, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
+       Descriptions (with what the patch shows), then Options, Spectral, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
   <div class="pv-frame">
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
     <div id="legend" aria-hidden="true">
@@ -63,14 +63,7 @@
     </form>
     <!-- beside the search in both modes: a bad position or a failed build is said here even before any patch shows -->
     <div id="status" role="status" aria-live="polite"></div>
-    </div>
-  </section>
-
-  <!-- what this patch shows: the visit on screen, the motion measured, and known objects passing. Its own card, under
-       Others, so long lists have room; the heading stays put while the list scrolls -->
-  <section class="pv-card pv-found">
-    <h2>Findings</h2>
-    <div class="pv-scroll" role="region" aria-label="Findings">
+    <!-- what this patch shows: the visit on screen, the motion measured, and known objects passing -->
     <p class="pv-info" id="vName" hidden></p>
     <p class="pv-info" id="vVisit"></p>
     <p class="pv-info" id="vMotion"></p>
@@ -79,18 +72,45 @@
   </section>
 
   <section class="pv-card pv-options" aria-label="Options">
-    <h2>Options</h2>
-    <label class="pv-row" for="fov">Zoom <input id="fov" type="range" min="1" max="12" step="0.5" value="6" aria-valuetext="6 arcmin wide"></label>
+    <h2 class="at" style="--x:14;--cy:50">Options</h2>
+    <label class="at t24" style="--x:57;--cy:99" for="fov">Zoom</label>
+    <input class="at" style="--x:136;--y:84" id="fov" type="range" min="1" max="12" step="0.5" value="6" aria-valuetext="6 arcmin wide">
   </section>
+
+  <!-- Spectral: SPHEREx splits its light into 102 channels. Scroll over the dial (or drag it, or use the arrow keys) to step
+       through them; tick the box to make that channel an active layer. Active layers sit in the box above; click one to
+       turn it off. The channel data is still to come: the page keeps the list (state.spectral) and announces changes. -->
+  <section class="pv-card pv-spectral" aria-label="Spectral">
+    <h2 class="at" style="--x:20;--cy:49">Spectral</h2>
+    <span class="at t24" style="--x:22;--cy:102" id="sp-active-label">Active</span>
+    <div class="at sp-active" style="--x:48;--y:117" id="sp-active" role="group" aria-labelledby="sp-active-label"></div>
+    <svg class="at sp-dial" style="--x:64.5;--y:202" id="sp-dial" viewBox="0 0 340 190" tabindex="0" role="slider" aria-label="Spectral channel. Scroll, drag or use the arrow keys" aria-valuemin="1" aria-valuemax="102" aria-valuenow="52">
+      <path class="band" d="M10 170A160 160 0 0 1 330 170H290A120 120 0 0 0 50 170Z"/>
+      <g id="sp-ticks"></g>
+      <g id="sp-marks"></g>
+      <g class="needle" id="sp-needle" style="transform-origin:170px 147px;transform-box:view-box">
+        <line x1="170" y1="120" x2="170" y2="62"/>
+        <path d="M170 113C176 125 187 135 187 147A17 17 0 1 1 153 147C153 135 164 125 170 113Z"/>
+      </g>
+    </svg>
+    <span class="at sp-end" style="--x:95;--cy:383" aria-hidden="true">Lowest λ</span>
+    <span class="at sp-end" style="--x:380;--cy:383" aria-hidden="true">Highest λ</span>
+    <input class="at cbx" style="--x:124;--y:407" type="checkbox" id="sp-on">
+    <label class="at sp-read" style="--x:241;--cy:408" for="sp-on" id="sp-nm">&nbsp;</label>
+    <label class="at sp-read" style="--x:241;--cy:438" for="sp-on">Nanometers</label>
+  </section>
+
   <section class="pv-card pv-layers" aria-label="Layers">
-    <h2>Layers</h2>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-spec"><span>Spectral</span></label>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="ly-heat"><span>Heat</span></label>
+    <h2 class="at" style="--x:33;--cy:49">Layers</h2>
+    <input class="at cbx" style="--x:53;--y:96" type="checkbox" id="ly-heat">
+    <label class="at t24" style="--x:115;--cy:112" for="ly-heat">Heat</label>
   </section>
   <section class="pv-card pv-others" aria-label="Others">
-    <h2>Others</h2>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="still"><span>Hide Stationary</span></label>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="diff" aria-describedby="diff-what"><span>Color Difference</span></label>
+    <h2 class="at" style="--x:33;--cy:50">Others</h2>
+    <input class="at cbx" style="--x:49;--cy:119" type="checkbox" id="still">
+    <label class="at t32" style="--x:112;--cy:119" for="still">Hide Stationary</label>
+    <input class="at cbx" style="--x:49;--cy:171" type="checkbox" id="diff" aria-describedby="diff-what">
+    <label class="at t32" style="--x:112;--cy:171" for="diff">Color Difference</label>
     <span class="sr-only" id="diff-what">Colours the photo by change since the first visit. Orange: brighter. Blue: dimmer.</span>
   </section>
 </div>
@@ -147,7 +167,7 @@ function load(key) {
 }
 TARGETS.forEach(t => load(t.key).catch(() => {}));   // preload: the demo never waits on the network
 
-const state = { m: null, i: 0, playing: false, last: 0, diff: false, still: false, heat: false, spec: false, fov: 6 };   // opens 6 arcmin wide; zoom to 1.5 for a 2-pixel move
+const state = { m: null, i: 0, playing: false, last: 0, diff: false, still: false, heat: false, fov: 6, spectral: [] };   // opens 6 arcmin wide; zoom to 1.5 for a 2-pixel move
 const patch = document.getElementById('patch'), ctx = patch.getContext('2d');
 const mini = document.getElementById('mini'), mini2d = mini.getContext('2d');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -172,11 +192,99 @@ function setFound(id, at = null) {
 const leaveFound = (ra, dec) => { if (found && spot(ra, dec) !== foundAt) setFound(null); };
 setFound(P.get('found'), P.has('ra') && P.has('dec') ? spot(P.get('ra'), P.get('dec')) : null);
 
+// ---------- Spectral: a dial through SPHEREx's 102 spectral channels, and the list of active ones ----------
+// SPHEREx has 6 detectors of 17 channels each, 0.75 to 5.0 µm. Channel centres here are spaced evenly in log wavelength
+// across each detector's band (the bands' published edges), close to the real ones; swap in the measured centres when
+// the per-channel data arrives. The dial runs from the lowest channel (needle left) to the highest (needle right).
+const SP_BANDS = [[0.75, 1.11], [1.11, 1.64], [1.64, 2.42], [2.42, 3.82], [3.82, 4.42], [4.42, 5.00]];
+const CHANNELS = SP_BANDS.flatMap(([lo, hi], d) => Array.from({ length: 17 }, (_, k) =>
+  ({ n: d * 17 + k, detector: `D${d + 1}`, um: lo * (hi / lo) ** ((k + 0.5) / 17) })));
+const nmOf = c => Math.round(c.um * 1000);
+const spectral = (() => {
+  const dial = document.getElementById('sp-dial'), needle = document.getElementById('sp-needle'), box = document.getElementById('sp-active');
+  const on = document.getElementById('sp-on'), read = document.getElementById('sp-nm'), marks = document.getElementById('sp-marks');
+  const N = CHANNELS.length, A0 = 172, A1 = 8, PX = 170, PY = 147;   // needle angle (degrees from +x) at the first and last channel; pivot
+  const angle = i => A0 - (A0 - A1) * i / (N - 1);
+  const polar = (deg, r, cx = 170, cy = 170) => [cx + r * Math.cos(deg * Math.PI / 180), cy - r * Math.sin(deg * Math.PI / 180)];
+  // the five ticks across the band: both ends, a quarter, the middle, three quarters
+  const ticks = document.getElementById('sp-ticks');
+  for (const deg of [A0, 135, 90, 45, A1]) {
+    const [x1, y1] = polar(deg, 120), [x2, y2] = polar(deg, 146);
+    ticks.insertAdjacentHTML('beforeend', `<line class="tick" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`);
+  }
+  const api = { i: Math.floor(N / 2), active: new Set(), touched: false };
+  function emit() {
+    state.spectral = [...api.active].sort((a, b) => a - b).map(n => CHANNELS[n]);
+    dispatchEvent(new CustomEvent('spectral-layers', { detail: state.spectral }));   // for the per-channel layers, once their data exists
+  }
+  function paint() {
+    const c = CHANNELS[api.i];
+    needle.style.transform = `rotate(${90 - angle(api.i)}deg)`;
+    read.textContent = nmOf(c).toLocaleString('en-US');
+    on.checked = api.active.has(api.i);
+    on.setAttribute('aria-label', `Show the ${nmOf(c)} nanometre layer`);
+    dial.setAttribute('aria-valuenow', api.i + 1);
+    dial.setAttribute('aria-valuetext', `Channel ${api.i + 1} of ${N}: ${nmOf(c)} nanometres, detector ${c.detector}`);
+    box.querySelectorAll('.sp-chip').forEach(b => b.classList.toggle('cur', +b.dataset.n === api.i));
+  }
+  function chips() {
+    box.replaceChildren(...[...api.active].sort((a, b) => a - b).map(n => {
+      const b = document.createElement('button'), c = CHANNELS[n];
+      b.type = 'button'; b.className = 'sp-chip'; b.dataset.n = n; b.textContent = `${nmOf(c).toLocaleString('en-US')} nm`;
+      b.title = `Detector ${c.detector}. Click to turn this layer off`;
+      b.setAttribute('aria-label', `${nmOf(c)} nanometres, active. Click to turn it off`);
+      b.onclick = () => {   // the chip goes away: keep keyboard focus on a neighbour, or the box when none are left
+        const next = b.nextElementSibling?.dataset.n ?? b.previousElementSibling?.dataset.n;
+        api.toggle(n, false);
+        (next != null ? box.querySelector(`[data-n="${next}"]`) : on).focus();
+      };
+      return b;
+    }));
+    marks.innerHTML = [...api.active].map(n => { const [x, y] = polar(angle(n), 154); return `<circle class="on" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`; }).join('');
+    paint();
+    const cur = box.querySelector('.cur');   // more layers than fit: scroll the box to the one on the dial
+    if (cur) box.scrollLeft = Math.max(0, Math.min(box.scrollLeft, cur.offsetLeft - 8), cur.offsetLeft + cur.offsetWidth - box.clientWidth + 8);
+  }
+  api.set = (i, byUser = true) => { i = Math.max(0, Math.min(N - 1, Math.round(i))); if (byUser) api.touched = true; if (i !== api.i) { api.i = i; paint(); } };
+  api.toggle = (n, want = !api.active.has(n)) => { want ? api.active.add(n) : api.active.delete(n); chips(); emit(); };
+  // open on the channel nearest the patch's own wavelength, until the user turns the dial
+  api.follow = um => { if (!api.touched) api.set(CHANNELS.reduce((b, c) => (Math.abs(Math.log(c.um / um)) < Math.abs(Math.log(CHANNELS[b].um / um)) ? c.n : b), 0), false); };
+
+  // scroll over the dial: one channel per wheel notch (a trackpad's small steps add up to one)
+  let acc = 0;
+  dial.addEventListener('wheel', e => {
+    e.preventDefault();
+    const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    if (e.deltaMode || Math.abs(d) >= 50) { acc = 0; api.set(api.i + Math.sign(d)); return; }
+    acc += d;
+    if (Math.abs(acc) >= 40) { api.set(api.i + Math.sign(acc)); acc = 0; }
+  }, { passive: false });
+  // or drag the needle round
+  const fromPointer = e => {
+    const r = dial.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 340, y = (e.clientY - r.top) / r.height * 190;
+    const deg = Math.atan2(PY - y, x - PX) * 180 / Math.PI, clamped = deg < -90 ? 180 : Math.max(A1, Math.min(A0, deg));
+    api.set((A0 - clamped) / (A0 - A1) * (N - 1));
+  };
+  dial.addEventListener('pointerdown', e => { if (e.button) return; dial.setPointerCapture(e.pointerId); dial.focus({ preventScroll: true }); fromPointer(e); });
+  dial.addEventListener('pointermove', e => { if (dial.hasPointerCapture(e.pointerId)) fromPointer(e); });
+  dial.addEventListener('keydown', e => {
+    const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -17, PageUp: 17 }[e.key];
+    if (step) api.set(api.i + step);
+    else if (e.key === 'Home') api.set(0);
+    else if (e.key === 'End') api.set(N - 1);
+    else if (e.key === 'Enter' || e.key === ' ') api.toggle(api.i);
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  });
+  on.addEventListener('change', () => api.toggle(api.i, on.checked));
+  chips();
+  return api;
+})();
+window.__spectral = spectral;   // for tests
+
 // ---------- layers ----------
-// Spectral: tint by the band's wavelength, 0.75 µm (blue) to 5 µm (red), the way infrared pictures are usually coloured.
-const RAMP = [[0, [120, 170, 255]], [.2, [110, 225, 255]], [.4, [140, 255, 170]], [.6, [255, 235, 120]], [.8, [255, 160, 80]], [1, [255, 95, 95]]];
 const HEAT = [[0, [120, 20, 10]], [.45, [235, 70, 30]], [.8, [255, 170, 60]], [1, [255, 245, 190]]];
-function ramp(t, stops = RAMP) {
+function ramp(t, stops) {
   t = Math.min(1, Math.max(0, t));
   for (let n = 1; n < stops.length; n++) if (t <= stops[n][0]) {
     const [t0, a] = stops[n - 1], [t1, b] = stops[n], f = (t - t0) / (t1 - t0);
@@ -221,7 +329,7 @@ function shade(m, f, c, r, data, j) {
     else {
       const x = Number.isFinite(x0) ? Math.asinh(Math.max(0, (x0 - (state.still ? 0 : lo)) / (fieldHi - lo)) * 10) / A : (state.still ? 0 : 1);
       const g = Math.min(1, x);
-      rgb = state.spec ? ramp((f.lam - 0.75) / 4.25).map(t => g * t) : [255 * g, 247 * g, 235 * g];
+      rgb = [255 * g, 247 * g, 235 * g];
     }
   }
   if (state.heat && m.sd) {   // Heat: the pixels that change most between visits glow, dark red to pale yellow
@@ -313,7 +421,7 @@ function draw() {
         const r = [lx + dx, ly + dy - th / 2, lx + dx + tw, ly + dy + th / 2];
         if (!at && !hits(r)) at = r;
       }
-      if (!at) continue;   // nowhere clear: the list in Findings still names it
+      if (!at) continue;   // nowhere clear: the list in Descriptions still names it
       taken.push(at);
       ctx.textAlign = 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, at[0], (at[1] + at[3]) / 2);
       ctx.fillStyle = color; ctx.fillText(name, at[0], (at[1] + at[3]) / 2);
@@ -376,6 +484,7 @@ function panel(m) {
   const matched = m.frames.filter(f => f.matched).length;
   document.getElementById('det').title = `Wavelength ${m.lam0.toFixed(2)} µm: ${matched} of ${m.frames.length} visits within ${m.lam_tol.toFixed(3)} µm, detector ${m.detector}`;
   timeline.visits(m);
+  spectral.follow(m.lam0);   // the dial opens on this patch's own wavelength
 }
 
 // ---------- timeline (Explore's): a tick per month across SPHEREx's data, a dot per visit, the date over the handle ----------
@@ -695,7 +804,7 @@ const fov = document.getElementById('fov');
 const setFov = () => { state.fov = 13 - +fov.value; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
 fov.value = 13 - state.fov; setFov();
 fov.oninput = () => { setFov(); draw(); };
-for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat'], ['ly-spec', 'spec']])
+for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat']])
   document.getElementById(id).onchange = e => { state[key] = e.target.checked; draw(); };
 addEventListener('keydown', e => {
   if (!state.m || /INPUT|SELECT/.test(e.target.tagName) || e.target === playBtn) return;
