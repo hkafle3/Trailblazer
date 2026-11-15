@@ -142,12 +142,15 @@ async def main():
         await click("#play", 7000)
         # 3. Barnard's Star
         await cap("Barnard's Star moves 10″ a year, measured from the photos")
-        await click('#targets button:has-text("Barnard")', 1500)
+        await goto(BASE + "/explore.html", 2500)
+        await click("#examples > summary", 900)
+        await click('#examples a:has-text("Barnard")', 0)
+        await pg.wait_for_url("**/timelapse.html?target=barnard*"); await pg.wait_for_load_state("load"); await pg.wait_for_timeout(1500)
         await click("#play", 6500)
         await click("#play", 600)
         await cap("Difference view: orange got brighter, blue dimmer")
         await click("label:has(#diff)", 1200)
-        lt = await box(".tick >> nth=-1"); await move(lt["x"] + lt["width"] / 2, lt["y"] + 8); await pg.wait_for_timeout(300)
+        lt = await box(".tl-visit >> nth=-1"); await move(lt["x"] + lt["width"] / 2, lt["y"] + lt["height"] / 2); await pg.wait_for_timeout(300)   # a press on the line picks the nearest visit
         await pg.mouse.down(); await pg.wait_for_timeout(90); await pg.mouse.up(); await pg.wait_for_timeout(3200)
         await click("label:has(#diff)", 900)
         # 4. another detector

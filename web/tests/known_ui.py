@@ -16,9 +16,14 @@ async def main():
         pg = await ctx.new_page()
         await pg.goto(f"{BASE}/timelapse.html?ra=77.3058&dec=27.3551&det=D1")
         await pg.wait_for_function("/visits, built/.test(document.getElementById('status')?.textContent||'')", timeout=180000)
-        n = await pg.evaluate("[...document.querySelectorAll('.tick')].findIndex(t => /Sep 2026/.test(t.getAttribute('aria-label') || ''))")
-        assert n >= 0, "no Sep 2026 visit"
-        await pg.locator(".tick").nth(n).click()
+        # the timeline is one slider (Ming's design): step through the visits with the keyboard until Sep 2026 is on screen
+        await pg.wait_for_function("+document.getElementById('play').getAttribute('aria-valuemax') > 0")   # the timeline is built
+        knob = pg.locator("#play"); await knob.focus(); await knob.press("Home")
+        n = int(await knob.get_attribute("aria-valuemax"))
+        for _ in range(n + 1):
+            if "Sep 2026" in (await knob.get_attribute("aria-valuetext") or ""): break
+            await knob.press("ArrowRight")
+        assert "Sep 2026" in (await knob.get_attribute("aria-valuetext") or ""), "no Sep 2026 visit"
         await pg.wait_for_function("(t => /C\\/2025 R2/.test(t) || (t && !/checking/i.test(t)))(document.getElementById('vKnown').textContent)", timeout=180000)   # the comet, or every time answered
         text = await pg.evaluate("document.getElementById('vKnown').textContent")
         assert "C/2025 R2 · comet · 2 Sep" in text, f"panel says: {text}"

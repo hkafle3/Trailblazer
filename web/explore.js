@@ -28,6 +28,8 @@ for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]])
 const $ = id => document.getElementById(id);
 const place = (el, ra, dec) => { const [u, v] = fwd(ra, dec); el.style.left = u * 100 + '%'; el.style.top = v * 100 + '%'; return u; };
 const patchUrl = (ra, dec) => `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=D1&diff=1`;
+// a comet already found and named opens the same patch viewer, labelled Discovered (found=<its id>)
+const foundUrl = (id, ra, dec) => `${patchUrl(ra, dec)}&found=${encodeURIComponent(id)}`;
 const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(`${url}: HTTP ${r.status}`))));
 
 // ---- grid and ecliptic ----
@@ -73,10 +75,12 @@ addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; })
 // and shows only while the comet is bright enough to see (magnitude 16 or brighter).
 const movers = [];
 function followTracks(day) {
-  for (const { el, track } of movers) {
+  for (const { el, track, id } of movers) {
     const i = Math.min(track.length - 2, Math.max(0, Math.floor(day / 10))), [d0, r0, c0, m0] = track[i], [d1, r1, c1, m1] = track[i + 1];
     const f = Math.min(1, Math.max(0, (day - d0) / (d1 - d0))), dr = ((r1 - r0 + 540) % 360) - 180;   // shortest way round in RA
-    place(el, (r0 + f * dr + 360) % 360, c0 + f * (c1 - c0));
+    const ra = (r0 + f * dr + 360) % 360, dec = c0 + f * (c1 - c0);
+    place(el, ra, dec);
+    el.href = foundUrl(id, ra, dec);   // the patch where the comet is on this day
     const mag = m0 == null ? m1 : m1 == null ? m0 : m0 + f * (m1 - m0);
     const bright = mag != null && mag <= 16;
     // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see; the rest hide
@@ -94,15 +98,15 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     a.dataset.day = c.day ?? 0;
     a.innerHTML = '<i></i>';
     if (c.kind === 'comet') {
-      a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
+      a.href = foundUrl(c.id, c.ra, c.dec);
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
     } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
-    if (c.kind === 'known') a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
+    if (c.kind === 'known') a.href = foundUrl(c.id, c.ra, c.dec);
     if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (c.kind === 'known' && c.real && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
-    if (c.track) { movers.push({ el: a, track: c.track }); if (c.detail?.photos || c.id === '3I/ATLAS') a.dataset.always = '1'; }
+    if (c.track) { movers.push({ el: a, track: c.track, id: c.id }); if (c.detail?.photos || c.id === '3I/ATLAS') a.dataset.always = '1'; }
     if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
       const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
@@ -114,7 +118,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   followTracks(+$('time').value);
   if (featured) {
     const n = votes(featured), t = featured.tags;
-    card.href = `comet.html?id=${encodeURIComponent(featured.id)}`;
+    card.href = foundUrl(featured.id, featured.ra, featured.dec);
     card.dataset.day = featured.day;
     card.querySelector('[data-f=id]').textContent = featured.id;
     card.querySelector('[data-f=count]').textContent = `${t.comet} of ${n} tags`;
