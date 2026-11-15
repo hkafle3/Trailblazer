@@ -16,7 +16,7 @@
 // Sizes: W is CSS px. The canvas holds window size x devicePixelRatio pixels. Tiles are picked for W x min(dpr, 1.5):
 // an order-o tile is sharp up to a map 2831 x 2^o pixels wide, and order 5 is the deepest SPHEREx has.
 import { fwdLon, inv, wrap, RAD } from './skymap.js';
-import { onView } from './explore-view.js';
+import { onView, uvAt } from './explore-view.js';
 import { nest2xyf, xyf2radec, radec2tile } from './healpix.js';
 
 const HIPS = 'https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube';
@@ -100,10 +100,10 @@ export function tileGrid(o, k) {
 // ---- what a view wants: its tiles at the right order, nearest the middle first, and how much of the window is covered ----
 function wants() {
   if (needSeq === seq) return need;
-  const { W, X, Y } = view, vw = innerWidth, vh = innerHeight, ids = new Map();
+  const vw = innerWidth, vh = innerHeight, ids = new Map();
   let inside = 0, have = 0;
   for (let y = -EDGE; y <= vh + EDGE; y += 32) for (let x = -EDGE; x <= vw + EDGE; x += 32) {
-    const rd = inv((x - X) / W, (y - Y) / (W / 2));
+    const rd = inv(...uvAt(x, y));
     if (!rd) continue;
     const id = order + '/' + radec2tile(order, rd[0] * RAD, rd[1] * RAD), d = (x - vw / 2) ** 2 + (y - vh / 2) ** 2;
     if (!(ids.get(id) <= d)) ids.set(id, d);
@@ -182,13 +182,19 @@ function frame() {
 // ---- drawing: every cached tile that touches the window, up to one order finer than the view needs, coarse first ----
 function draw() {
   if (!shown || lost) return;
-  const { W, X, Y } = view, H = W / 2, vw = innerWidth, vh = innerHeight, dpr = devicePixelRatio, cw = Math.round(vw * dpr), ch = Math.round(vh * dpr), now = performance.now();
+  const { W, X, Y, M, C } = view, H = W / 2, vw = innerWidth, vh = innerHeight, dpr = devicePixelRatio, cw = Math.round(vw * dpr), ch = Math.round(vh * dpr), now = performance.now();
   if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
-  // .map's top-left corner is at (X, Y) in the window, so this puts the canvas exactly over the window
+  // .map's top-left corner is at (X, Y) in the layout, so this puts the canvas over the window. A straightened map
+  // (explore-view.js) carries M; the canvas undoes it about the same pivot to stay square to the window, and M goes
+  // into the drawing: window point = C + M (layout point - C), layout point = (X + u W, Y + v H)
   cv.style.left = -X + 'px'; cv.style.top = -Y + 'px'; cv.style.width = vw + 'px'; cv.style.height = vh + 'px';
+  cv.style.transformOrigin = `${C[0]}px ${C[1]}px`; cv.style.transform = M[1] || M[2] || M[0] !== 1 || M[3] !== 1 ? 'var(--un)' : '';
   gl.viewport(0, 0, cw, ch); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.uniform3f(loc.mx, 2 / vw * W, 0, 2 / vw * X - 1); gl.uniform3f(loc.my, 0, -2 / vh * H, 1 - 2 / vh * Y);
-  const u0 = -X / W, u1 = (vw - X) / W, v0 = -Y / H, v1 = (vh - Y) / H;
+  const ox = C[0] + M[0] * (X - C[0]) + M[1] * (Y - C[1]), oy = C[1] + M[2] * (X - C[0]) + M[3] * (Y - C[1]);
+  gl.uniform3f(loc.mx, 2 / vw * M[0] * W, 2 / vw * M[1] * H, 2 / vw * ox - 1); gl.uniform3f(loc.my, -2 / vh * M[2] * W, -2 / vh * M[3] * H, 1 - 2 / vh * oy);
+  const us = [], vs = [];   // the window's corners on the map
+  for (const [x, y] of [[0, 0], [vw, 0], [0, vh], [vw, vh]]) { const [u, v] = uvAt(x, y); us.push(u); vs.push(v); }
+  const u0 = Math.min(...us), u1 = Math.max(...us), v0 = Math.min(...vs), v1 = Math.max(...vs);
   for (let o = 1; o <= Math.min(MAXO, order + 1); o++) for (const t of tiles.values()) {
     if (t.o !== o) continue;
     for (const m of t.meshes) {

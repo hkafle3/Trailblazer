@@ -4,7 +4,7 @@
 // A tap on a marker opens a peek sheet instead of leaving the page; Layers and Examples open as bottom sheets.
 // Desktop is untouched: every handler checks `phone` first, and leaving the phone width clears what this file set.
 import { fwd, trackAt, dayDate } from './skymap.js';
-import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, onView, atMin, glide, cancel } from './explore-view.js';
+import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, move, place, win, onView, atMin, glide, glideZoom, cancel } from './explore-view.js';
 
 const phone = matchMedia('(max-width: 640px)');
 const $ = id => document.getElementById(id);
@@ -69,8 +69,7 @@ addEventListener('pointermove', e => {
   pts.set(e.pointerId, [e.clientX, e.clientY]);
   const now = snap(), f = last.d && now.d ? now.d / last.d : 1;
   // pan by the midpoint's move, then scale by the change in finger distance around the new midpoint
-  const w = Math.min(MAXW, Math.max(minW(), W * f)), g = w / W;
-  set(w, now.m[0] - (last.m[0] - X) * g, now.m[1] - (last.m[1] - Y) * g);
+  move(f, last.m[0], last.m[1], now.m[0], now.m[1]);
   last = now; touched = true;
 });
 function up(e) {
@@ -81,8 +80,7 @@ function up(e) {
   const t = performance.now(), here = [e.clientX, e.clientY];
   if (lastTap && t - lastTap.t < 320 && Math.hypot(here[0] - lastTap.p[0], here[1] - lastTap.p[1]) < 30) {   // double tap: zoom in 2x there
     lastTap = null; swallowUntil = t + 500;
-    const w = Math.min(MAXW, W * 2), g = w / W;
-    glide(w, here[0] - (here[0] - X) * g, here[1] - (here[1] - Y) * g, 250);
+    glideZoom(2, here[0], here[1], 250);
     touched = true;
   } else lastTap = { t, p: here };
 }
@@ -112,7 +110,7 @@ function declutter() {
   if (!phone.matches || !A) return;
   const rank = m => (m.classList.contains('pick') ? 0 : m.classList.contains('sel') ? 1 : m.classList.contains('focus') ? 1 : m.classList.contains('comet') ? 2 : m.classList.contains('patch') ? 3 : m.classList.contains('deep') ? 4 : 5);
   const marks = [...document.querySelectorAll('#marks .mk')].filter(m => !m.hidden && m.style.visibility !== 'hidden' && getComputedStyle(m).display !== 'none');
-  const at = m => [X + parseFloat(m.style.left) / 100 * W, Y + parseFloat(m.style.top) / 100 * W / 2];
+  const at = m => win(parseFloat(m.style.left) / 100, parseFloat(m.style.top) / 100);
   const dots = marks.map(m => { const [x, y] = at(m), r = m.classList.contains('deep') ? 6 : 5; return [x - r, y - r, x + r, y + r, m]; });
   const hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   const placed = [], out = new Map();
@@ -200,8 +198,8 @@ function openPeek(m) {
 function bringIntoView() {   // glide so the picked marker sits in the middle of the map left above the sheet
   if (!picked) return;
   measure(area());
-  const m = picked, x = X + parseFloat(m.style.left) / 100 * W, y = Y + parseFloat(m.style.top) / 100 * W / 2, top = A.b - sheetH();
-  glide(W, X + A.w / 2 - x, Y + (A.t + top) / 2 - y);
+  const m = picked, top = A.b - sheetH();
+  glide(W, ...place(parseFloat(m.style.left) / 100, parseFloat(m.style.top) / 100, A.w / 2, (A.t + top) / 2));
 }
 const detent = d => { sheet.dataset.detent = d; bringIntoView(); };
 function closePeek() {
