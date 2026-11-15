@@ -2,7 +2,7 @@
 
 One Cloudflare Worker (`worker/src/index.js`) answers every `/api/*` request and also serves the app's files from `web/`. All routes are `GET`, return JSON, and send `Access-Control-Allow-Origin: *`. Errors are `{"error": "..."}` with a 4xx or 5xx status.
 
-Comets and comments live in Cloudflare D1 (database `comet-hunt`, schema in `worker/migrations/`). `/api/explored` still returns made-up data from `worker/src/example-data.js` with `"example": true`.
+Comets and comments live in Cloudflare D1 (database `comet-hunt`, schema in `worker/migrations/`). `/api/explored` counts real checks from the `checks` table (`POST /api/checks`).
 
 Database: `npm run dev` applies the migrations to a local copy first, so it works with no account. `npm run db:remote` applies them to the real database (needs `npx wrangler login`). A new table or column is a new numbered file in `worker/migrations/`; never edit one that has been applied.
 
@@ -86,17 +86,40 @@ Refusals (JSON, CORS headers as above):
 
 Each accepted token is stored as a SHA-256 hash (`turnstile_tokens`, migration 0007) in the same transaction as the comment, so a token pays for one comment only. The rate limit is checked inside that same insert, so posts sent at the same moment cannot get past it.
 
-## GET /api/explored (example)
+## GET /api/explored (D1)
 
-Which patch-sized sky cells people have checked, for the heat map, and one cell nobody has checked.
+Which patch-sized sky cells people have checked, for the heat map, and one cell nobody has checked. Never cached, so a spot shows on the map as soon as someone opens it.
 
 ```json
-{ "example": true, "total": 3339, "checked": 508,
-  "cells": [ { "ra_min": 325.5, "ra_max": 329.1, "dec_min": 31.8, "dec_max": 35.3, "checks": 20 } ],
+{ "total": 3339,
+  "cells": [ { "ra_min": 266.4, "ra_max": 269.9, "dec_min": 3.5, "dec_max": 7.1, "checks": 3 } ],
   "suggest": { "ra": 77, "dec": 30.4 } }
 ```
 
-- `cells` lists only cells with `checks > 0`. The grid is 51 bands of Dec, each split into about 3.5 degree steps of RA (the size of one SPHEREx patch).
+- `cells` lists only cells with `checks > 0`. The grid is 51 bands of Dec, each split into about 3.5 degree steps of RA (the size of one SPHEREx patch). A cell's number is its position in that grid, counting band by band from the north pole.
+- `suggest` is RW Aurigae's patch while nobody has checked it, then the unchecked cell nearest to it.
+
+## POST /api/checks (D1)
+
+Records that someone opened a spot: the time-lapse calls it each time a live time-lapse finishes building (so a reload or another detector counts again; the five baked targets do not count). Adds one to that spot's cell.
+
+```
+POST /api/checks   {"ra": 269.4463, "dec": 4.7671}
+201                {"cell": 1234, "checks": 3}
+```
+
+Refusals:
+
+| Request | Status | Body |
+|---|---|---|
+| body is not JSON | 400 | `{"error": "body must be JSON", "field": "body"}` |
+| `ra` missing, not a number, or outside 0 to 360 | 400 | `{"error": "ra must be 0 to 360", "field": "ra"}` |
+| `dec` missing, not a number, or outside -90 to 90 | 400 | `{"error": "dec must be -90 to 90", "field": "dec"}` |
+| GET (or any method but POST) | 405 | `{"error": "use POST"}` with `Allow: POST` |
+| more than 10 checks a minute from one IP (Cloudflare rate limit, `CHECKS_LIMIT` in wrangler.toml) | 429 | `{"error": "too many checks, wait a minute"}` |
+| database down | 503 | `{"error": "database is not answering, try again"}` |
+
+No sign-in or human check: a count is low stakes. The rate limit keeps a script from spending the database's daily writes; the worst it can do then is light up cells on the map.
 
 ## GET /api/images?ra=&dec=&det=
 

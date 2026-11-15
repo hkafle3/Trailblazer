@@ -3,9 +3,8 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
-//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   (example data)   See docs/api.md.
+//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
-import { SUGGEST, exploredCells } from './example-data.js';
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
@@ -224,10 +223,62 @@ async function post(request, env) {
   return json({ comment: { comet_id: b.comet_id, author, tag, body, created_at: now }, tags }, 201);
 }
 
-// Which patch-sized cells people have checked, and one nobody has, for the heat map and "Unexplored patch"
-function explored() {
-  const { total, cells } = exploredCells();
-  return json({ example: true, total, checked: cells.length, cells, suggest: SUGGEST }, 200, { 'Cache-Control': 'public, max-age=60' });
+// The heat map's grid: 51 bands of Dec from the north pole, each cut into about 3.5 degree steps of RA (one SPHEREx
+// patch). A cell's number is its position in the grid, band by band.
+const BANDS = 51, DEC_STEP = 180 / BANDS, RAD = Math.PI / 180;
+const GRID = [];   // per band: [first cell number, cells in the band]
+for (let i = 0, k = 0; i < BANDS; i++) {
+  const n = Math.max(1, Math.round(360 * Math.cos((90 - (i + .5) * DEC_STEP) * RAD) / 3.5));
+  GRID.push([k, n]); k += n;
+}
+const CELLS = GRID[BANDS - 1][0] + GRID[BANDS - 1][1];
+const cellAt = (ra, dec) => {
+  const i = Math.min(BANDS - 1, Math.floor((90 - dec) / DEC_STEP)), [k, n] = GRID[i];
+  return k + Math.min(n - 1, Math.floor(ra / 360 * n));
+};
+const cellBox = c => {
+  let i = 0; while (i + 1 < BANDS && GRID[i + 1][0] <= c) i++;
+  const [k, n] = GRID[i], j = c - k, r = x => +x.toFixed(3);
+  return { ra_min: r(360 * j / n), ra_max: r(360 * (j + 1) / n), dec_min: r(90 - (i + 1) * DEC_STEP), dec_max: r(90 - i * DEC_STEP) };
+};
+// A spot to suggest: RW Aurigae's patch while nobody has opened it, then the unopened cell nearest to it
+const SUGGEST = { ra: 77, dec: 30.4 };
+const sep = (ra1, d1, ra2, d2) =>
+  Math.acos(Math.min(1, Math.sin(d1 * RAD) * Math.sin(d2 * RAD) + Math.cos(d1 * RAD) * Math.cos(d2 * RAD) * Math.cos((ra1 - ra2) * RAD))) / RAD;
+// every cell, nearest to RW Aurigae first: worked out once when the Worker starts, so a request only walks the list
+// (scanning all 3,339 cells per request came close to the free plan's 10 ms CPU limit)
+const NEAR = Array.from({ length: CELLS }, (_, c) => {
+  const b = cellBox(c), ra = (b.ra_min + b.ra_max) / 2, dec = (b.dec_min + b.dec_max) / 2;
+  return { c, ra: +ra.toFixed(2), dec: +dec.toFixed(2), d: sep(ra, dec, SUGGEST.ra, SUGGEST.dec) };
+}).sort((x, y) => x.d - y.d);
+function suggest(seen) {
+  if (!seen.has(cellAt(SUGGEST.ra, SUGGEST.dec))) return SUGGEST;
+  const near = NEAR.find(x => !seen.has(x.c));
+  return near ? { ra: near.ra, dec: near.dec } : SUGGEST;   // ponytail: every cell checked keeps RW Aurigae; unreachable in practice
+}
+
+// Which patch-sized cells people have opened, and one nobody has, for the heat map and "Unexplored patch".
+// Never cached, so a spot shows on the map as soon as someone opens it.
+async function explored(env) {
+  const rows = (await env.DB.prepare('SELECT cell, n FROM checks WHERE n > 0 AND cell >= 0 AND cell < ?').bind(CELLS).all()).results;
+  const cells = rows.map(({ cell, n }) => ({ ...cellBox(cell), checks: n }));
+  return json({ total: CELLS, cells, suggest: suggest(new Set(rows.map(r => r.cell))) }, 200, { 'Cache-Control': 'no-store' });
+}
+
+// Someone opened a spot (the time-lapse calls this once a live time-lapse has built): one more check for its cell.
+// Cloudflare's rate limit (wrangler.toml) runs before the write, so a flood never reaches D1. It is per location and approximate;
+// a script spread over many IPs can still light up cells, which only changes the map.
+async function check(request, env) {
+  let b;
+  try { b = await request.json(); } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }
+  if (!b || typeof b !== 'object') return json({ error: 'body must be JSON', field: 'body' }, 400);
+  if (typeof b.ra !== 'number' || !(b.ra >= 0 && b.ra <= 360)) return json({ error: 'ra must be 0 to 360', field: 'ra' }, 400);
+  if (typeof b.dec !== 'number' || !(b.dec >= -90 && b.dec <= 90)) return json({ error: 'dec must be -90 to 90', field: 'dec' }, 400);
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+  if (env.CHECKS_LIMIT && !(await env.CHECKS_LIMIT.limit({ key: ip })).success) return json({ error: 'too many checks, wait a minute' }, 429);
+  const cell = cellAt(b.ra % 360, b.dec);
+  const row = await env.DB.prepare('INSERT INTO checks (cell, n) VALUES (?1, 1) ON CONFLICT(cell) DO UPDATE SET n = n + 1 RETURNING n').bind(cell).first();
+  return json({ cell, checks: row.n }, 201);
 }
 
 export default {
@@ -237,6 +288,15 @@ export default {
     if (url.pathname === '/api/comments') {
       if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
       try { return await post(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/checks') {
+      if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
+      try { return await check(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/explored') {
+      try { return await explored(env); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     // live data from D1: never cached here, so a new comment shows at once
@@ -249,7 +309,7 @@ export default {
       try { return await (id === null ? comets(url, env) : comet(id, env)); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
-    const route = { '/api/images': images, '/api/gaia': gaia, '/api/explored': explored }[url.pathname];
+    const route = { '/api/images': images, '/api/gaia': gaia }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
     const key = new URL(url); key.searchParams.set('cache', 'v2');
