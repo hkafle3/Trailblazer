@@ -3,6 +3,10 @@ name = "comet-hunt"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 
+# Workers Logs: per-request logs with CPU time, in the dashboard's Observability tab
+[observability]
+enabled = true
+
 # Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
 [assets]
 directory = "../web"
@@ -13,3 +17,26 @@ binding = "DB"
 database_name = "comet-hunt"
 database_id = "0c2df597-de82-417f-93fb-d932729ecf5a"
 migrations_dir = "migrations"
+
+# The one version of each index file the Worker accepts: R2's etag of d1.bin .. d6.bin, which for these single-part
+# uploads is the file's MD5 (md5 -q d1.bin). A rebuilt index changes them: build, check, upload, update these, deploy
+# (docs/api.md, "Refreshing the image index"). Any other version of a file is refused and IRSA answers instead.
+[vars]
+SKY_ETAG_D1 = "a275376a6b6548c5e7432d5adc129eb4"
+SKY_ETAG_D2 = "8fbd8f8114aa7f727af849a85e3e0c13"
+SKY_ETAG_D3 = "0b043a67c797baf17c12a77d66945a6d"
+SKY_ETAG_D4 = "6a560e3c6fff9f77f1f3a59c7adb2790"
+SKY_ETAG_D5 = "f8efad9a34924aedd42a49e8dcde9239"
+SKY_ETAG_D6 = "f34a8f81a218d17e2c8c33ce755c43ea"
+
+# R2 bucket with our own index of SPHEREx images (d1.bin .. d6.bin from bake/sky_index.py), read by /api/images
+[[r2_buckets]]
+binding = "SKY"
+bucket_name = "comet-hunt-sky-index"
+
+# Rate limit for POST /api/checks (heat map counts): each visitor's IP gets 10 a minute, counted by Cloudflare,
+# so a script cannot spend the database's daily write allowance (which comments need too).
+[[ratelimits]]
+name = "CHECKS_LIMIT"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }

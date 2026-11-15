@@ -52,9 +52,9 @@ mark { background: rgba(255, 154, 77, .38); color: #fff; border-radius: 2px; pad
 .f-empty { min-height: calc(549 * var(--e)); box-sizing: border-box; display: grid; place-content: center; gap: calc(14 * var(--e)); text-align: center; padding: calc(40 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(12 * var(--e)); background: #000; font-size: max(14px, calc(27 * var(--e))); color: #cfd6e4; }
 .f-empty b { font-weight: 400; color: #fff; font-size: max(17px, calc(34 * var(--e))); }
 
-/* ---------- filters: the patch viewer's card, on black ---------- */
+/* ---------- filters: the patch viewer's card (a straight white top rule), on black ---------- */
 .f-filters { grid-column: 2; grid-row: 1 / span 3; position: sticky; top: calc(228 * var(--e)); margin-top: calc(-3 * var(--e)); padding: calc(27 * var(--e)) calc(40 * var(--e)) calc(30 * var(--e)) calc(46 * var(--e));
-  border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(20 * var(--e)) calc(20 * var(--e)) 0 0; background: #000; }
+  border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 0; background: #000; }
 .f-filters h2 { margin: 0 0 calc(26 * var(--e)); font: 400 max(18px, calc(40 * var(--e))) / 1 var(--panel-font); letter-spacing: 0; color: #fff; }
 .f-row { display: flex; align-items: center; justify-content: space-between; gap: calc(30 * var(--e)); height: calc(42 * var(--e)); min-height: 26px; margin: 0 0 calc(11 * var(--e)) calc(3 * var(--e)); font-size: max(14px, calc(32 * var(--e))); color: #f2f2f2; white-space: nowrap; }
 .f-row.f-check { justify-content: flex-start; margin-top: calc(20 * var(--e)); cursor: pointer; }

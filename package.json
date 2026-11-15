@@ -1,13 +1,14 @@
 {
   "name": "comet-hunt",
   "private": true,
+  "type": "module",
   "description": "Find comets in NASA SPHEREx images. NASA Space Apps 2026.",
   "scripts": {
     "dev": "npm run db:local && wrangler dev --config worker/wrangler.toml",
     "db:local": "wrangler d1 migrations apply comet-hunt --local --config worker/wrangler.toml",
     "db:remote": "wrangler d1 migrations apply comet-hunt --remote --config worker/wrangler.toml",
     "deploy": "wrangler deploy --config worker/wrangler.toml",
-    "test": "node worker/check_csv.mjs && sh worker/test_contract.sh"
+    "test": "node web/tests/straight_rules.mjs && node --test worker/sky_index.test.mjs worker/sky_index_full.test.mjs && node worker/check_csv.mjs && sh worker/test_contract.sh"
   },
   "devDependencies": {
     "wrangler": "4.162.0"

@@ -150,7 +150,7 @@ async def main():
         await click("#play", 600)
         await cap("Difference view: orange got brighter, blue dimmer")
         await click("label:has(#diff)", 1200)
-        lt = await box(".tl-visit >> nth=-1"); await move(lt["x"] + lt["width"] / 2, lt["y"] + lt["height"] / 2)   # a press on the line picks the nearest visit; await pg.wait_for_timeout(300)
+        lt = await box(".tl-visit >> nth=-1"); await move(lt["x"] + lt["width"] / 2, lt["y"] + lt["height"] / 2); await pg.wait_for_timeout(300)   # a press on the line picks the nearest visit
         await pg.mouse.down(); await pg.wait_for_timeout(90); await pg.mouse.up(); await pg.wait_for_timeout(3200)
         await click("label:has(#diff)", 900)
         # 4. another detector
@@ -170,14 +170,17 @@ async def main():
         await cap("Its spectrum shows carbon dioxide glowing at 4.26 µm")
         await move(720, 560); await scroll(430); await pg.wait_for_timeout(4500)
         await scroll(-430); await pg.wait_for_timeout(600)
-        await cap("Search any comet: C/2025 R2 (SWAN) glows too")
-        await click(".topbar .search", 200); await type_("C/2025 R2 (SWAN)", 45); await pg.keyboard.press("Enter")
+        await cap("Open any comet: C/2025 R2 (SWAN) glows too")
+        await click("nav a[href='comet.html']", 0)
+        await fast(True); await pg.wait_for_load_state("load"); await pg.wait_for_selector(".crow"); await fast(False)
+        await click('.crow:has-text("C/2025 R2 (SWAN)")', 0)
         await fast(True); await pg.wait_for_load_state("load"); await pg.wait_for_timeout(2500); await fast(False)
         await pg.wait_for_timeout(2200)
         await move(720, 560); await scroll(430); await pg.wait_for_timeout(3800); await scroll(-430); await pg.wait_for_timeout(500)
         # 6. sign in and tag
         await cap("Sign in, tag what you see, say why. A tag is a vote")
-        await click(".topbar button:has-text('Sign in')", 900)
+        await click(".topbar .authbox .av", 500)   # the account circle opens a menu with Sign in
+        await click(".authbox button[role=menuitem]:text-is('Sign in')", 900)
         await click("input[placeholder='Pick a name']", 200); await pg.locator("input[placeholder='Pick a name']").press_sequentially("Ada", delay=90)
         await pg.wait_for_timeout(300); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(1300)
         await click("label:has(input[name=tag][value=comet])", 700)
@@ -186,7 +189,7 @@ async def main():
         await click('button[type=submit]:has-text("Post")', 2600)
         # 7. guide
         await cap("A short guide teaches how to spot a moving dot")
-        await click("nav a[href='guide.html']", 3500)
+        await goto(BASE + "/guide.html", 3500)   # the Trailblazer header has no Guide link
         await click("button:has-text('Show me')", 4500)
         await pg.keyboard.press("Escape"); await pg.wait_for_timeout(700)
         # end

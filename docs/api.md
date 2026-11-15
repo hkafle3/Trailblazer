@@ -2,7 +2,7 @@
 
 One Cloudflare Worker (`worker/src/index.js`) answers every `/api/*` request and also serves the app's files from `web/`. All routes are `GET`, return JSON, and send `Access-Control-Allow-Origin: *`. Errors are `{"error": "..."}` with a 4xx or 5xx status.
 
-Comets and comments live in Cloudflare D1 (database `comet-hunt`, schema in `worker/migrations/`). `/api/explored` still returns made-up data from `worker/src/example-data.js` with `"example": true`.
+Comets and comments live in Cloudflare D1 (database `comet-hunt`, schema in `worker/migrations/`). `/api/explored` counts real checks from the `checks` table (`POST /api/checks`).
 
 Database: `npm run dev` applies the migrations to a local copy first, so it works with no account. `npm run db:remote` applies them to the real database (needs `npx wrangler login`). A new table or column is a new numbered file in `worker/migrations/`; never edit one that has been applied.
 
@@ -98,39 +98,118 @@ Refusals (JSON, CORS headers as above):
 
 Each accepted token is stored as a SHA-256 hash (`turnstile_tokens`, migration 0007) in the same transaction as the comment, so a token pays for one comment only. The rate limit is checked inside that same insert, so posts sent at the same moment cannot get past it.
 
-## GET /api/explored (example)
+## GET /api/known?ra=&dec=&t=
 
-Which patch-sized sky cells people have checked, for the heat map, and one cell nobody has checked.
+Known comets and asteroids in a time-lapse frame, from IMCCE SkyBoT (a public service that works out where every known small body is at a given moment). Planets are left out. Built from kzkei's version on the include-documentation-and-scope branch. A time-lapse frame is one visit, several exposures over a few days, and a known asteroid crosses the patch in hours, so the time-lapse asks at each distinct exposure time of the visit (exposures less than 1.2 hours apart count as one; baked targets have only the visit's middle). It asks three at a time, the frame on screen first, after the frames show. It draws where SkyBoT put each object at each time, joined by a dashed path, and lists them in the panel with their dates.
+
+- `t` is the frame's time as an MJD. The cone is 0.15 degrees, which covers the widest 12 arcmin view.
+- Comets are always kept (`mag` is null when SkyBoT sends none). SkyBoT itself leaves out objects whose predicted position is uncertain by more than 2 arcmin (its default), which keeps badly known objects off the picture. Asteroids are kept at V magnitude 21 or brighter, at most 8, brightest first. `omitted` counts the asteroids left out.
+- Cached for a day: a past frame's answer never changes.
+
+```
+GET /api/known?ra=77.3058&dec=27.3551&t=61285.0302
+200 { "ra": 77.3058, "dec": 27.3551, "t": 61285.0302,
+      "comets": [ { "name": "C/2025 R2", "ra": 77.31029, "dec": 27.35555, "mag": 20.3, "err": 2.99 } ],
+      "asteroids": [], "omitted": 0 }
+```
+
+Refusals:
+
+| Request | Status | Body |
+|---|---|---|
+| `ra` missing or outside 0 to 360 | 400 | `{"error": "ra must be 0 to 360"}` |
+| `dec` missing or outside -90 to 90 | 400 | `{"error": "dec must be -90 to 90"}` |
+| `t` missing, not a number, or outside MJD 40000 to 80000 | 400 | `{"error": "t must be an MJD"}` |
+| SkyBoT down | 503 | `{"error": "SkyBoT is not answering", "retry_after": 30}` |
+
+The frame is the median of its exposures, so a fast asteroid usually leaves no dot: its path means a known object passed through during that visit, not that a dot under it is that object. The panel says "Catalog check unavailable" when every time answered 503, and counts the times that could not be checked otherwise. A rows-but-unreadable SkyBoT answer is a 503, never a cached empty result.
+
+## GET /api/explored (D1)
+
+Which patch-sized sky cells people have checked, for the heat map, and one cell nobody has checked. Never cached, so a spot shows on the map as soon as someone opens it.
 
 ```json
-{ "example": true, "total": 3339, "checked": 508,
-  "cells": [ { "ra_min": 325.5, "ra_max": 329.1, "dec_min": 31.8, "dec_max": 35.3, "checks": 20 } ],
+{ "total": 3339,
+  "cells": [ { "ra_min": 266.4, "ra_max": 269.9, "dec_min": 3.5, "dec_max": 7.1, "checks": 3 } ],
   "suggest": { "ra": 77, "dec": 30.4 } }
 ```
 
-- `cells` lists only cells with `checks > 0`. The grid is 51 bands of Dec, each split into about 3.5 degree steps of RA (the size of one SPHEREx patch).
+- `cells` lists only cells with `checks > 0`. The grid is 51 bands of Dec, each split into about 3.5 degree steps of RA (the size of one SPHEREx patch). A cell's number is its position in that grid, counting band by band from the north pole.
+- `suggest` is RW Aurigae's patch while nobody has checked it, then the unchecked cell nearest to it.
+
+## POST /api/checks (D1)
+
+Records that someone opened a spot: the time-lapse calls it each time a live time-lapse finishes building (so a reload or another detector counts again; the five baked targets do not count). Adds one to that spot's cell.
+
+```
+POST /api/checks   {"ra": 269.4463, "dec": 4.7671}
+201                {"cell": 1234, "checks": 3}
+```
+
+Refusals:
+
+| Request | Status | Body |
+|---|---|---|
+| body over 1024 bytes (checked while reading, whatever `Content-Length` says) | 413 | `{"error": "body too large", "field": "body"}` |
+| body is not JSON | 400 | `{"error": "body must be JSON", "field": "body"}` |
+| `ra` missing, not a number, or outside 0 to 360 | 400 | `{"error": "ra must be 0 to 360", "field": "ra"}` |
+| `dec` missing, not a number, or outside -90 to 90 | 400 | `{"error": "dec must be -90 to 90", "field": "dec"}` |
+| GET (or any method but POST) | 405 | `{"error": "use POST"}` with `Allow: POST` |
+| more than 10 requests a minute from one IP (Cloudflare rate limit, `CHECKS_LIMIT` in wrangler.toml; it runs before the body is read, so every request counts, refused ones included) | 429 | `{"error": "too many checks, wait a minute"}` |
+| database down | 503 | `{"error": "database is not answering, try again"}` |
+
+No sign-in or human check: a count is low stakes. The rate limit keeps a script from spending the database's daily writes; the worst it can do then is light up cells on the map.
 
 ## GET /api/images?ra=&dec=&det=
 
-The SPHEREx photos covering a point, from IRSA's search, cached for a day. The browser then reads the pixels straight from NASA's public S3 bucket (`web/live/fits.js`).
+The SPHEREx photos covering a point, cached for a day. The browser then reads the pixels straight from NASA's public S3 bucket (`web/live/fits.js`).
 
 ```json
 { "ra": 269.4463, "dec": 4.7671, "det": "D1",
   "images": [ { "t": 60914.21, "key": "dr1/level2/.../image.fits", "obs": "...", "coll": "spherex_dr1" } ],
-  "collections": { "spherex_dr1": 31, "spherex_qr3": 32 } }
+  "collections": { "spherex_dr1": 31, "spherex_qr3": 32 }, "source": "index" }
 ```
 
-Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 to 90"}`, `400 {"error":"det must be D1 to D6"}`, and `503` with `retry_after` when IRSA's search is down (an empty `images` list always means "no photos here", never "search failed").
+`source` says who answered. `"index"` is our own index of every level-2 image (`bake/sky_index.py` builds it from the image headers on NASA's S3 bucket; one file per detector in the R2 bucket `comet-hunt-sky-index`, read by `worker/src/sky_index.js`). It gives the same answer IRSA's search gives: an image counts when the 0.001 degree circle around the point touches its footprint polygon (IRSA's `s_region`), one row per `obs`, DR1 first, the deep collections only within 15 degrees of the ecliptic poles. `"IRSA"` is IRSA's search (SIA), used only when the index cannot answer (its file is missing or R2 fails). Answers cached or saved before the index arrived have no `source`.
+
+The index is a snapshot of the bucket as listed on 2026-11-15 (DR1, and QR3 through week 2026W40_2A). Photos from weeks published after that are missing from `"index"` answers until the index is rebuilt; a scheduled refresh is not built yet.
+
+The Worker accepts only one version of each index file: the one whose R2 etag is pinned in `worker/wrangler.toml` (`SKY_ETAG_D1` to `SKY_ETAG_D6`; for these single-part uploads the etag is the file's MD5). A replaced, truncated or corrupted file has another etag, so it is refused and IRSA answers until the pins match again.
+
+#### Refreshing the image index
+
+1. List the bucket's level-2 keys again (`keys.tsv`: key, tab, size).
+2. Read the headers: `uv run --with aiohttp python bake/sky_headers.py keys.tsv hdr_dN.jsonl N` for each detector. It resumes, and exits non-zero while any file failed.
+3. Build: `uv run --with numpy python bake/sky_index.py hdr_dN.jsonl OUT keys.tsv`. It writes nothing unless every listed key has exactly one header and every row passes its checks (6-decimal times in time order, footprints that are the images' own quadrilaterals).
+4. Verify the build: `bake/sky_index_eval.py` against IRSA answers (0 unexplained differences) and `uv run --with numpy python bake/test_sky_index.py`.
+5. Pin it locally: put each file's MD5 (`md5 -q OUT/dN.bin`) in `SKY_ETAG_DN` in `worker/wrangler.toml`.
+6. Run the full-file tests: `SKY_INDEX_DIR=OUT node --test worker/sky_index_full.test.mjs` (byte-identical answers, every cell, and each pin equal to its file's MD5).
+7. Upload each file: `npx wrangler r2 object put comet-hunt-sky-index/dN.bin --file OUT/dN.bin --remote --config worker/wrangler.toml`, then compare the uploaded object with the file (download it again, or check that a preview version answers with `"source":"index"`, which only happens when R2's etag equals the pin).
+8. Deploy. Between the upload and the deploy, that detector's searches fall back to IRSA (the old pin refuses the new file).
+
+Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 to 90"}`, `400 {"error":"det must be D1 to D6"}`, and `503` with `retry_after` when the index cannot answer and IRSA's search is down (an empty `images` list always means "no photos here", never "search failed").
 
 ## GET /api/gaia?ra=&dec=
 
-Gaia DR3 stars within 0.04 degrees, with proper motions, for checking measured star motion. `503` when ESA's archive is down.
+Gaia DR3 stars within 0.04 degrees, with proper motions and Gaia G brighter than 19 (fainter stars are below what SPHEREx measures, and the cut keeps crowded fields such as Baade's Window to about 3,200 stars), for checking measured star motion. Read from IRSA's copy of Gaia DR3 (its Gator catalog service, about 1.5 s); ESA's own archive is the fallback, tried once for up to 8 s. `source` says which answered (`"IRSA"` or `"ESA"`). `503` when both are down. The time-lapse waits at most 8 s for this and otherwise shows its frames without the Gaia comparison.
+
+### Saved answers (D1 `searches`, all three outside searches)
+
+Every complete answer from `/api/images`, `/api/gaia` and `/api/known` is also saved in D1 under its path and the parameters it reads (`ra`, `dec`, `det`, `t`, `v`; others are ignored). When the outside service fails (a `5xx`) or `/api/images` answers only in part, the last saved answer to that exact search is sent instead: `200`, the same JSON, `Cache-Control: no-store` and an `X-Saved-At` time. A search never answered before still gets the `503`; a bad request still gets its `400`. Added after IRSA's image search answered 502 for most of 2026-11-15.
 
 ## Planned (not built)
 
 - `GET /api/comets/:id`: one comet with its dots, photos, measurements and comment thread.
-- `GET /api/known?ra=&dec=&t=`: known comets and asteroids at a spot and time, from IMCCE SkyBoT.
 
 ## Tests
 
 `npm test` runs `worker/test_contract.sh` against `http://127.0.0.1:8787`: every route above, its refusals, the CORS header, and that the pages are served. The `POST /api/comments` checks write to the database, so they run only against a local server (127.0.0.1, localhost) and are skipped elsewhere.
+
+## GET /api/posts (D1)
+
+The Forums feed: the 200 newest comments that have text, across every comet, newest first. Never cached.
+
+```json
+{ "posts": [ { "comet_id": "C-0147", "author": "mira_v", "tag": "comet", "body": "Strong carbon dioxide peak at 4.26.",
+  "created_at": 1762998800000, "kind": "comet", "ra": 328, "dec": 34, "real": false } ] }
+```

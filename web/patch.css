@@ -20,13 +20,14 @@ canvas#gl.drag { cursor: grabbing; }
 }
 .pstage > * { position: absolute; pointer-events: auto; }
 
-/* ---------- cards: a white top rule that curls down at both ends, on black ----------
-   Each card is laid out in its own design pixels (Explore.png, 2026-11-15 revision): .at children sit at
-   left --x, and either top --y or vertical centre --cy, measured from the card's top-left corner. */
-.pv-card { margin: 0; padding: 0; box-sizing: border-box; background: #000; border: 0; border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(20 * var(--e)) calc(20 * var(--e)) 0 0; color: #f2f2f2; }
+/* ---------- cards: a straight white top rule, on black ---------- */
+.pv-card { margin: 0; padding: calc(27 * var(--e)) 0 calc(22 * var(--e)) calc(46 * var(--e)); background: #000; border: 0; border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 0; }
+.pv-card h2 { margin: 0 0 calc(26 * var(--e)); font: 400 calc(36 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; white-space: nowrap; }
+/* the left cards are laid out in their own design pixels (Explore.png, 2026-11-15 revision): .at children sit at
+   left --x, and either top --y or vertical centre --cy, measured from the card's top-left corner */
+.pv-options, .pv-spectral, .pv-layers, .pv-others { padding: 0; box-sizing: border-box; color: #f2f2f2; }
 .pv-card .at { position: absolute; margin: 0; left: calc(var(--x) * var(--e)); top: calc(var(--y, 0) * var(--e)); }
 .pv-card .at[style*="--cy"] { top: calc(var(--cy) * var(--e)); transform: translateY(-50%); }
-.pv-card h2 { font: 400 calc(36 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; white-space: nowrap; }
 .t24 { font-size: calc(24 * var(--e)); line-height: 1; white-space: nowrap; }
 .t32 { font-size: calc(32 * var(--e)); line-height: 1; white-space: nowrap; }
 label.at { cursor: pointer; }
@@ -73,10 +74,13 @@ label.at { cursor: pointer; }
 /* ---------- the patch ---------- */
 .pv-frame { left: calc(675 * var(--e)); top: calc(229 * var(--e)); width: calc(1146 * var(--e)); height: calc(902 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(10 * var(--e)); background: #000; overflow: hidden; }
 #patch { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-#status { position: absolute; left: calc(24 * var(--e)); top: calc(18 * var(--e)); right: calc(24 * var(--e)); font: 400 calc(20 * var(--e)) / 1.35 var(--panel-font); color: #cfd6e4; text-shadow: 0 1px 6px #000; pointer-events: none; }
 #status.err { color: var(--glitch); }
-#legend { position: absolute; right: calc(20 * var(--e)); bottom: calc(16 * var(--e)); display: flex; gap: calc(26 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
+#legend { position: absolute; right: calc(20 * var(--e)); bottom: calc(16 * var(--e)); display: flex; flex-direction: column; align-items: flex-end; gap: calc(10 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
+#legend .lg-row { display: flex; gap: calc(26 * var(--e)); }
 #legend span { display: flex; align-items: center; gap: calc(10 * var(--e)); }
+#legend i.px { border-radius: 0; }
+#legend .lg-key { display: none; }
+body:has(#diff:checked) #legend .lg-key { display: flex; }   /* the colour key, under the markers' row, only while Color Difference is on */
 #legend i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; }
 body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 
@@ -94,10 +98,21 @@ body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 .pv-state .go svg { width: 62%; height: 62%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .pv-state:hover .go { transform: translateX(calc(4 * var(--e))); }
 
-/* Descriptions: title 21 in from the rule, everything under it a further 28 in (to the Coordinates box) */
-.pv-desc { left: calc(1927 * var(--e)); top: calc(825 * var(--e)); width: calc(451 * var(--e)); max-height: calc(335 * var(--e)); padding: calc(26 * var(--e)) calc(30 * var(--e)) calc(22 * var(--e)) calc(21 * var(--e)); overflow-y: auto; scrollbar-width: thin; }
-.pv-desc h2 { position: static; margin: 0 0 calc(23 * var(--e)); }
-.pv-desc form, .pv-desc .pv-info { margin-left: calc(28 * var(--e)); }
+.pv-desc { left: calc(1927 * var(--e)); top: calc(825 * var(--e)); width: calc(451 * var(--e)); box-sizing: border-box; }
+.pv-desc .pv-scroll { max-height: calc(240 * var(--e)); }   /* the card ends above the timeline's date label */
+.pv-desc { padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }   /* title 21 in from the rule, the rest a further 28 in */
+.pv-desc .pv-scroll { padding-left: calc(28 * var(--e)); }
+/* a card's content scrolls under its heading. When there is more below, a white bar on the right shows how much
+   (Zoom's square white thumb, as a line) and the last line fades out */
+.pv-scroll { overflow-y: auto; padding-right: calc(30 * var(--e)); }
+.pv-scroll::-webkit-scrollbar { width: max(3px, calc(5 * var(--e))); }
+.pv-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .15); }
+.pv-scroll::-webkit-scrollbar-thumb { background: #fff; }
+.pv-scroll:focus-visible { outline: 2px solid #fff; outline-offset: 2px; -webkit-mask-image: none; mask-image: none; }   /* reached by Tab when it scrolls; the fade would hide the outline */
+.pv-scroll.more:not(:focus-visible) { -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent); }
+#status { margin: calc(16 * var(--e)) 0 0; font: 400 calc(20 * var(--e)) / 1.4 var(--panel-font); color: #cfd6e4; }
+#status:empty { margin: 0; }
+.pv-desc h2 { margin-bottom: calc(23 * var(--e)); }
 .pv-desc label { display: block; font-size: calc(24 * var(--e)); line-height: 1; color: #f2f2f2; }
 .pv-desc .box { display: block; width: calc(364 * var(--e)); height: calc(31 * var(--e)); min-height: 14px; margin: calc(22 * var(--e)) 0 0; box-sizing: border-box; padding: 0 calc(10 * var(--e));
   border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(5 * var(--e)); background: transparent; color: #fff; font: 400 calc(19 * var(--e)) / 1 var(--panel-font); outline: 0; }
@@ -106,11 +121,22 @@ body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 .pv-desc select.box option { background: #0b0f1a; }
 .pv-desc .sub { display: flex; align-items: center; gap: calc(14 * var(--e)); width: calc(364 * var(--e)); margin-top: calc(14 * var(--e)); }
 .pv-desc .sub .box { flex: 1; width: auto; margin: 0; }
+.pv-desc .sub { overflow: hidden; }   /* the Band label's line box ran 4 px past the row and made the card scroll */
 .pv-info { margin: calc(16 * var(--e)) 0 0; font: 400 calc(20 * var(--e)) / 1.4 var(--panel-font); color: #cfd6e4; }
 .pv-info b { color: #fff; font-weight: 400; }
 .ok { color: var(--people); } .warn { color: var(--comet); }
+/* known comets and asteroids (timelapse.html knownList): under the heading, one per line, a dot in the overlay's colours */
+#vKnown { display: block; margin-top: calc(6 * var(--e)); }
+.pv-info:has(> #vKnown:empty) { display: none; }   /* no heading before there is a patch to check (errors, empty spots) */
+/* each object: the dot and its name on one line, what it is and when under the name, cut short with the full text in a tooltip */
+.known-row { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: calc(10 * var(--e)); align-items: center; margin-top: calc(8 * var(--e)); }
+.known-row i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; }
+.known-row .nm { color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.known-row .dt { grid-column: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.known-row.faint { display: block; color: var(--ink-3); }
 
 /* ---------- timeline: the same as Explore's, plus a dot for each visit ---------- */
+.tl-tick.quiet b { visibility: hidden; }   /* too narrow for every month: timeline.thin() keeps every 2nd, 3rd, 6th or 12th, January always */
 .tl { z-index: 2; left: calc(568 * var(--e)); top: calc(1215 * var(--e)); width: calc(1420 * var(--e)); font-family: var(--head-font); font-weight: 300; color: #e8e8e8; user-select: none; touch-action: none; }
 .tl-line { position: relative; height: max(1px, calc(2 * var(--e))); background: #c9c9c9; cursor: pointer; }
 .tl-line::before { content: ""; position: absolute; left: 0; right: 0; top: calc(-24 * var(--e)); bottom: calc(-70 * var(--e)); }
@@ -134,7 +160,7 @@ body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 .tl-knob.on .i-pause { display: block; }
 
 /* ---------- sky mode: only the coordinates box stays, next to the whole-sky map and hint ---------- */
-body.sky .pstage > :not(.pv-desc), body.sky .pv-desc .pv-info { display: none; }
+body.sky .pstage > :not(.pv-desc) { display: none; }
 body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* the sky loop sets .tmark display inline */
 #skyui { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
 #hint { position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); padding: 12px 22px; border-radius: 999px; font-size: 14px; color: var(--ink-2); white-space: nowrap; }
@@ -147,24 +173,29 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 .tmark { position: fixed; z-index: 1; transform: translate(-11px, -50%); pointer-events: none; display: flex; align-items: center; gap: 10px; font: 500 12.5px var(--mono); color: #d8e8ff; text-shadow: 0 1px 8px #000; white-space: nowrap; }
 .tmark i { width: 22px; height: 22px; border: 1.5px solid var(--known); border-radius: 50%; flex: none; box-shadow: 0 0 14px rgba(127, 184, 255, .6); }
 
-/* ---------- phones and narrow windows: one column, the page scrolls ---------- */
+/* ---------- phones and narrow windows: one column, the page scrolls, in the markup's order (reading order) ---------- */
 @media (max-width: 900px) {
   body.lapse { overflow: auto; }
   .pstage { --e: .5px; position: relative; left: auto; transform: none; width: auto; height: auto; display: flex; flex-direction: column; gap: 22px; padding: 76px 16px 40px; font-size: 15px; }
   .pstage > * { position: relative; left: auto; top: auto; width: auto; }
-  .pv-frame { order: 1; aspect-ratio: 1146 / 902; height: auto; }
-  .tl { order: 2; margin: 40px 18px 50px; --e: .55px; }
-  .pv-state { order: 3; height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
-  .pv-mini { order: 4; width: min(100%, 434px); height: auto; aspect-ratio: 434 / 297; }
-  .pv-desc { order: 5; max-height: none; padding-right: 0; }
-  .pv-options { order: 6; } .pv-spectral { order: 7; } .pv-layers { order: 8; } .pv-others { order: 9; }
+  .pv-frame { aspect-ratio: 1146 / 902; height: auto; }
+  .tl { margin: 40px 18px 50px; --e: .55px; }
+  .pv-state { height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
+  .pv-mini { width: min(100%, 434px); height: auto; aspect-ratio: 434 / 297; }
+  .pv-scroll { max-height: none !important; padding-right: 0; }
+  .pv-desc { padding: 14px 0 0 18px; border-top-width: 1.5px; }
+  .pv-desc h2 { font-size: 20px; margin-bottom: 12px; }
+  .pv-desc .pv-scroll { padding-left: 0; }
+  .pv-desc label { font-size: 15px; }
   /* the left cards keep their own layout, at three quarters of a pixel per design pixel (339 px wide) */
   .pv-options, .pv-spectral, .pv-layers, .pv-others { --e: .75px; width: calc(452 * var(--e)); max-width: 100%; }
-  .pv-desc label { font-size: 15px; }
   .pv-desc .box { width: min(100%, 320px); height: 34px; font-size: 14px; margin-top: 10px; }
   .pv-desc .sub, .pv-info { font-size: 13px; }
   #status { font-size: 12px; }
-  #legend { font-size: 11px; gap: 12px; }
+  /* the legend fits the narrow frame: it spans the frame's width and its items wrap onto more rows, each item whole */
+  #legend { font-size: 11px; left: 8px; right: 8px; bottom: 8px; padding: 6px 10px; }
+  #legend .lg-row { flex-wrap: wrap; justify-content: flex-end; gap: 6px 12px; }
+  #legend span { white-space: nowrap; }
   #mapbox { left: 12px; bottom: 12px; }
   #hint { bottom: 230px; width: calc(100% - 24px); text-align: center; white-space: normal; }
 }

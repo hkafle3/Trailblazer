@@ -1,18 +1,7 @@
 // Explore: the all-sky map. One Mollweide projection places everything so markers, the coverage replay
 // and the heat map line up with data/sky.jpg (RA increases to the left, RA 0 in the middle).
 // Data: data/coverage.{png,json} (built by bake/sky_assets.py), /api/comets and /api/explored (worker/).
-const R2 = Math.SQRT2, RAD = Math.PI / 180;
-const wrap = d => ((d + 180) % 360 + 360) % 360 - 180;
-
-// map longitude (degrees, -180..180, positive right) and Dec -> [u, v] in 0..1 across the map
-function fwdLon(lon, dec) {
-  const lat = dec * RAD;
-  let t = lat;
-  for (let i = 0; i < 10 && Math.abs(dec) < 89.9; i++) t -= (2 * t + Math.sin(2 * t) - Math.PI * Math.sin(lat)) / (2 + 2 * Math.cos(2 * t));
-  const x = (2 * R2 / Math.PI) * lon * RAD * Math.cos(t), y = R2 * Math.sin(t);
-  return [(x + 2 * R2) / (4 * R2), (R2 - y) / (2 * R2)];
-}
-const fwd = (ra, dec) => fwdLon(wrap(-ra), dec);
+import { R2, RAD, wrap, fwdLon, fwd, trackAt, dayParam, LAST_DAY, MJD0 } from './skymap.js';
 // [u, v] -> [ra, dec], or null outside the oval
 function inv(u, v) {
   const x = (u * 2 - 1) * 2 * R2, y = (1 - v * 2) * R2;
@@ -30,6 +19,8 @@ const place = (el, ra, dec) => { const [u, v] = fwd(ra, dec); el.style.left = u 
 const patchUrl = (ra, dec) => `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=D1&diff=1`;
 // a comet already found and named opens the same patch viewer, labelled Discovered (found=<its id>)
 const foundUrl = (id, ra, dec) => `${patchUrl(ra, dec)}&found=${encodeURIComponent(id)}`;
+const focus = new URLSearchParams(location.search).get('focus');   // ?focus=<comet>&day=<day>: "Find on map" on a comet's page
+$('time').value = dayParam();
 const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(`${url}: HTTP ${r.status}`))));
 
 // ---- grid and ecliptic ----
@@ -73,17 +64,32 @@ addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; })
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
 // Known comets move: their marker follows the JPL path in `track` ([[day, ra, dec, magnitude], ...] every 10 days)
 // and shows only while the comet is bright enough to see (magnitude 16 or brighter).
-const movers = [];
+// The name of the comet opened with "Find on map" goes where it fits (measured, since names differ in length):
+// right of the dot, or left when that would run past the map or the window, or, on a screen too narrow for
+// either, under the dot and moved sideways until it is all in view.
+function nameSide(el) {
+  const b = el.querySelector('b'), map = $('map').getBoundingClientRect();
+  if (!b) return;
+  const lo = Math.max(map.left, 0), hi = Math.min(map.right, innerWidth);
+  el.classList.remove('left', 'under'); b.style.transform = '';
+  if (b.getBoundingClientRect().right <= hi) return;
+  el.classList.add('left');
+  if (b.getBoundingClientRect().left >= lo) return;
+  el.classList.replace('left', 'under');
+  const r = b.getBoundingClientRect();
+  b.style.transform = `translateX(${Math.max(lo - r.left, Math.min(0, hi - r.right))}px)`;
+}
+const movers = [], links = [];   // links: every comet link (markers and the featured card), rewritten as the timeline moves
 function followTracks(day) {
-  for (const { el, track, id } of movers) {
-    const i = Math.min(track.length - 2, Math.max(0, Math.floor(day / 10))), [d0, r0, c0, m0] = track[i], [d1, r1, c1, m1] = track[i + 1];
-    const f = Math.min(1, Math.max(0, (day - d0) / (d1 - d0))), dr = ((r1 - r0 + 540) % 360) - 180;   // shortest way round in RA
-    const ra = (r0 + f * dr + 360) % 360, dec = c0 + f * (c1 - c0);
+  // a known comet's page opens on the same date; a found comet opens the patch where it is on that date, as Discovered
+  for (const { el, id, found, track, ra, dec } of links)
+    el.href = found ? foundUrl(id, ...(track?.length ? trackAt(track, day) : [ra, dec])) : `comet.html?id=${encodeURIComponent(id)}&day=${day}`;
+  for (const { el, track } of movers) {
+    const [ra, dec, mag] = trackAt(track, day), bright = mag != null && mag <= 16;
     place(el, ra, dec);
-    el.href = foundUrl(id, ra, dec);   // the patch where the comet is on this day
-    const mag = m0 == null ? m1 : m1 == null ? m0 : m0 + f * (m1 - m0);
-    const bright = mag != null && mag <= 16;
-    // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see; the rest hide
+    if (el.classList.contains('focus')) nameSide(el);
+    // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see (so does a comet
+    // opened with "Find on map"); the rest hide
     if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
   }
 }
@@ -91,22 +97,23 @@ let trailN = 0;
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
   const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
-  const featured = comets.filter(c => c.kind === 'comet').sort((a, b) => votes(b) - votes(a))[0];
+  const featured = focus ? null : comets.filter(c => c.kind === 'comet').sort((a, b) => votes(b) - votes(a))[0];   // no card while a comet is being found
   for (const c of comets) {
     const a = document.createElement('a');
     a.className = `mk ${c.kind}`;
-    a.dataset.day = c.day ?? 0;
+    if (c.id === focus) a.classList.add('focus'); else a.dataset.day = c.day ?? 0;   // the comet being found shows on any date
     a.innerHTML = '<i></i>';
     if (c.kind === 'comet') {
-      a.href = foundUrl(c.id, c.ra, c.dec);
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
     } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
-    if (c.kind === 'known') a.href = foundUrl(c.id, c.ra, c.dec);
+    // comets people found open the patch viewer as Discovered (Ming); known comets open their page (main, PR #30)
+    links.push({ el: a, id: c.id, found: c.kind === 'comet', track: c.track, ra: c.ra, dec: c.dec });   // followTracks() writes the link, with the timeline's day
     if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (c.kind === 'known' && c.real && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
-    if (c.track) { movers.push({ el: a, track: c.track, id: c.id }); if (c.detail?.photos || c.id === '3I/ATLAS') a.dataset.always = '1'; }
+    if (c.track?.length) movers.push({ el: a, track: c.track });   // no path, or an empty one: it stays at its fixed place
+    if (c.track?.length && (c.detail?.photos || c.id === '3I/ATLAS' || c.id === focus)) a.dataset.always = '1';
     if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
       const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
@@ -115,10 +122,11 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
   }
+  if (featured) links.push({ el: card, id: featured.id, found: true, track: featured.track, ra: featured.ra, dec: featured.dec });
   followTracks(+$('time').value);
+  if (focus) { marks.append(...marks.querySelectorAll('.focus')); marks.querySelectorAll('.focus').forEach(nameSide); }   // on top of its neighbours, its name on the map
   if (featured) {
     const n = votes(featured), t = featured.tags;
-    card.href = foundUrl(featured.id, featured.ra, featured.dec);
     card.dataset.day = featured.day;
     card.querySelector('[data-f=id]').textContent = featured.id;
     card.querySelector('[data-f=count]').textContent = `${t.comet} of ${n} tags`;
@@ -130,6 +138,31 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   }
   showByDay();
 }).catch(err => console.warn('comets unavailable', err));
+
+// A click on a comet: the map zooms toward it, then the page changes and the map becomes that page's mini map
+// (the shared view-transition-name "sky"). Browsers without page-to-page view transitions, and people who
+// asked for less motion, follow the link as usual.
+// The link is read at the click: the replay is paused and later clicks wait, so the page that opens is the one clicked.
+// Clicks with a modifier key and middle clicks are left to the browser (new tab or window).
+let leaving = false, stopReplay = () => {};
+$('marks').addEventListener('click', e => {
+  const a = e.target.closest('a[href^="comet.html"]');
+  if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  if (leaving) return e.preventDefault();
+  if (!('CSSViewTransitionRule' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  e.preventDefault();
+  leaving = true; stopReplay();
+  const url = a.href, stage = document.querySelector('.map-wrap'), go = () => { location.href = url; };
+  stage.style.transformOrigin = `${a.style.left} ${a.style.top}`;
+  stage.animate({ transform: ['none', 'scale(1.3)'] }, { duration: 200, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' }).finished.then(go, go);
+});
+
+// measured again when the window changes size, and once the map has finished scaling in (its size is off until then)
+for (const [target, event] of [[window, 'resize'], [document.querySelector('.map-wrap'), 'animationend']])
+  target.addEventListener(event, () => document.querySelectorAll('.mk.focus').forEach(nameSide));
+
+// Back from a time-lapse: the browser may restore this page from memory, with the heat map from before; reload it
+addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
 // ---- heat map from /api/explored: patch-sized cells people have checked (mint), the rest stay dark ----
 const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
@@ -162,7 +195,7 @@ Promise.all([cometsLoaded, exploredLoaded]).then(() => {
   const marks = [...document.querySelectorAll('.mk')], dots = marks.map(m => box(m.querySelector('i'))), kept = [];
   for (const m of marks) {
     const b = m.querySelector('b');
-    if (!b || !b.offsetWidth) continue;
+    if (!b || !b.offsetWidth || m.classList.contains('focus')) continue;   // nameSide() places that one
     const bad = () => { const r = box(b); return r.left < 4 || r.right > innerWidth - 4 || kept.some(k => hit(r, k)) || dots.some((d, i) => marks[i] !== m && hit(r, d)); };
     if (bad()) { m.classList.toggle('left'); if (bad()) m.classList.toggle('left'); }
     kept.push(box(b));
@@ -249,6 +282,7 @@ let showByDay = () => {};
 (async () => {
   const img = new Image(); img.src = 'data/visits.png';
   const [meta] = await Promise.all([getJson('data/coverage.json'), img.decode()]);   // both at once
+  console.assert(meta.days === LAST_DAY && meta.mjd0 === MJD0, 'skymap.js is out of step with data/coverage.json');
   deepFields(meta.deep_fields ?? []);
   const src = Object.assign(document.createElement('canvas'), { width: 720, height: 1080 }).getContext('2d', { willReadFrequently: true });
   src.drawImage(img, 0, 0);
@@ -290,8 +324,7 @@ let showByDay = () => {};
     timeline.show(d);
     showByDay();
   }
-  slider.max = meta.days;
-  slider.value = meta.days;
+  slider.max = meta.days;   // the handle starts on the last day, or on ?day= (set above)
   let queued = 0;   // many moves can arrive per frame while dragging: draw once per frame
   const setDay = d => { slider.value = Math.max(0, Math.min(meta.days, Math.round(d))); if (!queued) queued = requestAnimationFrame(() => { queued = 0; draw(); }); };
   draw();
@@ -300,6 +333,7 @@ let showByDay = () => {};
   let timer = 0;
   const play = $('play');
   const stop = () => { clearInterval(timer); timer = 0; play.classList.remove('on'); };
+  stopReplay = stop;
   timeline.onScrub = () => { stop(); setDay(timeline.value); };
   timeline.onPress = () => {
     if (timer) return stop();
