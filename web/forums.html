@@ -7,25 +7,79 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono&display=swap">
 <style>
-  /* Placeholder until the Forums screen (design/frontend-refactor/Forums.png) is built. */
-  .soon { min-height: 100vh; display: grid; place-content: center; gap: 14px; text-align: center; padding: var(--head-h) 24px 40px; box-sizing: border-box; font-family: var(--head-font); }
-  .soon h1 { font: 300 clamp(28px, 3vw, 44px) / 1.1 var(--head-font); letter-spacing: 0; color: #fff; }
-  .soon p { color: var(--ink-2); }
+  /* Layout from design/frontend-refactor/Forums.png: a search box and post cards on the left, Filters on the right. */
+  .forums { --mono: "Space Mono", ui-monospace, monospace; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 48px;
+    max-width: 1500px; margin: 0 auto; padding: calc(var(--head-h) + 40px) 5vw 60px; box-sizing: border-box; font-family: var(--mono); color: #fff; }
+  .box { background: #000; border: 2px solid #fff; border-radius: 6px; }
+  #q { width: 100%; box-sizing: border-box; padding: 22px 24px; font: 16px var(--mono); color: #fff; }
+  #q::placeholder { color: #9a9a9a; }
+  #feed { list-style: none; margin: 40px 0 0; padding: 0; display: grid; gap: 40px; }
+  .post { padding: 24px 28px; display: grid; gap: 12px; }
+  .post header { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; font-size: 13px; color: #b5b5b5; }
+  .post header a { color: #fff; font-size: 16px; text-decoration: underline; text-underline-offset: 3px; }
+  .post .tag { border: 1px solid #fff; border-radius: 999px; padding: 1px 10px; color: #fff; }
+  .post p { margin: 0; font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .empty { color: #b5b5b5; }
+  aside { align-self: start; position: sticky; top: calc(var(--head-h) + 40px); border-top: 2px solid #fff; border-radius: 14px 14px 0 0; padding: 22px 26px; display: grid; gap: 16px; }
+  aside h2 { margin: 0 0 4px; font: 400 22px var(--mono); letter-spacing: .04em; }
+  aside label { display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 15px; }
+  aside select { flex: 1; max-width: 160px; background: #000; color: #fff; border: 1.5px solid #fff; border-radius: 4px; font: 13px var(--mono); padding: 3px 4px; }
+  aside .check { justify-content: flex-start; }
+  aside input[type=checkbox] { width: 20px; height: 20px; accent-color: #fff; margin: 0; }
+  @media (max-width: 860px) { .forums { grid-template-columns: 1fr; gap: 24px; } aside { position: static; order: -1; } #feed { gap: 20px; } }
 </style>
 </head>
-<body class="page">
+<body class="page" style="min-width: 0">
 
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
   <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a class="on" href="forums.html">Forums</a></nav>
 </header>
 
-<main class="soon">
-  <h1>Forums are on the way</h1>
-  <p>Until then, each comet has its own discussion on its <a href="comet.html" style="text-decoration:underline">comet page</a>.</p>
+<main class="forums">
+  <section>
+    <input id="q" class="box" type="search" placeholder="Search posts, people or comets" aria-label="Search posts">
+    <ul id="feed" aria-live="polite"><li class="empty">Loading posts...</li></ul>
+  </section>
+  <aside aria-label="Filters">
+    <h2>Filters</h2>
+    <label>Regions <select id="region"><option value="">All sky</option><option value="n">Northern sky</option><option value="s">Southern sky</option></select></label>
+    <label>Date <select id="date"><option value="">Any time</option><option value="1">Last day</option><option value="7">Last week</option><option value="30">Last month</option></select></label>
+    <label class="check"><input id="known" type="checkbox"> Known</label>
+  </aside>
 </main>
 
 <script src="ui.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let posts = [];
+const ago = ms => { const m = (Date.now() - ms) / 60000;
+  return m < 1 ? 'just now' : m < 60 ? `${m | 0} min ago` : m < 1440 ? `${m / 60 | 0} h ago` : new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+function render() {
+  const q = $('q').value.trim().toLowerCase(), region = $('region').value, days = +$('date').value, known = $('known').checked;
+  const list = posts.filter(p => (!q || `${p.body} ${p.author} ${p.comet_id}`.toLowerCase().includes(q))
+    && (!region || (region === 'n' ? p.dec >= 0 : p.dec < 0))
+    && (!days || p.created_at > Date.now() - days * 864e5)
+    && (!known || p.kind === 'known'));
+  $('feed').replaceChildren(...(list.length ? list.map(p => {
+    const li = el('li', 'post box'), head = el('header'), a = el('a', null, p.comet_id);
+    a.href = `comet.html?id=${encodeURIComponent(p.comet_id)}`;
+    head.append(a, el('span', null, p.author), el('span', null, ago(p.created_at)));
+    if (p.tag) head.append(el('span', 'tag', p.tag));
+    if (!p.real) head.append(el('span', null, 'example'));
+    li.append(head, el('p', null, p.body));
+    return li;
+  }) : [el('li', 'empty', posts.length ? 'No posts match these filters.' : 'No posts yet. Open a comet and start the conversation.')]));
+}
+
+for (const id of ['q', 'region', 'date', 'known']) $(id).addEventListener('input', render);
+fetch('/api/posts').then(r => r.ok ? r.json() : Promise.reject(r.status))
+  .then(d => { posts = d.posts; render(); })
+  .catch(() => $('feed').replaceChildren(el('li', 'empty', 'Posts could not load. Try again in a moment.')));
+</script>
 </body>
 </html>

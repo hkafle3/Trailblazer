@@ -175,3 +175,12 @@ Every complete answer from `/api/images`, `/api/gaia` and `/api/known` is also s
 ## Tests
 
 `npm test` runs `worker/test_contract.sh` against `http://127.0.0.1:8787`: every route above, its refusals, the CORS header, and that the pages are served. The `POST /api/comments` checks write to the database, so they run only against a local server (127.0.0.1, localhost) and are skipped elsewhere.
+
+## GET /api/posts (D1)
+
+The Forums feed: the 200 newest comments that have text, across every comet, newest first. Never cached.
+
+```json
+{ "posts": [ { "comet_id": "C-0147", "author": "mira_v", "tag": "comet", "body": "Strong carbon dioxide peak at 4.26.",
+  "created_at": 1762998800000, "kind": "comet", "ra": 328, "dec": 34, "real": false } ] }
+```
