@@ -309,6 +309,7 @@ function list() {
 
 if (!id) list();
 else fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
+  if (c.candidate) return location.replace(`candidate.html?id=${encodeURIComponent(c.id)}`);   // a dot reported from a time-lapse has its own page
   document.title = `${c.id} · Trailblazer`;
   $('c-id').textContent = c.id;
   $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : c.real ? 'Known comet · JPL catalog' : 'Known object') : 'Not in any catalog';

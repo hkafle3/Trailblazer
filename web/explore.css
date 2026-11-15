@@ -61,6 +61,14 @@ body.explore .layers .layer { display: flex; align-items: center; justify-conten
 .cbx:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 body.explore .heat-key { padding: 2px 0 8px 34px; }
 
+/* Faint comets layer: a known comet too faint to see on this date, as a small dim speck (its name still shows on hover) */
+body.explore .mk.known.speck i { left: -2px; top: -2px; width: 4px; height: 4px; opacity: .45; box-shadow: none; }
+
+/* the unexplored suggestion near the map's right edge: its name and card sit to the left */
+body.explore .mk.patch.left b { left: auto; right: 16px; }
+body.explore #card-patch.left { margin-left: -280px; }
+body.explore #card-patch.left::before { left: auto; right: -15px; }
+
 /* Examples: same look as Layers, one button-height (44px) plus a 12px gap above it */
 body.explore .layers.examples { bottom: 84px; }
 body.explore .examples .example { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 0; font-size: 14.5px; color: #f2f2f2; text-decoration: none; }

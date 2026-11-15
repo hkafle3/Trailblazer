@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="patch.css">
 <link rel="stylesheet" href="header.css">
+<link rel="stylesheet" href="discuss.css">
 </head>
 <body class="lapse nostars">
 <canvas id="gl"></canvas>
@@ -129,6 +130,7 @@ import * as THREE from 'three';
 import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } from './sky.js';
 import { recenterable, panToSky, heatCell } from './live/recenter.js';
 import { CHANNELS, colourOf, align, mix } from './live/spectral.js';
+import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Undiscovered, and Discovered for reported dots
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -173,6 +175,7 @@ TARGETS.forEach(t => load(t.key).catch(() => {}));   // preload: the demo never 
 
 const state = { m: null, i: 0, playing: false, last: 0, diff: false, still: false, heat: false, fov: 6, spectral: [] };   // opens 6 arcmin wide; zoom to 1.5 for a 2-pixel move
 const patch = document.getElementById('patch'), ctx = patch.getContext('2d');
+let talk = null;   // discuss.js, set up once the page's functions exist
 const mini = document.getElementById('mini'), mini2d = mini.getContext('2d');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthYear = s => `${MONTH[+s.slice(5, 7) - 1]} ${s.slice(0, 4)}`;
@@ -458,6 +461,7 @@ function draw() {
   drawMini(m, f, v);
   showVisit(m, f);
   moreBelow();
+  talk?.frame();
   patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
 }
 
@@ -838,6 +842,7 @@ function back() {
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, idle: () => { if (owed) { owed = false; back(); } } });
+talk = discuss({ state, api: API, setFound, found: () => found, spot, status: text => setStatus(text) });
 window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 // ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
