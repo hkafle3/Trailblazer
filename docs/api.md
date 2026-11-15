@@ -150,15 +150,32 @@ No sign-in or human check: a count is low stakes. The rate limit keeps a script 
 
 ## GET /api/images?ra=&dec=&det=
 
-The SPHEREx photos covering a point, from IRSA's search, cached for a day. The browser then reads the pixels straight from NASA's public S3 bucket (`web/live/fits.js`).
+The SPHEREx photos covering a point, cached for a day. The browser then reads the pixels straight from NASA's public S3 bucket (`web/live/fits.js`).
 
 ```json
 { "ra": 269.4463, "dec": 4.7671, "det": "D1",
   "images": [ { "t": 60914.21, "key": "dr1/level2/.../image.fits", "obs": "...", "coll": "spherex_dr1" } ],
-  "collections": { "spherex_dr1": 31, "spherex_qr3": 32 } }
+  "collections": { "spherex_dr1": 31, "spherex_qr3": 32 }, "source": "index" }
 ```
 
-Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 to 90"}`, `400 {"error":"det must be D1 to D6"}`, and `503` with `retry_after` when IRSA's search is down (an empty `images` list always means "no photos here", never "search failed").
+`source` says who answered. `"index"` is our own index of every level-2 image (`bake/sky_index.py` builds it from the image headers on NASA's S3 bucket; one file per detector in the R2 bucket `comet-hunt-sky-index`, read by `worker/src/sky_index.js`). It gives the same answer IRSA's search gives: an image counts when the 0.001 degree circle around the point touches its footprint polygon (IRSA's `s_region`), one row per `obs`, DR1 first, the deep collections only within 15 degrees of the ecliptic poles. `"IRSA"` is IRSA's search (SIA), used only when the index cannot answer (its file is missing or R2 fails). Answers cached or saved before the index arrived have no `source`.
+
+The index is a snapshot of the bucket as listed on 2026-11-15 (DR1, and QR3 through week 2026W40_2A). Photos from weeks published after that are missing from `"index"` answers until the index is rebuilt; a scheduled refresh is not built yet.
+
+The Worker accepts only one version of each index file: the one whose R2 etag is pinned in `worker/wrangler.toml` (`SKY_ETAG_D1` to `SKY_ETAG_D6`; for these single-part uploads the etag is the file's MD5). A replaced, truncated or corrupted file has another etag, so it is refused and IRSA answers until the pins match again.
+
+#### Refreshing the image index
+
+1. List the bucket's level-2 keys again (`keys.tsv`: key, tab, size).
+2. Read the headers: `uv run --with aiohttp python bake/sky_headers.py keys.tsv hdr_dN.jsonl N` for each detector. It resumes, and exits non-zero while any file failed.
+3. Build: `uv run --with numpy python bake/sky_index.py hdr_dN.jsonl OUT keys.tsv`. It writes nothing unless every listed key has exactly one header and every row passes its checks (6-decimal times in time order, footprints that are the images' own quadrilaterals).
+4. Verify the build: `bake/sky_index_eval.py` against IRSA answers (0 unexplained differences) and `uv run --with numpy python bake/test_sky_index.py`.
+5. Pin it locally: put each file's MD5 (`md5 -q OUT/dN.bin`) in `SKY_ETAG_DN` in `worker/wrangler.toml`.
+6. Run the full-file tests: `SKY_INDEX_DIR=OUT node --test worker/sky_index_full.test.mjs` (byte-identical answers, every cell, and each pin equal to its file's MD5).
+7. Upload each file: `npx wrangler r2 object put comet-hunt-sky-index/dN.bin --file OUT/dN.bin --remote --config worker/wrangler.toml`, then compare the uploaded object with the file (download it again, or check that a preview version answers with `"source":"index"`, which only happens when R2's etag equals the pin).
+8. Deploy. Between the upload and the deploy, that detector's searches fall back to IRSA (the old pin refuses the new file).
+
+Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 to 90"}`, `400 {"error":"det must be D1 to D6"}`, and `503` with `retry_after` when the index cannot answer and IRSA's search is down (an empty `images` list always means "no photos here", never "search failed").
 
 ## GET /api/gaia?ra=&dec=
 

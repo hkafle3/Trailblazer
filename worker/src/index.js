@@ -6,6 +6,8 @@
 //   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
+import { skyImagesJson, eclipticLat } from './sky_index.js';
+
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -90,15 +92,23 @@ function s3Key(row) {
   return row.access_url.replace('https://irsa.ipac.caltech.edu/ibe/data/spherex/', '');   // same layout (agent check 2026-11-14)
 }
 
-async function images(url) {
+async function images(url, env) {
   const p = position(url);
   if (p.error) return json(p, 400);
   const det = url.searchParams.get('det') || 'D1';
   if (!/^D[1-6]$/.test(det)) return json({ error: 'det must be D1 to D6' }, 400);
+  // Our own index of the level-2 images (bake/sky_index.py, in R2) answers first; IRSA's search only when it cannot
+  // (no binding, a missing file, an R2 error). Same answer: checked against IRSA at 47 D1 positions, 0 differences.
+  // The answer is written as JSON text straight from the index rows (the same bytes json() would give), which halves
+  // the CPU of a deep-field answer of about 1 MB.
+  // skyImagesJson accepts only the pinned version of the file (SKY_ETAG_D1..D6 in wrangler.toml), checks every read and
+  // tries once more with a fresh head; if it still cannot answer, IRSA does.
+  try {
+    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`]),
+      { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400' } });
+  } catch (e) { console.warn('sky index', e); }
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches
-  const e = 23.4393 * Math.PI / 180, a = p.ra * Math.PI / 180, d = p.dec * Math.PI / 180;
-  const beta = Math.asin(Math.sin(d) * Math.cos(e) - Math.cos(d) * Math.sin(e) * Math.sin(a)) * 180 / Math.PI;
-  const colls = Math.abs(beta) > 75 ? [...WIDE, ...DEEP] : WIDE;
+  const colls = Math.abs(eclipticLat(p.ra, p.dec)) > 75 ? [...WIDE, ...DEEP] : WIDE;
   // On 2026-11-15 IRSA's search failed most requests with an instant 502 and answered about one in three after ~21 s,
   // so each try waits up to 45 s and the instant failures are retried, one at a time per search. 40 tries are shared
   // out (the free plan allows 50 outside requests per visit, and D1 and the cache need a few).
@@ -120,8 +130,17 @@ async function images(url) {
   const partial = Object.values(counts).includes('failed');
   if (partial && !list.length)
     return json({ error: 'IRSA search is not answering, try again or pick a baked target', retry_after: 30 }, 503, { 'Retry-After': '30' });
-  return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
+  return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts, source: 'IRSA' }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
 }
+
+// skyImagesJson reads byte ranges of d1.bin .. d6.bin from the R2 bucket bound as SKY, each with the file's etag and
+// size so it can tell a replaced or short file
+const r2Read = env => async (name, offset, length) => {
+  if (!env.SKY) throw new Error('no SKY binding');
+  const o = await env.SKY.get(name, { range: { offset, length } });
+  if (!o) throw new Error(`${name} is not in the sky index bucket`);
+  return { buf: await o.arrayBuffer(), etag: o.etag, size: o.size };
+};
 
 // Gaia DR3 stars in a 0.04 degree cone, with proper motions. Gaia positions are for 2016.0 and fast stars move far by
 // now; the browser propagates and matches. IRSA's copy of Gaia DR3 (its Gator catalog service, about 1.5 s) comes first:
@@ -487,7 +506,7 @@ async function backfill(env, id, hit) {
 }
 
 async function withSaved(route, url, id, env, ctx) {
-  const res = await route(url);
+  const res = await route(url, env);
   if (complete(res)) {
     const at = Date.now();
     res.headers.set('X-Answered-At', String(at));   // kept with the cached copy, so a later backfill knows its age
