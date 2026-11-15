@@ -1,6 +1,9 @@
 """Browser check for the patch viewer's baked targets and Ming's four toggles, in headless Chrome. Needs the app up.
 Each ?target= shows the band (#det) it was baked in, and each toggle (Spectral, Heat, Hide Stationary, Color Difference)
-changes the picture on its own and all together, then turning it off brings the picture back.
+changes the picture on its own and all together, then turning it off brings the picture back. Also: the status line is
+seen in sky mode, a discovery is dropped when the coordinates change, the play handle answers a plain click (screen
+readers) once and ignores the click after a press or a drag, and the cards fit (no hidden scrolling in Descriptions,
+nothing over the photo or the timeline) at 1440x900 and 1280x720.
 Run: uv run -q --with playwright python web/tests/patch_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, json, pathlib, sys
 from playwright.async_api import async_playwright
@@ -41,6 +44,52 @@ async def main():
         for tid in TOGGLES: await pg.click(f"label:has(#{tid})")
         await pg.wait_for_timeout(200)
         assert await pg.evaluate(PIXELS) != base, "all four toggles together leave the picture unchanged"
+
+        # the play handle: a click with no pointer before it (assistive technology) toggles; a mouse press toggles once
+        playing = "document.getElementById('play').classList.contains('on')"
+        await pg.evaluate("document.getElementById('play').click()"); assert await pg.evaluate(playing), "a plain click does not play"
+        await pg.evaluate("document.getElementById('play').click()"); assert not await pg.evaluate(playing), "a plain click does not pause"
+        kb = await pg.locator("#play").bounding_box(); cx, cy = kb["x"] + kb["width"] / 2, kb["y"] + kb["height"] / 2
+        await pg.mouse.click(cx, cy); await pg.wait_for_timeout(100); assert await pg.evaluate(playing), "a mouse click does not play (or toggled twice)"
+        await pg.mouse.click(cx, cy); await pg.wait_for_timeout(100); assert not await pg.evaluate(playing), "a mouse click does not pause (or toggled twice)"
+        await pg.mouse.move(cx, cy); await pg.mouse.down(); await pg.mouse.move(cx - 120, cy, steps=6); await pg.mouse.up(); await pg.wait_for_timeout(100)
+        assert not await pg.evaluate(playing), "a drag on the handle started playing"
+        print("PASS play handle: plain clicks and mouse clicks toggle once each, a drag does not")
+
+        # the cards fit: Descriptions shows everything without scrolling, and no card sits on the photo or the timeline
+        FIT = """() => { const r = s => document.querySelector(s).getBoundingClientRect(), hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+            const d = document.querySelector('.pv-desc .pv-scroll'), bad = [];
+            if (d.scrollHeight > d.clientHeight + 2) bad.push('Descriptions scrolls');
+            for (const c of ['.pv-options', '.pv-layers', '.pv-others', '.pv-found', '.pv-desc', '.pv-state', '.pv-mini'])
+              for (const o of ['.pv-frame', '.tl-line', '.tl-date']) if (hit(r(c), r(o))) bad.push(c + ' over ' + o);
+            const f = document.querySelector('.pv-found .pv-scroll');
+            if (f.scrollHeight > f.clientHeight + 2 && !f.classList.contains('more')) bad.push('Findings has more below, unmarked');
+            return bad; }"""
+        for w, h in [(1440, 900), (1280, 720)]:
+            await pg.set_viewport_size({"width": w, "height": h}); await pg.wait_for_timeout(300)
+            bad = await pg.evaluate(FIT); assert not bad, f"{w}x{h}: {bad}"
+        await pg.set_viewport_size({"width": 1440, "height": 900})
+        print("PASS cards: Descriptions fits without scrolling and no card covers the photo or the timeline at 1440x900 and 1280x720")
+
+        # sky mode (no spot yet): a bad position is said beside the search, in the live region
+        await pg.goto(f"{BASE}/timelapse.html"); await pg.wait_for_function("document.body.classList.contains('sky')")
+        await pg.fill("#coords", "not a place"); await pg.press("#coords", "Enter")
+        st = pg.locator("#status[role=status]")
+        assert await st.is_visible() and "Type RA and Dec" in await st.text_content(), "sky mode: the status line is not seen"
+        assert await pg.is_hidden(".pv-found"), "an empty Findings card shows before any patch"
+        print("PASS status: in sky mode a bad position is said beside the search")
+
+        # a discovery belongs to its spot: other coordinates drop it from the label, the link and the address together
+        await pg.goto(f"{BASE}/timelapse.html?ra=77.3058&dec=27.3551&det=D1&diff=1&found=C-0147")
+        await pg.wait_for_function(ready, timeout=180000)
+        assert (await pg.text_content("#state-label")) == "Discovered" and await pg.get_attribute("#state", "href") == "comet.html?id=C-0147" and "found=C-0147" in pg.url, "Discovered not shown"
+        await pg.select_option("#det", "D2"); await pg.wait_for_timeout(300)   # another band at the same spot keeps it
+        assert (await pg.text_content("#state-label")) == "Discovered", "a band change dropped the discovery"
+        await pg.fill("#coords", "269.4463 4.7671"); await pg.press("#coords", "Enter"); await pg.wait_for_timeout(300)
+        assert (await pg.text_content("#state-label")) == "Undiscovered" and await pg.get_attribute("#state", "href") == "forums.html", "new coordinates still say Discovered"
+        assert "found=" not in pg.url and await pg.is_hidden("#vName"), f"new coordinates keep the discovery: {pg.url}"
+        print("PASS discovery: kept for a band change, dropped from the label, link, Found as line and address at new coordinates")
+
         assert not errors, f"page errors: {errors}"
         await b.close()
     print("PASS toggles: Spectral, Heat, Hide Stationary and Color Difference each change the picture, alone and together, and undo cleanly")

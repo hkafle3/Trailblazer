@@ -37,7 +37,6 @@
 
   <div class="pv-frame">
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
-    <div id="status" role="status" aria-live="polite"></div>
     <div id="legend" aria-hidden="true"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
   </div>
 
@@ -47,6 +46,7 @@
 
   <section class="pv-card pv-desc" aria-label="Descriptions">
     <h2>Descriptions</h2>
+    <div class="pv-scroll">
     <form id="search" role="search">
       <label for="coords">Coordinates</label>
       <input class="box" id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false" enterkeyhint="go">
@@ -56,10 +56,21 @@
           <option value="D4">D4 2.4–3.8 µm</option><option value="D5">D5 3.8–4.4 µm</option><option value="D6">D6 4.4–5.0 µm</option>
         </select></div>
     </form>
+    <!-- beside the search in both modes: a bad position or a failed build is said here even before any patch shows -->
+    <div id="status" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- what this patch shows: the visit on screen, the motion measured, and known objects passing. Its own card, under
+       Others, so long lists have room; the heading stays put while the list scrolls -->
+  <section class="pv-card pv-found" aria-label="Findings">
+    <h2>Findings</h2>
+    <div class="pv-scroll">
     <p class="pv-info" id="vName" hidden></p>
     <p class="pv-info" id="vVisit"></p>
     <p class="pv-info" id="vMotion"></p>
     <p class="pv-info"><b>Known comets and asteroids</b><span id="vKnown" aria-live="polite"></span></p>
+    </div>
   </section>
 
   <!-- Explore's timeline: a tick per month, the date over the handle, a dot for each visit to this patch.
@@ -135,15 +146,23 @@ const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'O
 const monthYear = s => `${MONTH[+s.slice(5, 7) - 1]} ${s.slice(0, 4)}`;
 
 // ---------- discovered or not: Explore's comet markers add found=<id>; anything else is undiscovered ----------
-const found = P.get('found');
-{
-  const el = document.getElementById('state');
+// The discovery belongs to the spot it was opened at (ra/dec in the same link): moving to other coordinates clears it.
+// The label, the link, the "Found as" line and the address (show()) change together.
+const spot = (ra, dec) => `${(+ra).toFixed(4)},${(+dec).toFixed(4)}`;
+let found = null, foundAt = null;
+function setFound(id, at = null) {
+  found = id; foundAt = at;
+  const el = document.getElementById('state'), n = document.getElementById('vName');
   document.getElementById('state-label').textContent = found ? 'Discovered' : 'Undiscovered';
   // Discovered: the arrow opens that comet's page. Undiscovered: the forums, to tell people what you see here.
   el.href = found ? `comet.html?id=${encodeURIComponent(found)}` : 'forums.html';
   el.setAttribute('aria-label', found ? `Discovered: ${found}. Open its page` : 'Undiscovered. Talk about it in the forums');
-  if (found) { const n = document.getElementById('vName'); n.hidden = false; n.innerHTML = 'Found as <b></b>'; n.querySelector('b').textContent = found; }
+  n.hidden = !found;
+  if (found) { n.innerHTML = 'Found as <b></b>'; n.querySelector('b').textContent = found; }
+  else if (P.has('found')) { const u = new URL(location.href); u.searchParams.delete('found'); history.replaceState(null, '', u); }   // the address too
 }
+const leaveFound = (ra, dec) => { if (found && spot(ra, dec) !== foundAt) setFound(null); };
+setFound(P.get('found'), P.has('ra') && P.has('dec') ? spot(P.get('ra'), P.get('dec')) : null);
 
 // ---------- layers ----------
 // Spectral: tint by the band's wavelength, 0.75 µm (blue) to 5 µm (red), the way infrared pictures are usually coloured.
@@ -256,6 +275,11 @@ function draw() {
   if (knownQueue.some(j => j[1] === f)) knownQueue.sort((a, b) => (b[1] === f) - (a[1] === f));   // the frame on screen goes next
   if (f.known) {
     ctx.font = `400 ${Math.round(H / 34)}px "Space Mono", ui-monospace, monospace`; ctx.textBaseline = 'middle';
+    // what a name must not cover: the measured positions and the predicted ring (boxes), then each name placed so far
+    const taken = shown.map(fr => { const [x, y] = toPx(fr.x, fr.y); return [x - 12, y - 12, x + 12, y + 12]; });
+    if (f.pred_east != null) { const [gx, gy] = predPx(f); taken.push([gx - 19, gy - 19, gx + 19, gy + 19]); }
+    const rings = taken.length;   // for tests/patch checks: window.__labels = { rings, names }
+    const hits = r => r[0] < 0 || r[1] < 0 || r[2] > W || r[3] > H || taken.some(t => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
     for (const [name, b] of f.known.bodies) {
       const color = b.kind === 'comet' ? '#ff9a4d' : '#7fb8ff';
       const px = b.pts.map(([, ra, dec]) => { const [e, n] = offset(m, ra, dec); return toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel); });
@@ -267,15 +291,25 @@ function draw() {
         for (const [x, y] of px) { ctx.beginPath(); ctx.arc(x, y, px.length > 1 ? 4 : 11, 0, 7); ctx.stroke(); }
       }
       if (!inView.length) continue;   // a name only beside a position in view
-      const [lx, ly] = inView[0], left = lx > W * .7, tx = left ? lx - 16 : lx + 16;
-      ctx.textAlign = left ? 'right' : 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, tx, ly);
-      ctx.fillStyle = color; ctx.fillText(name, tx, ly);
+      // try each position in view, right of it, left, above and below; the first spot clear of the rings and other names
+      const tw = ctx.measureText(name).width, th = Math.round(H / 34) + 4, pad = 16;
+      let at = null;
+      for (const [lx, ly] of inView) for (const [dx, dy] of [[pad, 0], [-pad - tw, 0], [-tw / 2, -pad - th / 2], [-tw / 2, pad + th / 2]]) {
+        const r = [lx + dx, ly + dy - th / 2, lx + dx + tw, ly + dy + th / 2];
+        if (!at && !hits(r)) at = r;
+      }
+      if (!at) continue;   // nowhere clear: the list in Findings still names it
+      taken.push(at);
+      ctx.textAlign = 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, at[0], (at[1] + at[3]) / 2);
+      ctx.fillStyle = color; ctx.fillText(name, at[0], (at[1] + at[3]) / 2);
     }
     ctx.textAlign = 'left';
+    window.__labels = { rings: taken.slice(0, rings), names: taken.slice(rings) };
   }
   knownList(f);
   drawMini(m, f, v);
   showVisit(m, f);
+  moreBelow();
   patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from first visit' : ''}`);
 }
 
@@ -387,7 +421,11 @@ const timeline = (() => {
     if (!down || (!down.moved && Math.abs(e.clientX - down.x) < 4)) return;
     down.moved = true; stop(); go(api.nearest(e));
   });
-  tl.addEventListener('pointerup', () => { if (down && !down.moved) togglePlay(); down = null; });
+  // a press plays/pauses on release; the click that follows a press or a drag is ignored (lastPress), so a click with no
+  // pointer before it (a screen reader or switch activating the button) is the only one that toggles there
+  let lastPress = -1e9;
+  tl.addEventListener('pointerup', e => { if (down && !down.moved) togglePlay(); if (down) lastPress = e.timeStamp; down = null; });
+  knob.addEventListener('click', e => { if (e.timeStamp - lastPress > 600) togglePlay(); });
   tl.addEventListener('pointercancel', () => { down = null; });
   knob.addEventListener('keydown', e => {
     if (!state.m) return;
@@ -427,7 +465,7 @@ function knownFor(m) {
     const f = m.frames[(state.i + k) % m.frames.length];
     for (const t of f.known.todo) knownQueue.push([m, f, t]);
   }
-  knownList(m.frames[state.i]);   // "Checking…" straight away, not a blank row until the first answer
+  knownList(m.frames[state.i]); moreBelow();   // "Checking…" straight away, not a blank row until the first answer
   while (knownBusy < 3 && knownQueue.length) knownNext();
 }
 async function knownNext() {
@@ -469,7 +507,12 @@ function knownList(f) {
   el.replaceChildren(...rows.map(([name, b]) => {   // every one, as text (at most 8 asteroids plus the comets)
     const line = document.createElement('span'), dot = document.createElement('i');
     line.className = 'known-row'; dot.style.background = b.kind === 'comet' ? 'var(--comet)' : 'var(--known)';
-    line.append(dot, `${name} · ${b.kind}${b.kind === 'asteroid' && b.mag != null ? ` mag ${b.mag}` : ''} · ${[...new Set(b.pts.map(p => dayMonth(p[0])))].join(', ')}`);
+    const nm = document.createElement('span'), dt = document.createElement('span');
+    nm.className = 'nm'; dt.className = 'dt';
+    nm.textContent = name;
+    dt.textContent = `${b.kind}${b.kind === 'asteroid' && b.mag != null ? ` mag ${b.mag}` : ''} · ${[...new Set(b.pts.map(p => dayMonth(p[0])))].join(', ')}`;
+    line.title = `${name} · ${dt.textContent}`;   // the whole line, when the name or details are cut short
+    line.append(dot, nm, dt);
     return line;
   }));
   const note = [k.left ? `checking ${k.left} more times…` : '', k.failed ? `${k.failed} of ${n} times not checked` : ''].filter(Boolean);
@@ -478,6 +521,7 @@ function knownList(f) {
 async function select(key, opts) {
   job?.terminate(); job = null; setStatus(opts?.note || '');
   const m = await load(key);
+  leaveFound(m.ra, m.dec);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;   // the box always names the spot on screen
   document.getElementById('det').value = m.detector;   // and the band is the one the target was baked in (D5 for Epsilon Indi B)
   show(m, `?target=${key}`, opts);
@@ -491,7 +535,11 @@ let job = null;
 const statusEl = document.getElementById('status');
 // a short reason for the status line; the full error stays in its tooltip
 const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
-function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); }
+function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); moreBelow(); }
+// a card whose content runs past its height fades out at the bottom until it is scrolled to the end (patch.css .more)
+function moreBelow() { for (const el of document.querySelectorAll('.pv-scroll')) el.classList.toggle('more', el.scrollHeight - el.scrollTop - el.clientHeight > 2); }
+document.querySelectorAll('.pv-scroll').forEach(el => el.addEventListener('scroll', moreBelow, { passive: true }));
+addEventListener('resize', moreBelow);
 // "269.4463 4.7671", "269.4463, +4.7671", "17h57m47s +04d46m02s", "17:57:47 +04:46:02" -> degrees
 function parseCoords(text) {
   const parts = text.trim().replace(/^ra\s*/i, '').replace(/\s*dec\s*/i, ' ').split(/[\s,]+(?=[+-]?\d)/).map(t => t.trim()).filter(Boolean);
@@ -508,6 +556,7 @@ function parseCoords(text) {
 function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
+  leaveFound(ra, dec);
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
   if (live.has(key)) { setStatus(''); return show(live.get(key), query, opts); }
   job?.terminate();
