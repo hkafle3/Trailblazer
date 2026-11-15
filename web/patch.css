@@ -251,7 +251,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   #pv-radec { flex: none; margin-left: auto; padding-left: 10px; font-size: 12px; color: #aaa; white-space: nowrap; }
   /* the photo keeps its shape: as wide as the screen, or as tall as the space the other rows leave */
   body.lapse:not(.sky) .pv-frame { grid-area: photo; justify-self: center; margin-top: 4px; width: min(100%, (100vh - var(--rest)) * 1146 / 902); width: min(100%, (100dvh - var(--rest)) * 1146 / 902); height: auto; border-width: 1.5px; border-radius: 8px; }
-  body.lapse:not(.sky) .tl { grid-area: tl; margin: 34px 22px 48px; }
+  body.lapse:not(.sky) .tl { grid-area: tl; margin: 34px 22px 48px; --e: .6px; }
   .tl-knob { width: 44px; height: 44px; border: 4px solid transparent; background-clip: padding-box; box-shadow: 0 0 0 4px rgba(255, 255, 255, .1); }
   .pv-tabs { grid-area: tabs; display: flex; margin: 0 -10px !important; border-top: 2px solid #fff; border-radius: 0; background: #000; }
   .pv-tabs button { flex: 1; min-width: 0; height: 46px; padding: 0; border: 0; background: none; color: #9a9a9a; font: 400 12.5px / 1 var(--panel-font); cursor: pointer; position: relative; }
@@ -271,7 +271,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   /* checkboxes keep Ming's 22 px outlined box, drawn inside a 44 px tap */
   body.lapse:not(.sky) .pv-card .cbx { width: 44px; height: 44px; border: 11px solid transparent; border-radius: 14px; box-shadow: inset 0 0 0 1.5px #fff; }
   body.lapse:not(.sky) .pv-card .cbx::after { width: 12px; height: 12px; }
-  body.lapse:not(.sky) .pv-card label.at { display: flex; align-items: center; min-height: 44px; font-size: 15px; }
+  body.lapse:not(.sky) .pv-card label.at { display: flex; align-items: center; min-width: 44px; min-height: 44px; font-size: 15px; }
 
   /* Options: Zoom and its bar, the width under it, then the whole region with what it shows */
   body.lapse:not(.sky) .pv-options { grid-template-columns: auto minmax(0, 1fr); column-gap: 16px; align-content: start; }
@@ -288,8 +288,8 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   body.lapse:not(.sky) .sp-dial { grid-column: 1; grid-row: 1 / 4; align-self: start; width: 180px; height: 100px; margin-top: 2px; }
   body.lapse:not(.sky) .sp-end { grid-column: 1; grid-row: 4; align-self: start; margin-top: 4px; font-size: 10.5px; }
   body.lapse:not(.sky) .sp-end:last-of-type { justify-self: end; }
-  body.lapse:not(.sky) #sp-nm { grid-column: 2 / 4; grid-row: 1; justify-self: start; align-self: end; font-size: 28px; pointer-events: none; }
-  body.lapse:not(.sky) .sp-read:not(#sp-nm) { grid-column: 2 / 4; grid-row: 2; justify-self: start; align-self: start; margin-top: 2px; font-size: 12px; color: #ccc; text-transform: lowercase; pointer-events: none; }
+  body.lapse:not(.sky) #sp-nm { grid-column: 2 / 4; grid-row: 1; justify-self: start; align-self: end; min-height: 0; font-size: 28px; pointer-events: none; }
+  body.lapse:not(.sky) .sp-read:not(#sp-nm) { grid-column: 2 / 4; grid-row: 2; justify-self: start; align-self: start; margin-top: 2px; font-size: 12px; color: #ccc; text-transform: lowercase; min-height: 0; pointer-events: none; }
   body.lapse:not(.sky) #sp-on { grid-column: 2; grid-row: 3; margin: 0 -11px; }
   body.lapse:not(.sky) .sp-add { grid-column: 3; grid-row: 3; display: flex; align-items: center; min-height: 44px; font-size: 13px; cursor: pointer; }
   /* "Active:" and the layers on, as chips that scroll sideways when there are more than fit */
@@ -319,10 +319,11 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   body.lapse:not(.sky) .pv-talkwrap .pv-talk { margin: 0 -12px; width: auto; padding: 14px 22px 4px; border-top: 2px solid #fff; }
   body.lapse:not(.sky) .pv-talk .close { width: 44px; height: 44px; margin-right: -12px; }
   body.lapse:not(.sky) .pv-talk h2 { display: flex; font-size: 19px; margin-bottom: 6px; }
-  body.lapse:not(.sky) .pv-talk .thumb { height: 130px; }
+  body.lapse:not(.sky) .pv-talk .thumb { width: 226px; height: 130px; }   /* the thumbnail's own shape (728 x 420) */
+  body.lapse:not(.sky) .pv-talk .tags { display: grid; grid-template-columns: 1fr 1fr; margin-top: 10px; }
   body.lapse:not(.sky) .pv-talk label.pv-row { height: 44px; margin: 0; }
   body.lapse:not(.sky) .pv-talk label.pv-row .cbx { width: 44px; height: 44px; border: 11px solid transparent; border-radius: 14px; box-shadow: inset 0 0 0 1.5px #fff; margin-right: -11px; margin-left: -11px; }
-  body.lapse:not(.sky) .pv-talk .box { height: 44px; }
+  body.lapse:not(.sky) .pv-talk .box { width: 100%; height: 44px; margin-top: 8px; }
   body.lapse:not(.sky) .pv-talk textarea.box { height: 74px; }
   body.lapse:not(.sky) .pv-talk .example { min-height: 44px; }
   body.lapse:not(.sky) .pv-talkwrap .pv-post { margin-top: 10px; height: 56px; }
