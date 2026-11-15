@@ -7,6 +7,11 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
+<!-- also in header.css; Chrome only honours it reliably when it is in the page itself, so the Explore map can glide into the mini map -->
+<style>
+@view-transition { navigation: auto; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+</style>
 </head>
 <body class="page">
 
@@ -31,10 +36,23 @@
 
   <div class="comet-grid">
     <div class="col">
+      <!-- Where it is: the Explore map in small, the comet on its path for the date in ?day= (comet.js where()).
+           In the page from the first paint, so the Explore map can glide into it (view-transition-name: sky). -->
+      <section class="panel glass wherecard" id="c-map" hidden>
+        <div class="skymini" id="c-mini">
+          <svg viewBox="0 0 2000 1000" preserveAspectRatio="none" aria-hidden="true"><path id="c-mini-path"/></svg>
+          <i id="c-mini-dot" hidden></i>
+        </div>
+        <div>
+          <h2>Where it is</h2>
+          <p id="c-when"></p>
+          <p class="where" id="c-where">&nbsp;</p>
+          <a class="btn ghost" id="c-find" hidden>Find on map <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+        </div>
+      </section>
+      <script>document.getElementById('c-map').hidden = !new URLSearchParams(location.search).get('id');</script>
+
       <section class="panel glass empty-card" id="c-empty" hidden>
-        <h2>Where it is</h2>
-        <div class="skymini" id="c-mini"><i id="c-mini-dot"></i></div>
-        <p class="where" id="c-where"></p>
         <p>Example comet: its photos and spectrum appear here once its dots are measured.</p>
         <div class="actions"><a class="btn ghost" href="comet.html?id=3I%2FATLAS">See a real one: 3I/ATLAS</a></div>
       </section>
