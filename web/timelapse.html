@@ -193,7 +193,9 @@ function panel(m) {
   const track = document.getElementById('track'); track.querySelectorAll('.tick').forEach(t => t.remove());
   m.frames.forEach((f, n) => {
     const b = document.createElement('button'); b.className = 'tick'; b.style.left = `${8 + 84 * n / Math.max(1, m.frames.length - 1)}%`;
-    b.innerHTML = `<span class="m"></span>${m.frames.length <= 5 || n === 0 || n === m.frames.length - 1 ? monthYear(f.start) : ''}`;   // many visits (deep fields): end labels only, so they don't collide b.setAttribute('aria-label', `Visit ${monthYear(f.start)}`);
+    // many visits (deep fields): month labels on the end ticks only, so they don't collide; every tick keeps its aria-label
+    b.innerHTML = `<span class="m"></span>${m.frames.length <= 5 || n === 0 || n === m.frames.length - 1 ? monthYear(f.start) : ''}`;
+    b.setAttribute('aria-label', `Visit ${monthYear(f.start)}`);
     b.onclick = () => { stop(); state.i = n; draw(); };
     track.appendChild(b);
   });
