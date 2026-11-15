@@ -18,10 +18,16 @@ async function pool(items, n, fn) {   // run fn over items, at most n at a time 
 
 // A visit is a run of images with no gap over `gap` days. The deep fields (ecliptic poles) are photographed every few
 // days all year, so a visit also ends after `span` days, and only `most` visits, spread over the whole record, are kept.
-function visits(imgs, gap = 20, span = 14, most = 8) {
+// A time t (MJD, a known comet's page asking for one exposure) keeps the visit that holds it.
+const atT = (e, t) => t != null && Math.abs(e.t - t) < 0.01;
+function visits(imgs, t, gap = 20, span = 14, most = 8) {
   const out = [];
   for (const x of imgs) (out.length && x.t - out.at(-1).at(-1).t <= gap && x.t - out.at(-1)[0].t <= span) ? out.at(-1).push(x) : out.push([x]);
-  return out.length <= most ? out : Array.from({ length: most }, (_, k) => out[Math.round(k * (out.length - 1) / (most - 1))]);
+  if (out.length <= most) return out;
+  const keep = Array.from({ length: most }, (_, k) => Math.round(k * (out.length - 1) / (most - 1)));
+  const k = out.findIndex(v => v.some(e => atT(e, t)));
+  if (k >= 0 && !keep.includes(k)) keep[keep.reduce((b, x, n) => (Math.abs(x - k) < Math.abs(keep[b] - k) ? n : b), 0)] = k;
+  return [...new Set(keep)].sort((a, b) => a - b).map(n => out[n]);
 }
 
 const median = a => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[s.length >> 1] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
@@ -139,7 +145,7 @@ const epochs = ts => {
 let cur, stop = null, mapsP = null, gaiaAt = null;
 const lists = new Map();
 
-self.onmessage = async ({ data: { id, ra, dec, det, api, band } }) => {
+self.onmessage = async ({ data: { id, ra, dec, det, api, band, t } }) => {
   cur = id; stop?.abort();
   if (ra == null) return;
   const signal = (stop = new AbortController()).signal;
@@ -174,7 +180,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band } }) => {
       alive();
       if (!res.ok) return post({ type: 'error', error: found.error || `HTTP ${res.status}` });
       if (!found.images.length) return post({ type: 'empty' });
-      const vs = visits(found.images).map(v => v.slice(0, MAX_PER_VISIT));
+      const vs = visits(found.images, t).map(v => v.slice(0, MAX_PER_VISIT).concat(v.slice(MAX_PER_VISIT).filter(e => atT(e, t))));
       post({ type: 'progress', text: `${found.images.length} images in ${vs.length} visits; reading where the target falls in each`, ms: performance.now() - t0 });
       const had = new Map((lists.get(det) || []).flat().map(e => [e.key, e.h]));   // headers the last list already read
       let done = 0;
@@ -191,6 +197,10 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band } }) => {
     }
     if (!usable.length) return post({ type: 'empty' });
     const { lam0, tol, picked } = band ? inBand(usable, band) : match(usable);
+    // t: that visit's frame is the exposure taken at t (and any within 15 minutes), not the visit's matched wavelength,
+    // so a moving comet is where its page says it was; the frame says so (at_t) and the page rings the centre
+    const tVisit = band ? -1 : usable.findIndex(v => v.some(e => atT(e, t)));
+    if (tVisit >= 0) picked[tVisit] = usable[tVisit].filter(e => atT(e, t));
     if (!picked.length) return post({ type: 'empty', of: usable.length });   // no visit has this channel here
 
     // Gaia: the star at this spot, propagated from 2016.0 to the target epoch (2026.0).
@@ -209,7 +219,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band } }) => {
       alive();
       const stack = new Float32Array(GRID * GRID).map((_, k) => median(arrs.map(a => a[k])));
       const ts = v.map(e => e.t), mjd = ts.reduce((a, b) => a + b, 0) / ts.length;
-      frames.push({ px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, epochs: epochs(ts), year: year(mjd), exposures: arrs.length,
+      frames.push({ ...(n === tVisit ? { at_t: true } : {}), px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, epochs: epochs(ts), year: year(mjd), exposures: arrs.length,
         lam: v.reduce((s, e) => s + e.lam, 0) / v.length, lam_spread: Math.max(...v.map(e => Math.abs(e.lam - lam0))),
         matched: Math.max(...v.map(e => Math.abs(e.lam - lam0))) <= tol, bw: v.reduce((s, e) => s + e.bw, 0) / v.length });
       post({ type: 'frame', n, of: picked.length, ms: performance.now() - t0, px: stack });   // px (a copy): the page can show it at once
@@ -243,6 +253,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band } }) => {
     if (seen.length && !(bestOff <= slack)) [gaia, bestOff] = fit(await Promise.race([gaiaP, new Promise(r => setTimeout(() => r([]), 8000))]));   // Gaia late: show the frames without it
     if (gaia && bestOff <= slack) frames.forEach(f => { [f.pred_east, f.pred_north] = pred(gaia, f); });
     else gaia = null;
+    if (tVisit >= 0) { frames[tVisit].pred_east = 0; frames[tVisit].pred_north = 0; }   // the predicted spot: the centre
     // straight-line motion fit from detected positions: at least 3 visits spanning half a year, with the
     // slope's standard error so a faint target reads as uncertain
     const ok = frames.filter(f => f.east != null && !f.blob);   // a saturated blob's outline jitters by pixels: not a motion

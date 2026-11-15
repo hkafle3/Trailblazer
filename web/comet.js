@@ -1,6 +1,7 @@
 // Comet page: one comet from /api/comets/:id (D1). Real comets carry measured photos and a SPHEREx spectrum
 // in `detail` (bake/comet_spectrum.py); the rest carry the SPHEREx photos JPL's path crosses.
 import { fwd, trackAt, trackPath, dayParam, dayDate, MJD0, RAD } from './skymap.js';
+import { visitShots, knownPhoto, paint, pool } from './live/cutout.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');   // no id: the list of known comets
 const MJD_UNIX = 40587, day = dayParam();   // ?day=: the date on Explore's timeline when this page was opened from the map
@@ -41,20 +42,65 @@ function talk(c) {
 }
 
 function photos(d) {
-  const box = $('c-photos');
+  const box = $('c-photos'), shots = [...d.photos].sort((a, b) => a.mjd - b.mjd);
   // the year too when the photos span more than one, so 27 Oct, 2 Jan and 9 Sep read in order
-  const yr = new Set(d.photos.map(p => date(p.mjd, { year: 'numeric' }))).size > 1 ? { year: 'numeric' } : {};
-  d.photos.forEach((p, i) => {
-    const f = el('figure', i === d.photos.length - 1 ? 'now' : '');
-    const plate = el('div', 'plate pv-mini');
+  const yr = new Set(shots.map(p => date(p.mjd, { year: 'numeric' }))).size > 1 ? { year: 'numeric' } : {};
+  const items = shots.map((p, i) => {
+    const f = el('figure', i === shots.length - 1 ? 'now' : '');
+    const plate = el('div', 'plate pv-mini'), last = i === shots.length - 1;
     const img = el('img'); img.src = `data/comets/${d.dir ?? '3i-atlas'}/${p.file}`; img.alt = `${d.name ?? 'The comet'} on ${date(p.mjd, { day: 'numeric', month: 'short' })}`;
-    const ring = el('span', i === d.photos.length - 1 ? 'ring' : 'ring earlier'); ring.style.left = '50%'; ring.style.top = '50%';
+    const ring = el('span', last ? 'ring' : 'ring earlier'); ring.style.left = '50%'; ring.style.top = '50%';
     plate.append(img, ring);
     f.title = `${p.lam.toFixed(2)} µm`;
     f.append(plate, date(p.mjd, { day: 'numeric', month: 'short', ...yr, hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', ''));
     box.append(f);
+    return { fig: f, src: img.src, alt: img.alt, mjd: p.mjd, ring: 'ring', label: date(p.mjd, { day: 'numeric', month: 'short', year: 'numeric' }) };
   });
   $('c-photos-panel').hidden = false;
+  player(items);
+}
+
+// The photo strip's player: one large frame above the thumbnails, stepping through them in date order and looping,
+// under the time-lapse's own timeline (patch.css .tl: a dot per photo, the date over the play/pause handle).
+// Every photo is centred on the comet, so the comet holds still in the ring while the stars slide past.
+// items: [{ fig, src, alt, mjd, label, ring }]; a live photo's src arrives later (set). Starts playing when it scrolls
+// into view, except with reduced motion. Clicking a thumbnail shows it (and pauses); arrow keys step the handle.
+const PLAY_MS = 600;
+function player(items) {
+  const N = items.length, wrap = el('div', 'player');
+  wrap.innerHTML = `<div class="pv-mini big"><img alt=""><span class="ring" style="left:50%;top:50%"></span></div>
+    <div class="tl"><div class="tl-line"><div class="tl-dots" aria-hidden="true"></div><output class="tl-date">&nbsp;</output>
+    <button class="tl-knob" type="button" role="slider" aria-label="Photo. Press to play the photos in turn; arrow keys step." aria-valuemin="0" aria-valuemax="${N - 1}" aria-valuenow="0">
+    <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
+    <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
+    </button></div></div>`;
+  $('c-photos-panel').prepend(wrap);
+  const [img, ring, line, knob, out] = ['img', '.ring', '.tl-line', '.tl-knob', '.tl-date'].map(q => wrap.querySelector(q));
+  const t0 = items[0].mjd, span = items[N - 1].mjd - t0, pos = m => (span ? 4 + 92 * (m - t0) / span : 50) + '%';
+  for (const it of items) { const d = el('i', 'tl-visit'); d.style.left = pos(it.mjd); wrap.querySelector('.tl-dots').append(d); }
+  let i = -1, timer = null;
+  const go = k => {
+    const it = items[k];
+    if (!it.src) return;
+    i = k; img.src = it.src; img.alt = it.alt; ring.className = it.ring;
+    line.style.setProperty('--x', pos(it.mjd)); out.textContent = it.label;
+    knob.setAttribute('aria-valuenow', k); knob.setAttribute('aria-valuetext', `Photo ${k + 1} of ${N}, ${it.label}`);
+    items.forEach((x, n) => x.fig.classList.toggle('on', n === k));
+    wrap.dataset.i = k;
+  };
+  const step = s => { for (let n = 1; n <= N; n++) { const k = (((i + s * n) % N) + N) % N; if (items[k].src) return go(k); } };
+  const play = on => { clearInterval(timer); timer = on ? setInterval(() => step(1), PLAY_MS) : null; knob.classList.toggle('on', on); wrap.dataset.playing = on ? '1' : ''; };
+  knob.addEventListener('click', () => play(!timer));
+  knob.addEventListener('keydown', e => {
+    const s = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+    if (s) { e.preventDefault(); play(false); step(s); }
+  });
+  items.forEach((it, k) => it.fig.addEventListener('click', () => { if (it.src) { play(false); go(k); } }));
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  new IntersectionObserver((es, o) => { if (es.some(e => e.isIntersecting)) { o.disconnect(); if (!calm) play(true); } }).observe(wrap);
+  const first = items.findIndex(it => it.src);
+  if (first >= 0) go(first);
+  return { set(k, src) { items[k].src = src; if (i < 0) go(k); } };
 }
 
 // A badge by the title only when the measurement is clear: "detected" or "quiet" (bake/comet_spectrum.py co2_verdict)
@@ -156,19 +202,60 @@ function known(c) {
   const shots = c.detail.spherex, box = $('c-empty');
   const first = box.querySelector('.actions');   // the new lines go above the button
   box.insertBefore(el('h2', null, shots.length ? `SPHEREx photographed it ${shots.length} times` : 'Not in a SPHEREx photo yet'), first);
-  // one link per visit: photos less than 5 days after the previous one belong to the same visit
-  const visits = [];
-  shots.forEach((s, i) => { if (i === 0 || s.day - shots[i - 1].day >= 5) visits.push(s); });
-  const list = el('div', 'visits');
-  for (const v of visits) {   // each photo carries the comet's exact position at that moment (bake/known_comets.py)
+  // one link per visit (photos less than 5 days after the previous one are one visit), on the visit's photo the strip
+  // below shows: the time-lapse opens on that visit, centred on where the comet was, with that spot ringed
+  const picks = visitShots(shots), list = el('div', 'visits');
+  for (const v of picks) {   // each photo carries the comet's exact position at that moment (bake/known_comets.py)
     const a = el('a', 'visit', date(MJD0 + v.day, { day: 'numeric', month: 'short', year: 'numeric' }));
-    a.href = `timelapse.html?ra=${v.ra.toFixed(4)}&dec=${v.dec.toFixed(4)}&det=D1`;
-    a.title = `Open the patch where it was (RA ${v.ra.toFixed(2)}, Dec ${v.dec.toFixed(2)})`;
+    a.href = `timelapse.html?ra=${v.ra.toFixed(4)}&dec=${v.dec.toFixed(4)}&det=D1&t=${(MJD0 + v.day).toFixed(4)}`;
+    a.title = `Open the time-lapse on this visit, centred on where it was (RA ${v.ra.toFixed(2)}, Dec ${v.dec.toFixed(2)})`;
     list.append(a);
   }
+  if (picks.length) knownPhotos(c, picks);
   box.insertBefore(list, first); box.insertBefore(el('p', 'pv-info', 'Known comet from JPL. Its spectrum is not measured yet.'), first);
   if (c.detail.faint) box.insertBefore(el('p', 'pv-info', `Predicted too faint to see clearly in SPHEREx photos (brightest magnitude ${c.detail.mag_in_photo ?? 'unknown'} while photographed).`), first);
   box.hidden = false;
+}
+
+// A known comet's photos, built here from NASA's SPHEREx images (live/cutout.js): one per visit, centred on JPL's
+// position for that exposure, so the comet (if SPHEREx sees it) sits in the ring and the stars move. Each photo says
+// whether the comet is there: its light at the ring minus the same spot's light in photos without it (SNR 5 or more
+// is "Seen"). Built when the strip scrolls into view, two photos at a time.
+const magAt = (mags, d) => mags?.length ? mags.reduce((b, m) => (Math.abs(m[0] - d) < Math.abs(b[0] - d) ? m : b))[1] : null;
+function knownPhotos(c, picks) {
+  const box = $('c-photos'), panel = $('c-photos-panel'), note = el('p', 'pv-info frames-note', 'Building the photos from NASA\u2019s SPHEREx images\u2026');
+  const yr = new Set(picks.map(s => date(MJD0 + s.day, { year: 'numeric' }))).size > 1 ? { year: 'numeric' } : {};
+  const items = picks.map(s => {
+    const fig = el('figure'), plate = el('div', 'plate pv-mini'), cv = el('canvas'), ringEl = el('span', 'ring earlier'), vis = el('span', 'pv-info vis', '\u00a0');
+    ringEl.style.left = ringEl.style.top = '50%'; plate.append(cv, ringEl);
+    const label = date(MJD0 + s.day, { day: 'numeric', month: 'short', ...yr });
+    fig.append(plate, label, vis); box.append(fig);
+    return { fig, cv, ringEl, vis, s, mjd: MJD0 + s.day, label: date(MJD0 + s.day, { day: 'numeric', month: 'short', year: 'numeric' }), alt: `${c.id} on ${label}`, ring: 'ring earlier' };
+  });
+  panel.append(note); panel.hidden = false;
+  const pl = player(items);
+  let started = false;
+  new IntersectionObserver(async (es, o) => {
+    if (started || !es.some(e => e.isIntersecting)) return;
+    started = true; o.disconnect();
+    let done = 0;
+    await pool(items, 2, async (it, k) => {
+      try {
+        const p = await knownPhoto(it.s), mag = magAt(c.detail.mags, it.s.day);
+        paint(it.cv, p);
+        Object.assign(it.fig.dataset, { verdict: p.verdict, snr: p.snr == null ? '' : p.snr.toFixed(1), ra: it.s.ra, dec: it.s.dec });
+        it.vis.textContent = p.verdict === 'seen' ? `Seen \u00b7 SNR ${Math.round(p.snr)}` : p.verdict === 'faint' ? `Too faint${mag ? ` \u00b7 mag ${mag.toFixed(1)}` : ''}` : 'Cannot measure';
+        it.fig.title = p.snr == null ? 'No usable light measurement at the ring here' : `SNR ${p.snr.toFixed(1)} at the ring, after taking away what the same spot shows in ${p.refs} photo${p.refs === 1 ? '' : 's'} without the comet${mag ? `; JPL magnitude ${mag.toFixed(1)}` : ''}`;
+        it.ring = it.ringEl.className = p.verdict === 'seen' ? 'ring' : 'ring earlier';
+        pl.set(k, it.cv.toDataURL());
+      } catch (e) { it.vis.textContent = 'Photo unavailable'; it.fig.dataset.verdict = 'error'; console.warn(e); }
+      note.textContent = `Built ${++done} of ${items.length} photos\u2026`;
+    });
+    const seen = items.filter(it => it.fig.dataset.verdict === 'seen').length, n = items.length;
+    const ms = items.map(it => magAt(c.detail.mags, it.s.day)).filter(m => m != null), lo = Math.min(...ms).toFixed(1), hi = Math.max(...ms).toFixed(1);
+    note.textContent = seen ? `Seen in ${seen} of ${n} visit${n === 1 ? '' : 's'}: light in the ring at SNR 5 or more, once the stars there are taken away.`
+      : `Too faint to see in ${n === 1 ? 'this visit' : `any of the ${n} visits`}${ms.length ? ` (JPL magnitude ${lo === hi ? lo : `${lo} to ${hi}`})` : ''}.`;
+  }).observe(panel);
 }
 
 // The API's rule for names; a stored name that breaks it (e.g. "Zoë") falls back to the nickname field

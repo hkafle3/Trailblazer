@@ -81,3 +81,16 @@
   .cpage .spectrum .legend, .cpage .spec-head .pv-info { font-size: 12px; }
 }
 @media (min-width: 561px) { .cpage #c-photos { grid-template-columns: repeat(6, minmax(0, 1fr)); } }   /* six a row, as before (three on a phone): 3I/ATLAS's six photos on one line */
+
+/* the strip's player: his mini-map box, large, over the time-lapse's timeline and play/pause handle (patch.css .tl) */
+.cpage .player { display: grid; justify-items: center; gap: calc(30 * var(--e)); margin-bottom: calc(44 * var(--e)); }
+.cpage .player .big { position: relative; left: auto; top: auto; width: min(100%, calc(620 * var(--e)), 520px); height: auto; aspect-ratio: 1; background: #000; }
+.cpage .player .big img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.cpage .player .big img:not([src]) { visibility: hidden; }
+.cpage .player .ring { --d: calc(100 * var(--e)); min-width: 34px; min-height: 34px; }
+.cpage .player .tl { position: relative; left: auto; top: auto; width: 100%; margin: 0; padding: max(34px, calc(64 * var(--e))) 0 max(12px, calc(24 * var(--e))); }
+.cpage .player .tl-line { cursor: default; }
+.cpage .frames figure { cursor: pointer; }
+.cpage .frames figure:not(.on) .pv-mini { opacity: .55; }
+.cpage .frames .vis { margin: 0; font-size: max(10px, calc(18 * var(--e))); }
+.cpage #c-photos-panel .frames-note { margin-top: calc(30 * var(--e)); line-height: 1.5; }

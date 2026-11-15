@@ -36,6 +36,7 @@ async def main():
         want = {}
         for cid in IDS:
             r = await api.get(BASE + "/api/comets/" + urllib.parse.quote(cid, safe=""))
+            assert r.status == (404 if cid == "C-9999" else 200), f"GET /api/comets/{cid}: HTTP {r.status}"   # only C-9999 is missing
             want[cid] = await r.json() if r.ok else None
         seen = []
         for w in (1440, 800, 390):
