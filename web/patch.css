@@ -271,7 +271,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   /* checkboxes keep Ming's 22 px outlined box, drawn inside a 44 px tap */
   body.lapse:not(.sky) .pv-card .cbx { width: 44px; height: 44px; border: 11px solid transparent; border-radius: 14px; box-shadow: inset 0 0 0 1.5px #fff; }
   body.lapse:not(.sky) .pv-card .cbx::after { width: 12px; height: 12px; }
-  body.lapse:not(.sky) .pv-card label.at { display: flex; align-items: center; min-height: 44px; font-size: 15px; }
+  body.lapse:not(.sky) .pv-card label.at { display: flex; align-items: center; min-width: 44px; min-height: 44px; font-size: 15px; }
 
   /* Options: Zoom and its bar, the width under it, then the whole region with what it shows */
   body.lapse:not(.sky) .pv-options { grid-template-columns: auto minmax(0, 1fr); column-gap: 16px; align-content: start; }
