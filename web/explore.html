@@ -11,6 +11,11 @@
 <link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
 <link rel="preload" as="image" href="data/visits.png">
 <link rel="preload" as="fetch" href="data/coverage.json" crossorigin>
+<!-- also in header.css; Chrome only honours it reliably when it is in the page itself, so the map can glide in from the page before -->
+<style>
+@view-transition { navigation: auto; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+</style>
 </head>
 <body class="explore">
 
