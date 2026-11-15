@@ -18,7 +18,7 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 function talk(c) {
   const t = c.tags, n = t.comet + t.asteroid + t.glitch + t.unsure;
   $('t-head').innerHTML = '';
-  if (n) { $('t-head').append(`${t.comet} of ${n} `, el('span', null, 'say comet')); }
+  if (n) { $('t-head').append(`${t.comet} of ${n} `, el('span', null, 'tags say comet')); }
   else $('t-head').textContent = 'No tags yet';
   document.querySelector('.verdict .tally').hidden = !n;
   document.querySelector('.verdict .tally-key').hidden = !n;
@@ -28,7 +28,7 @@ function talk(c) {
   }
   const list = $('t-list');
   for (const m of c.comments.filter(m => m.body)) list.append(comment(m));   // tags without text still count as votes
-  if (!c.comments.some(m => m.body)) list.append(el('p', 'faint', 'Nobody has said anything yet.'));
+  if (!c.comments.some(m => m.body)) list.append(el('p', 'faint', 'No comments yet.'));
   function comment(m) {
     const a = el('article', 'comment');
     a.append(el('span', 'av', m.author.slice(0, 2).toUpperCase()));
@@ -135,8 +135,21 @@ fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Prom
   $('c-id').textContent = c.id;
   const n = c.tags.comet + c.tags.asteroid + c.tags.glitch + c.tags.unsure;
   if (c.kind === 'comet' && n) { $('c-verdict').textContent = c.tags.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }
-  $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.real ? 'Known comet · real SPHEREx data' : 'Known object') : 'Not in any catalog';
+  $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.real ? 'Known comet · real SPHEREx data' : 'Known object') : 'Not matched to a known object';
   if (c.kind === 'comet') { const p = $('c-patch'); p.href = `timelapse.html?ra=${c.ra}&dec=${c.dec}&det=D1&diff=1`; p.hidden = false; }
   if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); } else { where(c); $('c-empty').hidden = false; }
   talk(c);
-}).catch(err => { $('c-id').textContent = 'Comet not found'; console.warn(err); });
+}).catch(err => { $('c-id').textContent = 'Comet not found'; $('c-cat').hidden = true; console.warn(err); });
+
+// Other comets: the nav says "Comets", so show some (orange examples and the real one) to move between.
+fetch('/api/comets').then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(({ comets }) => {
+  const list = comets.filter(c => c.kind === 'comet' || c.real).sort((a, b) => (b.real ? 1 : 0) - (a.real ? 1 : 0));
+  const nav = $('c-nav');
+  for (const c of list) {
+    const a = document.createElement('a');
+    a.href = `comet.html?id=${encodeURIComponent(c.id)}`; a.textContent = c.id;
+    if (c.id === id) a.setAttribute('aria-current', 'page');
+    nav.append(a);
+  }
+  nav.hidden = list.length < 2;
+}).catch(() => {});

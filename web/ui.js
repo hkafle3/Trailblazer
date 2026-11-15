@@ -91,7 +91,8 @@
       c.style.setProperty('--i', i); c.style.setProperty('--dx', (Math.random() * 30 - 15).toFixed(1) + 'px'); c.style.setProperty('--dy', (Math.random() * 30 - 15).toFixed(1) + 'px'); s.append(c);
     }
     el.prepend(s);
-    if (reduce) s.classList.add('in'); else requestAnimationFrame(() => requestAnimationFrame(() => s.classList.add('in')));
+    const main = el.matches('.cta, .tour-card .row .btn:last-child');   // only the main action flies in; the rest are plain outlines
+    if (reduce || !main) s.classList.add('in', 'static'); else requestAnimationFrame(() => requestAnimationFrame(() => s.classList.add('in')));
   }
   const ro = 'ResizeObserver' in window ? new ResizeObserver(entries => entries.forEach(e => constellate(e.target))) : null;
   function scanButtons() {
@@ -123,15 +124,15 @@
     const name = h('input', { type: 'text', maxlength: '24', placeholder: 'Pick a name', 'aria-label': 'Your name' });
     const done = (n, via) => { setUser({ name: n, via }); closeModal(); };
     const gbtn = h('button', { class: 'btn gbtn', type: 'button', onclick: () => done('Sky Watcher', 'google-demo') });
-    gbtn.innerHTML = `${G}<span>Continue with Google</span>`;
+    gbtn.innerHTML = `${G}<span>Continue with Google (demo)</span>`;
     const form = h('form', { onsubmit: e => { e.preventDefault(); done(name.value.trim() || 'Sky Watcher', 'name'); } }, name, h('button', { class: 'btn', type: 'submit', text: 'Continue' }));
     const sheet = h('div', { class: 'sheet glass', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'si-t' },
       h('button', { class: 'x', 'aria-label': 'Close', text: '×', onclick: closeModal }),
       h('div', { class: 'comet-mark' }, h('span', { class: 'brand-mark' })),
-      h('h2', { id: 'si-t', text: 'Join Comet Catcher' }),
-      h('p', { text: 'Sign in to tag what you find and join the conversation about it.' }),
+      h('h2', { id: 'si-t', text: 'Pick a name' }),
+      h('p', { text: 'Your name shows next to your tags and comments.' }),
       gbtn, h('div', { class: 'or', text: 'or' }), form,
-      h('p', { class: 'fine', text: 'Demo sign-in: no account is created and nothing leaves your browser. The Google button is a stand-in.' }));
+      h('p', { class: 'fine', text: 'Demo only. No account is created and nothing is sent to a server; your name stays in this browser. The Google button is a stand-in.' }));
     const veil = h('div', { class: 'veil', onclick: e => { if (e.target === veil) closeModal(); } }, sheet);
     document.body.append(veil); scanButtons();
     document.addEventListener('keydown', escModal);
@@ -151,7 +152,7 @@
           h('div', { class: 'who' }, h('b', { text: user.name }), h('span', { text: 'Demo account · this browser only' })),
           h('button', { role: 'menuitem', text: 'Replay the tour', onclick: () => { pop.remove(); isExplore ? startTour() : (location.href = './?tour=1'); } }),
           h('button', { role: 'menuitem', text: 'Sign out', onclick: () => setUser(null) }));
-        box.append(pop); av.setAttribute('aria-expanded', 'true');
+        box.append(pop); av.setAttribute('aria-expanded', 'true'); pop.querySelector('button')?.focus();
       });
       box.append(av);
     } else box.append(h('button', { class: 'btn small', type: 'button', text: 'Sign in', onclick: openSignIn }));
@@ -186,24 +187,24 @@
   const GUIDE_HTML = `
     <section class="nb-page nb-left">
       <p class="nb-kicker">field notes</p>
-      <h2 id="nb-t">How to catch a comet</h2>
-      <p class="nb-lede">Stars stay still between two photos. <span class="nb-hl">Comets move.</span></p>
+      <h2 id="nb-t">How to find a comet</h2>
+      <p class="nb-lede">Stars stay put between two photos. <span class="nb-hl">Asteroids and comets move.</span></p>
       <ol class="nb-steps">
-        <li><div><h3>Pick a patch</h3><p>Start where nobody has looked.</p></div><div class="pic"><span class="oval"></span></div></li>
-        <li><div><h3>Remove the still stars</h3><p>Subtract one photo from the other.</p></div>
+        <li><div><h3>Pick a spot</h3><p>Start where no one has looked.</p></div><div class="pic"><span class="oval"></span></div></li>
+        <li><div><h3>Subtract the stars</h3><p>Take one photo away from the other. What is left has changed.</p></div>
           <div class="pic"><span class="plate"><img src="${PIC}f0.png" alt=""></span><svg class="ic" style="color:var(--ink-3)"><use href="icons.svg#arrow"/></svg>
           <span class="plate sub"><img src="${PIC}f0.png" alt=""><img src="${PIC}f1.png" alt=""><span class="dot" style="left:62%;top:40%"></span></span></div></li>
         <li><div><h3>Blink the photos</h3><p>Look for a dot that <span class="nb-hl">jumps</span>.</p></div>
           <div class="pic"><span class="plate"><img src="${PIC}f0.png" alt=""><span class="ring earlier" style="--d:20px;left:30%;top:66%"></span></span><svg class="ic" style="color:var(--ink-3)"><use href="icons.svg#blink"/></svg>
           <span class="plate"><img src="${PIC}f1.png" alt=""><span class="ring" style="--d:20px;left:62%;top:40%"></span></span></div></li>
-        <li><div><h3>Fuzzy or sharp?</h3><p>Fuzzy with a tail is a comet. Sharp is an asteroid.</p></div>
+        <li><div><h3>Fuzzy or sharp?</h3><p>A fuzzy dot with a tail is probably a comet. A sharp point is probably an asteroid. Seen in only one photo? Call it a glitch.</p></div>
           <div class="pic"><span class="big fuzzy"><span class="dot tail"></span><small>comet</small></span><span class="big sharp"><span class="dot"></span><small>asteroid</small></span></div></li>
-        <li><div><h3>Say what you think</h3><p>Comment with a tag. Your tag is your vote.</p></div>
+        <li><div><h3>Tag it</h3><p>Pick Comet, Asteroid, Glitch or Not sure, and say why. (Posting is not switched on yet.)</p></div>
           <div class="pic"><span class="bubble"><span class="tag comet">comet</span><i></i></span></div></li>
       </ol>
     </section>
     <section class="nb-page nb-right">
-      <div class="nb-head"><span class="eyebrow">Practice 1 of 3</span><span class="example">Example dot</span></div>
+      <div class="nb-head"><span class="eyebrow">Practice: RW Aurigae</span><span class="example">Example dot</span></div>
       <h2>One dot here moves.</h2>
       <div class="nb-photo"><span class="tape"></span>
         <div class="plate">
@@ -242,12 +243,12 @@
 
   // ---------------------------------------------------------------- tour
   const STEPS = [
-    { title: 'Welcome to Comet Catcher', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. Anything that moves between photos is a comet or an asteroid. Take a one-minute look around, or skip it.' },
-    { sel: '.map-wrap', title: 'The whole sky, flat', text: 'This is the entire sky unrolled like a world map. The bright band is our galaxy. Orange dots are comets people found, blue ones are already known.' },
-    { sel: '.timebar', title: 'Watch it get photographed', text: 'Press play to see SPHEREx scan the sky, strip by strip, over its first year and a half.' },
-    { sel: '.layers', title: 'More, when you want it', text: 'Layers hides the extras: coverage, where people have looked, comets and known objects. Leave them alone to start.' },
-    { sel: '#go-unexplored', title: 'Your first hunt', text: 'Not sure where to look? This takes you to a patch nobody has checked yet. You can also click anywhere on the sky.' },
-    { title: 'You’re ready', text: 'Compare two photos, spot the dot that jumped, and tag it. Sign in any time to join the conversation.', last: true },
+    { title: 'Welcome to Comet Catcher', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. A dot that moves between photos is usually an asteroid or a comet; sometimes it is a nearby star or a camera glitch. Take the one-minute tour, or skip it.' },
+    { sel: '.map-wrap', title: 'The sky, unrolled', text: 'The whole sky flattened like a world map. The bright band is our galaxy. Orange dots are comets (example data for now); blue dots are objects astronomers already know.' },
+    { sel: '.timebar', title: 'Watch SPHEREx scan', text: 'Press play to see which parts of the sky it photographed, strip by strip. Comets appear on the day they were first seen.' },
+    { sel: '.layers', title: 'Layers', text: 'Turn map layers on or off: sky covered, spots people checked, comets, trails and known objects. The defaults are fine to start.' },
+    { sel: '#go-unexplored', title: 'Pick a spot', text: 'This takes you to a spot no one has checked yet. You can also click anywhere on the sky.' },
+    { title: 'You’re ready', text: 'Compare two photos and find the dot that moved. Tagging it (comet, asteroid, glitch or not sure) is not switched on yet, so for now you can look around.', last: true },
   ];
   let tourEl = null;
   function startTour() {
@@ -267,7 +268,7 @@
         h('div', { class: 'row' },
           s.last ? h('span') : h('button', { class: 'skip', type: 'button', text: 'Skip tour', onclick: () => end() }),
           i > 0 && !s.last ? h('button', { class: 'btn ghost small', type: 'button', text: 'Back', onclick: () => go(-1) }) : '',
-          h('button', { class: 'btn', type: 'button', text: s.last ? 'Start catching' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) { end(); document.getElementById('go-unexplored')?.click(); } else go(1); } })));
+          h('button', { class: 'btn', type: 'button', text: s.last ? 'Look at a spot' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) { end(); document.getElementById('go-unexplored')?.click(); } else go(1); } })));
       card.querySelectorAll('.btn').forEach(b => delete b.dataset.cb); scanButtons();
       const t = s.sel && document.querySelector(s.sel); if (t) t.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
       place(); card.querySelector('.btn:last-child')?.focus({ preventScroll: true });
@@ -292,6 +293,30 @@
     render();
   }
   window.CH_TOUR = startTour;
+
+  // ---------------------------------------------------------------- accessibility helpers
+  // Dialogs (sign in, tour, guide) keep Tab inside themselves while open.
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const dlg = [...document.querySelectorAll('.veil .sheet, .nb-veil .notebook, .tour .tour-card')].pop();
+    if (!dlg) return;
+    const f = [...dlg.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (!dlg.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  // Account menu: Esc closes it, arrows move between items.
+  document.addEventListener('keydown', e => {
+    const pop = document.querySelector('.authbox .menu-pop'); if (!pop) return;
+    if (e.key === 'Escape') { pop.remove(); document.querySelector('.authbox .av')?.focus(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const items = [...pop.querySelectorAll('button')], i = items.indexOf(document.activeElement);
+    e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+  });
+  document.querySelectorAll('svg.ic').forEach(x => x.setAttribute('aria-hidden', 'true'));   // decorative icons
+  document.addEventListener('click', e => { if (e.target.closest?.('[data-tour]')) { e.preventDefault(); isExplore ? startTour() : (location.href = './?tour=1'); } });
 
   // ---------------------------------------------------------------- boot
   if (!noStars) starfield();

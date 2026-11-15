@@ -12,7 +12,7 @@
 <header class="topbar glass">
   <a class="brand" href="./"><span class="brand-mark"></span>Comet Catcher</a>
   <nav><a href="./">Explore</a><a class="on" href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
-  <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet or sky position" aria-label="Search" disabled></label>
+  <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet name or sky position" aria-label="Search" disabled></label>
 </header>
 
 <main class="shell">
@@ -20,32 +20,34 @@
     <h1 id="c-id">&nbsp;</h1>
     <span class="chip likely" id="c-verdict" hidden></span>
     <span class="chip cat" id="c-cat"><svg class="ic" style="width:15px;height:15px"><use href="icons.svg#known"/></svg><span></span></span>
-    <a class="btn ghost" id="c-patch" hidden>Open its patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+    <a class="btn ghost" id="c-patch" hidden>Compare photos <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
   </div>
+  <nav class="cometnav" id="c-nav" aria-label="Other comets" hidden><span class="eyebrow">Other comets</span></nav>
 
   <div class="comet-grid">
     <div class="col">
-      <section class="panel glass empty-card" id="c-empty" hidden>
-        <h2>Where it is</h2>
+      <section class="panel empty-card" id="c-empty" hidden>
+        <div class="head"><h2>Where it is</h2></div>
         <div class="skymini" id="c-mini"><i id="c-mini-dot"></i></div>
         <p class="where" id="c-where"></p>
-        <p>Example comet: its photos and spectrum appear here once its dots are measured.</p>
+        <p>Example comet. Its photos and spectrum will appear once someone measures its dots.</p>
         <div class="actions"><a class="btn ghost" href="comet.html?id=3I%2FATLAS">See a real one: 3I/ATLAS</a></div>
       </section>
 
-      <section class="panel glass" id="c-photos-panel" hidden>
+      <section class="panel" id="c-photos-panel" hidden>
+        <div class="head"><h2>Photographed by SPHEREx</h2></div>
         <div class="nights" id="c-photos"></div>
       </section>
 
-      <section class="glass measures" id="c-measures" hidden>
-        <div title="Speed across the sky"><svg class="ic"><use href="icons.svg#speed"/></svg><b><span data-f="speed"></span> <small>arcsec / hour</small></b></div>
+      <section class="measures" id="c-measures" hidden>
+        <div title="Speed across the sky"><svg class="ic"><use href="icons.svg#speed"/></svg><b><span data-f="speed"></span> <small>arcseconds per hour</small></b></div>
         <div title="Direction of travel"><svg class="ic"><use href="icons.svg#compass"/></svg><b data-f="dir"></b></div>
         <div title="First photographed by SPHEREx"><svg class="ic"><use href="icons.svg#calendar"/></svg><b data-f="first"></b></div>
         <div title="SPHEREx photos of it"><svg class="ic"><use href="icons.svg#stack"/></svg><b><span data-f="n"></span> <small>photos</small></b></div>
       </section>
 
-      <section class="panel glass spectrum" id="c-spec-panel" hidden>
-        <div class="head"><h2>Light by wavelength</h2><span class="example" id="c-spec-note"></span></div>
+      <section class="panel spectrum" id="c-spec-panel" hidden>
+        <div class="head"><h2>Brightness by colour (infrared)</h2><span class="example" id="c-spec-note"></span></div>
         <svg id="spec" viewBox="0 0 900 250" role="img" aria-label="SPHEREx spectrum of the comet"></svg>
         <div class="legend" id="c-legend"></div>
       </section>
@@ -66,8 +68,8 @@
           <label><input type="radio" name="tag" value="glitch"><span class="tag glitch">Glitch</span></label>
           <label><input type="radio" name="tag" value="unsure"><span class="tag unsure">Not sure</span></label>
         </div>
-        <textarea rows="2" placeholder="Add a comment" aria-label="Your comment"></textarea>
-        <div class="row"><span class="faint" style="font-size:12.5px">A tag is optional. It counts as your vote.</span><button class="btn small" type="button" disabled title="Posting is being built">Post</button></div>
+        <textarea rows="2" placeholder="What did you notice?" aria-label="Your comment"></textarea>
+        <div class="row"><span class="faint" style="font-size:12.5px" id="post-note">Posting is not switched on yet. Tags are optional; each one counts toward the tally.</span><button class="btn small" type="button" disabled aria-describedby="post-note">Post</button></div>
       </form>
     </aside>
   </div>

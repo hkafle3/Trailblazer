@@ -71,7 +71,8 @@ $('search').addEventListener('submit', e => {
   e.preventDefault();
   const [ra, dec] = $('q').value.trim().split(/[\s,]+/).map(Number);
   if (Number.isFinite(ra) && Number.isFinite(dec) && ra >= 0 && ra < 360 && Math.abs(dec) <= 90) showPin(ra, dec);
-  else $('q').setCustomValidity('Type RA and Dec in degrees, e.g. 269.45 4.69'), $('q').reportValidity(), $('q').setCustomValidity('');
+  else if ($('q').value.trim() && !/^[\d\s.,+-]+$/.test($('q').value)) location.href = `comet.html?id=${encodeURIComponent($('q').value.trim())}`;   // a name: go to that comet
+  else $('q').setCustomValidity('Type RA and Dec in degrees, e.g. 269.45 4.69, or a comet name'), $('q').reportValidity(), $('q').setCustomValidity('');
 });
 
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
@@ -105,7 +106,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     card.href = `comet.html?id=${encodeURIComponent(featured.id)}`;
     card.dataset.day = featured.day;
     card.querySelector('[data-f=id]').textContent = featured.id;
-    card.querySelector('[data-f=count]').textContent = `${t.comet} of ${n} tags`;
+    card.querySelector('[data-f=count]').textContent = `${t.comet} of ${n} tags say comet` + (featured.example ? ' · example' : '');
     card.querySelector('.t-comet').style.setProperty('--n', t.comet);
     card.querySelector('.t-asteroid').style.setProperty('--n', t.asteroid);
     card.querySelector('.t-unsure').style.setProperty('--n', t.unsure + t.glitch);
@@ -126,7 +127,7 @@ const exploredLoaded = getJson('/api/explored').then(({ total, cells, suggest })
       const [u, v] = fwdLon(l, d); k ? g.lineTo(u * W, v * H) : g.moveTo(u * W, v * H);
     });
     g.closePath();
-    g.fillStyle = `rgba(95,224,173,${[0, .26, .5, .82][level(c.checks)]})`; g.fill();
+    g.fillStyle = `rgba(95,224,173,${[0, .35, .6, .9][level(c.checks)]})`; g.fill();
     g.strokeStyle = 'rgba(4,6,11,.75)'; g.lineWidth = 1.5; g.stroke();
   }
   const fmt = n => n.toLocaleString('en-US');
@@ -135,7 +136,7 @@ const exploredLoaded = getJson('/api/explored').then(({ total, cells, suggest })
   $('people-meter').style.setProperty('--p', cells.length / total * 100 + '%');
 
   const url = patchUrl(suggest.ra, suggest.dec), pin = document.createElement('a');
-  pin.className = 'mk patch'; pin.href = url; pin.innerHTML = '<i></i><b>unexplored</b>';
+  pin.className = 'mk patch'; pin.href = url; pin.innerHTML = '<i></i><b>unchecked</b>';
   place(pin, suggest.ra, suggest.dec);
   $('marks').append(pin);
   const card = $('card-patch');
@@ -216,6 +217,7 @@ let showByDay = () => {};
     slider.style.setProperty('--p', d / meta.days * 100 + '%');
     slider.parentNode.style.setProperty('--f', d / meta.days);
     $('t-bubble').textContent = $('t-date').textContent;
+    slider.setAttribute('aria-valuetext', $('t-date').textContent + ', ' + $('t-pct').textContent);
     $('photo-meter').style.setProperty('--p', pct + '%');
     $('photo-meter').querySelector('b').textContent = Math.floor(pct) + '%';
     showByDay();
@@ -229,9 +231,9 @@ let showByDay = () => {};
   let timer = 0;
   const play = $('play');
   play.addEventListener('click', () => {
-    if (timer) { clearInterval(timer); timer = 0; play.classList.remove('on'); return; }
+    if (timer) { clearInterval(timer); timer = 0; play.classList.remove('on'); play.setAttribute('aria-pressed', 'false'); play.setAttribute('aria-label', 'Play the sky being photographed'); return; }
     if (+slider.value >= meta.days) slider.value = 0;
-    play.classList.add('on');
+    play.classList.add('on'); play.setAttribute('aria-pressed', 'true'); play.setAttribute('aria-label', 'Pause');
     timer = setInterval(() => { slider.value = +slider.value + 2; draw(); if (+slider.value >= meta.days) play.click(); }, 40);
   });
   document.body.dataset.ready = '1';
