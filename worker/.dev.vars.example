@@ -1,0 +1,2 @@
+# Local dev only. Copy to worker/.dev.vars. This is Cloudflare's published test secret: every token passes.
+TURNSTILE_SECRET=1x0000000000000000000000000000000AA

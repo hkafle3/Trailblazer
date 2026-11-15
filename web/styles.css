@@ -1,4 +1,4 @@
-/* Comet Hunt design system (round 2).
+/* Comet Catcher design system (round 2).
    Color meanings, used the same way on every screen:
    --comet   orange  comets people found, and whatever is selected right now
    --known   blue    known catalog objects, and the earlier photo of a pair
@@ -157,9 +157,12 @@ body.page::after {
 
 .composer { display: grid; gap: 10px; }
 .composer textarea { width: 100%; resize: none; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid rgba(255, 255, 255, .12); background: rgba(0, 0, 0, .3); outline: 0; line-height: 1.45; }
-.composer textarea::placeholder { color: var(--ink-3); }
+.composer .nick { height: 38px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid rgba(255, 255, 255, .12); background: rgba(0, 0, 0, .3); outline: 0; }
+.composer .nick::placeholder, .composer textarea::placeholder { color: var(--ink-3); }
 .composer .row { display: flex; align-items: center; gap: 10px; }
 .composer .row .btn { margin-left: auto; }
+.composer .row .btn:disabled { opacity: .45; cursor: default; }
+.composer .err { color: #ff9b8f; }
 
 /* A photo plate: one real SPHEREx frame, with things drawn on top. */
 .plate { position: relative; aspect-ratio: 1; border-radius: var(--r-md); overflow: hidden; background: #000; border: 1px solid rgba(255, 255, 255, .1); }

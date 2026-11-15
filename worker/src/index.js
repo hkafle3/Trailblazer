@@ -3,13 +3,13 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
-//   GET /api/comets   GET /api/comets/:id   (D1)        GET /api/explored   (example data)   See docs/api.md.
+//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   (example data)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 import { SUGGEST, exploredCells } from './example-data.js';
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 
 const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS, ...extra } });
@@ -107,6 +107,9 @@ async function gaia(url) {
 const TALLY = `SELECT comet_id, tag, COUNT(*) AS n FROM comments c
   WHERE tag IS NOT NULL AND id = (SELECT MAX(id) FROM comments d WHERE d.comet_id = c.comet_id AND d.author = c.author AND d.tag IS NOT NULL)
   GROUP BY comet_id, tag`;
+const TALLY_ONE = `SELECT tag, COUNT(*) AS n FROM comments c
+  WHERE comet_id = ?1 AND tag IS NOT NULL AND id = (SELECT MAX(id) FROM comments d WHERE d.comet_id = ?1 AND d.author = c.author AND d.tag IS NOT NULL)
+  GROUP BY tag`;
 const tallies = async (db) => {
   const out = {};
   for (const { comet_id, tag, n } of (await db.prepare(TALLY).all()).results)
@@ -133,6 +136,58 @@ async function comet(id, env) {
     detail: c.detail ? JSON.parse(c.detail) : null, comments: talk.results });
 }
 
+// Post a comment (a tag makes it a vote). Turnstile first, so bots cost nothing below it.
+const TAGS = ['comet', 'asteroid', 'glitch', 'unsure'];
+async function post(request, env) {
+  let b;
+  try { b = await request.json(); } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }
+  if (!b || typeof b !== 'object') return json({ error: 'body must be JSON', field: 'body' }, 400);
+  const bad = (field, error) => json({ error, field }, 400);
+  if (typeof b.comet_id !== 'string' || !b.comet_id) return bad('comet_id', 'comet_id is required');
+  const tag = b.tag ?? null;
+  if (tag !== null && !TAGS.includes(tag)) return bad('tag', 'tag must be comet, asteroid, glitch or unsure');
+  const body = typeof b.body === 'string' ? b.body.trim() : '';
+  if (body.length < 1 || body.length > 1000) return bad('body', 'body must be 1 to 1000 characters');
+  const author = typeof b.author === 'string' ? b.author.trim() : '';
+  if (!/^[A-Za-z0-9 _.-]{1,24}$/.test(author)) return bad('author', 'author must be 1 to 24 letters, digits, spaces, _ . or -');
+  if (typeof b.turnstile !== 'string' || !b.turnstile) return bad('turnstile', 'turnstile token is required');
+  const form = new FormData();
+  form.append('secret', env.TURNSTILE_SECRET ?? '');
+  form.append('response', b.turnstile);
+  const ip = request.headers.get('CF-Connecting-IP');
+  if (ip) form.append('remoteip', ip);
+  let check = {};
+  try { check = await (await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form })).json(); }
+  catch (e) { console.error(e); }
+  if (check.success !== true) return json({ error: 'human check failed, try again' }, 403);
+  // Local dev: the test site key's widget hands out the same dummy token every time, so it is not claimed (the test
+  // secret accepts any token anyway). A real secret refuses the dummy token, so this opens nothing in production.
+  const claim = !(check.metadata?.result_with_testing_key && b.turnstile === 'XXXX.DUMMY.TOKEN.XXXX');
+  const db = env.DB;
+  if (!await db.prepare('SELECT 1 FROM comets WHERE id = ?').bind(b.comet_id).first()) return json({ error: `no comet ${b.comet_id}` }, 404);
+  const now = Date.now();
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(b.turnstile)))].map(x => x.toString(16).padStart(2, '0')).join('');
+  // One batch is one transaction: the rate limit, the comment, the token claim and the tally read happen together.
+  // A reused token breaks the UNIQUE key and rolls the comment back; a rate-limited post inserts nothing and keeps the token.
+  // ponytail: per-author limit on a free-text nickname; per-IP or signed-in limits once real accounts exist
+  let res;
+  try {
+    res = await db.batch([
+      db.prepare(`INSERT INTO comments (comet_id, author, tag, body, created_at) SELECT ?1, ?2, ?3, ?4, ?5
+        WHERE (SELECT COUNT(*) FROM comments WHERE author = ?2 AND created_at > ?5 - 60000) < 5`).bind(b.comet_id, author, tag, body, now),
+      db.prepare('INSERT INTO turnstile_tokens (hash, created_at) SELECT ?, ? WHERE ? AND changes() = 1').bind(hash, now, claim ? 1 : 0),
+      db.prepare(TALLY_ONE).bind(b.comet_id)
+    ]);
+  } catch (e) {
+    if (/UNIQUE/i.test(String(e?.message) + String(e?.cause?.message))) return json({ error: 'human check already used, try again' }, 403);
+    throw e;
+  }
+  if (res[0].meta.changes !== 1) return json({ error: 'too many comments, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
+  const tags = { comet: 0, asteroid: 0, glitch: 0, unsure: 0 };
+  for (const { tag: t, n } of res[2].results) tags[t] = n;
+  return json({ comment: { comet_id: b.comet_id, author, tag, body, created_at: now }, tags }, 201);
+}
+
 // Which patch-sized cells people have checked, and one nobody has, for the heat map and "Unexplored patch"
 function explored() {
   const { total, cells } = exploredCells();
@@ -143,6 +198,11 @@ export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    if (url.pathname === '/api/comments') {
+      if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
+      try { return await post(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
     // live data from D1: never cached here, so a new comment shows at once
     if (url.pathname === '/api/comets' || url.pathname.startsWith('/api/comets/')) {
       let id = null;

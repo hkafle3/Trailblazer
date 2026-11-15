@@ -46,15 +46,31 @@ const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(ne
   $('ecl').setAttribute('d', pts.map((p, i) => (i ? 'L' : 'M') + P(p[0], p[1])).join(''));
 }
 
-// ---- click anywhere on the oval: open that patch in the time-lapse with the difference view on ----
-$('map').addEventListener('click', e => {
-  const b = e.currentTarget.getBoundingClientRect(), rd = inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height);
-  if (rd) location.href = patchUrl(...rd);
+// ---- click anywhere on the oval: drop a pin with a small card; "Look closer" opens that patch (difference view on) ----
+const pin = $('pin'), readout = $('readout');
+function showPin(ra, dec) {
+  const u = place(pin, ra, dec), v = fwd(ra, dec)[1];
+  pin.classList.toggle('left', u > 0.7);
+  pin.classList.toggle('up', v > 0.62);
+  pin.querySelector('[data-f=where]').textContent = `RA ${ra.toFixed(1)}\u00b0  Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(1)}\u00b0`;
+  pin.querySelector('[data-f=open]').href = patchUrl(ra, dec);
+  pin.hidden = false;
+  pin.querySelector('.pin-ring').style.animation = 'none'; void pin.offsetWidth; pin.querySelector('.pin-ring').style.animation = '';   // replay the drop
+}
+const skyAt = e => { const b = $('map').getBoundingClientRect(); return inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height); };
+$('map').addEventListener('click', e => { const rd = skyAt(e); if (rd) showPin(...rd); });
+$('map').addEventListener('pointermove', e => {   // live coordinates beside the pointer (hidden on touch by CSS)
+  const rd = skyAt(e);
+  readout.hidden = !rd;
+  if (rd) { readout.textContent = `${rd[0].toFixed(1)}\u00b0  ${rd[1] >= 0 ? '+' : ''}${rd[1].toFixed(1)}\u00b0`; readout.style.left = e.clientX + 16 + 'px'; readout.style.top = e.clientY + 16 + 'px'; }
 });
+$('map').addEventListener('pointerleave', () => { readout.hidden = true; });
+$('pin-x').addEventListener('click', () => { pin.hidden = true; });
+addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; });
 $('search').addEventListener('submit', e => {
   e.preventDefault();
   const [ra, dec] = $('q').value.trim().split(/[\s,]+/).map(Number);
-  if (Number.isFinite(ra) && Number.isFinite(dec) && ra >= 0 && ra < 360 && Math.abs(dec) <= 90) location.href = patchUrl(ra, dec);
+  if (Number.isFinite(ra) && Number.isFinite(dec) && ra >= 0 && ra < 360 && Math.abs(dec) <= 90) showPin(ra, dec);
   else $('q').setCustomValidity('Type RA and Dec in degrees, e.g. 269.45 4.69'), $('q').reportValidity(), $('q').setCustomValidity('');
 });
 
@@ -73,6 +89,7 @@ function followTracks(day) {
     if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
   }
 }
+let trailN = 0;
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
   const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
@@ -86,11 +103,16 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
       a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
-    } else a.title = c.real ? `${c.id} (known comet)` : 'Known object (example)';
+    } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
     if (c.kind === 'known') a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
     if (c.kind === 'comet' || c.id === '3I/ATLAS') { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (c.track) { movers.push({ el: a, track: c.track }); if (c.detail?.photos || c.id === '3I/ATLAS') a.dataset.always = '1'; }
+    if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
+      const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
+      const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
+      a.insertAdjacentHTML('beforeend', `<svg class="trail" aria-hidden="true"><defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}"><stop offset="0" stop-color="#ff9a4d" stop-opacity="1"/><stop offset="1" stop-color="#ff9a4d" stop-opacity="0"/></linearGradient></defs><path d="M0 0Q${cx.toFixed(1)} ${cy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}" stroke="url(#${gid})"/></svg>`);
+    }
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
   }
@@ -161,8 +183,8 @@ Promise.all([cometsLoaded, exploredLoaded]).then(() => {
 // FRESH days glows, so SPHEREx's scanning strip keeps moving across the sky for the whole timeline.
 let showByDay = () => {};
 (async () => {
-  const meta = await getJson('data/coverage.json');
-  const img = new Image(); img.src = 'data/visits.png'; await img.decode();
+  const img = new Image(); img.src = 'data/visits.png';
+  const [meta] = await Promise.all([getJson('data/coverage.json'), img.decode()]);   // both at once
   const src = Object.assign(document.createElement('canvas'), { width: 720, height: 1080 }).getContext('2d', { willReadFrequently: true });
   src.drawImage(img, 0, 0);
   const px = src.getImageData(0, 0, 720, 1080).data;
@@ -212,13 +234,16 @@ let showByDay = () => {};
     $('t-date').textContent = when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
     $('t-pct').textContent = pass === 1 ? `${fmt(pct)} photographed` : `Pass ${pass} · ${fmt(now)}`;
     slider.style.setProperty('--p', d / meta.days * 100 + '%');
+    slider.parentNode.style.setProperty('--f', d / meta.days);
+    $('t-bubble').textContent = $('t-date').textContent;
     $('photo-meter').style.setProperty('--p', pct + '%');
     $('photo-meter').querySelector('b').textContent = Math.floor(pct) + '%';
     showByDay();
   }
   slider.max = meta.days;
   slider.value = meta.days;
-  slider.addEventListener('input', draw);
+  let queued = 0;   // many input events can arrive per frame while dragging: draw once per frame
+  slider.addEventListener('input', () => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; draw(); }); });
   draw();
 
   let timer = 0;

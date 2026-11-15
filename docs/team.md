@@ -1,4 +1,4 @@
-# Working on Comet Hunt
+# Working on Comet Catcher
 
 ## The pieces and where they live
 
@@ -6,7 +6,7 @@
 |---|---|---|---|
 | Explore map (home) | Works with example data | `web/index.html`, `web/explore.js`, `web/styles.css` | Polish; touch layout |
 | Patch view (time-lapse) | Works with real SPHEREx data, old styling | `web/timelapse.html`, `web/live/` | Restyle to match `design/screens/patch.html`: side by side, blink, remove still stars |
-| Comet page + tagged comments | Loads from D1. 3I/ATLAS has real SPHEREx photos, motion and spectrum (`bake/comet_3iatlas.py`) | `web/comet.html`, `web/comet.js` | `POST /api/comments` with a Turnstile token, then live tally (Durable Object) |
+| Comet page + tagged comments | Loads from D1. 3I/ATLAS has real SPHEREx photos, motion and spectrum (`bake/comet_3iatlas.py`). Posting works: `POST /api/comments` with Turnstile (real site key; test keys on localhost), tally updates without a reload | `web/comet.html`, `web/comet.js`, `worker/src/index.js` | Moderation (hide or delete a comment); live tally for other viewers (Durable Object) |
 | Guide + practice patch | Static design only | `web/guide.html` | Use IRSA's real 3I/ATLAS images as the practice patch |
 | API + database | Images, Gaia, comets and comments real (D1: `worker/migrations/`); explored is example data | `worker/src/`, `worker/migrations/` | Explored counter in D1: +1 per patch opened or tagged, `/api/explored` reads it (same shape) |
 | Known comets | 35 real comets from JPL, moving on the map, each matched to the SPHEREx photos that caught it (`bake/known_comets.py`) | `bake/known_comets.py`, `worker/migrations/0005_*` | Measure their spectra like 3I/ATLAS; circle known asteroids per patch with SkyBoT |

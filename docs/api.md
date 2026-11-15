@@ -38,6 +38,51 @@ For a known comet from JPL's catalog, `detail` holds `spherex`: every SPHEREx D1
 
 Refusals: `404 {"error":"no comet C-9999"}`, `400 {"error":"comet id is not valid"}`, `503` if the database does not answer.
 
+## POST /api/comments (D1)
+
+Adds a comment to a comet. A tag makes it a vote: each author's latest tag is the one that counts.
+
+```http
+POST /api/comments
+Content-Type: application/json
+
+{ "comet_id": "3I/ATLAS", "tag": "comet", "body": "The tail points away from the Sun.", "author": "orbit_owl", "turnstile": "<token from the widget>" }
+```
+
+- `comet_id`: an existing comet id, as stored (no URL encoding in the body).
+- `tag`: optional, one of `comet`, `asteroid`, `glitch`, `unsure`.
+- `body`: 1 to 1000 characters after trimming.
+- `author`: 1 to 24 letters, digits, spaces, `_`, `.` or `-`. The page takes it from the sign-in (`window.CH_USER.name` or localStorage `ch.user`), else asks for a nickname.
+- `turnstile`: the Cloudflare Turnstile token, checked with siteverify before anything touches the database.
+
+`201` returns the stored comment and the comet's new tally:
+
+```json
+{ "comment": { "comet_id": "3I/ATLAS", "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun.", "created_at": 1763120000000 },
+  "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 } }
+```
+
+Refusals (JSON, CORS headers as above):
+
+| Status | Body | When |
+|---|---|---|
+| 400 | `{"error":"body must be 1 to 1000 characters","field":"body"}` | bad input; `field` is `comet_id`, `tag`, `body`, `author` or `turnstile` (or `body` when it is not JSON) |
+| 403 | `{"error":"human check failed, try again"}` | Turnstile refused the token |
+| 403 | `{"error":"human check already used, try again"}` | the token already paid for a comment |
+| 404 | `{"error":"no comet C-9999"}` | unknown comet |
+| 405 | `{"error":"use POST"}` | any other method |
+| 429 | `{"error":"too many comments, wait a minute","retry_after":60}` | more than 5 comments by one author in a minute |
+| 503 | `{"error":"database is not answering, try again"}` | D1 error |
+
+### Turnstile keys
+
+- Live site: site key `0x4AAAAAAGBTgXAx-fdK_qGx` (public, in `data-sitekey` in `web/comet.html`; the widget allows `comet-hunt.comet-hunt.workers.dev` and `localhost`). The secret is a Worker secret, set with `npx wrangler secret put TURNSTILE_SECRET --config worker/wrangler.toml`. Never commit it.
+- Local dev: on `localhost`, `127.0.0.1` and `[::1]` the page swaps in Cloudflare's test site key `1x00000000000000000000AA` (always passes), to match the test secret `1x0000000000000000000000000000000AA` in `worker/.dev.vars` (copy `worker/.dev.vars.example`). No account needed.
+- The test widget hands out the same dummy token, `XXXX.DUMMY.TOKEN.XXXX`, every time. The Worker does not claim that token when siteverify says a test secret checked it, so you can post more than once locally. A real secret refuses the dummy token, so this changes nothing on the live site.
+- To test the real widget locally, put the real secret in `worker/.dev.vars` and remove the localhost swap in `web/comet.html` for that session.
+
+Each accepted token is stored as a SHA-256 hash (`turnstile_tokens`, migration 0007) in the same transaction as the comment, so a token pays for one comment only. The rate limit is checked inside that same insert, so posts sent at the same moment cannot get past it.
+
 ## GET /api/explored (example)
 
 Which patch-sized sky cells people have checked, for the heat map, and one cell nobody has checked.
@@ -68,10 +113,9 @@ Gaia DR3 stars within 0.04 degrees, with proper motions, for checking measured s
 
 ## Planned (not built)
 
-- `POST /api/comments` `{ dot, text, tag? }` with a Turnstile token: tag is one of `comet`, `asteroid`, `glitch`, `unsure`.
 - `GET /api/comets/:id`: one comet with its dots, photos, measurements and comment thread.
 - `GET /api/known?ra=&dec=&t=`: known comets and asteroids at a spot and time, from IMCCE SkyBoT.
 
 ## Tests
 
-`npm test` runs `worker/test_contract.sh` against `http://127.0.0.1:8787`: every route above, its refusals, the CORS header, and that the pages are served.
+`npm test` runs `worker/test_contract.sh` against `http://127.0.0.1:8787`: every route above, its refusals, the CORS header, and that the pages are served. The `POST /api/comments` checks write to the database, so they run only against a local server (127.0.0.1, localhost) and are skipped elsewhere.

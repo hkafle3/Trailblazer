@@ -26,7 +26,7 @@ case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is 
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
-check "home page served" "/" 200 'Find the dots that move'
+check "home page served" "/" 200 'The sky moves'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below
@@ -48,4 +48,48 @@ assert shots and all(isinstance(p.get("ra"), (int, float)) and isinstance(p.get(
 PY
 then echo "PASS known comets: paths reach the last day, every photo has a position"
 else echo "FAIL known comets"; fails=$((fails + 1)); fi
+# POST /api/comments writes to D1, so it runs against the local dev server only (Cloudflare's test secret accepts its dummy token
+# XXXX.DUMMY.TOKEN.XXXX and, measured 2026-11-14, any string; each post gets a unique one because a token is single use)
+tok() { echo "XXXX.DUMMY.TOKEN.XXXX.$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"; }
+post() {   # name, json body, expected status, expected text in the body
+  out=$(curl -s -m 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data "$2" "$BASE/api/comments")
+  code=$(printf '%s' "$out" | tail -1); body=$(printf '%s' "$out" | sed '$d')
+  if [ "$code" = "$3" ] && printf '%s' "$body" | grep -q -- "$4"; then echo "PASS $1 ($code)"
+  else echo "FAIL $1: got $code, wanted $3 with '$4': $(printf '%s' "$body" | head -c 200)"; fails=$((fails + 1)); fi
+}
+case "$BASE" in
+  *127.0.0.1*|*localhost*|*\[::1\]*)
+    who="tester $$"; note="contract test $$ $(date +%s)"
+    post "post a tagged comment" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"comet\",\"body\":\"$note\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"tags":{"comet":'
+    check "posted comment is in the thread" "/api/comets/3I%2FATLAS" 200 "\"body\":\"$note\""
+    post "post on an id with a slash and spaces" "{\"comet_id\":\"C/2025 R2 (SWAN)\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"comet_id":"C/2025 R2 (SWAN)"'
+    post "missing body" "{\"comet_id\":\"3I/ATLAS\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
+    post "blank body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"   \",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
+    long=$(python3 -c 'print("a" * 1001)')
+    post "too-long body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"$long\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
+    post "bad tag" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"star\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"tag"'
+    post "bad author name" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"<b>x</b>\",\"turnstile\":\"$(tok)\"}" 400 '"field":"author"'
+    post "missing turnstile token" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"$who\"}" 400 '"field":"turnstile"'
+    post "not JSON" "nope" 400 'body must be JSON'
+    post "unknown comet" "{\"comet_id\":\"C-9999\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 404 'no comet C-9999'
+    check "GET on the post route" "/api/comments" 405 'use POST'
+    burst="burst $$"
+    for i in 1 2 3 4 5; do curl -s -o /dev/null -X POST -H 'Content-Type: application/json' --data "{\"comet_id\":\"3I/ATLAS\",\"body\":\"burst $i\",\"author\":\"$burst\",\"turnstile\":\"$(tok)\"}" "$BASE/api/comments"; done
+    post "rate limit: 6th in a minute" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"burst 6\",\"author\":\"$burst\",\"turnstile\":\"$(tok)\"}" 429 'wait a minute'
+    # a token pays for one comment: the same token again is refused and adds nothing
+    t=$(tok)
+    post "fresh token accepted" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"replay 1\",\"author\":\"replay $$\",\"turnstile\":\"$t\"}" 201 '"body":"replay 1"'
+    post "reused token refused" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"replay 2\",\"author\":\"replay $$\",\"turnstile\":\"$t\"}" 403 'already used'
+    if curl -s -m 30 "$BASE/api/comets/3I%2FATLAS" | grep -q '"body":"replay 2"'; then echo "FAIL reused token left no comment"; fails=$((fails + 1)); else echo "PASS reused token left no comment"; fi
+    # the test widget's dummy token repeats on every load, so local dev does not claim it (a real secret refuses it)
+    for i in 1 2; do post "dummy token works twice locally ($i)" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"dummy $i\",\"author\":\"dummy $$\",\"turnstile\":\"XXXX.DUMMY.TOKEN.XXXX\"}" 201 "\"body\":\"dummy $i\""; done
+    # the rate limit holds when posts arrive at once: 10 in parallel, at most 5 get in
+    race="race $$"; dir=$(mktemp -d)
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      curl -s -m 30 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "{\"comet_id\":\"3I/ATLAS\",\"body\":\"race $i\",\"author\":\"$race\",\"turnstile\":\"$(tok)\"}" "$BASE/api/comments" > "$dir/$i" &
+    done; wait
+    ok=$(cat "$dir"/* | grep -o 201 | wc -l | tr -d ' '); limited=$(cat "$dir"/* | grep -o 429 | wc -l | tr -d ' '); rm -r "$dir"
+    if [ "$ok" = 5 ] && [ "$limited" = 5 ]; then echo "PASS 10 parallel posts: 5 accepted, 5 limited"; else echo "FAIL 10 parallel posts: $ok accepted, $limited limited"; fails=$((fails + 1)); fi ;;
+  *) echo "SKIP POST /api/comments checks (not a local server)" ;;
+esac
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
