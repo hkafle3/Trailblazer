@@ -212,7 +212,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band } }) => {
       frames.push({ px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, epochs: epochs(ts), year: year(mjd), exposures: arrs.length,
         lam: v.reduce((s, e) => s + e.lam, 0) / v.length, lam_spread: Math.max(...v.map(e => Math.abs(e.lam - lam0))),
         matched: Math.max(...v.map(e => Math.abs(e.lam - lam0))) <= tol, bw: v.reduce((s, e) => s + e.bw, 0) / v.length });
-      post({ type: 'frame', n, of: picked.length, ms: performance.now() - t0 });
+      post({ type: 'frame', n, of: picked.length, ms: performance.now() - t0, px: stack });   // px (a copy): the page can show it at once
     }
 
     // measure first, starting at the typed spot and following the source frame to frame

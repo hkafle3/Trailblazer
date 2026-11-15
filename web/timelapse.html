@@ -24,6 +24,8 @@
        Descriptions (with what the patch shows), then Options, Spectral, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
   <div class="pv-frame">
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
+    <!-- while a time-lapse builds: what it is doing and how far along (the status line in Descriptions says it to screen readers) -->
+    <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
     <div id="legend" aria-hidden="true">
       <div class="lg-row"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
       <!-- Color Difference's key, only while it is on: square swatches, since it is the photo's pixels that are coloured -->
@@ -739,6 +741,25 @@ function parseCoords(text) {
   const ra = sexa(parts[0], /[h:]/i.test(parts[0])), dec = sexa(parts[1], false);
   return Number.isFinite(ra) && Number.isFinite(dec) ? { ra, dec } : null;
 }
+// the frame's loading line (shown while body.busy): what the build is doing, and how much of it is done, 0 to 1
+function loading(text, done) {
+  document.getElementById('ld-text').textContent = text;
+  document.getElementById('ld-line').style.setProperty('--p', `${Math.round(100 * done)}%`);
+}
+// a frame as soon as it is built, while nothing else is on screen: stretched on its own, north up, the view's part of it
+function preview(px) {
+  const G = Math.round(Math.sqrt(px.length)), v = Array.from(px).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!v.length) return;
+  const lo = v[Math.floor(.05 * v.length)], hi = v[Math.floor(.997 * (v.length - 1))], A = Math.asinh(10), img = new ImageData(G, G);
+  for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) {   // the worker's rows run south to north
+    const x = px[(G - 1 - r) * G + c], g = Number.isFinite(x) ? Math.min(1, Math.asinh(Math.max(0, (x - lo) / (hi - lo)) * 10) / A) : 0;
+    img.data.set([255 * g, 247 * g, 235 * g, 255], 4 * (r * G + c));
+  }
+  const cw = Math.min(G, Math.round(state.fov * 60 / 5)), ch = Math.min(G, Math.round(cw * patch.height / patch.width));   // 5 arcsec pixels
+  const tmp = new OffscreenCanvas(G, G); tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, patch.width, patch.height);
+  ctx.drawImage(tmp, (G - cw) / 2, (G - ch) / 2, cw, ch, 0, 0, patch.width, patch.height);
+}
 function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
@@ -751,12 +772,13 @@ function search(ra, dec, det, opts = {}) {
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
   const t0 = performance.now(), id = job = ++builds;
   builder ??= new Worker('live/pipeline.js', { type: 'module' });
-  setStatus('Finding SPHEREx images of this spot...');
+  setStatus('Finding SPHEREx images of this spot...'); loading('Finding SPHEREx images', 0);
   if (opts.diff) setMode('lapse');   // a sky click lands on the time-lapse right away; frames arrive in seconds
   // a failed search goes back to the spot the frames on screen describe, when there are frames on screen
   // During a gesture it waits (owed) until the gesture ends: a move then builds its own spot, a cancel goes back.
   const fail = (text, hint, full) => {
     job = 0;
+    if (!state.m) ctx.clearRect(0, 0, patch.width, patch.height);   // no half-built preview left behind
     const went = back();
     owed = !went && !!state.m && state.mode !== 'sky' && rc.moving();
     setStatus(text + (went || owed ? ' Back at the last spot.' : hint), true);
@@ -766,8 +788,12 @@ function search(ra, dec, det, opts = {}) {
   builder.onerror = e => { e.preventDefault(); builder.terminate(); builder = null; if (id === job) fail('Could not load the image pipeline.', ' Try again in a moment.', e.message); };
   builder.onmessage = ({ data: m }) => {
     if (m.id !== job) return;
-    if (m.type === 'progress') setStatus(m.text + '...');
-    else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
+    if (m.type === 'progress') { setStatus(m.text + '...'); loading('Reading the images', 0); }
+    else if (m.type === 'frame') {
+      setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
+      loading(m.n + 1 < m.of ? `Building frame ${m.n + 2} of ${m.of}` : 'Measuring the motion', (m.n + 1) / m.of);
+      if (!state.m) preview(m.px);   // nothing on screen yet: show each frame as it is built
+    }
     else if (m.type === 'empty' && m.of != null) fail(`None of the ${m.of} visits here has channel ${ch + 1}.`, ' Try another channel.');
     else if (m.type === 'empty') fail(`No SPHEREx images of this spot on ${det} yet.`, ' Try another detector.');
     else if (m.type === 'error') fail(`${brief(m.error)}.`, ' The examples on the Explore page always work.', m.error);

@@ -184,6 +184,39 @@ async def main():
         await pg.click("label[for=diff]")
         print("PASS legend: all six items, the colour key too, sit whole inside the photo frame at 320, 390 and 1440 px")
 
+        # while a live time-lapse builds, the frame says what is happening, shows each frame as it is made while nothing
+        # else is on screen, and clears when the build lands; a re-centre out of the listed images shows it over the
+        # moved photo, and it clears when that search fails (the search is slowed, then refused)
+        SHOWN = "(() => { const s = getComputedStyle(document.getElementById('loading')); return s.visibility === 'visible' && +s.opacity > .9 ? document.getElementById('ld-text').textContent : ''; })()"
+        LIT = "(() => { if (__lapse.state.m) return -1; const c = document.getElementById('patch'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4 * 97) if (d[i] > 40) n++; return n; })()"
+        BUILT = "/visits, built/.test(document.getElementById('status').textContent)"
+        lp = await ctx.new_page(); lp.on("pageerror", lambda e: errors.append(str(e)))
+        await lp.set_viewport_size({"width": 1440, "height": 900})
+        await lp.goto(f"{BASE}/timelapse.html?ra=269.4463&dec=4.7922&det=D1")
+        seen, lit = [], 0
+        for _ in range(2400):   # 4 minutes at most: IRSA's search is slow on some days
+            t = await lp.evaluate(SHOWN)
+            if t and (not seen or seen[-1] != t): seen.append(t)
+            if t.startswith("Building frame") or t == "Measuring the motion": lit = max(lit, await lp.evaluate(LIT))
+            if await lp.evaluate(BUILT): break
+            await lp.wait_for_timeout(100)
+        await lp.wait_for_timeout(700)
+        assert any(t.startswith("Building frame") for t in seen) and lit > 0 and await lp.evaluate(SHOWN) == "", f"first build: the frame said {seen}, lit pixels before the photo {lit}, after: '{await lp.evaluate(SHOWN)}'"
+        async def refuse(route):
+            await asyncio.sleep(2.5)
+            try: await route.fulfill(status=502, content_type="application/json", body='{"error":"IRSA is not answering"}')
+            except Exception: pass
+        await lp.route("**/api/images**", refuse)
+        await lp.evaluate("__lapse.recenter([-4 * 3600 / 5, 0])")
+        await lp.wait_for_function(SHOWN, timeout=10000); during = await lp.evaluate(SHOWN)
+        await lp.wait_for_function("document.getElementById('status').className === 'err'", timeout=30000); await lp.wait_for_timeout(700)
+        after = await lp.evaluate(SHOWN)
+        assert during == "Finding SPHEREx images" and after == "" and "Back at the last spot" in await lp.text_content("#status"), f"re-centre: during '{during}', after '{after}'"
+        await lp.emulate_media(reduced_motion="reduce")
+        assert await lp.evaluate("getComputedStyle(document.getElementById('loading')).transitionDuration") == "0s", "the loading state still fades with less motion asked for"
+        await lp.close()
+        print(f"PASS loading: the frame says {' -> '.join(seen)}, shows frames as they are built, clears when the build lands; a failed re-centre shows it, then clears; no fade with less motion")
+
         assert not errors, f"page errors: {errors}"
         await b.close()
     print("PASS toggles: Heat, Hide Stationary and Color Difference each change the picture, alone and together, and undo cleanly")
