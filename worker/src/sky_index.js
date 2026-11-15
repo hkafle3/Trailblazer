@@ -115,26 +115,34 @@ async function pickOnce(read, ra, dec, det) {
     const c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
     const deep = Math.abs(eclipticLat(ra, dec)) > 75;
     const collections = Object.fromEntries((deep ? COLLS : COLLS.slice(0, 2)).map(k => [k, 0]));
-    if (!n) return { h, rows: [], collections };
+    // an empty cell is only an answer from the file the head came from: one small read checks it is still there, unchanged
+    if (!n) { await get(read, name, 0, 24, h.etag); return { h, rows: [], collections }; }
     const buf = (await get(read, name, h.rowsAt + h.first[c] * ROW, n * ROW, h.etag)).buf;
     const f64 = new Float64Array(buf), f32 = new Float32Array(buf), u16 = new Uint16Array(buf), u8 = new Uint8Array(buf);
     const x = Math.cos(dec * RAD) * Math.cos(ra * RAD), y = Math.cos(dec * RAD) * Math.sin(ra * RAD), z = Math.sin(dec * RAD);
     const rows = [], at = new Map(), d = [0, 0, 0, 0];   // at: obs number -> place in rows; d: the row's n . p per edge
     let resort = false;
+    const bad = i => { throw new Error(`${name}: row ${h.first[c] + i} has a value no index holds`); };
     for (let i = 0; i < n; i++) {
-      const coll = u8[i * ROW + 61];
-      if (coll > 3) throw new Error(`${name}: row ${h.first[c] + i} has collection ${coll}`);
+      // Every row of the cell is checked before it is used or skipped: its time, collection, folder, seq and sub in
+      // range, and four unit normals (NaN, infinite and zero-length ones fail the length test). Written out inline:
+      // this runs on every row, often before the code is warm, where a function call per row cost a millisecond.
+      const t = f64[i * 8], coll = u8[i * ROW + 61], j = i * 16 + 2;
+      if (!(t > 50000 && t < 80000) || coll > 3 || !h.folders[u16[i * 32 + 28]] || u16[i * 32 + 29] > 9999 || u8[i * ROW + 60] > 9) bad(i);
+      const a0 = f32[j], a1 = f32[j + 1], a2 = f32[j + 2], b0 = f32[j + 3], b1 = f32[j + 4], b2 = f32[j + 5];
+      const c0 = f32[j + 6], c1 = f32[j + 7], c2 = f32[j + 8], e0 = f32[j + 9], e1 = f32[j + 10], e2 = f32[j + 11];
+      const ma = a0 * a0 + a1 * a1 + a2 * a2 - 1, mb = b0 * b0 + b1 * b1 + b2 * b2 - 1, mc = c0 * c0 + c1 * c1 + c2 * c2 - 1, me = e0 * e0 + e1 * e1 + e2 * e2 - 1;
+      if (!(ma * ma + mb * mb + mc * mc + me * me < 1e-8)) bad(i);   // each |n|^2 within 1e-4 of 1; NaN fails too
       if (coll >= 2 && !deep) continue;
-      let j = i * 16 + 2, out = false, far = false;
-      for (let e = 0; e < 4; e++, j += 3) {
-        const v = f32[j] * x + f32[j + 1] * y + f32[j + 2] * z;
-        if (!Number.isFinite(v)) throw new Error(`${name}: row ${h.first[c] + i} has a broken footprint`);
-        d[e] = v; out ||= v < 0; far ||= v < TOL;
-        if (far) break;
-      }
-      if (far || (out && !nearOutside(f32, i * 16 + 2, x, y, z, d))) continue;
-      const fo = h.folders[u16[i * 32 + 28]], seq = u16[i * 32 + 29], sub = u8[i * ROW + 60], t = f64[i * 8];
-      if (!fo || seq > 9999 || sub > 9 || !(t > 50000 && t < 80000)) throw new Error(`${name}: row ${h.first[c] + i} has a value no index holds`);
+      d[0] = a0 * x + a1 * y + a2 * z; d[1] = b0 * x + b1 * y + b2 * z; d[2] = c0 * x + c1 * y + c2 * z; d[3] = e0 * x + e1 * y + e2 * z;
+      if (d[0] < TOL || d[1] < TOL || d[2] < TOL || d[3] < TOL) continue;
+      // within reach of the point: the footprint must be an image's before it is used or its corners worked out.
+      // Opposite edges face each other (n . n' is -0.998 for a 3.5 degree square) and neighbours are far from parallel;
+      // unit normals pointing anywhere else could cover half the sky. bake/sky_index.py checks the same at build time.
+      if (!(a0 * c0 + a1 * c1 + a2 * c2 < -0.99 && b0 * e0 + b1 * e1 + b2 * e2 < -0.99 && Math.abs(a0 * b0 + a1 * b1 + a2 * b2) < 0.5 &&
+        Math.abs(b0 * c0 + b1 * c1 + b2 * c2) < 0.5 && Math.abs(c0 * e0 + c1 * e1 + c2 * e2) < 0.5 && Math.abs(e0 * a0 + e1 * a1 + e2 * a2) < 0.5)) bad(i);
+      if ((d[0] < 0 || d[1] < 0 || d[2] < 0 || d[3] < 0) && !nearOutside(f32, j, x, y, z, d)) continue;
+      const fo = h.folders[u16[i * 32 + 28]], seq = u16[i * 32 + 29], sub = u8[i * ROW + 60];
       collections[COLLS[coll]]++;
       const id = (fo.p * 10000 + seq) * 10 + sub, had = at.get(id);
       if (had === undefined) { at.set(id, rows.length); rows.push(i); }

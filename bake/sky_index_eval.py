@@ -10,8 +10,9 @@ EVAL_DIR holds the IRSA answers (all fetched read-only):
   obscore_3I_Atlas.vot   IRSA's table of the images that caught 3I/ATLAS, with the comet's position in each
   edgepts.json           probe points near image edges, with their pixel position from astropy's exact inverse WCS
                          (eval/classify.py): they show whether SIA tests the s_region polygon or the WCS pixel box
-Every difference is explained by the image's margin: how far the point lies inside (+) or outside (-) its footprint
-polygon, in arcsec, from the headers. SIA's circle is 3.6 arcsec, so a true match has margin > -3.6.
+A difference counts as explained only by the image's margin: how far the point lies inside (+) or outside (-) its
+footprint polygon, in arcsec, from the headers. SIA's circle is 3.6 arcsec, so only a margin within 0.6 arcsec of -3.6
+(the circle's edge) explains an extra or a miss; anything else is UNEXPLAINED. self_test() proves a distant extra fails.
 Prints one line per position and exits non-zero if any difference is left unexplained.
 """
 import csv, glob, json, math, os, re, subprocess, sys
@@ -84,6 +85,15 @@ class Margins:
         return {self.meta[i]["obs"]: self.meta[i]["coll"] for i in np.nonzero(ok)[0] if deep or self.meta[i]["coll"] in WIDE}
 
 
+CIRCLE, BAND = 3.6, 0.6   # SIA's search circle (arcsec) and how far either side of it a disagreement counts as an edge effect
+
+
+def edge_effect(m):
+    """A disagreement over an image is explained only when the point sits within BAND of SIA's circle around it: m is
+    that image's margins (arcsec, negative outside); its nearest polygon must be between -4.2 and -3.0 arcsec."""
+    return bool(m) and abs(max(m) + CIRCLE) <= BAND
+
+
 def compare(name, ra, dec, got, want, M, deep, colls=None):
     """One line per position: exact matches, extras (index only), misses (IRSA only), with each difference explained."""
     g = {r["obs"]: r for r in got["images"] if colls is None or r["coll"] in colls}
@@ -98,13 +108,13 @@ def compare(name, ra, dec, got, want, M, deep, colls=None):
         notes.append(f"field difference {o}: index {g[o]} irsa {w[o]}"); unexplained += 1
     for o in extra:
         m = M.margin(o, ra, dec)
-        ok = m and max(m) <= -3.5   # just outside SIA's circle: an edge effect, not an error
+        ok = edge_effect(m)   # right at SIA's circle: an edge effect, not an error
         notes.append(f"extra {o} margin {m}\"" + ("" if ok else " UNEXPLAINED")); unexplained += not ok
     for o in miss:
         m = M.margin(o, ra, dec)
         if not m:
             notes.append(f"miss {o}: not in the bucket listing UNEXPLAINED"); unexplained += 1; continue
-        ok = max(m) < -3.5
+        ok = edge_effect(m)
         notes.append(f"miss {o} margin {m}\"" + ("" if ok else " UNEXPLAINED")); unexplained += not ok
     if bucket:
         notes.append(f"BUCKETING: {len(bucket)} images inside by brute force but not returned: {bucket[:5]}"); unexplained += len(bucket)
@@ -115,10 +125,28 @@ def compare(name, ra, dec, got, want, M, deep, colls=None):
     return unexplained
 
 
+def self_test(M):
+    """compare() must flag an extra image far from the point (Codex's check: one injected at about 353,000 arcsec passed
+    the old rule). Runs before every evaluation."""
+    import contextlib, io
+    m = M.meta[0]
+    c = M.C[0][0]   # one corner of the first image; its antipode is as far from that image as the sky allows
+    ra, dec = math.degrees(math.atan2(-c[1], -c[0])) % 360, math.degrees(math.asin(-c[2]))
+    row = {"t": m["t"], "key": m["key"], "obs": m["obs"], "coll": m["coll"]}
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        compare("self-test", ra, dec, {"images": [row]}, [], M, True, [m["coll"]])
+    line = next(l for l in out.getvalue().splitlines() if l.strip().startswith(f"extra {m['obs']}"))
+    assert line.endswith("UNEXPLAINED"), f"a distant extra image was explained away: {line}"
+    assert edge_effect([-3.4]) and edge_effect([-4.1]) and not edge_effect([-4.3]) and not edge_effect([-2.9]) and not edge_effect([])
+    print(f"self-test: an extra image {-M.margin(m['obs'], ra, dec)[0]:.0f} arcsec away is UNEXPLAINED, as it must be")
+
+
 def main():
     index_dir, headers, ev = Path(sys.argv[1]).resolve(), sys.argv[2], Path(sys.argv[3])
     det = int(sys.argv[4]) if len(sys.argv) > 4 else 1
     M = Margins(headers, det)
+    self_test(M)
     cases = []   # (name, ra, dec, want rows, collections compared or None)
 
     # 1. answers the live site saved from SIA
@@ -190,7 +218,7 @@ def main():
                 if not hit and not m:   # the headers cover every dr1 and qr3 file of this detector in the bucket listing
                     notes.append(f"miss {o}: no dr1 or qr3 file of this detector (qr2 had one), so neither SIA's dr1/qr3 nor the index has it")
                     continue
-                ok = not hit and m and max(m) < -3.5
+                ok = not hit and edge_effect(m)
                 notes.append(f"{'miss' if not hit else 't differs'} {o} margin {m}\"" + ("" if ok else " UNEXPLAINED"))
                 bad += not ok
         colls = sorted({r["obs_collection"].strip() for r in rows})

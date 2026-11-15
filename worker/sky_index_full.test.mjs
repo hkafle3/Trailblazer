@@ -1,6 +1,7 @@
 // The JSON writer against the object form, on the real index files (not in git; bake/sky_index.py builds them):
 //   SKY_INDEX_DIR=/path/to/index node --test worker/sky_index_full.test.mjs
-// For every detector: the north ecliptic pole, the cell with the most rows, and an ordinary spot on the ecliptic.
+// For every detector: the north ecliptic pole, the cell with the most rows, and an ordinary spot on the ecliptic;
+// and an answer at every cell's centre, so every row of every file passes the Worker's checks.
 // Its own file because skyImages keeps one parsed head per file name, and the fixture test uses d1.bin too.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,5 +27,24 @@ for (const det of [1, 2, 3, 4, 5, 6]) {
       const want = JSON.stringify({ ra, dec, det: `D${det}`, ...(await skyImages(read, ra, dec, det)), source: 'index' });
       assert.equal(await skyImagesJson(read, ra, dec, det), want, `D${det} at (${ra}, ${dec})`);
     }
+  });
+}
+
+// the centre of every cell of the grid (51 bands of Dec, about 3.5 degree steps of RA, as in sky_index.js)
+const centres = [];
+for (let b = 0; b < 51; b++) {
+  const n = Math.max(1, Math.round(360 * Math.cos((90 - (b + .5) * 180 / 51) * Math.PI / 180) / 3.5));
+  for (let k = 0; k < n; k++) centres.push([(k + .5) * 360 / n, 90 - (b + .5) * 180 / 51]);
+}
+
+for (const det of [1, 2, 3, 4, 5, 6]) {
+  // one answer per cell runs every row of the file through the Worker's own checks, so they never refuse a real image
+  test(`D${det}: an answer at every cell's centre, so every row passes the Worker's checks`, { skip: !dir && 'set SKY_INDEX_DIR to run' }, async () => {
+    let images = 0;
+    for (const [c, [ra, dec]] of centres.entries()) {
+      assert.equal(cellAt(ra, dec), c);
+      images += (await skyImages(read, ra, dec, det)).images.length;
+    }
+    assert.ok(images > 100000, `D${det}: ${images} images over all cell centres`);
   });
 }

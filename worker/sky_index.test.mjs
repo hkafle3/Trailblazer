@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { skyImages, skyImagesJson, skyHead, cellAt, eclipticLat } from './src/sky_index.js';
 
+
 const dir = new URL('./fixtures/sky/', import.meta.url);
 const A = readFileSync(new URL('d1.bin', dir)), B = readFileSync(new URL('d1_b.bin', dir));
 const saved = JSON.parse(readFileSync(new URL('barnard_d1.json', dir)));
@@ -98,6 +99,49 @@ test('a truncated file, a short read and corrupt values throw (the Worker then a
     await assert.rejects(skyImages(read, saved.ra, saved.dec, 1), /row \d+ has/, label);
     await assert.rejects(skyImagesJson(read, saved.ra, saved.dec, 1), /row \d+ has/, label);
   }
+  use(A, 'A');
+});
+
+// A's layout, and a copy of A with `edit(view, rowOffset)` applied to every row of one cell
+const layout = (() => {
+  const v = new DataView(A.buffer, A.byteOffset), cells = v.getUint32(12, true), size = 24 + 4 * (cells + 1) + v.getUint32(20, true);
+  return { cells, rowsAt: size + (-size & 7), first: c => v.getUint32(24 + 4 * c, true) };
+})();
+const editCell = (ra, dec, edit) => {
+  const c = Buffer.from(A), w = new DataView(c.buffer, c.byteOffset), cell = cellAt(ra, dec);
+  for (let i = layout.first(cell); i < layout.first(cell + 1); i++) edit(w, layout.rowsAt + i * 64, i - layout.first(cell));
+  return c;
+};
+
+test('broken footprints throw even where the row would not match: zero normals, and NaN behind a failing edge', async () => {
+  // all normals zero: every n . p is 0, which passed the old edge test, so every row "matched"
+  use(editCell(268, 5.5, (w, o) => { for (let k = 0; k < 12; k++) w.setFloat32(o + 8 + 4 * k, 0, true); }), 'zero');
+  await assert.rejects(skyImages(read, 268, 5.5, 1), /row \d+ has/);
+  // one row: its first edge faces away from Barnard's Star (so the old loop stopped there) and its last normal is NaN
+  const r = saved.ra * Math.PI / 180, d = saved.dec * Math.PI / 180, p = [Math.cos(d) * Math.cos(r), Math.cos(d) * Math.sin(r), Math.sin(d)];
+  use(editCell(saved.ra, saved.dec, (w, o, k) => {
+    if (k) return;
+    p.forEach((x, m) => w.setFloat32(o + 8 + 4 * m, -x, true));
+    w.setFloat32(o + 8 + 36, NaN, true);
+  }), 'nan-behind');
+  await assert.rejects(skyImages(read, saved.ra, saved.dec, 1), /row \d+ has/);
+  use(A, 'A');
+});
+
+test('an empty cell is checked against the file too: replaced by a full one, or deleted', async () => {
+  // E: A's head with no rows at all, a valid empty index
+  const E = Buffer.from(A.subarray(0, layout.rowsAt)), w = new DataView(E.buffer, E.byteOffset);
+  w.setUint32(16, 0, true);
+  for (let c = 0; c <= layout.cells; c++) w.setUint32(24 + 4 * c, 0, true);
+  use(E, 'E');
+  assert.deepEqual((await skyImages(read, saved.ra, saved.dec, 1)).images, []);
+  use(A, 'A');   // replaced: the empty answer cached in the head must not be trusted
+  assert.deepEqual((await skyImages(read, saved.ra, saved.dec, 1)).images, saved.images);
+  use(E, 'E');
+  await skyImages(read, saved.ra, saved.dec, 1);
+  file = { bytes: null, etag: null };   // deleted: every read fails, so the Worker asks IRSA
+  const gone = async (name, off, len) => { if (!file.bytes) throw new Error(`${name} is not in the sky index bucket`); return read(name, off, len); };
+  await assert.rejects(skyImages(gone, saved.ra, saved.dec, 1), /not in the sky index bucket/);
   use(A, 'A');
 });
 

@@ -163,6 +163,13 @@ def cells_of(H, C, N):
 
 def build(meta, H, out_dir):
     C = corners(H); N = normals(C)
+    # the footprint checks worker/src/sky_index.js applies, here for every row: unit normals, opposite edges facing each
+    # other, neighbours far from parallel
+    dot = lambda a, b: (N[:, a] * N[:, b]).sum(-1)
+    bad = ~((abs((N * N).sum(-1) - 1) < 1e-6).all(-1) & (dot(0, 2) < -0.99) & (dot(1, 3) < -0.99) &
+            (abs(dot(0, 1)) < 0.5) & (abs(dot(1, 2)) < 0.5) & (abs(dot(2, 3)) < 0.5) & (abs(dot(3, 0)) < 0.5))
+    if bad.any():
+        sys.exit(f"{bad.sum()} images have a footprint the Worker would refuse, e.g. {meta[int(np.argmax(bad))]['key']}")
     cells = cells_of(H, C, N)
     det = meta[0]["det"]
     folders = sorted({m["folder"] for m in meta}); fidx = {f: i for i, f in enumerate(folders)}
