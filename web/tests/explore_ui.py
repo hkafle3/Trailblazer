@@ -90,6 +90,16 @@ async def main():
             if touch == "#map": assert await pg.is_visible("#pin .pincard"), "a click on the sky during the replay dropped no pin"
         print("PASS replay: a click on the sky, the timeline or the handle stops it where it is")
 
+        # on a phone the featured card sits under the map, all in view, on every day the replay passes (3I/ATLAS is near
+        # the map's right edge on day 200, where on a wide screen its card goes to the left of the dot)
+        phone = await b.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+        await phone.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+        p3 = await phone.new_page(); await p3.goto(BASE + "/explore?day=200"); await p3.wait_for_selector("#card-comet:not([hidden])")
+        r = await p3.evaluate("(() => { const r = document.getElementById('card-comet').getBoundingClientRect(); return [r.left, r.right]; })()")
+        assert r[0] >= 0 and r[1] <= 390, f"phone, day 200: the 3I/ATLAS card runs off the screen ({r})"
+        await phone.close()
+        print("PASS phone: the 3I/ATLAS card stays in view under the map on day 200")
+
         # off by default: exactly the comets bright enough on the day, plus 3I/ATLAS (always findable, dimmed)
         for day in [DEFAULT, 120]:
             await explore(pg, "/explore.html" if day == DEFAULT else f"/explore.html?day={day}")
