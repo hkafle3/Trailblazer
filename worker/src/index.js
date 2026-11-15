@@ -261,7 +261,7 @@ const tallies = async (db) => {
     (out[comet_id] ??= { comet: 0, asteroid: 0, glitch: 0, unsure: 0 })[tag] = n;
   return out;
 };
-const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, tail: c.tail, real: !!c.real, example: !c.real,
+const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, tail: c.tail, real: !!c.real,
   ...(c.track ? { track: JSON.parse(c.track) } : {}),   // [[day, ra, dec], ...] every 10 days: where a known comet was
   ...(c.kind === 'comet' ? { tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 } } : {}),
   ...(c.visit ? { candidate: true, det: c.det, visit: c.visit, author: c.author, created_at: c.created_at } : {}) });   // reported from a time-lapse
