@@ -193,10 +193,12 @@ function panel(m) {
   document.getElementById('vWave').innerHTML = `<span class="${matched === m.frames.length ? 'ok' : 'warn'}">${matched} of ${m.frames.length} visits</span> within ${m.lam_tol.toFixed(3)} µm, detector ${m.detector}`;
   // evenly spaced ticks, one per visit: visits can be a month or a year apart, and real-time spacing made labels collide
   const track = document.getElementById('track'); track.querySelectorAll('.tick').forEach(t => t.remove());
+  // every month label only when the ticks are at least 80 px apart (a month label is about 60 px wide); otherwise the two ends
+  const roomy = m.frames.length < 2 || 0.84 * track.clientWidth / (m.frames.length - 1) >= 80;
   m.frames.forEach((f, n) => {
     const b = document.createElement('button'); b.className = 'tick'; b.style.left = `${8 + 84 * n / Math.max(1, m.frames.length - 1)}%`;
-    // many visits (deep fields), or more than 3 on a phone: month labels on the end ticks only, so they don't collide; every tick keeps its aria-label
-    b.innerHTML = `<span class="m"></span>${m.frames.length <= (innerWidth < 640 ? 3 : 5) || n === 0 || n === m.frames.length - 1 ? monthYear(f.start) : ''}`;
+    // every tick keeps its aria-label, labelled or not
+    b.innerHTML = `<span class="m"></span>${roomy || n === 0 || n === m.frames.length - 1 ? monthYear(f.start) : ''}`;
     b.setAttribute('aria-label', `Visit ${monthYear(f.start)}`);
     b.onclick = () => { stop(); state.i = n; draw(); };
     track.appendChild(b);
