@@ -5,7 +5,8 @@ double click, the + button or a scroll that stops short (the aim's outline fills
 threshold dives; the address is the time-lapse's, at the middle of the view within 0.1 degree; the time-lapse fills the
 window; back shows the map exactly where it was, forward dives again; "Dive in" does the same; scrolling out past the
 widest view in the time-lapse comes back to the map; a time-lapse loaded ahead of a dive counts no heat-map check
-until it is on screen; the sky tiles the flying frame shows line up with the first real frame; a reload of the time-lapse's address is the page on its own, and back from it opens Explore
+until it is on screen; the sky tiles the flying frame shows line up with the first real frame; a time-lapse opened by a link stops at its widest view
+and stays; a reload of the time-lapse's address is the page on its own, and back from it opens Explore
 on the same view with no replay.
 Reduced motion: no flight (the dive is never part-way), the time-lapse takes the map's place, back swaps it back.
 Phone: a one-finger pan and a pinch that only arrives at the deepest zoom do not dive; a pinch that starts there does;
@@ -18,18 +19,18 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 VIEW = "(async () => { const v = await import('/explore-view.js'); return v.A ? { W: v.W, X: v.X, Y: v.Y, max: v.atMax(), mid: [v.A.w / 2, (v.A.t + v.A.b) / 2], sky: v.skyAt(v.A.w / 2, (v.A.t + v.A.b) / 2) } : null; })()"
 DIVE = "window.__diveState()"
 AIM = "(() => { const a = document.getElementById('dive-aim'); return { on: !a.hidden && getComputedStyle(a).visibility !== 'hidden', fill: 1 - parseFloat(document.getElementById('aim-ring').style.strokeDashoffset || 1) }; })()"
-# The sky tiles the flying frame shows against the first real frame, both on the frame's 12 arcmin grid (5 arcsec a pixel):
+# The sky the flying frame shows (its copy of the deep layer's tiles) against the first real frame, both on the frame's 12 arcmin grid (5 arcsec a pixel):
 # the best match of brightness over shifts of up to 8 pixels, as drawn and for three wrong orientations.
-REGISTER = """() => { const L = window.__diveLayers(), N = 144, deg = 0.2;
+REGISTER = """() => { const N = 144, sky = window.__diveSky(0.2, N), shot = window.__diveShot();
   const lum = (src, sw, sx, sy, flipx, flipy) => { const c = new OffscreenCanvas(N, N), g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
     if (flipx || flipy) { g.translate(flipx ? N : 0, flipy ? N : 0); g.scale(flipx ? -1 : 1, flipy ? -1 : 1); }
     g.drawImage(src, sx, sy, sw, sw, 0, 0, N, N); const d = g.getImageData(0, 0, N, N).data, o = new Float32Array(N * N); for (let i = 0; i < N * N; i++) o[i] = d[4 * i]; return o; };
-  const sky = L.skies[0], px = sky.width * deg / L.fov[0], a = lum(sky, px, (sky.width - px) / 2, (sky.height - px) / 2);
+  const a = lum(sky, N, 0, 0);
   const corr = (b, dx, dy) => { let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0, n = 0; for (let y = 30; y < N - 30; y++) for (let x = 30; x < N - 30; x++) { const p = a[y * N + x], q = b[(y + dy) * N + x + dx]; sa += p; sb += q; saa += p * p; sbb += q * q; sab += p * q; n++; }
     return (sab - sa * sb / n) / Math.sqrt((saa - sa * sa / n) * (sbb - sb * sb / n)); };
   const out = {};
   for (const [name, fx, fy] of [['as drawn', 0, 0], ['mirrored left-right', 1, 0], ['upside down', 0, 1], ['rotated 180', 1, 1]]) {
-    const b = lum(L.shot, L.shot.width, 0, 0, fx, fy); let best = [-2, 0, 0];
+    const b = lum(shot, shot.width, 0, 0, fx, fy); let best = [-2, 0, 0];
     for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) { const c = corr(b, dx, dy); if (c > best[0]) best = [c, dx, dy]; }
     out[name] = [+best[0].toFixed(3), best[1], best[2]]; }
   return out; }"""
@@ -71,7 +72,10 @@ async def point(pg, x, y):
 
 
 async def same_view(pg, before, name):
-    v = await pg.evaluate(VIEW)
+    for _ in range(30):   # a view put back as the page opens settles once the timeline has risen into place
+        v = await pg.evaluate(VIEW)
+        if v and all(abs(v[k] - before[k]) < 0.5 for k in "WXY"): break
+        await asyncio.sleep(0.1)
     check(name, v and all(abs(v[k] - before[k]) < 0.5 for k in "WXY"), f"{[round(before[k], 1) for k in 'WXY']} -> {[round(v[k], 1) for k in 'WXY'] if v else None}")
 
 
@@ -150,16 +154,16 @@ async def desktop(browser):
     check("the time-lapse builds ahead of the dive (needs the image search to answer)", built)
     await asyncio.sleep(0.3)
     check("a time-lapse loaded ahead counts no check", len(posts) == 0, str(len(posts)))
-    if await until(pg, "window.__diveLayers()?.shot && window.__diveLayers().skies[0]", 20000):
-        reg = await pg.evaluate(REGISTER)
-        best = reg["as drawn"]
-        check("the sky tiles in the flying frame line up with the first real frame (within one 5 arcsec pixel, right way round)",
-              abs(best[1]) <= 1 and abs(best[2]) <= 1 and all(best[0] > v[0] + 0.1 for k, v in reg.items() if k != "as drawn"), str(reg))
-    else: check("the sky tiles and the first frame are there to compare", False)
     await pg.locator("#dive-go").click()
     check("Dive in dives", await until(pg, f"{DIVE}?.phase === 'open'") and spot(pg.url) is not None, pg.url)
     await asyncio.sleep(0.5)
     check("on screen it counts one check", len(posts) == 1, str(len(posts)))
+    if await until(pg, "window.__diveSky(0.2, 8) && window.__diveShot()", 20000):
+        reg = await pg.evaluate(REGISTER)
+        best = reg["as drawn"]
+        check("the sky in the flying frame (the deep layer's tiles) line up with the first real frame (within one 5 arcsec pixel, right way round)",
+              abs(best[1]) <= 1 and abs(best[2]) <= 1 and all(best[0] > v[0] + 0.1 for k, v in reg.items() if k != "as drawn"), str(reg))
+    else: check("the sky tiles and the first frame are there to compare", False)
     check("no picture is left over the photo", await until(pg, "getComputedStyle(document.querySelector('iframe.dive-frame').contentDocument.getElementById('hold')).visibility === 'hidden'"))
 
     # scroll out in the time-lapse: to the widest view, then a new scroll goes back to the map
@@ -178,6 +182,15 @@ async def desktop(browser):
     await pg.reload()
     await pg.wait_for_selector("#patch")
     check("a reload of the address is the time-lapse page itself", await pg.evaluate("self === top && !!document.getElementById('patch') && !document.querySelector('.xstage')"))
+    # a time-lapse opened by a link, not a dive: scrolling out stops at the widest view and stays on the page
+    direct = await ctx.new_page(); direct.cdp = await ctx.new_cdp_session(direct)
+    await direct.goto(f"{BASE}/timelapse.html?target=barnard")
+    await direct.wait_for_function("window.__lapse?.state.m")
+    p = await direct.locator("#patch").bounding_box()
+    await point(direct, p["x"] + p["width"] / 2, p["y"] + p["height"] / 2)
+    await scroll(direct, 30, 100); await asyncio.sleep(0.4); await scroll(direct, 12, 100); await asyncio.sleep(0.8)
+    check("a time-lapse opened directly stops at its widest view and stays", "timelapse" in direct.url and await direct.evaluate("!!window.__lapse && document.getElementById('fov').value === '1' && !document.querySelector('.pv-frame').style.transform"), direct.url)
+    await direct.close()
     await pg.go_back()
     await pg.wait_for_function("document.body.dataset.ready === '1'")
     await asyncio.sleep(0.4)
@@ -198,7 +211,7 @@ async def reduced(browser):
     await scroll(pg, 7)
     check("reduced motion: the scroll opens the time-lapse", await until(pg, f"{DIVE}?.phase === 'open'") and spot(pg.url) is not None, pg.url)
     ts = await pg.evaluate("window.__ts")
-    check("reduced motion: no flight, the dive is never part-way", all(t in (0, 1) for t in ts) and await pg.evaluate("document.querySelector('.map-wrap').style.scale") in ("", "6"), str(sorted(set(ts))[:6]))
+    check("reduced motion: no flight, the dive is never part-way", all(t in (0, 1) for t in ts) and await pg.evaluate("document.querySelector('.map-wrap').style.scale") in ("", "1", "6"), str(sorted(set(ts))[:6]))
     await pg.evaluate("window.__ts = []")
     await pg.go_back()
     check("reduced motion: back shows the map", await until(pg, f"{DIVE} === null") and "/explore" in pg.url)

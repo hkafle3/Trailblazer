@@ -199,11 +199,10 @@ if (EMBED) {
     e.preventDefault(); tellMap({ type: 'dive-out' });
   });
 }
-// back to the map where it was: the dive's frame closes; a page that came from Explore goes back; else Explore opens
-const fromMap = () => { try { return /\/explore(\.html)?$/.test(new URL(document.referrer).pathname) && new URL(document.referrer).origin === location.origin; } catch { return false; } };
+// back to the map where it was: the dive's frame closes; the dive's address reloaded as its own page goes back
 function toMap() {
   if (EMBED) tellMap({ type: 'dive-out' });
-  else if ((fromDive || fromMap()) && history.length > 1) history.back();
+  else if (fromDive && history.length > 1) history.back();
   else location.href = 'explore.html';
 }
 // The dive hands over the last picture it showed of this spot (the sharpest sky it had, or the first frame). It lies
@@ -1239,7 +1238,7 @@ fov.oninput = () => { setFov(); draw(); };
 // the wheel, a pinch and +/- on the photo (live/recenter.js) move the same bar: k times the width, in the bar's 0.5
 // arcmin steps, about the middle. `want` keeps small trackpad steps adding up between bar steps. Zooming only crops
 // the frames already built (no fetch), so the photo redraws at once, once per screen refresh.
-// At the widest view, zooming out again goes back to the map (toMap). Only a zoom that starts at the widest view counts
+// In a time-lapse opened by Explore's dive, zooming out again at the widest view goes back to the map (toMap). Only a zoom that starts at the widest view counts
 // (180 ms with no zoom step ends one, by a timer, so a busy page's held-back wheel events are not a pause): a long
 // scroll or pinch that just arrives there stays on this page. The photo shrinks a little as it adds up, and springs
 // back if it stops short.
@@ -1248,7 +1247,7 @@ const frameEl = document.querySelector('.pv-frame'), OUT = Math.log(1.8);
 let zoomRest = true, zoomRestT = 0, outOk = false, outPush = 0, outSpring = 0;
 const lean = p => { outPush = p; frameEl.style.transform = p ? `scale(${(1 - .07 * Math.min(1, p / OUT)).toFixed(4)})` : ''; };
 function zoomBy(k) {
-  if (zoomRest) outOk = state.fov >= 12 && !!state.m;
+  if (zoomRest) outOk = (EMBED || fromDive) && state.fov >= 12 && !!state.m;   // only a time-lapse a dive opened: one opened by a link just stops at its widest
   zoomRest = false; clearTimeout(zoomRestT); zoomRestT = setTimeout(() => { zoomRest = true; }, 180);
   if (k > 1 && outOk) {
     clearTimeout(outSpring); outSpring = setTimeout(() => lean(0), 500);
