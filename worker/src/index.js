@@ -427,8 +427,27 @@ export default {
     const key = new URL(url); key.searchParams.set('cache', 'v2');
     const cache = caches.default, hit = await cache.match(key);
     if (hit) return hit;
-    const res = await route(url);
+    const res = await withSaved(route, url, env, ctx);
     if (res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '')) ctx.waitUntil(cache.put(key, res.clone()));
     return res;
   }
 };
+
+// IRSA's image search answered 502 for hours on 2026-11-15. Every complete answer is also kept in D1, and when the
+// service fails (or answers only in part) the last complete answer to that exact search is served instead, uncached,
+// so a spot that worked once keeps working through an outage and fresh answers return as soon as the service does.
+async function withSaved(route, url, env, ctx) {
+  const k = new URL(url); k.searchParams.sort();
+  const id = k.pathname + k.search, res = await route(url);
+  const complete = res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '');
+  if (complete) {
+    const body = await res.clone().text();
+    ctx.waitUntil(env.DB.prepare('INSERT INTO searches (key, body, saved_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET body = excluded.body, saved_at = excluded.saved_at')
+      .bind(id, body, Date.now()).run().catch(e => console.warn('saving search', e)));   // too big for a row (2 MB) or D1 down: just not saved
+    return res;
+  }
+  if (res.status !== 200 && res.status < 500) return res;   // a bad request stays an error
+  const row = await env.DB.prepare('SELECT body, saved_at FROM searches WHERE key = ?').bind(id).first().catch(() => null);
+  if (!row) return res;
+  return new Response(row.body, { status: 200, headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'no-store', 'X-Saved-At': new Date(row.saved_at).toISOString() } });
+}
