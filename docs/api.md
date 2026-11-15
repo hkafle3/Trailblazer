@@ -207,16 +207,16 @@ The frame is the median of its exposures, so a fast asteroid usually leaves no d
 
 ## GET /api/explored (D1)
 
-Which patch-sized sky cells people have checked, for the heat map, and one cell nobody has checked. Never cached, so a spot shows on the map as soon as someone opens it.
+Which patch-sized sky cells people have checked, for the heat map, and one of the least-checked cells to suggest. Never cached, so a spot shows on the map as soon as someone opens it, and each visit gets a fresh suggestion.
 
 ```json
 { "total": 3339,
   "cells": [ { "ra_min": 266.4, "ra_max": 269.9, "dec_min": 3.5, "dec_max": 7.1, "checks": 3 } ],
-  "suggest": { "ra": 77, "dec": 30.4 } }
+  "suggest": { "ra": 211.46, "dec": -3.53 } }
 ```
 
 - `cells` lists only cells with `checks > 0`. The grid is 51 bands of Dec, each split into about 3.5 degree steps of RA (the size of one SPHEREx patch). A cell's number is its position in that grid, counting band by band from the north pole.
-- `suggest` is RW Aurigae's patch while nobody has checked it, then the unchecked cell nearest to it.
+- `suggest` is the centre of a cell picked at random, on every request, from the cells with the fewest checks (unchecked ones while any are left). Only cells that make a good first look are picked: more than 10 degrees from the Milky Way plane (galactic latitude), where the crowd of stars hides moving dots, and less than 75 degrees from the ecliptic, outside the polar caps that SPHEREx's deep survey covers. That list is worked out once per Worker isolate, so a request only counts.
 
 ## POST /api/checks (D1)
 
