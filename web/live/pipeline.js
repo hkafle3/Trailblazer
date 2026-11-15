@@ -105,7 +105,8 @@ const date = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
 self.onmessage = async ({ data: { ra, dec, det, api } }) => {
   try {
     const t0 = performance.now();
-    const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}`);
+    // v=2: a browser may still hold a failed search that the old Worker let it cache for a day (2026-11-14)
+    const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}&v=2`);
     const found = await res.json();
     if (!res.ok) return post({ type: 'error', error: found.error || `HTTP ${res.status}` });
     if (!found.images.length) return post({ type: 'empty' });
