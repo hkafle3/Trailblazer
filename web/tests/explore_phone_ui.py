@@ -4,11 +4,11 @@ Checks: the page never scrolls, down or sideways; a first touch stops the replay
 by the drag within 2 px); two fingers zoom around their midpoint (a marker's distance from it grows by the zoom within 3%)
 while the page's own zoom stays 1 and dots and names keep their pixel size; a double tap zooms in 2x; the whole-sky
 button goes to the whole oval and back; Layers opens a bottom sheet with rows of 44 px or more whose checkboxes switch
-the layers; tapping 3I/ATLAS opens a peek sheet and stays on the page, a swipe up expands it, its arrow opens the comet
-page; every tap target on screen is 44 px or more (markers by their invisible tap circle); sheet and timeline tops are a
+the layers; tapping the featured comet opens its own peek sheet and stays on the page, a swipe up expands it, its arrow opens
+the comet page; where tap circles overlap (a dot within 44 px of another), tapping each dot opens that object's own sheet; every tap target on screen is 44 px or more (markers by their invisible tap circle); sheet and timeline tops are a
 straight 2 px white rule on square corners.
 Run: uv run -q --with playwright python web/tests/explore_phone_ui.py [base url]   (default http://127.0.0.1:8787)"""
-import asyncio, math, pathlib, re, subprocess, sys
+import asyncio, math, pathlib, re, subprocess, sys, urllib.parse
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
@@ -40,6 +40,14 @@ SMALL = """() => { const bad = [], seen = e => { const r = e.getBoundingClientRe
 LABELS = """() => { const r = [...document.querySelectorAll('.tl-tick b, .tl-tick small')].filter(e => getComputedStyle(e).visibility !== 'hidden').map(e => [e.textContent, e.getBoundingClientRect()]);
   const bad = []; for (const [i, [a, ra]] of r.entries()) for (const [b, rb] of r.slice(i + 1)) if (ra.left < rb.right + 3 && rb.left < ra.right + 3 && ra.top < rb.bottom && rb.top < ra.bottom) bad.push(a + '/' + b);
   return [r.length, bad, r.every(([, x]) => x.left >= 0 && x.right <= innerWidth)]; }"""
+# a marker's dot centre by its name
+DOT = """n => { const m = [...document.querySelectorAll('#marks .mk')].find(m => m.querySelector('b')?.textContent === n), r = m.querySelector('i').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }"""
+# visible markers on screen whose dots sit within 44 px of another's (their tap circles overlap): names, closest first
+CLOSE = """() => { const ms = [...document.querySelectorAll('#marks .mk')].filter(m => getComputedStyle(m).display !== 'none' && m.style.visibility !== 'hidden' && !m.hidden)
+    .map(m => { const r = m.querySelector('i').getBoundingClientRect(); return [m.querySelector('b')?.textContent, r.left + r.width / 2, r.top + r.height / 2]; })
+    .filter(([n, x, y]) => n && x > 30 && x < innerWidth - 30 && y > 120 && y < innerHeight - 200);
+  const pairs = []; for (const [i, a] of ms.entries()) for (const b of ms.slice(i + 1)) { const d = Math.hypot(a[1] - b[1], a[2] - b[2]); if (d < 44) pairs.push([a[0], b[0], d]); }
+  return pairs.sort((p, q) => p[2] - q[2]); }"""
 RULE = """sel => { const e = document.querySelector(sel), s = getComputedStyle(e);
   return [s.borderTopWidth, s.borderTopColor, s.borderTopLeftRadius, s.borderTopRightRadius]; }"""
 
@@ -191,14 +199,18 @@ async def main():
         assert not await pg.evaluate("document.getElementById('layers').open"), "a swipe down did not close Layers"
         print(f"PASS layers: a bottom sheet with {len(rows)} rows of {min(rows):.0f} px or more; Heat map and Known objects switch; X and a swipe down close it")
 
-        # tap 3I/ATLAS: a peek sheet, the page stays; swipe up expands it; its arrow opens the comet page
+        # tap the featured comet (it depends on the day): its own peek sheet, the page stays; swipe up expands it; its arrow opens the comet page
         await home(pg, t)
-        dot = await pg.evaluate("(() => { const r = document.querySelector('.mk.sel i').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
-        await t.tap(dot[0] + 12, dot[1] + 12); await pg.wait_for_timeout(500)   # inside the 44 px tap circle, off the 6 px dot
+        # 12 px off the 6 px dot, inside its 44 px tap circle, on the side away from the nearest other dot
+        want, tx, ty = await pg.evaluate("""(() => { const at = m => { const r = m.querySelector('i').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+          const s = document.querySelector('.mk.sel'), [x, y] = at(s);
+          const o = [...document.querySelectorAll('#marks .mk')].filter(m => m !== s && getComputedStyle(m).display !== 'none' && !m.hidden).map(at).sort((a, b) => Math.hypot(a[0] - x, a[1] - y) - Math.hypot(b[0] - x, b[1] - y))[0];
+          const a = o ? Math.atan2(y - o[1], x - o[0]) : Math.PI / 4; return [s.querySelector('b').textContent, x + 12 * Math.cos(a), y + 12 * Math.sin(a)]; })()""")
+        await t.tap(tx, ty); await pg.wait_for_timeout(500)
         sheet = pg.locator("#csheet")
-        assert await sheet.is_visible() and (await pg.evaluate("location.pathname")).startswith("/explore"), "tapping 3I/ATLAS did not open the peek sheet, or left the page"
+        assert await sheet.is_visible() and (await pg.evaluate("location.pathname")).startswith("/explore"), f"tapping {want} did not open the peek sheet, or left the page"
         name, what, when = [await sheet.locator(f"[data-f={f}]").text_content() for f in ("name", "what", "when")]
-        assert name == "3I/ATLAS" and what == "CO2 glow detected" and when.startswith("Position on "), f"sheet: {name!r} {what!r} {when!r}"
+        assert name == want and what and when.startswith("Position on "), f"tapped {want}, sheet: {name!r} {what!r} {when!r}"
         peek = (await sheet.bounding_box())["height"]
         bad = await pg.evaluate(SMALL)
         assert not bad, f"tap targets under 44 px with the sheet open: {bad}"
@@ -209,8 +221,8 @@ async def main():
         assert not bad, f"tap targets under 44 px with the sheet expanded: {bad}"
         rules = {s: await pg.evaluate(RULE, s) for s in ("#csheet", ".tl")}
         await t.tap(*await center(pg, "#csheet .ch .go"))
-        await pg.wait_for_url(re.compile(r"/comet(\.html)?\?id=3I%2FATLAS"), timeout=5000)
-        print(f"PASS comet: a tap opens a {peek:.0f} px peek ({name}, {what}, {when}) on the same page; a swipe up expands it to {full:.0f} px; its arrow opens the comet page")
+        await pg.wait_for_url(re.compile(r"/comet(\.html)?\?id=" + re.escape(urllib.parse.quote(name, safe="()!*'"))), timeout=5000)
+        print(f"PASS comet: a tap on {want} opens a {peek:.0f} px peek ({name}, {what}, {when}) on the same page; a swipe up expands it to {full:.0f} px; its arrow opens the comet page")
         print("PASS tap targets: every control, link and marker tap circle on screen is 44 px or more (resting, Layers open, peek, expanded)")
 
         # straight top rules: computed, then the stylesheet scan
@@ -222,6 +234,20 @@ async def main():
         out = subprocess.run(["node", str(pathlib.Path(__file__).with_name("straight_rules.mjs"))], capture_output=True, text=True)
         assert out.returncode == 0, out.stdout + out.stderr
         print("PASS straight rules: timeline, Layers sheet and comet sheet tops are 2 px white on square corners; " + out.stdout.strip())
+
+        # overlapping tap circles: on day 529 C/2026 A2 (Bok) sits 13 px from Deep field 53x. Tapping each dot opens its own sheet
+        await pg.goto(BASE + "/explore.html?day=529"); await pg.wait_for_selector("body[data-ready='1']")
+        await pg.wait_for_function(f"!({PLAYING})", timeout=60000); await pg.wait_for_timeout(1200)
+        pairs = await pg.evaluate(CLOSE)
+        assert pairs, "no two dots within 44 px of each other on day 529: this check has nothing to test"
+        tapped = []
+        for n in dict.fromkeys(x for p in pairs for x in p[:2]):
+            await t.tap(*await pg.evaluate(DOT, n)); await pg.wait_for_timeout(500)
+            got = await pg.locator("#csheet [data-f=name]").text_content()
+            assert await pg.locator("#csheet").is_visible() and got == n, f"tapped the dot of {n!r}, the sheet shows {got!r} (pairs {pairs})"
+            tapped.append(n)
+            await t.tap(*await center(pg, "#csheet .sheet-x")); await pg.wait_for_timeout(400)
+        print(f"PASS overlap: {len(pairs)} pair(s) of dots under 44 px apart (closest {pairs[0][0]} and {pairs[0][1]}, {pairs[0][2]:.0f} px); tapping each dot opens its own sheet ({', '.join(tapped)})")
 
         # a small phone (iPhone SE, 320 x 568): still no scroll, labels apart, controls 44 px
         await pg.set_viewport_size({"width": 320, "height": 568}); await pg.goto(BASE + "/explore.html?day=529"); await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_timeout(1200)
