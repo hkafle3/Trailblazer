@@ -1,5 +1,5 @@
 // Comet page: one comet from /api/comets/:id (D1). Real comets carry measured photos and a SPHEREx spectrum
-// in `detail` (bake/comet_3iatlas.py); example comets have only their discussion.
+// in `detail` (bake/comet_spectrum.py); example comets have only their discussion.
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id') || '3I/ATLAS';
 const MJD_UNIX = 40587;
@@ -53,7 +53,7 @@ function photos(d) {
   d.photos.forEach((p, i) => {
     const f = el('figure', i === d.photos.length - 1 ? 'now' : '');
     const plate = el('div', 'plate');
-    const img = el('img'); img.src = `data/comets/3i-atlas/${p.file}`; img.alt = `3I/ATLAS on ${date(p.mjd, { day: 'numeric', month: 'short' })}`;
+    const img = el('img'); img.src = `data/comets/${d.dir ?? '3i-atlas'}/${p.file}`; img.alt = `${d.name ?? 'The comet'} on ${date(p.mjd, { day: 'numeric', month: 'short' })}`;
     const ring = el('span', i === d.photos.length - 1 ? 'ring' : 'ring earlier'); ring.style.left = '50%'; ring.style.top = '50%';
     plate.append(img, ring);
     f.title = `${p.lam.toFixed(2)} µm`;
@@ -61,6 +61,16 @@ function photos(d) {
     box.append(f);
   });
   $('c-photos-panel').hidden = false;
+}
+
+// A badge by the title only when the measurement is clear: "detected" or "quiet" (bake/comet_spectrum.py co2_verdict)
+function co2Badge(state) {
+  const text = { detected: 'CO2 glow detected', quiet: 'No gas glow' }[state];
+  if (!text) return;
+  const b = el('span', `chip co2 ${state}`, text);
+  b.title = state === 'detected' ? 'SPHEREx sees extra light at 4.26 µm, where carbon dioxide gas glows'
+    : 'The comet is clearly seen, with no extra light at 4.26 µm';
+  $('c-cat').after(b);
 }
 
 function measures(d) {
@@ -95,8 +105,10 @@ function spectrum(d) {
     add('text', { x: X0 - 8, y: sy(t) + 4, 'text-anchor': 'end' }, t ? `${t} mJy` : '0');
   }
   const legend = $('c-legend');
-  months.forEach(([month, pts], k) => {
-    const cls = k === 0 ? 'curve' : 'rock';
+  // the month that carries the CO2 verdict is orange and solid; every other month is pale and dashed
+  const key = (Object.entries(d.co2 ?? {}).find(([, v]) => v.state === d.co2_verdict && v.state !== 'unclear') ?? months[0])[0];
+  months.forEach(([month, pts]) => {
+    const hl = month === key, k = hl ? 0 : 1, cls = hl ? 'curve' : 'rock';
     for (const p of pts) {
       add('line', { class: `err m${k}`, x1: sx(p.lam), x2: sx(p.lam), y1: sy(p.flux - p.err), y2: sy(p.flux + p.err) });
       add('circle', { class: `m${k}`, cx: sx(p.lam), cy: sy(p.flux), r: 2.2 }).append(Object.assign(document.createElementNS(NS, 'title'), { textContent: `${p.lam.toFixed(3)} µm: ${p.flux.toFixed(1)} ± ${p.err.toFixed(1)} mJy` }));
@@ -107,18 +119,23 @@ function spectrum(d) {
       if (v.length) line.push([sx(l), sy(v[v.length >> 1])]);
     }
     add('path', { class: cls, d: line.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('') });
-    const s = el('span'); s.append(el('i'), new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+    const s = el('span'), i = el('i');
+    if (!hl) i.className = 'pale';
+    s.append(i, new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
     legend.append(s);
   });
-  // label each gas over the tallest measurement near its band (published SPHEREx detections: Lisse et al. 2025)
-  for (const [l, name, w] of [[4.26, 'Carbon dioxide', .06], [2.7, 'Water', .08]]) {
-    const near = all.filter(p => Math.abs(p.lam - l) <= w);
-    if (!near.length) continue;
-    const y = sy(Math.max(...near.map(p => p.flux)));
-    add('text', { class: 'lab', x: sx(l), y: Math.max(Y0 - 12, y - 24), 'text-anchor': 'middle' }, name);
-    add('text', { x: sx(l), y: Math.max(Y0 + 2, y - 10), 'text-anchor': 'middle' }, `${l} µm`);
+  // where each gas would glow, as guides along the top: a label here marks a wavelength, not a detection
+  // (the CO2 badge by the title is the verdict; bake/comet_spectrum.py has the rule)
+  for (const [l, name] of [[4.26, 'Carbon dioxide'], [2.7, 'Water']]) {
+    add('text', { class: 'lab', x: sx(l), y: Y0 - 12, 'text-anchor': 'middle' }, name);
+    add('text', { x: sx(l), y: Y0 + 2, 'text-anchor': 'middle' }, `${l} µm`);
   }
-  $('c-spec-note').textContent = `${all.length} SPHEREx measurements`;
+  // what the CO2 band measured, in a few words (the badge by the title gives the verdict; bake/comet_spectrum.py has the rule)
+  const v = d.co2 && Object.values(d.co2), best = v && (v.find(x => x.state === d.co2_verdict) ?? v[0]);
+  const co2 = !best ? '' : best.state === 'unclear' ? ' · CO2 band: not enough signal to tell'
+    : ` · CO2 band ${best.excess >= 0 ? '+' : ''}${best.excess} ± ${best.sigma} mJy over nearby light`;
+  $('c-spec-note').textContent = `${all.length} SPHEREx measurements${co2}`;
+  co2Badge(d.co2_verdict);
   $('c-spec-panel').hidden = false;
 }
 

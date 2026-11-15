@@ -3,7 +3,7 @@
  "name": "3I/ATLAS",
  "kind": "known",
  "real": true,
- "about": "Interstellar comet, the third object known to come from outside the Solar System. SPHEREx observed it in August and December 2025.",
+ "dir": "3i-atlas",
  "ra": 247.109,
  "dec": -16.84,
  "first_mjd": 60888.3334,
@@ -966,18 +966,27 @@
   ]
  },
  "co2": {
-  "2025-08": [
-   26.50729084370584,
-   0.124219043274128,
-   4,
-   13
-  ],
-  "2025-12": [
-   307.5430767111134,
-   14.072160731797418,
-   4,
-   12
-  ]
+  "2025-08": {
+   "n_band": 4,
+   "n_cont": 13,
+   "state": "detected",
+   "band": 26.51,
+   "cont": 0.17,
+   "excess": 26.34,
+   "sigma": 0.61
+  },
+  "2025-12": {
+   "n_band": 4,
+   "n_cont": 12,
+   "state": "detected",
+   "band": 307.54,
+   "cont": 38.52,
+   "excess": 269.03,
+   "sigma": 13.63
+  }
  },
- "source": "SPHEREx QR2 spectral images listed by IRSA (irsa.ipac.caltech.edu/data/SPHEREx/docs/comet3iatlas/); photometry by bake/comet_3iatlas.py"
+ "co2_verdict": "detected",
+ "points_file": "points.json",
+ "source": "SPHEREx spectral images from NASA/IPAC IRSA; positions from IRSA (3I/ATLAS) or JPL Horizons; photometry by bake/comet_spectrum.py",
+ "about": "Interstellar comet, the third object known to come from outside the Solar System. SPHEREx observed it in August and December 2025."
 }

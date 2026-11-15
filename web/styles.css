@@ -534,6 +534,10 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 #c-empty .visits { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
 #c-empty h2 { font-size: 20px; }
 .mk.known.faint { opacity: .35; }   /* a known comet too faint to see on this date */
+.chip.co2.detected { color: var(--comet); border-color: color-mix(in srgb, var(--comet) 55%, transparent); }   /* carbon dioxide glow */
+.chip.co2.quiet { color: var(--ink-2); }
+.spectrum .legend i.pale { border-top: 2px dashed rgba(255, 255, 255, .35); }   /* months other than the verdict's */
+.spectrum .legend span:last-child i:not(.pale) { border-top-style: solid; border-top-color: var(--comet); }
 
 /* SPHEREx deep fields (ecliptic poles): a pale dashed ring, part of the SPHEREx photos layer */
 .mk.deep i { left: -13px; top: -13px; width: 26px; height: 26px; border: 1.5px dashed rgba(234, 241, 255, .75); box-shadow: 0 0 14px rgba(234, 241, 255, .25); }
