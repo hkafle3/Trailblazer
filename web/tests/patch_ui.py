@@ -128,6 +128,20 @@ async def main():
             assert n >= 4 and not bad, f"{w} px: {n} month names, overlaps {bad}"
         print("PASS timeline labels: month names thin out and never touch at 320, 390, 768 and 1440 px")
 
+        # the photo's legend, Color Difference's key row included, sits wholly inside the frame
+        await pg.click("label:has(#diff)")
+        INSIDE = """() => { const f = document.querySelector('.pv-frame').getBoundingClientRect(), bad = [];
+            for (const s of document.querySelectorAll('#legend span')) { const r = s.getBoundingClientRect();
+              if (r.left < f.left || r.right > f.right || r.top < f.top || r.bottom > f.bottom) bad.push(s.textContent);
+              if (s.getClientRects().length > 1 || r.height > 1.6 * parseFloat(getComputedStyle(s).fontSize)) bad.push(s.textContent + ' wraps'); }
+            return [document.querySelectorAll('#legend span').length, bad]; }"""
+        for w, h in [(320, 700), (390, 844), (1440, 900)]:
+            await pg.set_viewport_size({"width": w, "height": h}); await pg.wait_for_timeout(300)
+            n, bad = await pg.evaluate(INSIDE)
+            assert n == 6 and not bad, f"{w} px legend: {bad}"
+        await pg.click("label:has(#diff)")
+        print("PASS legend: all six items, the colour key too, sit whole inside the photo frame at 320, 390 and 1440 px")
+
         assert not errors, f"page errors: {errors}"
         await b.close()
     print("PASS toggles: Spectral, Heat, Hide Stationary and Color Difference each change the picture, alone and together, and undo cleanly")

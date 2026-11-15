@@ -163,7 +163,10 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   .pv-desc .box { width: min(100%, 320px); height: 34px; font-size: 14px; margin-top: 10px; }
   .pv-desc .sub, .pv-info { font-size: 13px; }
   #status { font-size: 12px; }
-  #legend { font-size: 11px; } #legend .lg-row { gap: 12px; }
+  /* the legend fits the narrow frame: it spans the frame's width and its items wrap onto more rows, each item whole */
+  #legend { font-size: 11px; left: 8px; right: 8px; bottom: 8px; padding: 6px 10px; }
+  #legend .lg-row { flex-wrap: wrap; justify-content: flex-end; gap: 6px 12px; }
+  #legend span { white-space: nowrap; }
   #mapbox { left: 12px; bottom: 12px; }
   #hint { bottom: 230px; width: calc(100% - 24px); text-align: center; white-space: normal; }
 }
