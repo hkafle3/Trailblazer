@@ -1,6 +1,8 @@
-"""Browser check of Explore's Faint comets layer, in headless Chrome. Needs the app up (npm run dev).
-Off (the default): the known comets shown are exactly the ones bright enough on the day (magnitude 16 or brighter) plus
-3I/ATLAS. On: all 72 known comets have a marker on the default day, on day 120 and after the timeline moves, the faint
+"""Browser check of Explore's sky replay and Faint comets layer, in headless Chrome. Needs the app up (npm run dev).
+Replay: /explore opens playing it from day 0, and it ends on the last day; a link with ?day= and less motion open still;
+a first click on the sky, the timeline or the handle stops it where it is.
+Faint comets off (the default): the known comets shown are exactly the ones bright enough on the day (magnitude 16 or
+brighter) plus 3I/ATLAS. On: all 72 known comets have a marker on the default day, on day 120 and after the timeline moves, the faint
 ones dimmer and smaller, each where skymap.js puts it (within 1%), named on hover and keyboard focus, linking to its
 page with &day=. The choice is kept across reloads (localStorage), and the bright comets are the same either way.
 Run: uv run -q --with playwright python web/tests/explore_ui.py [base url]   (default http://127.0.0.1:8787)"""
@@ -21,9 +23,18 @@ EXPECT = """async day => { const m = await import('/skymap.js'), { comets } = aw
   return Object.fromEntries(comets.filter(c => c.kind === 'known').map(c => { const [ra, dec, mag] = m.trackAt(c.track, day); return [c.id, [...m.fwd(ra, dec), mag]]; })); }"""
 
 
+DAY = "+document.getElementById('time').value"
+PLAYING = "document.getElementById('play').classList.contains('on')"
+
+
 async def explore(pg, url):
+    """Open Explore. Opened without ?day=, the replay must be playing from the start, and it is left to end on the last day."""
     await pg.goto(BASE + url)
     await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_selector(".mk.known", state="attached")
+    if "day=" not in url:
+        assert await pg.evaluate(PLAYING) and await pg.evaluate(DAY) < DEFAULT, f"{url}: the replay is not playing on open"
+        await pg.wait_for_function(f"!({PLAYING})", timeout=60000)
+        assert await pg.evaluate(DAY) == DEFAULT, f"{url}: the replay ended on day {await pg.evaluate(DAY)}, not {DEFAULT}"
     await pg.evaluate("Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))")   # the map scales in
 
 
@@ -52,6 +63,32 @@ async def main():
         ctx = await b.new_context(viewport={"width": 1440, "height": 900})
         await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")   # no first-visit tour over the map
         pg = await ctx.new_page()
+
+        # the replay plays on every visit: from day 0, moving, to the last day. Not for a link to a day, nor for less motion.
+        await pg.goto(BASE + "/explore"); await pg.wait_for_selector("body[data-ready='1']")
+        first = await pg.evaluate(DAY); await pg.wait_for_timeout(300)
+        assert await pg.evaluate(PLAYING) and DEFAULT > await pg.evaluate(DAY) > first, f"/explore: the replay is not moving (day {first}, then {await pg.evaluate(DAY)})"
+        await pg.wait_for_function(f"!({PLAYING})", timeout=60000)
+        last = await pg.text_content("#t-date"); await pg.wait_for_timeout(300)
+        assert await pg.evaluate(DAY) == DEFAULT and await pg.text_content("#t-date") == last, f"/explore: the replay stopped on day {await pg.evaluate(DAY)}"
+        await pg.goto(BASE + "/explore?day=120"); await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_timeout(300)
+        assert not await pg.evaluate(PLAYING) and await pg.evaluate(DAY) == 120, f"/explore?day=120 played (day {await pg.evaluate(DAY)})"
+        calm = await b.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
+        await calm.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+        p2 = await calm.new_page(); await p2.goto(BASE + "/explore"); await p2.wait_for_selector("body[data-ready='1']"); await p2.wait_for_timeout(300)
+        assert not await p2.evaluate(PLAYING) and await p2.evaluate(DAY) == DEFAULT, f"less motion: the replay played (day {await p2.evaluate(DAY)})"
+        await calm.close()
+        print(f"PASS replay: /explore plays from day {first} and ends on day {DEFAULT}; ?day=120 and less motion stay still")
+
+        # the first touch stops it: a click on the sky (which drops a pin), on the timeline's line, or on the handle
+        for what, touch in [("the sky", "#map"), ("the timeline", "#tl-line"), ("the handle", "#play")]:
+            await pg.goto(BASE + "/explore"); await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_timeout(200)
+            box = await pg.locator(touch).bounding_box()
+            await pg.mouse.click(box["x"] + box["width"] * (.5 if touch != "#tl-line" else .3), box["y"] + box["height"] / 2)
+            at = await pg.evaluate(DAY); await pg.wait_for_timeout(300)
+            assert not await pg.evaluate(PLAYING) and await pg.evaluate(DAY) == at < DEFAULT, f"a click on {what} did not stop the replay (day {at}, then {await pg.evaluate(DAY)})"
+            if touch == "#map": assert await pg.is_visible("#pin .pincard"), "a click on the sky during the replay dropped no pin"
+        print("PASS replay: a click on the sky, the timeline or the handle stops it where it is")
 
         # off by default: exactly the comets bright enough on the day, plus 3I/ATLAS (always findable, dimmed)
         for day in [DEFAULT, 120]:

@@ -52,6 +52,7 @@ function showPin(ra, dec) {
 }
 const skyAt = e => { const b = $('map').getBoundingClientRect(); return inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height); };
 $('map').addEventListener('click', e => { const rd = skyAt(e); if (rd) showPin(...rd); });
+$('map').addEventListener('pointerdown', () => stopReplay());   // a touch on the sky stops the replay (stopReplay is set below)
 $('map').addEventListener('pointermove', e => {   // live coordinates beside the pointer (hidden on touch by CSS)
   const rd = skyAt(e);
   readout.hidden = !rd;

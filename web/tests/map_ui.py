@@ -41,9 +41,16 @@ def close(a, b, tol=TOL):
     return abs(a[0] - b[0]) <= tol and abs(a[1] - b[1]) <= tol
 
 
-async def explore(pg, url):
+PLAYING = "document.getElementById('play').classList.contains('on')"
+
+
+async def explore(pg, url, settle=True):
+    """Open Explore. Without ?day= the replay plays on open (not for less motion); with settle, it is left to end (on the last day)."""
     await pg.goto(BASE + url)
     await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_selector(".mk.known", state="attached")
+    if "day=" not in url and not await pg.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"):
+        assert await pg.evaluate(PLAYING), f"{url}: the replay is not playing on open"
+        if settle: await pg.wait_for_function(f"!({PLAYING})", timeout=60000)
     return int(await pg.eval_on_selector("#time", "e => e.value")), (await pg.text_content("#t-date")).strip()
 
 
@@ -134,9 +141,9 @@ async def main():
             assert {k: g[k] for k in want} == want and g["at"] == g["dot"] and g["sel"], f"day {day}: featured card {g}"
         print(f"PASS featured card: 3I/ATLAS (real, {verdict}) sits by its dot on days {', '.join(map(str, DAYS))} with that date and links to its page on it")
 
-        # a click while the replay runs opens the day that was clicked, once, however many clicks follow
-        await explore(ex, "/explore.html")
-        await ex.click("#play"); await ex.wait_for_function("+document.getElementById('time').value > 100 && document.querySelector('.mk.known:not([hidden])')")
+        # a click while the replay runs (the one Explore opens with) opens the day that was clicked, once, however many clicks follow
+        await explore(ex, "/explore.html", settle=False)
+        await ex.wait_for_function("+document.getElementById('time').value > 100 && document.querySelector('.mk.known:not([hidden])')")
         clicked = await ex.evaluate("""() => { const all = [...document.querySelectorAll('.mk.known:not([hidden])')].filter(a => getComputedStyle(a).visibility !== 'hidden');
             const a = all[0], href = a.getAttribute('href'); a.click(); a.click(); (all[1] ?? a).click(); return href; }""")
         await ex.wait_for_selector("#c-mini-dot:not([hidden])", state="attached")
