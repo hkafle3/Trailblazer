@@ -41,6 +41,8 @@
          re-centring (a drag still moves the photo). The button says which mode the photo is in. -->
     <span class="sr-only" id="spec-how">Spectrum mode: click a star to measure it, or press Enter on the photo for the star in its middle. Arrow keys still move the photo.</span>
     <button class="pv-specbtn" id="spec-mode" type="button" aria-pressed="false" title="Turn on, then click a star to see its spectrum"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span>Spectrum</span></button>
+    <!-- a visit of one exposure: nothing to compare with, so a detector flash is not taken out (live/pipeline.js) -->
+    <div id="one-photo" hidden>1 photo: a dot may be a glitch</div>
     <div id="legend" aria-hidden="true">
       <div class="lg-row"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
       <!-- Color Difference's key, only while it is on: square swatches, since it is the photo's pixels that are coloured -->
@@ -582,7 +584,9 @@ function drawMini(m, f, v) {
 function showVisit(m, f) {
   document.getElementById('vVisit').innerHTML =
     `<b>${monthYear(f.start)}</b>: ${f.exposures} exposure${f.exposures > 1 ? 's' : ''} at ${f.lam.toFixed(3)} µm` +
-    (f.saturated_px ? '. White core: detector saturated' : '') + (state.diff && state.i === 0 ? '. The reference for Color Difference' : '');
+    (f.saturated_px ? '. White core: detector saturated' : '') + (state.diff && state.i === 0 ? '. The reference for Color Difference' : '') +
+    (f.exposures === 1 ? '. One photo only: a lone dot may be a detector glitch' : '');
+  document.getElementById('one-photo').hidden = f.exposures !== 1;
   timeline.show(m, state.i);
 }
 

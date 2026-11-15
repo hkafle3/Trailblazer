@@ -83,6 +83,9 @@ html.flying :is(#patch, #hold, #loading, #legend) { visibility: hidden !importan
 @media (prefers-reduced-motion: reduce) { #hold, .pv-frame { transition: none; } }
 #legend { position: absolute; right: calc(20 * var(--e)); bottom: calc(16 * var(--e)); display: flex; flex-direction: column; align-items: flex-end; gap: calc(10 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
 #legend .lg-row { display: flex; gap: calc(26 * var(--e)); }
+#one-photo { position: absolute; right: calc(20 * var(--e)); top: calc(16 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
+#one-photo[hidden] { display: none; }
+html.flying #one-photo { visibility: hidden !important; }
 #legend span { display: flex; align-items: center; gap: calc(10 * var(--e)); }
 #legend i.px { border-radius: 0; }
 #legend .lg-key { display: none; }
@@ -258,6 +261,7 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   #status { font-size: 12px; }
   /* the legend fits the narrow frame: it spans the frame's width and its items wrap onto more rows, each item whole */
   #legend { font-size: 11px; left: 8px; right: 8px; bottom: 8px; padding: 6px 10px; }
+  #one-photo { font-size: 11px; right: 8px; top: 8px; padding: 6px 10px; }
   #legend .lg-row { flex-wrap: wrap; justify-content: flex-end; gap: 6px 12px; }
   #legend span { white-space: nowrap; }
   #mapbox { left: 12px; bottom: 12px; }

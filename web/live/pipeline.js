@@ -2,8 +2,9 @@
 // in:  {id, ra, dec, det, api, band?}     out: {id, type:'progress'|'frame'|'done'|'empty'|'error', ...}
 // The worker stays alive between builds. A new message replaces the build in flight (one with no ra only stops it), and
 // a build for a spot the listed images still cover reuses the list, their headers and the rows already read.
-// Each visit becomes one frame: exposures at one matched wavelength, reprojected north up, median combined.
-import { imageHeader, imageRows, worldToPix, wavelengthAt } from './fits.js';
+// Each visit becomes one frame: exposures at one matched wavelength, reprojected north up, combined (combine below).
+import { imageHeader, imageRows, worldToPix, wavelengthAt, flagsHeader, flagRows } from './fits.js';
+import { BAD } from './cutout.js';
 
 // 3 sigma: the user typed the spot, so this is detection at a known position. At 5 sigma WISE 0855 kept only
 // 2 of 4 visits and its fitted motion went to 18 "/yr; at 3 it keeps 4 and measures 6.45 (published 8.1).
@@ -14,6 +15,12 @@ async function pool(items, n, fn) {   // run fn over items, at most n at a time 
   const out = new Array(items.length); let i = 0;
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); } }));
   return out;
+}
+// limit(fn) runs fn when fewer than n run, and resolves as fn does
+function limiter(n) {
+  let busy = 0; const wait = [];
+  const next = () => { if (busy >= n || !wait.length) return; busy++; const [fn, ok, no] = wait.shift(); fn().then(ok, no).finally(() => { busy--; next(); }); };
+  return fn => new Promise((ok, no) => { wait.push([fn, ok, no]); next(); });
 }
 
 // A visit is a run of images with no gap over `gap` days. The deep fields (ecliptic poles) are photographed every few
@@ -60,42 +67,89 @@ function gridWorld(ra0, dec0, ix, iy) {
   return [((ra / D2R) % 360 + 360) % 360, dec / D2R];
 }
 
-// Rows y0..y1 of one exposure, kept between builds: a re-centre a little way off reads only the strip it lacks.
+// Rows y0..y1 of one exposure, its IMAGE (px) and FLAGS (fl, the quality bits), kept between
+// builds: a re-centre a little way off reads only the strip it lacks.
 // A block that would pass 600 rows (5 MB) starts again from the rows asked for. At most ROWS_KEPT exposures are kept,
 // the least recently used dropped first (a re-centre can pick other exposures of a visit, at the new wavelength).
 const rowCache = new Map(), ROWS_KEPT = 48;
+// FLAGS headers, asked for as soon as a build knows its exposures (flagsFor), so reading rows waits on one request.
+// Not aborted with the build: a newer build may be waiting on the same header (28 KB). A failed read is forgotten.
+const fheads = new Map();
+const flagsFor = e => fheads.get(e.key) ?? fheads.set(e.key, flagsHeader(e.key, e.h).catch(err => { fheads.delete(e.key); throw err; })).get(e.key);
 async function rows(e, y0, y1, signal) {
-  const read = (a, b) => imageRows(e.key, e.h, a, b, signal);
-  const join = (a, b) => { const o = new Float32Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
   let c = rowCache.get(e.key);
-  if (!c || y0 > c.y1 + 1 || y1 < c.y0 - 1 || Math.max(y1, c.y1) - Math.min(y0, c.y0) > 600) c = { y0, y1, px: await read(y0, y1) };
+  const read = (a, b) => Promise.all([imageRows(e.key, e.h, a, b, signal), flagsFor(e).then(f => flagRows(e.key, f, a, b, signal))]);
+  const join = (a, b) => { const o = new a.constructor(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
+  if (!c || y0 > c.y1 + 1 || y1 < c.y0 - 1 || Math.max(y1, c.y1) - Math.min(y0, c.y0) > 600) { const [px, fl] = await read(y0, y1); c = { y0, y1, px, fl }; }
   else {
-    if (y0 < c.y0) c = { y0, y1: c.y1, px: join(await read(y0, c.y0 - 1), c.px) };
-    if (y1 > c.y1) c = { y0: c.y0, y1, px: join(c.px, await read(c.y1 + 1, y1)) };
+    if (y0 < c.y0) { const [px, fl] = await read(y0, c.y0 - 1); c = { y0, y1: c.y1, px: join(px, c.px), fl: join(fl, c.fl) }; }
+    if (y1 > c.y1) { const [px, fl] = await read(c.y1 + 1, y1); c = { y0: c.y0, y1, px: join(c.px, px), fl: join(c.fl, fl) }; }
   }
   rowCache.delete(e.key); rowCache.set(e.key, c);   // Map order is use order
   if (rowCache.size > ROWS_KEPT) rowCache.delete(rowCache.keys().next().value);
   return c;
 }
 
-// one exposure -> GRID x GRID normalized frame (FITS row order, bottom row first), bilinear like reproject_interp
+// one exposure -> GRID x GRID normalized frame (FITS row order, bottom row first), bilinear like reproject_interp:
+// raw, and clean, where a pixel that counts (any of the four with weight, as cutout.js readCells) has a MASK bit is NaN.
+// MASK is cutout.js BAD (bake/comet_spectrum.py's: 0 TRANSIENT, 1 OVERFLOW, 2 SUR_ERROR, 6 NONFUNC, 9 MISSING_DATA,
+// 10 HOT, 11 COLD, 15 NONLINEAR, 17 PERSIST) plus artefacts that look like sources: 25 STREAK, 27 SNOWBALL, 28 HALO,
+// 29 SAT_HALO (names from the MSKN cards of the FLAGS header). Never 19 OUTLIER (a new comet is one) or 21 SOURCE.
+const MASK = BAD | [25, 27, 28, 29].reduce((m, b) => m | (1 << b), 0);
 async function reproject(e, ra, dec, signal) {
+  signal.throwIfAborted();   // a replaced build's queued exposures stop here, before their 20736 sky positions
   const map = [];
   for (let iy = 0; iy < GRID; iy++) for (let ix = 0; ix < GRID; ix++) map.push(worldToPix(e.h, ...gridWorld(ra, dec, ix, iy)));
   const ys = map.filter(Boolean).map(p => p[1]);
   const y0 = Math.max(0, Math.floor(Math.min(...ys)) - 1), y1 = Math.min(SIZE - 1, Math.ceil(Math.max(...ys)) + 1);
   if (y0 > y1) return null;
   const c = await rows(e, y0, y1, signal);
-  const at = (x, y) => (x < 0 || y < c.y0 || x >= SIZE || y > c.y1) ? NaN : c.px[(y - c.y0) * SIZE + x];
-  const out = new Float32Array(GRID * GRID);
+  const off = (x, y) => x < 0 || y < c.y0 || x >= SIZE || y > c.y1;
+  const at = (x, y) => off(x, y) ? NaN : c.px[(y - c.y0) * SIZE + x];
+  const atClean = (x, y) => off(x, y) || c.fl[(y - c.y0) * SIZE + x] & MASK ? NaN : c.px[(y - c.y0) * SIZE + x];
+  const raw = new Float32Array(GRID * GRID), clean = new Float32Array(GRID * GRID);
+  const bilinear = (at, xi, yi, fx, fy) => (at(xi, yi) * (1 - fx) + at(xi + 1, yi) * fx) * (1 - fy) + (at(xi, yi + 1) * (1 - fx) + at(xi + 1, yi + 1) * fx) * fy;
+  const weighted = (at, xi, yi, fx, fy) => [[0, 0, (1 - fx) * (1 - fy)], [1, 0, fx * (1 - fy)], [0, 1, (1 - fx) * fy], [1, 1, fx * fy]]
+    .reduce((v, [dx, dy, w]) => w > 1e-9 ? v + w * at(xi + dx, yi + dy) : v, 0);   // a flagged neighbour of no weight does not count
   map.forEach((p, k) => {
-    if (!p) { out[k] = NaN; return; }
+    if (!p) { raw[k] = clean[k] = NaN; return; }
     const [x, y] = p, xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
-    const v = (at(xi, yi) * (1 - fx) + at(xi + 1, yi) * fx) * (1 - fy) + (at(xi, yi + 1) * (1 - fx) + at(xi + 1, yi + 1) * fx) * fy;
-    out[k] = Number.isFinite(v) ? v : NaN;   // any NaN neighbour (saturated, off the edge) stays NaN
+    raw[k] = bilinear(at, xi, yi, fx, fy);   // any NaN neighbour (saturated, off the edge) stays NaN
+    clean[k] = weighted(atClean, xi, yi, fx, fy);
   });
-  const med = median(Array.from(out)), mad = median(Array.from(out, v => Math.abs(v - med))) * 1.4826 || 1;
-  return out.map(v => (v - med) / mad);
+  const med = median(Array.from(raw)), mad = median(Array.from(raw, v => Math.abs(v - med))) * 1.4826 || 1;
+  return { raw: raw.map(v => (v - med) / mad), clean: clean.map(v => (v - med) / mad), t: e.t };
+}
+
+// A visit's frame from its exposures (normalized: the sky's noise is about 1), pixel by pixel.
+// A flash in one exposure (2026W01_2A_0524_3 at RA 7.6335, Dec +15.7080: 170 times the sky, every cell of it flagged
+// TRANSIENT and SUR_ERROR) must not survive, and a moving object must not be erased:
+// - the values whose quality bits are clean when 2 or more are, else all of them: a bright star is flagged TRANSIENT and
+//   SUR_ERROR across its whole image in every exposure (Barnard's Star), so a flag alone cannot mean "gap";
+// - 3 or more: their median. A flash in one is the top value and drops out. Known limit, as before this rule: a mover
+//   in only one of them drops out too.
+// - 2: their mean, or the lower of the two where the higher is over twice the lower plus CLIP (the lower counted as 0
+//   when below 0) and either the two were taken within SAME of each other or the higher one's cell is flagged.
+//   A median of two is their mean and showed the flash at half strength. On empty sky the test is a difference over
+//   CLIP = 4: the mean's noise is 1/sqrt(2), so what the mean lets through is under 4 / 2 / 0.71 = 2.8 sigma, below
+//   SNR_MIN. On a star the allowance grows with it: a star's peak differs by 40% between exposures that sample it at
+//   different places within a pixel (100 and 60), and both are the star. A visit's exposures are often hours or days
+//   apart (5000 minutes at Ed's spot), and a main-belt asteroid moves 6 to 13 cells in that time: an unflagged
+//   difference then keeps the mean, so a mover shows as two faint dots, as before. Within SAME (10 minutes) a real
+//   source cannot be in one and not the other. The mean elsewhere keeps faint sources' noise and the sky level the same
+//   as in visits of 3, so Color Difference and Hide Stationary do not change between visits.
+// - 1: as it is. A visit of one exposure keeps a flash (its flags look like a bright star's, and there is nothing to
+//   compare with): the page marks those frames.
+const CLIP = 4, SAME = 10 / 1440;
+function stackOf(arrs) {
+  return new Float32Array(GRID * GRID).map((_, k) => {
+    const c = arrs.filter(a => Number.isFinite(a.clean[k])), use = c.length >= 2 ? c : arrs.filter(a => Number.isFinite(a.raw[k]));
+    const val = a => use === c ? a.clean[k] : a.raw[k];
+    if (use.length !== 2) return median(use.map(val));
+    const [lo, hi] = val(use[0]) <= val(use[1]) ? use : [use[1], use[0]];
+    const odd = val(hi) > 2 * Math.max(0, val(lo)) + CLIP, flagged = !Number.isFinite(hi.clean[k]);
+    return odd && (Math.abs(hi.t - lo.t) <= SAME || flagged) ? val(lo) : (val(lo) + val(hi)) / 2;
+  });
 }
 
 // Position of the source near guess (0-based FITS x, y), the same rule as bake/flipbook.py centroid() with two
@@ -193,7 +247,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band, t } }) => {
       lists.set(det, vs.filter((_, k) => usable[k].length));
       usable = usable.filter(v => v.length);
       const keep = new Set([...lists.values()].flat(2).map(e => e.key));
-      for (const k of rowCache.keys()) if (!keep.has(k)) rowCache.delete(k);
+      for (const m of [rowCache, fheads]) for (const k of m.keys()) if (!keep.has(k)) m.delete(k);
     }
     if (!usable.length) return post({ type: 'empty' });
     const { lam0, tol, picked } = band ? inBand(usable, band) : match(usable);
@@ -213,11 +267,16 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band, t } }) => {
     const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`, { signal })   // v=3: Gaia from IRSA; drops answers cached before the switch
      .then(r => r.ok ? r.json() : null).catch(() => null).then(g => { if (g?.stars) gaiaAt = { ra, dec, stars: g.stars }; return g?.stars || []; });
 
+    // every exposure is read 3 at a time from the start, not visit by visit, so the next visit's rows arrive while this
+    // one is combined (this paid for reading FLAGS beside each IMAGE); frames are still sent in visit order
+    picked.flat().forEach(e => flagsFor(e).catch(() => {}));   // read when its rows are (rows)
+    const limit = limiter(3), jobs = picked.map(v => v.map(e => limit(() => reproject(e, ra, dec, signal))));
+    jobs.flat().forEach(j => j.catch(() => {}));   // a failure is thrown below, by the visit that waits on it
     const frames = [];
     for (const [n, v] of picked.entries()) {
-      const arrs = (await pool(v, 3, e => reproject(e, ra, dec, signal))).filter(Boolean);
+      const arrs = (await Promise.all(jobs[n])).filter(Boolean);
       alive();
-      const stack = new Float32Array(GRID * GRID).map((_, k) => median(arrs.map(a => a[k])));
+      const stack = stackOf(arrs);
       const ts = v.map(e => e.t), mjd = ts.reduce((a, b) => a + b, 0) / ts.length;
       frames.push({ ...(n === tVisit ? { at_t: true } : {}), px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, epochs: epochs(ts), year: year(mjd), exposures: arrs.length,
         lam: v.reduce((s, e) => s + e.lam, 0) / v.length, lam_spread: Math.max(...v.map(e => Math.abs(e.lam - lam0))),
