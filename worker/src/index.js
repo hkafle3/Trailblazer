@@ -501,6 +501,9 @@ const cellBox = c => {
   const [k, n] = GRID[i], j = c - k, r = x => +x.toFixed(3);
   return { ra_min: r(360 * j / n), ra_max: r(360 * (j + 1) / n), dec_min: r(90 - (i + 1) * DEC_STEP), dec_max: r(90 - i * DEC_STEP) };
 };
+// angle between two sky positions, in degrees
+const sep = (ra1, d1, ra2, d2) =>
+  Math.acos(Math.min(1, Math.sin(d1 * RAD) * Math.sin(d2 * RAD) + Math.cos(d1 * RAD) * Math.cos(d2 * RAD) * Math.cos((ra1 - ra2) * RAD))) / RAD;
 // Galactic latitude (J2000 north galactic pole at RA 192.85948, Dec 27.12825)
 const galacticLat = (ra, dec) => Math.asin(Math.sin(dec * RAD) * Math.sin(27.12825 * RAD)
   + Math.cos(dec * RAD) * Math.cos(27.12825 * RAD) * Math.cos((ra - 192.85948) * RAD)) / RAD;
