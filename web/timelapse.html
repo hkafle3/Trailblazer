@@ -805,7 +805,7 @@ function search(ra, dec, det, opts = {}) {
     else if (m.type === 'error') fail(`${brief(m.error)}.`, ' The examples on the Explore page always work.', m.error);
     else if (m.type === 'done') {
       job = 0;
-      remember(key, prep(Object.assign(m.manifest, { channel: c ? ch : null })));
+      remember(key, prep(Object.assign(m.manifest, { channel: c ? ch : null, t: opts.t })));
       const secs = ((performance.now() - t0) / 1000).toFixed(1), n = m.manifest.frames.length;
       setStatus(c ? `${n} of ${m.manifest.visits_all} visits have channel ${ch + 1}, built in ${secs} s` : `${n} visits, built in ${secs} s from NASA's public SPHEREx copy`);
       show(live.get(key), query, opts);
@@ -861,7 +861,7 @@ function spSync() {
   const ch = spMain();
   // a baked target is one fixed wavelength: a channel asks for that spot live
   if (ch !== (m.channel ?? null) || (ch != null && !m.key.startsWith('live'))) return search(m.ra, m.dec, m.detector, { keep: true });
-  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${found ? `&found=${encodeURIComponent(found)}` : ''}`);
+  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}`);
   const spot = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, have = [], missing = [], missed = [];
   for (const { n, detector } of state.spectral) {
     const lm = n === ch ? m : live.get(`${spot},${detector}@${n}`);
