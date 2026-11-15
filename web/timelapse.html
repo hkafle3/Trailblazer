@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Patch viewer · Comet Catcher</title>
+<title>Patch viewer · Trailblazer</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="patch.css">
+<link rel="stylesheet" href="header.css">
 </head>
 <body class="lapse nostars">
 <canvas id="gl"></canvas>
 
-<header class="topbar glass">
-  <a class="brand" href="./"><span class="brand-mark"></span>Comet Catcher</a>
-  <nav><a class="on" href="./">Explore</a><a href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
-  <span style="margin-left:auto"></span>
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
+  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
 </header>
 
 <div id="stage">
@@ -368,7 +368,7 @@ document.getElementById('search').onsubmit = e => {
 // a new detector reloads the spot on screen straight away (Enter in the box loads a typed position)
 document.getElementById('det').onchange = () => { if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit(); };
 const tb = document.getElementById('targets');
-document.getElementById('back').onclick = () => { location.href = './'; };   // the Explore map is the home page now
+document.getElementById('back').onclick = () => { location.href = 'explore.html'; };   // back to the Explore sky map
 TARGETS.forEach(t => { const b = document.createElement('button'); b.textContent = t.name; b.dataset.key = t.key; b.setAttribute('aria-pressed', 'false'); b.onclick = () => select(t.key); tb.appendChild(b); });
 
 const playBtn = document.getElementById('play'), icon = document.getElementById('playicon');

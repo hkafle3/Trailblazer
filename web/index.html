@@ -3,101 +3,76 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comet Catcher</title>
+<title>Trailblazer</title>
+<meta name="description" content="Find comets in NASA SPHEREx images. Anyone can look.">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
-<link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
-<link rel="preload" as="image" href="data/visits.png">
-<link rel="preload" as="fetch" href="data/coverage.json" crossorigin>
+<link rel="stylesheet" href="header.css">
+<link rel="preload" as="image" href="data/home/earth.png" fetchpriority="high">
+<link rel="preload" as="image" href="data/sky.jpg">
+<style>
+  /* Homepage-1: the SPHEREx sky behind Earth's limb, the spacecraft above it. Laid out in design pixels
+     (2944 x 1509) scaled to cover the window, anchored to the bottom so Earth always meets the bottom edge. */
+  body.home { background: #000; height: 100vh; height: 100dvh; overflow: hidden; }
+  .scene {
+    --s: max(calc(100vw / 2944), calc(100vh / 1509));
+    position: fixed; left: 50%; bottom: 0; width: calc(2944 * var(--s)); height: calc(1509 * var(--s)); transform: translateX(-50%);
+  }
+  .scene > * { position: absolute; display: block; }
+  .scene img { width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+  .home-sky { left: calc(243 * var(--s)); top: calc(162 * var(--s)); width: calc(2458 * var(--s)); aspect-ratio: 2 / 1; border-radius: 50%; overflow: hidden; }
+  .home-sky img { height: 100%; filter: grayscale(1) brightness(.9) contrast(1.05); transition: filter .5s; }
+  .home-sky:hover img { filter: grayscale(1) brightness(1.1) contrast(1.05); }
+  .earth { left: 0; top: calc(706 * var(--s)); width: 100%; pointer-events: none; }
+  .craft { left: calc(1225 * var(--s)); top: calc(475 * var(--s)); width: calc(495 * var(--s)); z-index: 1; }
+  .craft img { transition: transform .6s var(--ease); }
+  .craft:hover img { transform: translateY(calc(-10 * var(--s))); }
+  .scene a:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
+  .scene { cursor: pointer; }
+  .home-sky { view-transition-name: sky; }   /* the same name as the Explore map: the oval glides into place there */
+
+  /* Leaving for Explore: Earth and SPHEREx drop away and fade, then the page changes. */
+  .earth, .craft { transition: transform .9s cubic-bezier(.55, 0, .8, .2), opacity .8s ease-in; }
+  .leaving .earth { transform: translateY(45%); opacity: 0; }
+  .leaving .craft { transform: translateY(calc(520 * var(--s))) scale(.9); opacity: 0; transition-delay: .05s; }
+  .leaving .home-sky img { filter: grayscale(.6) brightness(1.2) contrast(1.05); }
+  .leaving .scene { cursor: default; }
+  @media (prefers-reduced-motion: reduce) { .craft img, .home-sky img, .earth, .craft { transition: none; } }
+</style>
 </head>
-<body class="explore">
+<body class="home nostars">
 
-<!-- The map: real SPHEREx sky, coverage replay (canvas), heat map of patches people checked (canvas), grid and ecliptic (svg).
-     Markers and cards are filled in by explore.js from /api/comets and /api/explored. -->
-<div class="map-wrap">
-  <div class="map" id="map">
-    <img class="sky" src="data/sky.jpg" alt="All-sky picture from SPHEREx" fetchpriority="high" decoding="async" onload="this.classList.add('ld')">
-    <canvas class="cover" id="cover" width="720" height="360"></canvas>
-    <canvas class="heat" id="heat" width="2000" height="1000"></canvas>
-    <svg class="grat" viewBox="0 0 2000 1000" preserveAspectRatio="none">
-      <path id="grat"/>
-      <path id="ecl" class="ecl"/>
-      <text dy="-10"><textPath href="#ecl" startOffset="24%">most comets travel near this line</textPath></text>
-    </svg>
-  </div>
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
+  <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
+</header>
 
-  <div class="marks" id="marks">
-    <div class="pin" id="pin" hidden>
-      <span class="pin-ring"><i></i></span>
-      <div class="pincard glass">
-        <button class="x" id="pin-x" aria-label="Close">&times;</button>
-        <span class="eyebrow">Patch of sky</span>
-        <h3 data-f="where"></h3>
-        <p>See how this spot changed between SPHEREx photos.</p>
-        <a class="btn small" data-f="open">Look closer <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-      </div>
-    </div>
-    <a class="mapcard glass" id="card-comet" hidden>
-      <div class="head"><h3 data-f="id"></h3><span class="tag comet">comet</span></div>
-      <div class="tally"><i class="t-comet"></i><i class="t-asteroid"></i><i class="t-unsure"></i></div>
-      <div class="head"><span class="mono muted" data-f="count"></span><svg class="ic"><use href="icons.svg#arrow"/></svg></div>
-    </a>
-    <div class="mapcard glass" id="card-patch">
-      <h3>Nobody has looked here</h3>
-      <p class="mono" data-f="where"></p>
-      <a class="btn small" data-f="open">Open patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-    </div>
-  </div>
-</div>
+<main class="scene">
+  <h1 class="sr-only">Trailblazer: find comets in NASA SPHEREx images</h1>
+  <a class="home-sky" href="explore.html" title="Explore the sky" aria-label="Explore the whole sky SPHEREx has photographed"><img src="data/sky.jpg" alt=""></a>
+  <img class="earth" src="data/home/earth.png" alt="" fetchpriority="high">
+  <a class="craft" href="explore.html" title="Explore the sky" aria-label="Explore with SPHEREx"><img src="data/home/spherex.png" alt="The SPHEREx space telescope"></a>
+</main>
 
-<header class="topbar glass">
-  <a class="brand" href="./"><span class="brand-mark"></span>Comet Catcher</a>
-  <nav><a class="on" href="./">Explore</a><a href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
-  <form class="search" id="search"><svg class="ic"><use href="icons.svg#search"/></svg><input id="q" placeholder="Sky position, e.g. 269.45 4.69" aria-label="Go to a sky position"></form>
-  </header>
-
-<div class="hero">
-  <h1>The sky moves.<br><span class="glow-text">Catch it.</span></h1>
-  <p class="sub">Spot the dot that jumps between two photos. Anyone can look.</p>
-</div>
-
-<details class="layers" id="layers">
-  <summary class="glass"><svg class="ic"><use href="icons.svg#stack"/></svg>Layers<svg class="ic chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
-  <div class="layers-body glass" aria-label="Map layers">
-  <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg><em><em class="wide-only">SPHEREx </em>photos</em></span><input class="sw" type="checkbox" id="ly-photos" checked></label>
-  <label class="layer" style="--c:var(--people)"><span><svg class="ic"><use href="icons.svg#eye"/></svg><em>Explored<em class="wide-only"> by people</em></em></span><input class="sw" type="checkbox" id="ly-people"></label>
-  <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
-  <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#comet"/></svg><em>Comets<em class="wide-only"> found</em></em></span><input class="sw" type="checkbox" id="ly-comets" checked></label>
-  <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#move"/></svg><em>Comet<em class="wide-only"> paths</em></em></span><input class="sw" type="checkbox" id="ly-paths" checked></label>
-  <label class="layer" style="--c:var(--known)"><span><svg class="ic"><use href="icons.svg#known"/></svg><em>Known<em class="wide-only"> objects</em></em></span><input class="sw" type="checkbox" id="ly-known" checked></label>
-</div>
-</details>
-
-<div class="timebar glass">
-  <button class="play plain" id="play" aria-label="Replay the sky filling in"><svg class="ic i-play"><use href="icons.svg#play"/></svg><svg class="ic i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.6"/><rect x="14" y="5" width="4" height="14" rx="1.6"/></svg></button>
-  <div class="track">
-    <output class="bubble" id="t-bubble" aria-hidden="true"></output>
-    <input class="range" id="time" type="range" min="0" max="529" value="529" aria-label="Date">
-    <div class="ends" aria-hidden="true"><span>Start</span><span>Latest</span></div>
-  </div>
-  <div class="now"><b id="t-date">&nbsp;</b><span id="t-pct">&nbsp;</span></div>
-</div>
-
-<aside class="start">
-  <div class="stats glass">
-    <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%">
-      <span class="orb"></span><b>&nbsp;</b><span class="lbl">of the sky photographed</span>
-    </div>
-    <div class="stat" id="people-meter" style="--c:var(--people);--p:0%">
-      <span class="orb"></span><b><span data-n="seen">&nbsp;</span> <small>/ <span data-n="total"></span></small></b><span class="lbl">patches checked</span>
-    </div>
-  </div>
-  <a class="btn cta" id="go-unexplored">Start catching <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-  <a class="link" href="guide.html"><svg class="ic"><use href="icons.svg#book"/></svg>How to find a comet</a>
-</aside>
-<div class="readout" id="readout" hidden></div>
-
-<script type="module" src="explore.js"></script>
+<script>
+  // Click anywhere on the scene, or the Explore tab: drop Earth and SPHEREx, then go to Explore.
+  (() => {
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let going = false;
+    const go = e => {
+      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;   // new tab etc.: let the browser do it
+      e.preventDefault();
+      if (going) return;
+      going = true;
+      if (reduce) { location.href = 'explore.html'; return; }
+      document.body.classList.add('leaving');
+      setTimeout(() => { location.href = 'explore.html'; }, 850);
+    };
+    document.querySelector('.scene').addEventListener('click', go);
+    document.querySelector('.topbar nav a[href="explore.html"]').addEventListener('click', go);
+    addEventListener('pageshow', () => { going = false; document.body.classList.remove('leaving'); });   // back button: show the scene again
+  })();
+</script>
 <script src="ui.js"></script>
 </body>
 </html>

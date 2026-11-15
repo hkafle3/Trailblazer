@@ -1,4 +1,4 @@
-// Comet Catcher shared UI: star field, constellation buttons, demo sign-in, search, skippable tour.
+// Trailblazer shared UI: star field, constellation buttons, demo sign-in and account menu, guide, skippable tour.
 // Plain script (no build step). Everything is optional decoration on top of working pages.
 // Other scripts can listen for the 'ch:user' event or read window.CH_USER ({name, via} or null).
 (() => {
@@ -128,7 +128,7 @@
     const sheet = h('div', { class: 'sheet glass', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'si-t' },
       h('button', { class: 'x', 'aria-label': 'Close', text: '×', onclick: closeModal }),
       h('div', { class: 'comet-mark' }, h('span', { class: 'brand-mark' })),
-      h('h2', { id: 'si-t', text: 'Join Comet Catcher' }),
+      h('h2', { id: 'si-t', text: 'Join Trailblazer' }),
       h('p', { text: 'Sign in to tag what you find and join the conversation about it.' }),
       gbtn, h('div', { class: 'or', text: 'or' }), form,
       h('p', { class: 'fine', text: 'Demo sign-in: no account is created and nothing leaves your browser. The Google button is a stand-in.' }));
@@ -137,49 +137,38 @@
     document.addEventListener('keydown', escModal);
     gbtn.focus();
   }
+  // The round account button at the top right. Signed in it shows your initials; signed out, a person outline.
+  // Either way it opens a small menu: the guide and the tour live here too.
+  const PERSON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.8 20c.9-3.7 3.7-5.6 7.2-5.6s6.3 1.9 7.2 5.6"/></svg>';
+  const tour = () => (isExplore ? startTour() : (location.href = 'explore.html?tour=1'));
   function renderAuth() {
     const old = document.querySelector('.authbox'); if (old) old.remove();
     const bar = document.querySelector('.topbar'); if (!bar) return;
     const box = h('div', { class: 'authbox' });
-    if (user) {
-      const av = h('button', { class: 'av on', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: user.name, text: initials(user.name) });
-      av.addEventListener('click', e => {
-        e.stopPropagation();
-        const open = box.querySelector('.menu-pop');
-        if (open) { open.remove(); av.setAttribute('aria-expanded', 'false'); return; }
-        const pop = h('div', { class: 'menu-pop glass', role: 'menu' },
-          h('div', { class: 'who' }, h('b', { text: user.name }), h('span', { text: 'Demo account · this browser only' })),
-          h('button', { role: 'menuitem', text: 'Replay the tour', onclick: () => { pop.remove(); isExplore ? startTour() : (location.href = './?tour=1'); } }),
-          h('button', { role: 'menuitem', text: 'Sign out', onclick: () => setUser(null) }));
-        box.append(pop); av.setAttribute('aria-expanded', 'true');
-      });
-      box.append(av);
-    } else box.append(h('button', { class: 'btn small', type: 'button', text: 'Sign in', onclick: openSignIn }));
-    bar.querySelector('.av')?.remove();
-    bar.append(box); scanButtons();
+    const av = h('button', { class: user ? 'av on' : 'av', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+      'aria-label': user ? `Account: ${user.name}` : 'Account and sign in', title: user ? user.name : 'Sign in' });
+    if (user) av.textContent = initials(user.name); else av.innerHTML = PERSON;
+    av.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = box.querySelector('.menu-pop');
+      if (open) { open.remove(); av.setAttribute('aria-expanded', 'false'); return; }
+      const item = (text, fn) => h('button', { role: 'menuitem', text, onclick: () => { pop.remove(); av.setAttribute('aria-expanded', 'false'); fn(); } });
+      const pop = h('div', { class: 'menu-pop glass', role: 'menu' },
+        user ? h('div', { class: 'who' }, h('b', { text: user.name }), h('span', { text: 'Demo account · this browser only' }))
+             : h('div', { class: 'who' }, h('b', { text: 'Not signed in' }), h('span', { text: 'Sign in to tag finds and comment' })),
+        ...(user ? [] : [item('Sign in', openSignIn)]),
+        item('How to find a comet', openGuide),
+        item(isExplore ? 'Take the tour' : 'Tour the sky map', tour),
+        ...(user ? [item('Sign out', () => setUser(null))] : []));
+      box.append(pop); av.setAttribute('aria-expanded', 'true');
+      pop.querySelector('button')?.focus();
+    });
+    box.append(av);
+    bar.append(box);
   }
   document.addEventListener('click', () => { document.querySelectorAll('.authbox .menu-pop').forEach(m => m.remove()); });
   document.addEventListener('click', e => { document.querySelectorAll('details.layers[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('details.layers[open]').forEach(d => { d.open = false; }); });
-
-  // ---------------------------------------------------------------- top bar extras: help button, working search on inner pages
-  function topbar() {
-    const bar = document.querySelector('.topbar'); if (!bar) return;
-    const help = h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Take the tour', title: 'Take the tour', text: '?', onclick: () => (isExplore ? startTour() : (location.href = './?tour=1')) });
-    bar.append(help);
-    const s = bar.querySelector('.search');
-    if (s && !isExplore) {   // inner pages: same search, jumps to a comet or a sky position
-      const input = s.querySelector('input'); input.removeAttribute('disabled'); input.placeholder = 'Comet name or sky position';
-      input.addEventListener('keydown', e => {
-        if (e.key !== 'Enter') return; e.preventDefault();
-        const v = input.value.trim(), nums = v.split(/[\s,]+/).map(Number);
-        if (nums.length === 2 && nums.every(Number.isFinite)) location.href = `timelapse.html?ra=${nums[0]}&dec=${nums[1]}&det=D1&diff=1`;
-        else if (v) location.href = `comet.html?id=${encodeURIComponent(v)}`;
-      });
-    }
-    if (s) s.addEventListener('click', () => s.querySelector('input').focus());
-  }
-
 
   // ---------------------------------------------------------------- guide: a notebook laid over whatever page you are on
   const PIC = 'data/flip/rwaur/';
@@ -242,12 +231,11 @@
 
   // ---------------------------------------------------------------- tour
   const STEPS = [
-    { title: 'Welcome to Comet Catcher', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. Anything that moves between photos is a comet or an asteroid. Take a one-minute look around, or skip it.' },
+    { title: 'Welcome to Trailblazer', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. Anything that moves between photos is a comet or an asteroid. Take a one-minute look around, or skip it.' },
     { sel: '.map-wrap', title: 'The whole sky, flat', text: 'This is the entire sky unrolled like a world map. The bright band is our galaxy. Orange dots are comets people found, blue ones are already known.' },
-    { sel: '.timebar', title: 'Watch it get photographed', text: 'Press play to see SPHEREx scan the sky, strip by strip, over its first year and a half.' },
-    { sel: '.layers', title: 'More, when you want it', text: 'Layers hides the extras: coverage, where people have looked, comets and known objects. Leave them alone to start.' },
-    { sel: '#go-unexplored', title: 'Your first hunt', text: 'Not sure where to look? This takes you to a patch nobody has checked yet. You can also click anywhere on the sky.' },
-    { title: 'You’re ready', text: 'Compare two photos, spot the dot that jumped, and tag it. Sign in any time to join the conversation.', last: true },
+    { sel: '.tl', title: 'Watch it get photographed', text: 'Drag the round handle to move through time, or click it to watch SPHEREx scan the sky, strip by strip, over its first year and a half.' },
+    { sel: '.layers', title: 'More, when you want it', text: 'Layers switches the extras on and off: photos, the heat map of where people have looked, comets, their paths and known objects.' },
+    { title: 'You’re ready', text: 'Click anywhere on the sky to look closer, compare two photos, spot the dot that jumped, and tag it. Sign in any time to join the conversation.', last: true },
   ];
   let tourEl = null;
   function startTour() {
@@ -267,7 +255,7 @@
         h('div', { class: 'row' },
           s.last ? h('span') : h('button', { class: 'skip', type: 'button', text: 'Skip tour', onclick: () => end() }),
           i > 0 && !s.last ? h('button', { class: 'btn ghost small', type: 'button', text: 'Back', onclick: () => go(-1) }) : '',
-          h('button', { class: 'btn', type: 'button', text: s.last ? 'Start catching' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) { end(); document.getElementById('go-unexplored')?.click(); } else go(1); } })));
+          h('button', { class: 'btn', type: 'button', text: s.last ? 'Start exploring' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) end(); else go(1); } })));
       card.querySelectorAll('.btn').forEach(b => delete b.dataset.cb); scanButtons();
       const t = s.sel && document.querySelector(s.sel); if (t) t.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
       place(); card.querySelector('.btn:last-child')?.focus({ preventScroll: true });
@@ -295,13 +283,12 @@
 
   // ---------------------------------------------------------------- boot
   if (!noStars) starfield();
-  topbar();
   renderAuth();
   scanButtons();
   if (/[?&]guide=1/.test(location.search)) openGuide();
   new MutationObserver(() => scanButtons()).observe(document.body, { childList: true, subtree: true });
   if (isExplore && (!store.get('ch.tour') || /[?&]tour=1/.test(location.search))) {
-    const wait = setInterval(() => { if (document.body.dataset.ready || document.querySelector('#go-unexplored[href]')) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);
+    const wait = setInterval(() => { if (document.body.dataset.ready) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);
     setTimeout(() => clearInterval(wait), 15000);
   }
 })();

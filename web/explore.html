@@ -1,0 +1,95 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explore Â· Trailblazer</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="header.css">
+<link rel="stylesheet" href="explore.css">
+<link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
+<link rel="preload" as="image" href="data/visits.png">
+<link rel="preload" as="fetch" href="data/coverage.json" crossorigin>
+</head>
+<body class="explore">
+
+<!-- The map: real SPHEREx sky, coverage replay (canvas), heat map of patches people checked (canvas), grid and ecliptic (svg).
+     Markers and cards are filled in by explore.js from /api/comets and /api/explored. -->
+<div class="xstage">
+<div class="map-wrap">
+  <div class="map" id="map">
+    <img class="sky" src="data/sky.jpg" alt="All-sky picture from SPHEREx" fetchpriority="high" decoding="async" onload="this.classList.add('ld')">
+    <canvas class="cover" id="cover" width="720" height="360"></canvas>
+    <canvas class="heat" id="heat" width="2000" height="1000"></canvas>
+    <svg class="grat" viewBox="0 0 2000 1000" preserveAspectRatio="none">
+      <path id="grat"/>
+      <path id="ecl" class="ecl"/>
+      <text dy="-10"><textPath href="#ecl" startOffset="24%">most comets travel near this line</textPath></text>
+    </svg>
+  </div>
+
+  <div class="marks" id="marks">
+    <div class="pin" id="pin" hidden>
+      <span class="pin-ring"><i></i></span>
+      <div class="pincard glass">
+        <button class="x" id="pin-x" aria-label="Close">&times;</button>
+        <span class="eyebrow">Patch of sky</span>
+        <h3 data-f="where"></h3>
+        <p>See how this spot changed between SPHEREx photos.</p>
+        <a class="btn small" data-f="open">Look closer <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+      </div>
+    </div>
+    <a class="mapcard glass" id="card-comet" hidden>
+      <div class="head"><h3 data-f="id"></h3><span class="tag comet">comet</span></div>
+      <div class="tally"><i class="t-comet"></i><i class="t-asteroid"></i><i class="t-unsure"></i></div>
+      <div class="head"><span class="mono muted" data-f="count"></span><svg class="ic"><use href="icons.svg#arrow"/></svg></div>
+    </a>
+    <div class="mapcard glass" id="card-patch">
+      <h3>Nobody has looked here</h3>
+      <p class="mono" data-f="where"></p>
+      <a class="btn small" data-f="open">Open patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+    </div>
+  </div>
+</div>
+
+<!-- Timeline (Homepage-2): one tick per month SPHEREx took photos, the year under each January, today's date over the handle.
+     Drag anywhere on it to move through time; click the handle to replay the sky filling in. Built by explore.js. -->
+<div class="tl" id="tl">
+  <div class="tl-line" id="tl-line">
+    <div class="tl-ticks" id="tl-ticks" aria-hidden="true"></div>
+    <output class="tl-date" id="t-date">&nbsp;</output>
+    <button class="tl-knob" id="play" type="button" role="slider" aria-label="Date. Drag to move through time; press to replay the sky filling in." aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+      <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
+    </button>
+  </div>
+  <input id="time" type="range" min="0" max="529" value="529" hidden>
+</div>
+</div>
+
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
+  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
+</header>
+
+<details class="layers" id="layers">
+  <summary>Layers<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></summary>
+  <div class="layers-body" aria-label="Map layers">
+    <h2>Layers</h2>
+    <label class="layer" style="--c:var(--photo)"><input class="cbx" type="checkbox" id="ly-photos" checked><span>SPHEREx photos</span></label>
+    <label class="layer" style="--c:var(--people)"><input class="cbx" type="checkbox" id="ly-people"><span>Heat map</span></label>
+    <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
+    <label class="layer" style="--c:var(--comet)"><input class="cbx" type="checkbox" id="ly-comets" checked><span>Comets found</span></label>
+    <label class="layer" style="--c:var(--comet)"><input class="cbx" type="checkbox" id="ly-paths" checked><span>Comet paths</span></label>
+    <label class="layer" style="--c:var(--known)"><input class="cbx" type="checkbox" id="ly-known" checked><span>Known objects</span></label>
+  </div>
+</details>
+
+
+<div class="readout" id="readout" hidden></div>
+
+<script type="module" src="explore.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

@@ -67,12 +67,6 @@ $('map').addEventListener('pointermove', e => {   // live coordinates beside the
 $('map').addEventListener('pointerleave', () => { readout.hidden = true; });
 $('pin-x').addEventListener('click', () => { pin.hidden = true; });
 addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; });
-$('search').addEventListener('submit', e => {
-  e.preventDefault();
-  const [ra, dec] = $('q').value.trim().split(/[\s,]+/).map(Number);
-  if (Number.isFinite(ra) && Number.isFinite(dec) && ra >= 0 && ra < 360 && Math.abs(dec) <= 90) showPin(ra, dec);
-  else $('q').setCustomValidity('Type RA and Dec in degrees, e.g. 269.45 4.69'), $('q').reportValidity(), $('q').setCustomValidity('');
-});
 
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
 // Known comets move: their marker follows the JPL path in `track` ([[day, ra, dec, magnitude], ...] every 10 days)
@@ -137,7 +131,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
 addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
 // ---- heat map from /api/explored: patch-sized cells people have checked (mint), the rest stay dark ----
-const exploredLoaded = getJson('/api/explored').then(({ total, cells, suggest }) => {
+const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
   const cv = $('heat'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
   const level = n => (n >= 20 ? 3 : n >= 5 ? 2 : 1);
   for (const c of cells) {
@@ -150,11 +144,6 @@ const exploredLoaded = getJson('/api/explored').then(({ total, cells, suggest })
     g.fillStyle = `rgba(95,224,173,${[0, .26, .5, .82][level(c.checks)]})`; g.fill();
     g.strokeStyle = 'rgba(4,6,11,.75)'; g.lineWidth = 1.5; g.stroke();
   }
-  const fmt = n => n.toLocaleString('en-US');
-  document.querySelector('[data-n=seen]').textContent = fmt(cells.length);
-  document.querySelector('[data-n=total]').textContent = fmt(total);
-  $('people-meter').style.setProperty('--p', cells.length / total * 100 + '%');
-
   const url = patchUrl(suggest.ra, suggest.dec), pin = document.createElement('a');
   pin.className = 'mk patch'; pin.href = url; pin.innerHTML = '<i></i><b>unexplored</b>';
   place(pin, suggest.ra, suggest.dec);
@@ -163,7 +152,6 @@ const exploredLoaded = getJson('/api/explored').then(({ total, cells, suggest })
   place(card, suggest.ra, suggest.dec);
   card.querySelector('[data-f=where]').textContent = `RA ${suggest.ra.toFixed(1)}  Dec ${suggest.dec >= 0 ? '+' : ''}${suggest.dec.toFixed(1)}`;
   card.querySelector('[data-f=open]').href = url;
-  $('go-unexplored').href = url;
 }).catch(err => console.warn('explored unavailable', err));
 
 // ---- phones: flip a name to the left of its marker when it would cover another name or dot, or run off screen ----
@@ -179,6 +167,61 @@ Promise.all([cometsLoaded, exploredLoaded]).then(() => {
     kept.push(box(b));
   }
 });
+
+// ---- timeline (Homepage-2): a tick for every month SPHEREx photographed, the year under each January, ----
+// the date over a round handle. The line runs from the first of the first month to the last day of data.
+const MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+function makeTimeline(meta, slider) {
+  const DAY = 864e5, t0 = (meta.mjd0 - 40587) * DAY, start = new Date(t0), end = t0 + meta.days * DAY;
+  const from = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1), span = end - from;
+  const line = $('tl-line'), ticks = $('tl-ticks'), knob = $('play'), date = $('t-date');
+  for (let y = start.getUTCFullYear(), m = start.getUTCMonth(); Date.UTC(y, m, 1) <= end; m === 11 ? (y++, m = 0) : m++) {
+    const t = document.createElement('span');
+    t.className = 'tl-tick';
+    t.style.left = (Date.UTC(y, m, 1) - from) / span * 100 + '%';
+    t.innerHTML = `<b>${MONTHS[m]}</b>${m === 0 ? `<small>${y}</small>` : ''}`;
+    ticks.append(t);
+  }
+  knob.setAttribute('aria-valuemax', meta.days);
+  const api = {
+    value: +slider.value, onScrub() {}, onPress() {},
+    show(d) {   // put the handle and the date at day d
+      const when = t0 + d * DAY, x = (when - from) / span * 100 + '%';
+      line.style.setProperty('--x', x);
+      date.textContent = new Date(when).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      knob.setAttribute('aria-valuenow', d);
+      knob.setAttribute('aria-valuetext', new Date(when).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }));
+    },
+  };
+  const dayAt = e => { const b = line.getBoundingClientRect(); return Math.round((from + (e.clientX - b.left) / b.width * span - t0) / DAY); };
+  // a press on the handle that does not move is a click (replay); any drag, or a press on the line, scrubs
+  let down = null;
+  $('tl').addEventListener('pointerdown', e => {
+    if (e.button) return;
+    down = { x: e.clientX, onKnob: knob.contains(e.target), moved: false };
+    $('tl').setPointerCapture(e.pointerId);
+    if (!down.onKnob) { down.moved = true; api.value = dayAt(e); api.onScrub(); }
+    e.preventDefault(); knob.focus({ preventScroll: true });
+  });
+  $('tl').addEventListener('pointermove', e => {
+    if (!down) return;
+    if (!down.moved && Math.abs(e.clientX - down.x) < 4) return;
+    down.moved = true; api.value = dayAt(e); api.onScrub();
+  });
+  const up = () => { if (down && !down.moved) api.onPress(); down = null; };
+  $('tl').addEventListener('pointerup', up);
+  $('tl').addEventListener('pointercancel', () => { down = null; });
+  knob.addEventListener('keydown', e => {
+    const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -30, PageUp: 30 }[e.key];
+    if (step) { api.value = +slider.value + step * (e.shiftKey ? 7 : 1); api.onScrub(); }
+    else if (e.key === 'Home') { api.value = 0; api.onScrub(); }
+    else if (e.key === 'End') { api.value = meta.days; api.onScrub(); }
+    else if (e.key === 'Enter' || e.key === ' ') api.onPress();
+    else return;
+    e.preventDefault();
+  });
+  return api;
+}
 
 // ---- SPHEREx coverage replay ----
 // visits.png (bake/sky_assets.py): for each 0.5 degree cell, the start day of up to 6 visits (bursts of photos).
@@ -212,11 +255,10 @@ let showByDay = () => {};
 
   const cv = $('cover'), g = cv.getContext('2d'), W = cv.width, H = cv.height, K = 6, NONE = 65535;
   const inOval = new Uint8Array(W * H), visits = new Uint16Array(W * H * K).fill(NONE);
-  let inside = 0;
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const rd = inv((i + .5) / W, (j + .5) / H);
     if (!rd) continue;
-    inside++; inOval[j * W + i] = 1;
+    inOval[j * W + i] = 1;
     const cell = Math.min(359, Math.floor((90 - rd[1]) / meta.step)) * 720 + Math.min(719, Math.floor(rd[0] / meta.step));
     for (let v = 0; v < K; v++) {   // block v>>1 of the stacked image: visit 2k low byte in R, 2k+1 in G, high bits in B
       const q = ((v >> 1) * 360 * 720 + cell) * 4, day = px[q + (v & 1)] | (((px[q + 2] >> ((v & 1) * 4)) & 15) << 8);
@@ -224,7 +266,7 @@ let showByDay = () => {};
     }
   }
 
-  const out = g.createImageData(W, H), o = out.data, slider = $('time');
+  const out = g.createImageData(W, H), o = out.data, slider = $('time'), timeline = makeTimeline(meta, slider);
   const FRESH = 9;   // days a newly photographed strip stays lit up
   showByDay = () => {
     for (const el of document.querySelectorAll('[data-day]')) el.style.visibility = +el.dataset.day <= +slider.value ? '' : 'hidden';
@@ -232,7 +274,7 @@ let showByDay = () => {};
   };
   const VEIL = [232, 110, 45, 0];   // darkness by passes so far: none, 1, 2, 3+
   function draw() {
-    const d = +slider.value, passes = new Uint32Array(K + 1);
+    const d = +slider.value;
     for (let k = 0, q = 0; k < inOval.length; k++, q += 4) {
       if (!inOval[k]) { o[q + 3] = 0; continue; }
       let n = 0, age = Infinity;
@@ -240,40 +282,29 @@ let showByDay = () => {};
         const t = visits[b + v];
         if (t <= d) { n++; age = Math.min(age, d - t); }
       }
-      passes[n]++;
       if (age < FRESH) { o[q] = 234; o[q + 1] = 241; o[q + 2] = 255; o[q + 3] = 90 * (1 - age / FRESH); }
       else { o[q] = 3; o[q + 1] = 5; o[q + 2] = 10; o[q + 3] = VEIL[Math.min(n, 3)]; }
     }
     g.putImageData(out, 0, 0);
-    // share of the sky photographed at least p times (Mollweide is equal-area, so counting pixels counts sky fairly)
-    const atLeast = p => { let c = 0; for (let n = p; n <= K; n++) c += passes[n]; return c / inside * 100; };
-    const fmt = x => (x > 99.5 ? Math.floor(x) : Math.round(x)) + '%';
-    let pass = 1;
-    while (pass < K && atLeast(pass) >= 99) pass++;
-    const pct = atLeast(1), now = atLeast(pass);
-    const when = new Date((meta.mjd0 + d - 40587) * 864e5);
-    $('t-date').textContent = when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-    $('t-pct').textContent = pass === 1 ? `${fmt(pct)} photographed` : `Pass ${pass} · ${fmt(now)}`;
-    slider.style.setProperty('--p', d / meta.days * 100 + '%');
-    slider.parentNode.style.setProperty('--f', d / meta.days);
-    $('t-bubble').textContent = $('t-date').textContent;
-    $('photo-meter').style.setProperty('--p', pct + '%');
-    $('photo-meter').querySelector('b').textContent = Math.floor(pct) + '%';
+    timeline.show(d);
     showByDay();
   }
   slider.max = meta.days;
   slider.value = meta.days;
-  let queued = 0;   // many input events can arrive per frame while dragging: draw once per frame
-  slider.addEventListener('input', () => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; draw(); }); });
+  let queued = 0;   // many moves can arrive per frame while dragging: draw once per frame
+  const setDay = d => { slider.value = Math.max(0, Math.min(meta.days, Math.round(d))); if (!queued) queued = requestAnimationFrame(() => { queued = 0; draw(); }); };
   draw();
 
+  // the handle: drag to scrub, click to replay the sky filling in (click again to pause)
   let timer = 0;
   const play = $('play');
-  play.addEventListener('click', () => {
-    if (timer) { clearInterval(timer); timer = 0; play.classList.remove('on'); return; }
-    if (+slider.value >= meta.days) slider.value = 0;
+  const stop = () => { clearInterval(timer); timer = 0; play.classList.remove('on'); };
+  timeline.onScrub = () => { stop(); setDay(timeline.value); };
+  timeline.onPress = () => {
+    if (timer) return stop();
+    if (+slider.value >= meta.days) setDay(0);
     play.classList.add('on');
-    timer = setInterval(() => { slider.value = +slider.value + 2; draw(); if (+slider.value >= meta.days) play.click(); }, 40);
-  });
+    timer = setInterval(() => { setDay(+slider.value + 2); if (+slider.value >= meta.days) stop(); }, 40);
+  };
   document.body.dataset.ready = '1';
 })();
