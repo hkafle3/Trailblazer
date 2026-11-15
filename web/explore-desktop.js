@@ -124,7 +124,7 @@ if (desk() && history.state?.view?.zoom > 1.001) {
   begin(); restore();
   // the timeline is still rising into place (its top edge is the map area's bottom): once it has, measure and place again
   const was = [W, X, Y];
-  $('tl').addEventListener('animationend', () => { if (on && desk() && W === was[0] && X === was[1] && Y === was[2]) { measure(area()); restore(); } }, { once: true });
+  $('tl').addEventListener('animationend', e => { if (e.target === $('tl') && on && desk() && W === was[0] && X === was[1] && Y === was[2]) { measure(area()); restore(); } });   // its own rise, not a child's animation
 }
 // the search (search.js): glide so sky position (ra, dec) is in the middle, at zoom z (1 = whole sky) or closer if already in
 export function flyTo(ra, dec, z = 4) { begin(); view.flyTo(ra, dec, Math.max(W, A.min * z), 600); }
