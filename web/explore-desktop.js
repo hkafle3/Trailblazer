@@ -17,7 +17,8 @@ const desk = () => !phone.matches;
 let on = false;
 function area() {
   const s = stage.getBoundingClientRect();
-  return { w: innerWidth, t: document.querySelector('.topbar').getBoundingClientRect().bottom, b: $('tl').getBoundingClientRect().top,
+  // the timeline's top edge from layout too: it rises 14 px into place as the page opens, and a view restored meanwhile must not sit that much off
+  return { w: innerWidth, t: document.querySelector('.topbar').getBoundingClientRect().bottom, b: s.top + $('tl').offsetTop,
     min: wrap.offsetWidth, x0: s.left + wrap.offsetLeft, y0: s.top + wrap.offsetTop };
 }
 function begin() {   // before the first pan or zoom: start from the oval the CSS placed
