@@ -104,7 +104,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .layers { position: static; order: 1; }
   body.explore .layers-body { position: static; width: auto; margin-top: 10px; }
   /* the featured comet's card: under the map, full width, the timeline moved down to make room */
-  body.explore #card-comet { left: 8px !important; right: 8px; top: calc(100% + 16px) !important; width: auto; margin: 0; }
+  body.explore #card-comet, body.explore #card-comet.left { left: 8px !important; right: 8px; top: calc(100% + 16px) !important; width: auto; margin: 0; }   /* .left is for beside its dot */
   body.explore #card-comet::before { content: none; }
   body.explore:has(#card-comet:not([hidden])) .tl { margin-top: 160px; }
 }
