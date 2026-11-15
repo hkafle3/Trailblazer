@@ -217,6 +217,10 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
 #spec-chart .gap { stroke: #8a8a8a; stroke-width: 2; }
 #spec-chart .err { stroke-width: 1; opacity: .5; }
 #spec-chart .pt.doubt { fill: #000; stroke-width: 1.4; }
+#spec-chart.greyed :is(.pt, .err) { fill: #000; stroke: #6b6b6b; opacity: .5; }   /* too bright: what is left is not a spectrum */
+#spec-chart .why { font-size: 12px; fill: #fff; }
+.pv-spec .warn { color: var(--comet); }
+.pv-spec [hidden] { display: none; }
 .spec-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: calc(10 * var(--e)); font: 400 max(10px, calc(17 * var(--e))) / 1.2 var(--panel-font); color: #cfd6e4; }
 .spec-key i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
 .spec-key i.hollow { box-sizing: border-box; border: 1.5px solid #fff; }

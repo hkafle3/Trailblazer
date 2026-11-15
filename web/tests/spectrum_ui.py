@@ -78,6 +78,8 @@ async def desktop(b):
     r = await result(pg)
     print("  ", r["where"], "|", r["status"])
     check("Gaia DR3 4472836047939582592" in r["where"], "desktop: the Gaia star's id is shown")
+    warn = await pg.evaluate("(() => { const w = document.getElementById('spec-warn'); return w.hidden ? '' : w.textContent; })()")
+    check("read high" in warn, f"desktop: the crowded G 13.6 star says its neighbours add light (2MASS: it reads 1.3 to 1.5 times high): {warn!r}")
     clean_checks(r, "desktop, G 13.6 star")
     async with pg.expect_download() as dl:
         await pg.click("#spec-csv")
@@ -114,6 +116,8 @@ async def desktop(b):
     sat = sum("saturated" in g["why"] for g in r3["gaps"])
     print("  ", r3["where"], "|", r3["status"])
     check("Gaia DR3 4472832130942575872" in r3["where"], "desktop: Barnard's Star is named by its Gaia id")
+    grey = await pg.evaluate("[document.getElementById('spec-chart').classList.contains('greyed'), [...document.querySelectorAll('#spec-chart .why')].map(t => t.textContent).join(' ')]")
+    check(grey[0] and "Too bright" in grey[1], f"desktop: Barnard's chart is greyed with the reason on it: {grey[1]!r}")
     check(len(r3["points"]) <= 5 and r3["hollow"] == r3["circles"] == len(r3["points"]) and sat >= 90 and "saturates" in r3["status"] and r3["ticks"] == len(r3["gaps"]),
           f"desktop, Barnard's Star: {len(r3['points'])} points (all hollow), {len(r3['gaps'])} gaps ({sat} saturated), {r3['ticks']} gap ticks, nothing at zero")
     if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-barnard.png"))
