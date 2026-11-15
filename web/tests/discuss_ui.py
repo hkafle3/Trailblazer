@@ -70,8 +70,11 @@ async def main():
             if await label() == "Undiscovered": break
         assert await label() == "Undiscovered", "no fresh spot found"
         spot = await pg.evaluate("(({ m }) => ({ ra: m.ra, dec: m.dec, det: m.detector, n: m.frames.length }))(__lapse.state)")
-        await pg.click("#state")
+        # opened while the time-lapse plays: playback stops, so the next visit does not close the sheet
+        await pg.evaluate("__lapse.state.playing = true; __lapse.state.last = performance.now(); document.getElementById('state').click()")
         await pg.wait_for_selector("#talk", state="visible")
+        await pg.wait_for_timeout(2500)
+        assert await pg.locator("#talk").is_visible() and not await pg.evaluate("__lapse.state.playing"), "playback went on and closed the sheet"
         assert not await pg.locator(".pv-mini").is_visible() and not await pg.locator(".pstage > .pv-desc").is_visible(), "the sheet did not replace the right column"
         assert "RA" in await pg.locator("#talk [data-f=where]").text_content()
         assert await pg.locator("#talk .talk-form").is_visible() and not await pg.locator("#talk .match").is_visible(), "a known object was offered with none near"
@@ -82,6 +85,9 @@ async def main():
         # 2. Post: Comet and a comment, through Turnstile's test widget
         await pg.click("#talk label.pv-row:has([value=comet])")
         await pg.fill("#talk textarea", "Moves between visits <b>not bold</b>")
+        i0 = await pg.evaluate("__lapse.state.i")   # the arrow keys move the caret in the comment, not the visit
+        for key in ["ArrowLeft", "ArrowRight", "ArrowRight"]: await pg.press("#talk textarea", key)
+        assert await pg.evaluate("__lapse.state.i") == i0 and await pg.locator("#talk").is_visible(), "an arrow key in the comment changed the visit"
         await pg.wait_for_function("window.turnstile?.getResponse?.()", timeout=60000)
         await pg.click("#talk .pv-post")
         await pg.wait_for_url(re.compile(r"/candidate(\.html)?\?id=C-\d{4}$"), timeout=30000)

@@ -240,11 +240,11 @@ assert sorted(c for c, _ in out) == [200, 201] and out[0][1]["id"] == out[1][1][
 assert len(call("/api/candidates/near?ra=%s&dec=%s" % (ra2, dec))[1]["candidates"]) == 1
 # refusals: 400 with the field named, nothing written
 rows = count()
-for field, change in [("ra", {"ra": 400}), ("ra", {"ra": "12"}), ("dec", {"dec": -95}), ("det", {"det": "D9"}), ("tag", {"tag": "star"}), ("tag", {"tag": None}),
+for k, (field, change) in enumerate([("ra", {"ra": 400}), ("ra", {"ra": "12"}), ("dec", {"dec": -95}), ("det", {"det": "D9"}), ("tag", {"tag": "star"}), ("tag", {"tag": None}),
                       ("visit", {"visit": {"start": "2025-8-28"}}), ("visit", {"visit": {**visit, "exposures": 0}}), ("visit", {"visit": {**visit, "mjd": 1}}),
                       ("visit", {"visit": {**visit, "start": "1900-01-01"}}), ("visit", {"visit": {**visit, "end": "9999-12-31"}}), ("visit", {"visit": {**visit, "mjd": 61110.4}}),
-                      ("author", {"author": "<b>x</b>"}), ("body", {"body": "a" * 1001}), ("body", {"body": 5}), ("turnstile", {"turnstile": ""})]:
-    code, e = post("cand-bad-%s-%d" % (field, pid), **change)
+                      ("author", {"author": "<b>x</b>"}), ("body", {"body": "a" * 1001}), ("body", {"body": 5}), ("turnstile", {"turnstile": ""})]):
+    code, e = post("cand-bad-%d-%d" % (k, pid), **change)   # its own IP each, under the 5 a minute limit
     assert code == 400 and e.get("field") == field, (field, change, code, e)
 assert call("/api/candidates", raw=b"nope", ip="cand-raw-%d" % pid)[0] == 400
 assert count() == rows, "a refused post was stored"
