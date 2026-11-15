@@ -84,6 +84,8 @@ function player(items) {
     if (!it.src) return;
     i = k; img.src = it.src; img.alt = it.alt; ring.className = it.ring;
     line.style.setProperty('--x', pos(it.mjd)); out.textContent = it.label;
+    const h = out.offsetWidth / 2;   // the date stays over the handle, but never past the line's ends (a phone's first photo)
+    out.style.left = `clamp(${h}px, ${pos(it.mjd)}, calc(100% - ${h}px))`;
     knob.setAttribute('aria-valuenow', k); knob.setAttribute('aria-valuetext', `Photo ${k + 1} of ${N}, ${it.label}`);
     items.forEach((x, n) => x.fig.classList.toggle('on', n === k));
     wrap.dataset.i = k;

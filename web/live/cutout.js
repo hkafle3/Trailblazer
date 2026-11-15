@@ -111,7 +111,12 @@ export async function pool(items, n, fn) {   // fn over items, at most n at a ti
   return out;
 }
 export async function knownPhoto(s, { api = '', signal, maps } = {}) {
-  const r = await fetch(`${api}/api/images?ra=${s.ra.toFixed(4)}&dec=${s.dec.toFixed(4)}&det=D1&v=2`, { signal });
+  let r;   // a 503 is IRSA busy behind the Worker (when the sky index cannot answer): two more tries, 3 s apart
+  for (let k = 0; ; k++) {
+    r = await fetch(`${api}/api/images?ra=${s.ra.toFixed(4)}&dec=${s.dec.toFixed(4)}&det=D1&v=2`, { signal });
+    if (r.status !== 503 || k === 2) break;
+    await new Promise(ok => setTimeout(ok, 3000));
+  }
   if (!r.ok) throw new Error(`image search: HTTP ${r.status}`);
   const { images } = await r.json(), img = images.find(i => i.obs === s.obs);
   if (!img) throw new Error(`${s.obs} is not in the image search`);
