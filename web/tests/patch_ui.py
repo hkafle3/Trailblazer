@@ -144,12 +144,20 @@ async def main():
             await pg.set_viewport_size({"width": w, "height": 844}); await pg.wait_for_timeout(300)
             out = await pg.evaluate("[...document.querySelectorAll('.pv-options .at, .pv-spectral .at, .pv-layers .at, .pv-others .at')].filter(e => { const r = e.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth; }).map(e => e.id || e.textContent)")
             assert not out, f"{w} px: off screen {out}"
+        # removing a Spectral layer keeps keyboard focus: on the next chip, then the box when none are left
+        await pg.set_viewport_size({"width": 1440, "height": 900}); await pg.wait_for_timeout(200)
+        await pg.evaluate("window.__spectral.toggle(10, true); window.__spectral.toggle(20, true)")
+        await pg.focus(".sp-chip[data-n='10']"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(100)
+        assert await pg.evaluate("document.activeElement.dataset.n") == "20", "focus lost after removing a chip"
+        await pg.keyboard.press("Enter"); await pg.wait_for_timeout(100)
+        assert await pg.evaluate("document.activeElement.id") == "sp-on", "focus lost after removing the last chip"
+        print("PASS spectral chips: removing one keeps focus on the next chip, then the box")
         print("PASS phone cards: every left-card control stays on screen at 320 and 390 px")
         # Forums (same shared stylesheet): no sideways scroll at tablet and phone widths (styles.css asks 1100 px of body)
-        for w in (390, 700, 900):
+        for w in (390, 700, 768, 900, 1024):
             await pg.set_viewport_size({"width": w, "height": 844}); await pg.goto(f"{BASE}/forums.html"); await pg.wait_for_timeout(500)
             assert not await pg.evaluate("document.documentElement.scrollWidth > innerWidth"), f"Forums scrolls sideways at {w} px"
-        print("PASS forums width: no sideways scroll at 390, 700 and 900 px")
+        print("PASS forums width: no sideways scroll at 390, 700, 768, 900 and 1024 px")
         await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready)
 
 

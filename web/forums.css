@@ -69,7 +69,7 @@ mark { background: rgba(255, 154, 77, .38); color: #fff; border-radius: 2px; pad
 .cbx:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ---------- phones: one column, filters above the threads ---------- */
-@media (max-width: 760px) {
+@media (max-width: 900px) {   /* below this the 452-wide Filters column no longer fits beside the threads */
   body.forums { --e: .42px; }
   .fstage { grid-template-columns: 1fr; row-gap: 14px; padding: 80px 16px 48px; }
   .fstage > * { grid-column: 1 !important; }

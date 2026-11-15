@@ -233,7 +233,11 @@ const spectral = (() => {
       b.type = 'button'; b.className = 'sp-chip'; b.dataset.n = n; b.textContent = `${nmOf(c).toLocaleString('en-US')} nm`;
       b.title = `Detector ${c.detector}. Click to turn this layer off`;
       b.setAttribute('aria-label', `${nmOf(c)} nanometres, active. Click to turn it off`);
-      b.onclick = () => api.toggle(n, false);
+      b.onclick = () => {   // the chip goes away: keep keyboard focus on a neighbour, or the box when none are left
+        const next = b.nextElementSibling?.dataset.n ?? b.previousElementSibling?.dataset.n;
+        api.toggle(n, false);
+        (next != null ? box.querySelector(`[data-n="${next}"]`) : on).focus();
+      };
       return b;
     }));
     marks.innerHTML = [...api.active].map(n => { const [x, y] = polar(angle(n), 154); return `<circle class="on" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`; }).join('');
