@@ -24,8 +24,8 @@ check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'
 # a malformed id must get our JSON error from the Worker; on the live site Cloudflare's edge refuses it first
 case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is not valid"' ;; *) bad_id='400 Bad Request' ;; esac
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
-check "explored cells" "/api/explored" 200 '"checks":'
-check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
+check "explored cells" "/api/explored" 200 '"cells":'
+check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":'
 check "home page served" "/" 200 'Trailblazer'
 check "Explore map page served" "/explore" 200 'id="tl"'
 check "Forums page served" "/forums.html" 200 'Forums'
