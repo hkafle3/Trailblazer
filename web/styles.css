@@ -34,6 +34,11 @@
 
 * { box-sizing: border-box; margin: 0; }
 html, body { height: 100%; }
+/* The page itself is black, on every page and in both color schemes. Without this the dark color lived only on <body>,
+   and iPhone Safari (iOS 27) stopped painting it on the Comets list: on phones `html, body { overflow-x: hidden }`
+   (ui.css) makes <body> its own scroll box, and with the fixed star layers behind it Safari showed the white page
+   underneath, so the header's dark fade became a grey to white one and white labels vanished. */
+html { background: #000; color-scheme: dark; }
 body {
   background: var(--bg);
   color: var(--ink);
