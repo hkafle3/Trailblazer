@@ -198,7 +198,7 @@ async def reduced(browser):
     await scroll(pg, 7)
     check("reduced motion: the scroll opens the time-lapse", await until(pg, f"{DIVE}?.phase === 'open'") and spot(pg.url) is not None, pg.url)
     ts = await pg.evaluate("window.__ts")
-    check("reduced motion: no flight, the dive is never part-way", all(t in (0, 1) for t in ts) and await pg.evaluate("document.querySelector('.map-wrap').style.transform") in ("", "scale(6)"), str(sorted(set(ts))[:6]))
+    check("reduced motion: no flight, the dive is never part-way", all(t in (0, 1) for t in ts) and await pg.evaluate("document.querySelector('.map-wrap').style.scale") in ("", "6"), str(sorted(set(ts))[:6]))
     await pg.evaluate("window.__ts = []")
     await pg.go_back()
     check("reduced motion: back shows the map", await until(pg, f"{DIVE} === null") and "/explore" in pg.url)

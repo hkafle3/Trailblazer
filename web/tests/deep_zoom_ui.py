@@ -11,10 +11,12 @@ Checks (numbers from the plan's evaluator):
                 fresh load; the same with replies in reverse order; a view left and revisited needs no new requests
   6 fallback    tiles blocked, WebGL refused, the WebGL context lost: the sky picture shows, the wheel still zooms, no
                 page errors; a restored context brings the tiles back
-  F handoff     switching to the phone width and back (with replies held, in a glide, in a pinch, with a sheet open)
-                hides the layer, keeps nothing, and leaves the whole oval
-  7 regression  the whole sky is pixel-identical to the same page without deep zoom (the files it changed as they were
-                before it, DZ_BASE_REF, and no tile layer), on load and after a trip to the deepest zoom and back; at the deepest zoom a marker keeps its size and place, a drag keeps the sky
+  F handoff     switching to the phone width (with replies held, in a glide) opens the phone on the same sky, as the dive's
+                saved view does, and the layer follows that view with no tile of the old one; switching to the desktop
+                width (with a sheet open, in a pinch) gives the whole oval with the layer off
+  7 regression  the whole sky is pixel-identical to the same page with deep zoom switched off (no tile layer, the 3,200 px
+                limit, no straightening, skymap.js as it was at DZ_BASE_REF), on load and after a trip to the deepest
+                zoom and back; at the deepest zoom a marker keeps its size and place, a drag keeps the sky
                 under the pointer under it, and so does the wheel
   8 pin         a click on a star at the deepest zoom drops the pin within 2 px of the star in the picture
 Sharpness, smoothness and the data budgets (checks 1, 4, 5) are in deep_zoom_measure.py.
@@ -286,30 +288,34 @@ async def fallback(b):
 # ---------- F: the switch between the desktop and phone layouts ----------
 OVAL = "(() => { const r = document.querySelector('.map-wrap').getBoundingClientRect(); return [r.left, r.top, r.width]; })()"
 HIDDEN = "__dz().then(({ d }) => { const s = d.state(), c = document.querySelector('canvas.hips'); return !s.shown && !s.pending && !s.queued && !s.ready && (!c || getComputedStyle(c).display === 'none'); })"
+# the layer follows the view the engine published: on when that view is deep, off when it is not, and no tile on its way or shown that the view does not want
+FOLLOWS = """__dz().then(({ d, v }) => { const s = d.state(), c = document.querySelector('canvas.hips'), deep = v.W >= 2500 && s.order >= 1, want = new Set(s.wantIds);
+  return { ok: s.shown === deep && (!c || (getComputedStyle(c).display !== 'none') === deep) && (deep || (!s.pending && !s.queued && !s.ready)), W: Math.round(v.W), shown: s.shown, straight: v.straight(),
+    css: document.querySelector('.map-wrap').classList.contains('straight') }; })"""
 async def handoff(b):
     held = []
     pg = await open_page(b, less_motion=False, path="/explore?day=529", before=lambda p: p.route(TILES, lambda r: held.append(r)))
     oval0 = await pg.evaluate(OVAL)
-    await go(pg, "Barnard"); await pg.wait_for_timeout(400); n = len(held)
-    await pg.set_viewport_size(dict(width=390, height=844)); await pg.wait_for_timeout(300); hid1 = await pg.evaluate(HIDDEN)
+    await go(pg, "Barnard"); await pg.wait_for_timeout(400); n = len(held); old = set((await pg.evaluate(STATE))["wantIds"])
+    await pg.set_viewport_size(dict(width=390, height=844)); await pg.wait_for_timeout(300); f1 = await pg.evaluate(FOLLOWS)
     for r in held:
         try: await r.continue_()
         except Exception: pass   # aborted by the page
-    await pg.wait_for_timeout(1500); s = await pg.evaluate(STATE); hid2 = await pg.evaluate(HIDDEN)
+    await pg.unroute(TILES); await pg.wait_for_timeout(300); s = await settled(pg) if f1["shown"] else await pg.evaluate(STATE); f2 = await pg.evaluate(FOLLOWS)
+    stale = set(s["tiles"]) - set(s["wantIds"]) if f1["shown"] else set(s["tiles"])
     await pg.set_viewport_size(dict(width=1440, height=900)); await pg.wait_for_timeout(400); oval1 = await pg.evaluate(OVAL)
-    check(n > 0 and hid1 and hid2 and s["cached"] == 0 and all(abs(a - c) < .5 for a, c in zip(oval0, oval1)) and await pg.evaluate(HIDDEN), "handoff with replies held",
-          f"{n} replies held at the deepest zoom, then phone width: layer hidden, {s['cached']} tiles kept after release; back on desktop the whole oval is where it was")
-    await pg.unroute(TILES)
+    check(n > 0 and f1["ok"] and f2["ok"] and f1["straight"] == f1["css"] and not stale and all(abs(a - c) < .5 for a, c in zip(oval0, oval1)) and await pg.evaluate(HIDDEN), "handoff with replies held",
+          f"{n} replies held at the deepest zoom, then phone width: the phone opens on the same sky at {f1['W']} px and the layer follows it ({'on' if f1['shown'] else 'off'}); after release {len(stale)} tiles of the old view are kept; back on desktop the whole oval is where it was and the layer is off")
     await go(pg, "Barnard", 20000); await settled(pg); await pg.click("#zoom-in"); await pg.wait_for_timeout(80)   # in a glide
-    await pg.set_viewport_size(dict(width=390, height=844)); await pg.wait_for_timeout(500); hid = await pg.evaluate(HIDDEN); w = (await pg.evaluate(VIEW))["W"]
-    check(hid and w < 2500, "handoff in a glide", f"phone layout at {round(w)} px, layer hidden")
+    await pg.set_viewport_size(dict(width=390, height=844)); await pg.wait_for_timeout(500); f = await pg.evaluate(FOLLOWS); w1 = f["W"]; await pg.wait_for_timeout(400); w2 = (await pg.evaluate(FOLLOWS))["W"]
+    check(f["ok"] and w1 == w2 and f["straight"] == f["css"], "handoff in a glide", f"phone layout at {w1} px, the glide has stopped, the layer follows the view ({'on' if f['shown'] else 'off'})")
     check(not pg.errs, "no page errors (handoff, desktop first)", str(pg.errs[:3])); await pg.context.close()
     # phone first: a comet sheet open, then a pinch in progress
     pg = await open_page(b, 390, 844, 3, phone=True, less_motion=False)
     await pg.evaluate("document.querySelector('#marks .mk.sel').click()"); await pg.wait_for_timeout(500); sheet = await pg.evaluate("!document.getElementById('csheet').hidden")
     await go(pg, "Barnard"); s = await settled(pg)
     await pg.set_viewport_size(dict(width=1000, height=800)); await pg.wait_for_timeout(500)
-    check(sheet and not s.get("timeout") and await pg.evaluate(HIDDEN) and await pg.evaluate("document.getElementById('csheet').hidden"), "handoff with a sheet open", "deepest zoom on the phone with the comet sheet open, then desktop width: layer hidden, sheet closed")
+    check(sheet and not s.get("timeout") and await pg.evaluate(HIDDEN) and not await pg.evaluate("document.querySelector('.map-wrap').classList.contains('straight')") and await pg.evaluate("document.getElementById('csheet').hidden"), "handoff with a sheet open", "deepest zoom on the phone with the comet sheet open, then desktop width: the whole oval, layer off, map not straightened, sheet closed")
     await pg.set_viewport_size(dict(width=390, height=844)); await pg.wait_for_timeout(500); await go(pg, "Barnard", 20000); await settled(pg)
     cdp = await pg.context.new_cdp_session(pg); pts = lambda d: [dict(x=195 - d, y=400, id=0), dict(x=195 + d, y=400, id=1)]
     await cdp.send("Input.dispatchTouchEvent", dict(type="touchStart", touchPoints=pts(40)))
@@ -321,14 +327,16 @@ async def handoff(b):
     check(not pg.errs, "no page errors (handoff, phone first)", str(pg.errs[:3])); await pg.context.close()
 
 # ---------- 7: regression ----------
-MINE = ("explore-view.js", "skymap.js", "explore-phone.js", "explore-desktop.js", "explore.css")   # the files deep zoom changed, and nobody else since REF
-async def without_deep_zoom(route):   # the page as it is now, minus deep zoom: those files as they were at REF, and no tile layer
+async def without_deep_zoom(route):   # the page as it is now with deep zoom switched off: no tile layer, the old zoom limit, no straightening, the old skymap.js
     name = urlparse(route.request.url).path.lstrip("/")
     if name == "explore-deep.js": return await route.fulfill(body="", content_type="text/javascript")
-    if name not in MINE: return await route.continue_()
-    out = subprocess.run(["git", "-C", REPO, "show", f"{REF}:web/{name}"], capture_output=True, check=True)
-    body = out.stdout + (b"\nexport const straight = () => false;\n" if name == "explore-view.js" else b"")   # today's explore.js asks the engine for it
-    await route.fulfill(body=body, content_type="text/css" if name.endswith(".css") else "text/javascript")
+    if name == "skymap.js": return await route.fulfill(body=subprocess.run(["git", "-C", REPO, "show", f"{REF}:web/skymap.js"], capture_output=True, check=True).stdout, content_type="text/javascript")
+    if name != "explore-view.js": return await route.continue_()
+    src = open(os.path.join(REPO, "web", name)).read(); cut = [("export const MAXW = Math.round(90600 / devicePixelRatio);", "export const MAXW = 3200;"), ("const fade = w => {", "const fade = w => 0; const fadeOff = w => {")]
+    for old, new in cut:
+        assert src.count(old) == 1, f"explore-view.js changed: {old}"
+        src = src.replace(old, new)
+    await route.fulfill(body=src, content_type="text/javascript")
 async def shot(pg): return await pg.screenshot(animations="disabled", caret="hide")
 def same(a, b):
     if a == b: return 0, None
@@ -352,7 +360,7 @@ async def regression(b):
             await pg.click(whole); await pg.mouse.move(w / 2, h / 2); await pg.wait_for_timeout(900)
         d1, box1 = same(await shot(new), await shot(old)); canvas = await new.evaluate(HIDDEN)
         check(d0 == 0 and d1 == 0 and canvas and not s.get("timeout") and s["cached"] > 0, f"whole sky as before ({name})",
-              f"against the page without deep zoom ({REF}): {d0} pixels differ on load, {d1} after a trip to {round(v['W'])} CSS px ({s['cached']} tiles loaded) and back" + (f"; where: {box0} {box1}" if d0 or d1 else ""))
+              f"against the page with deep zoom off: {d0} pixels differ on load, {d1} after a trip to {round(v['W'])} CSS px ({s['cached']} tiles loaded) and back" + (f"; where: {box0} {box1}" if d0 or d1 else ""))
         check(not new.errs, f"no page errors (regression, {name})", str(new.errs[:3])); await new.context.close(); await old.context.close()
 
 DOT = """() => { const m = document.querySelector('#marks .mk.sel'), r = m.querySelector('i').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, u: parseFloat(m.style.left) / 100, v: parseFloat(m.style.top) / 100 }; }"""

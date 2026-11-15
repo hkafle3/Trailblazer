@@ -4,7 +4,7 @@
 // A tap on a marker opens a peek sheet instead of leaving the page; Layers and Examples open as bottom sheets.
 // Desktop is untouched: every handler checks `phone` first, and leaving the phone width clears what this file set.
 import { fwd, trackAt, dayDate } from './skymap.js';
-import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, move, place, win, onView, atMin, glide, glideZoom, cancel } from './explore-view.js';
+import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, move, place, win, onView, atMin, glide, glideZoom, cancel, plain } from './explore-view.js';
 import { restore } from './explore-dive.js';   // back from a time-lapse, or a reload: the map where it was
 
 const phone = matchMedia('(max-width: 640px)');
@@ -38,10 +38,10 @@ function start() {
   $('zoomlvl').hidden = !atMin() || !hint.hidden;
 }
 function stop() {   // back to a desktop width: hand everything back to the desktop CSS
-  for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
-  wrap.classList.remove('deep-zoom');
   pts.clear();   // a pinch still on the screen must not move the desktop's map
-  closePeek();
+  closePeek();   // first: closing the sheet sets the view once more
+  for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
+  wrap.classList.remove('deep-zoom'); plain();
   document.querySelectorAll('.mk.nm-off').forEach(m => m.classList.remove('nm-off'));
 }
 
