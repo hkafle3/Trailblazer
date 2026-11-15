@@ -5,7 +5,7 @@ double click, the + button or a scroll that stops short (the aim's outline fills
 threshold dives; the address is the time-lapse's, at the middle of the view within 0.1 degree; the time-lapse fills the
 window; back shows the map exactly where it was, forward dives again; "Dive in" does the same; scrolling out past the
 widest view in the time-lapse comes back to the map; a time-lapse loaded ahead of a dive counts no heat-map check
-until it is on screen; a reload of the time-lapse's address is the page on its own, and back from it opens Explore
+until it is on screen; the sky tiles the flying frame shows line up with the first real frame; a reload of the time-lapse's address is the page on its own, and back from it opens Explore
 on the same view with no replay.
 Reduced motion: no flight (the dive is never part-way), the time-lapse takes the map's place, back swaps it back.
 Phone: a one-finger pan and a pinch that only arrives at the deepest zoom do not dive; a pinch that starts there does;
@@ -18,6 +18,21 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 VIEW = "(async () => { const v = await import('/explore-view.js'); return v.A ? { W: v.W, X: v.X, Y: v.Y, max: v.atMax(), mid: [v.A.w / 2, (v.A.t + v.A.b) / 2], sky: v.skyAt(v.A.w / 2, (v.A.t + v.A.b) / 2) } : null; })()"
 DIVE = "window.__diveState()"
 AIM = "(() => { const a = document.getElementById('dive-aim'); return { on: !a.hidden && getComputedStyle(a).visibility !== 'hidden', fill: 1 - parseFloat(document.getElementById('aim-ring').style.strokeDashoffset || 1) }; })()"
+# The sky tiles the flying frame shows against the first real frame, both on the frame's 12 arcmin grid (5 arcsec a pixel):
+# the best match of brightness over shifts of up to 8 pixels, as drawn and for three wrong orientations.
+REGISTER = """() => { const L = window.__diveLayers(), N = 144, deg = 0.2;
+  const lum = (src, sw, sx, sy, flipx, flipy) => { const c = new OffscreenCanvas(N, N), g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
+    if (flipx || flipy) { g.translate(flipx ? N : 0, flipy ? N : 0); g.scale(flipx ? -1 : 1, flipy ? -1 : 1); }
+    g.drawImage(src, sx, sy, sw, sw, 0, 0, N, N); const d = g.getImageData(0, 0, N, N).data, o = new Float32Array(N * N); for (let i = 0; i < N * N; i++) o[i] = d[4 * i]; return o; };
+  const sky = L.skies[0], px = sky.width * deg / L.fov[0], a = lum(sky, px, (sky.width - px) / 2, (sky.height - px) / 2);
+  const corr = (b, dx, dy) => { let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0, n = 0; for (let y = 30; y < N - 30; y++) for (let x = 30; x < N - 30; x++) { const p = a[y * N + x], q = b[(y + dy) * N + x + dx]; sa += p; sb += q; saa += p * p; sbb += q * q; sab += p * q; n++; }
+    return (sab - sa * sb / n) / Math.sqrt((saa - sa * sa / n) * (sbb - sb * sb / n)); };
+  const out = {};
+  for (const [name, fx, fy] of [['as drawn', 0, 0], ['mirrored left-right', 1, 0], ['upside down', 0, 1], ['rotated 180', 1, 1]]) {
+    const b = lum(L.shot, L.shot.width, 0, 0, fx, fy); let best = [-2, 0, 0];
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) { const c = corr(b, dx, dy); if (c > best[0]) best = [c, dx, dy]; }
+    out[name] = [+best[0].toFixed(3), best[1], best[2]]; }
+  return out; }"""
 fails = []
 
 
@@ -135,6 +150,12 @@ async def desktop(browser):
     check("the time-lapse builds ahead of the dive (needs the image search to answer)", built)
     await asyncio.sleep(0.3)
     check("a time-lapse loaded ahead counts no check", len(posts) == 0, str(len(posts)))
+    if await until(pg, "window.__diveLayers()?.shot && window.__diveLayers().skies[0]", 20000):
+        reg = await pg.evaluate(REGISTER)
+        best = reg["as drawn"]
+        check("the sky tiles in the flying frame line up with the first real frame (within one 5 arcsec pixel, right way round)",
+              abs(best[1]) <= 1 and abs(best[2]) <= 1 and all(best[0] > v[0] + 0.1 for k, v in reg.items() if k != "as drawn"), str(reg))
+    else: check("the sky tiles and the first frame are there to compare", False)
     await pg.locator("#dive-go").click()
     check("Dive in dives", await until(pg, f"{DIVE}?.phase === 'open'") and spot(pg.url) is not None, pg.url)
     await asyncio.sleep(0.5)

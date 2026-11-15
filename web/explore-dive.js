@@ -205,7 +205,8 @@ let hoverQ = 0;   // a pointer that only passes over it loads nothing
 go.addEventListener('pointerenter', () => { hoverQ = setTimeout(target, 150); });
 go.addEventListener('pointerleave', () => clearTimeout(hoverQ));
 go.addEventListener('pointerdown', () => target());
-go.addEventListener('click', () => { setPush(1); start(); });
+let byKey = false;   // started from the keyboard: focus comes back to the button afterwards
+go.addEventListener('click', e => { byKey = e.detail === 0; setPush(1); start(); });
 
 // ---------- a dive ----------
 // phase: 'ready' (the time-lapse page is loaded in its hidden frame, the map is still in use), 'in' (flying in),
@@ -378,7 +379,8 @@ function surfaced(d) {
   d.f.remove(); dive = null;
   dispatchEvent(new Event('dive-closed'));   // explore.js: the heat map may have a new patch looked at
   setPush(0); aim.hidden = true; aimAt();
-  if (!aim.hidden) go.focus({ preventScroll: true });
+  if (!aim.hidden && byKey) go.focus({ preventScroll: true });
+  byKey = false;
 }
 
 // the time-lapse, from inside its frame
@@ -408,5 +410,6 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && dive.phase === 'in' && history.state?.dive) history.back();
 }, true);
 
+window.__diveLayers = () => dive && { skies: dive.skies, shot: dive.shot?.cv, fov: SKIES.map(s => s.fov) };   // for the register check in tests/zoom_into_ui.py
 window.__diveState = () => (dive && dive.ra != null ? { phase: dive.phase, t: dive.t, ra: dive.ra, dec: dive.dec, sky: dive.skies.every(Boolean), shot: !!dive.shot } : null);   // for tests/zoom_into_ui.py
 aimAt();
