@@ -211,18 +211,16 @@ async def still_rule(b):
     check(req and min(gaps) >= 115, "still rule", f"{len(req)} tile requests over {len(chg)} view changes; the shortest wait after a view change was {min(gaps, default=0):.0f} ms (120 ms rule)")
     check(not pg.errs, "no page errors (still rule)", str(pg.errs[:3])); await pg.context.close()
 
-async def backoff(b):
-    count = {}; block = True
-    async def gate(route):
-        u = route.request.url; count[u] = count.get(u, 0) + 1
-        await (route.abort() if block else route.continue_())
+async def backoff(b):   # counted from the layer's own tally: the dive (explore-dive.js) asks IRSA for tiles of its own at the deepest zoom
+    block = True
+    async def gate(route): await (route.abort() if block else route.continue_())
     pg = await open_page(b, before=lambda p: p.route(TILES, gate))
-    v = await go(pg, "Barnard"); t0 = asyncio.get_event_loop().time(); await pg.wait_for_timeout(1500)
+    v = await go(pg, "Barnard"); t0 = asyncio.get_event_loop().time(); await pg.wait_for_timeout(1500); first = await pg.evaluate(STATE)
     for i in range(6): await pg.evaluate("([x, y, w]) => __dz().then(({ v }) => v.set(w, x, y))", [v["X"] + (i % 2), v["Y"], v["W"]]); await pg.wait_for_timeout(700)
-    s = await pg.evaluate(STATE); first = dict(count)
-    check(first and max(first.values()) == 1 and s["cached"] == 0 and s["failed"] == len(first), "failed tiles wait", f"{len(first)} tiles failed; after 6 more settles in {asyncio.get_event_loop().time() - t0:.0f} s each was asked for {max(first.values(), default=0)} time")
+    s = await pg.evaluate(STATE)
+    check(first["failed"] > 0 and first["failed"] == first["requested"] and s["requested"] == first["requested"] and s["cached"] == 0, "failed tiles wait", f"{first['failed']} tiles failed; after 6 more settles in {asyncio.get_event_loop().time() - t0:.0f} s the layer had asked for {s['requested'] - first['requested']} more")
     block = False; s = await settled(pg, 40000); dt = asyncio.get_event_loop().time() - t0
-    check(not s.get("timeout") and dt >= 29 and max(count.values()) == 2, "failed tiles retry by themselves", f"with no gesture the tiles were asked for again after {dt:.1f} s and the view filled ({s['covered']:.0%})")
+    check(not s.get("timeout") and dt >= 29 and s["requested"] == 2 * first["requested"], "failed tiles retry by themselves", f"with no gesture the {first['failed']} tiles were asked for once more after {dt:.1f} s and the view filled ({s['covered']:.0%})")
     check(not pg.errs, "no page errors (failed tiles)", str(pg.errs[:3])); await pg.context.close()
 
 async def reference(b, w, h, view):   # the tile picture of a view, loaded fresh
@@ -345,7 +343,7 @@ def same(a, b):
     return sum(d.histogram()[1:]), d.getbbox()
 SEED = "{ let s = 42; Math.random = () => (s = s * 16807 % 2147483647) / 2147483647; }"   # the page's background stars
 async def regression(b):
-    api = {u: urllib.request.urlopen(BASE + u).read() for u in ("/api/explored", "/api/comets")}   # the unexplored suggestion is random: both pages get the same one
+    probe = await b.new_context(); api = {u: await (await probe.request.get(BASE + u)).body() for u in ("/api/explored", "/api/comets")}; await probe.close()   # the unexplored suggestion is random: both pages get the same one
     async def fixed(pg, old):
         await pg.add_init_script(SEED)
         if old: await pg.route("**/explore*", without_deep_zoom); await pg.route("**/skymap.js", without_deep_zoom)
