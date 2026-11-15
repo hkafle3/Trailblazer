@@ -45,9 +45,9 @@ assert not short, f"paths ending before day 529: {short}"
 swan = get("/api/comets/" + urllib.parse.quote("C/2025 R2 (SWAN)", safe=""))
 shots = swan["detail"]["spherex"]
 assert shots and all(isinstance(p.get("ra"), (int, float)) and isinstance(p.get("dec"), (int, float)) for p in shots), "photo without a position"
-# measured spectra (bake/comet_spectrum.py, migration 0008): CO2 verdicts as checked by eye
+# measured spectra (bake/comet_spectrum.py, migration 0008): CO2 verdicts as checked by eye (T5: no points above the band, so unclear)
 verdict = lambda name: get("/api/comets/" + urllib.parse.quote(name, safe=""))["detail"].get("co2_verdict")
-expect = {"3I/ATLAS": "detected", "C/2025 R2 (SWAN)": "detected", "C/2024 T5 (ATLAS)": "detected", "210P/Christensen": "unclear"}
+expect = {"3I/ATLAS": "detected", "C/2025 R2 (SWAN)": "detected", "C/2024 T5 (ATLAS)": "unclear", "210P/Christensen": "unclear"}
 got = {n: verdict(n) for n in expect}
 assert got == expect, f"CO2 verdicts {got}, expected {expect}"
 assert len(swan["detail"]["photos"]) > 0 and swan["detail"]["dir"] == "c-2025-r2-swan", "R2 photos missing"

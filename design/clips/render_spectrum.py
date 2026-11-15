@@ -32,7 +32,7 @@ def date(mjd, fmt="%-d %b %Y"):
 def render(name):
     d = json.loads((ROOT / "web/data/comets" / slug(name) / "comet.json").read_text())
     cache = ROOT / "bake/cache" / ("3iatlas" if name == "3I/ATLAS" else f"comets/{slug(name)}")
-    pts = json.loads(next(f for f in (cache / "points-all-visits.json", cache / "points.json") if f.exists()).read_text())
+    pts = json.loads((cache / d.get("points_file", "points.json")).read_text())   # the same measurements comet.json was built from
     pts = sorted([p for p in pts if p["ok"]], key=lambda p: p["t"])
     months = list(d["spectrum"])
     # orange for the month that carries the verdict (3I/ATLAS: its first month), pale for the rest

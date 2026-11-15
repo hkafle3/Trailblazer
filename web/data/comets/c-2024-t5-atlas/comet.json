@@ -614,37 +614,35 @@
   "2025-07": {
    "n_band": 2,
    "n_cont": 6,
-   "state": "detected",
-   "band": 1.29,
-   "cont": 0.26,
-   "excess": 1.03,
-   "sigma": 0.26
+   "state": "unclear",
+   "why": "2 measurements in the CO2 band, 6 below it and 0 above; needs 2 in the band and 2 on each side"
   },
   "2025-12": {
    "n_band": 1,
    "n_cont": 8,
    "state": "unclear",
-   "why": "1 measurements in the CO2 band and 8 nearby; needs 2 and 3"
+   "why": "1 measurements in the CO2 band, 8 below it and 0 above; needs 2 in the band and 2 on each side"
   },
   "2026-01": {
    "n_band": 0,
    "n_cont": 0,
    "state": "unclear",
-   "why": "0 measurements in the CO2 band and 0 nearby; needs 2 and 3"
+   "why": "0 measurements in the CO2 band, 0 below it and 0 above; needs 2 in the band and 2 on each side"
   },
   "2026-09": {
    "n_band": 0,
    "n_cont": 0,
    "state": "unclear",
-   "why": "0 measurements in the CO2 band and 0 nearby; needs 2 and 3"
+   "why": "0 measurements in the CO2 band, 0 below it and 0 above; needs 2 in the band and 2 on each side"
   },
   "2026-10": {
    "n_band": 0,
    "n_cont": 3,
    "state": "unclear",
-   "why": "0 measurements in the CO2 band and 3 nearby; needs 2 and 3"
+   "why": "0 measurements in the CO2 band, 2 below it and 1 above; needs 2 in the band and 2 on each side"
   }
  },
- "co2_verdict": "detected",
+ "co2_verdict": "unclear",
+ "points_file": "points-all-visits.json",
  "source": "SPHEREx spectral images from NASA/IPAC IRSA; positions from IRSA (3I/ATLAS) or JPL Horizons; photometry by bake/comet_spectrum.py"
 }

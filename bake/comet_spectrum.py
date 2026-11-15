@@ -219,28 +219,31 @@ CO2_CONT = ((3.90, 4.15), (4.40, 4.70))    # um, nearby wavelengths with no stro
 
 
 def co2_verdict(points):
-    """Is there carbon dioxide glow at 4.26 um? Compares the median brightness in the CO2 band with the continuum
-    level just outside it, against the noise of both:
-      continuum: the median on each side (3.90-4.15 and 4.40-4.70 um), averaged, so a sloping dust continuum is fair;
-                 its noise is the larger of the points' error bars and their spread around their side's median
-      band:      the median of 4.20-4.32 um; its noise comes from the error bars only, because the spread inside the
-                 band is the line's own shape (3I/ATLAS in August rises from 14 to 95 mJy across it), not noise
+    """Is there carbon dioxide glow at 4.26 um? The median brightness in the CO2 band (4.20-4.32 um) against the
+    continuum on BOTH sides of it (3.90-4.15 and 4.40-4.70 um), so a dust continuum that rises or falls across the band
+    cannot pass for gas:
+      continuum: the average of the two sides' medians; each side's noise is the larger of its points' error bars and
+                 their spread, over the square root of that side's own count, and the two combine as an average does
+      band:      the median of the band points, with noise from the root-mean-square of their error bars (cautious:
+                 one large error bar counts fully); the spread inside the band is the line's own shape, not noise
       detected:  band exceeds continuum by more than 3 noise units
       quiet:     the comet is clearly seen nearby (continuum above 5 of its noise units) and the band is within 2
-      unclear:   anything else, including too few measurements (under 2 in the band or 3 nearby)
+      unclear:   anything else, including under 2 band points or under 2 points on either side
     """
     band = [p for p in points if CO2_BAND[0] <= p["lam"] <= CO2_BAND[1]]
     sides = [[p for p in points if a <= p["lam"] <= b] for a, b in CO2_CONT]
-    cont = sides[0] + sides[1]
-    base = dict(n_band=len(band), n_cont=len(cont))
-    if len(band) < 2 or len(cont) < 3:
-        return dict(base, state="unclear", why=f"{len(band)} measurements in the CO2 band and {len(cont)} nearby; needs 2 and 3")
+    base = dict(n_band=len(band), n_cont=len(sides[0]) + len(sides[1]))
+    if len(band) < 2 or min(len(sd) for sd in sides) < 2:
+        return dict(base, state="unclear", why=f"{len(band)} measurements in the CO2 band, {len(sides[0])} below it and "
+                                               f"{len(sides[1])} above; needs 2 in the band and 2 on each side")
     med = lambda ps: float(np.median([p["flux"] for p in ps]))
-    level = float(np.mean([med(sd) for sd in sides if sd]))
-    resid = np.concatenate([[p["flux"] - med(sd) for p in sd] for sd in sides if sd])
-    spread = 1.4826 * float(np.median(np.abs(resid)))   # robust standard deviation around each side's median
-    s_cont = 1.2533 * max(float(np.median([p["err"] for p in cont])), spread) / np.sqrt(len(cont))
-    s_band = 1.2533 * float(np.median([p["err"] for p in band])) / np.sqrt(len(band))
+    def noise(sd):   # noise of one side's median
+        f = np.array([p["flux"] for p in sd])
+        spread = 1.4826 * float(np.median(np.abs(f - np.median(f))))
+        return 1.2533 * max(float(np.median([p["err"] for p in sd])), spread) / np.sqrt(len(sd))
+    level = (med(sides[0]) + med(sides[1])) / 2
+    s_cont = 0.5 * float(np.hypot(noise(sides[0]), noise(sides[1])))
+    s_band = 1.2533 * float(np.sqrt(np.mean([p["err"] ** 2 for p in band]))) / np.sqrt(len(band))
     excess, sigma = med(band) - level, float(np.hypot(s_band, s_cont))
     state = "detected" if excess > 3 * sigma else "quiet" if level > 5 * s_cont and abs(excess) < 2 * sigma else "unclear"
     return dict(base, state=state, band=round(med(band), 2), cont=round(level, 2), excess=round(excess, 2), sigma=round(sigma, 2))
@@ -252,10 +255,19 @@ def _check_co2_verdict():
     assert co2_verdict(cont + [mk(4.24, 30), mk(4.27, 32)])["state"] == "detected"
     assert co2_verdict(cont + [mk(4.21, 14, 1), mk(4.23, 34, 1), mk(4.25, 68, 1), mk(4.29, 95, 1)])["state"] == "detected"   # line shape
     assert co2_verdict(cont + [mk(4.24, 10.1), mk(4.27, 9.9)])["state"] == "quiet"
-    assert co2_verdict([mk(l, 0.1, 5) for l in (3.95, 4.0, 4.05)] + [mk(4.24, 0.3, 5), mk(4.27, -0.2, 5)])["state"] == "unclear"
+    assert co2_verdict([mk(l, 0.1, 5) for l in (3.95, 4.0, 4.45, 4.5)] + [mk(4.24, 0.3, 5), mk(4.27, -0.2, 5)])["state"] == "unclear"
     assert co2_verdict(cont + [mk(4.24, 30)])["state"] == "unclear"   # one band point is not enough
     sloped = [mk(3.95, 20), mk(4.0, 20.5), mk(4.05, 21), mk(4.45, 30), mk(4.5, 30.5), mk(4.55, 31)]   # rising dust
     assert co2_verdict(sloped + [mk(4.24, 25.5), mk(4.27, 25.4)])["state"] == "quiet"
+    # Codex review: a line-free rising spectrum seen only on the blue side must not read as gas
+    rising = [mk(l, 2 * (l - 3.9), 0.2) for l in (3.95, 4.0, 4.05, 4.1, 4.15)]
+    assert co2_verdict(rising + [mk(4.24, 2 * 0.34, 0.2), mk(4.28, 2 * 0.38, 0.2)])["state"] == "unclear"
+    # one side with many points cannot lend its precision to a side with few
+    lopsided = [mk(3.9 + 0.01 * i, 10, 1) for i in range(25)] + [mk(4.45, 8, 1), mk(4.5, 8, 1)]
+    assert co2_verdict(lopsided + [mk(4.24, 10, 0.1), mk(4.27, 10, 0.1)])["state"] != "detected"
+    # one large band error bar counts fully
+    tight = [mk(l, 10, 0.1) for l in (3.95, 4.0, 4.05, 4.45, 4.5, 4.55)]
+    assert co2_verdict(tight + [mk(4.23, 10.3, 0.1), mk(4.26, 10.3, 0.1), mk(4.29, 10.0, 4.9)])["state"] != "detected"
 
 
 _check_co2_verdict()
@@ -301,7 +313,7 @@ def month(mjd):
     return (datetime(1858, 11, 17) + timedelta(days=mjd)).strftime("%Y-%m")
 
 
-def publish(name, rows, pts, cache):
+def publish(name, rows, pts, cache, points_file="points.json"):
     """web/data/comets/<slug>/: up to three photos per month (its brightest good measurements) and comet.json."""
     out = ROOT / "web" / "data" / "comets" / slug(name)
     out.mkdir(parents=True, exist_ok=True)
@@ -325,7 +337,7 @@ def publish(name, rows, pts, cache):
         speed_arcsec_per_hour=speed, direction=direction, photos=photos,
         spectrum={m: [dict(lam=round(p["lam"], 4), flux=round(p["flux"], 3), err=round(p["err"], 3)) for p in sorted(sel, key=lambda q: q["lam"])]
                   for m, sel in months.items()},
-        co2=verdicts, co2_verdict=overall(verdicts),
+        co2=verdicts, co2_verdict=overall(verdicts), points_file=points_file,   # the measurements behind this file
         source="SPHEREx spectral images from NASA/IPAC IRSA; positions from IRSA (3I/ATLAS) or JPL Horizons; photometry by bake/comet_spectrum.py",
     )
     if name == "3I/ATLAS":
@@ -348,7 +360,7 @@ def run(name, publish_only=False):
         with ThreadPoolExecutor(4) as pool:
             pts = [p for p in pool.map(lambda e: measure(e, cache), rows) if p]
         json.dump(pts, points.open("w"), indent=1)
-    publish(name, rows, pts, cache)
+    publish(name, rows, pts, cache, points.name)
 
 
 if __name__ == "__main__":

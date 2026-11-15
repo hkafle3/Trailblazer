@@ -973,7 +973,7 @@
    "band": 26.51,
    "cont": 0.17,
    "excess": 26.34,
-   "sigma": 0.59
+   "sigma": 0.61
   },
   "2025-12": {
    "n_band": 4,
@@ -982,10 +982,11 @@
    "band": 307.54,
    "cont": 38.52,
    "excess": 269.03,
-   "sigma": 0.98
+   "sigma": 13.63
   }
  },
  "co2_verdict": "detected",
+ "points_file": "points.json",
  "source": "SPHEREx spectral images from NASA/IPAC IRSA; positions from IRSA (3I/ATLAS) or JPL Horizons; photometry by bake/comet_spectrum.py",
  "about": "Interstellar comet, the third object known to come from outside the Solar System. SPHEREx observed it in August and December 2025."
 }
