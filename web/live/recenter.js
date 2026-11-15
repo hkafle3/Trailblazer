@@ -6,8 +6,9 @@
 //   commit(pan)     make the spot `pan` from the built centre the new centre (build it, update the URL and the box)
 //   idle()          optional: a gesture ended without moving anything (a drag cancelled where it started)
 //   zoom(k)         optional: the wheel, a trackpad pinch, two fingers or +/- ask for the field of view k times as wide
-//   tap(to)         optional: a click or tap on the spot `to` (the pan that would centre it). Return true to take it:
-//                   then nothing moves (the Spectrum card picks a star this way); drags and keys still re-centre.
+//   tap(to)         optional: a click or tap on the spot `to` (the pan that would centre it), or Enter/Space on the
+//                   photo for the middle of the view. Return true to take it: then nothing moves (the Spectrum card
+//                   picks a star this way); drags and arrow keys still re-centre.
 // The page calls reset() when frames for a new centre land and when another search starts (it also ends a pending
 // arrow-key move or a drag still held), and asks moving() before it swaps frames mid-gesture. A second finger turns a drag into a pinch: the drag is
 // cancelled (as pointercancel does) and the two fingers zoom until both lift. A press drops a pending arrow-key move.
@@ -119,6 +120,8 @@ export function recenterable(el, { scale, moved, commit, idle = () => {}, zoom =
   // arrow keys move the view an eighth of its width (Shift: one pixel); the new centre builds once the keys rest.
   // + and - zoom (Ctrl or Cmd with them is the browser's own zoom, left alone).
   el.addEventListener('keydown', e => {
+    // Enter or Space: a tap on the middle of the view, for the keyboard (the Spectrum card's pick)
+    if ((e.key === 'Enter' || e.key === ' ') && scale() && !grab && !nudge && tap(pan)) { e.preventDefault(); e.stopPropagation(); return; }
     const z = { '+': 0.8, '=': 0.8, '-': 1.25, '_': 1.25 }[e.key];
     if (z && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); if (!grab) zoom(z); return; }
     const d = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key], k = scale();

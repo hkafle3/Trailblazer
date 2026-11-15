@@ -2,7 +2,7 @@
 For known comets on three timeline days: Explore's link carries the day, the comet page's mini map puts its dot where Explore
 drew the comet (within 1% of the map's width and height) and shows that date, and "Find on map" lands back on Explore on
 that day with the comet in the same place, named. Also: no ?day= means the timeline's default day, the featured card is
-3I/ATLAS (a real comet in /api/comets) beside its dot with its verdict and that date, and a comet too faint to show on Explore still shows when found from its page. Then the edges: every
+a measured comet bright enough to be on the map that day (3I/ATLAS when it is) beside its dot with its verdict and that date, and a comet too faint to show on Explore still shows when found from its page. Then the edges: every
 link follows the timeline, a click during the replay opens the day that was clicked, paths split where they cross the
 map's edge, empty and one-point paths, and no page-to-page transition for people who ask for less motion.
 Run: uv run -q --with playwright python web/tests/map_ui.py [base url]   (default http://127.0.0.1:8787)"""
@@ -111,8 +111,8 @@ async def main():
         await ex.focus("#play"); await ex.keyboard.press("PageDown"); await ex.wait_for_timeout(200)
         hrefs = await ex.eval_on_selector_all('#marks a[href^="comet.html"]', "as => as.map(a => a.getAttribute('href'))")
         assert len(hrefs) >= 72 and all(h.endswith(f"&day={DEFAULT - 30}") for h in hrefs), "links do not follow the timeline"   # the 72 known comets
-        card = await ex.get_attribute("#card-comet", "href")
-        assert card == f"comet.html?id=3I%2FATLAS&day={DEFAULT - 30}" and card in hrefs, f"the featured card links to {card}"
+        card, fid = await ex.get_attribute("#card-comet", "href"), await ex.text_content("#card-comet [data-f=id]")
+        assert card == f"comet.html?id={urllib.parse.quote(fid, safe='()')}&day={DEFAULT - 30}" and card in hrefs, f"the featured card links to {card}"
         print(f"PASS timeline: after moving back 30 days all {len(hrefs)} comet links (the featured card too) carry day {DEFAULT - 30}")
 
         # a comet too faint for Explore to show on a day still shows, dimmed, when found from its page
@@ -126,20 +126,26 @@ async def main():
         assert await pg.locator(".mk.focus.faint").count() == 1, f"{name} is not dimmed while too faint to see"
         print(f"PASS faint: {name}, hidden on Explore on day 120, shows dimmed and named after Find on map")
 
-        # the featured card: 3I/ATLAS, a real measured comet, beside its dot on each day, with its CO2 verdict and that date
+        # the featured card: on each day a real comet bright enough to be on the map (magnitude 16 or brighter): 3I/ATLAS when
+        # it is, else the brightest with a clear CO2 result, then the brightest measured, then the brightest known (explore.js
+        # pickFeatured); beside its dot, with its CO2 verdict and that date
         api = {c["id"]: c for c in json.loads(await ex.evaluate("fetch('/api/comets').then(r => r.text())"))["comets"]}
-        atlas = api["3I/ATLAS"]
-        assert atlas["real"] and atlas["co2"], f"3I/ATLAS in /api/comets: real {atlas['real']}, co2 {atlas['co2']}"
-        verdict = {"detected": "CO2 glow detected", "quiet": "No gas glow"}.get(atlas["co2"], "No clear signal")
+        picked = []
         for day in DAYS:
             await explore(ex, f"/explore.html?day={day}")
-            g = await ex.evaluate("""() => { const c = document.getElementById('card-comet'), m = [...document.querySelectorAll('.mk.known')].find(a => a.querySelector('b')?.textContent === '3I/ATLAS');
+            fid = await ex.evaluate("""async day => { const { trackAt } = await import('/skymap.js'), { comets } = await (await fetch('/api/comets')).json();
+                const mag = c => (c.kind === 'known' && c.real && c.track?.length ? trackAt(c.track, day)[2] ?? 99 : 99);
+                const tier = c => (c.id === '3I/ATLAS' ? 0 : c.co2 === 'detected' || c.co2 === 'quiet' ? 1 : c.co2 ? 2 : 3);
+                return comets.filter(c => mag(c) <= 16).sort((a, b) => tier(a) - tier(b) || mag(a) - mag(b))[0]?.id ?? '3I/ATLAS'; }""", day)
+            verdict = {"detected": "CO2 glow detected", "quiet": "No gas glow"}.get(api[fid]["co2"], "No clear signal")
+            picked.append(fid)
+            g = await ex.evaluate("""id => { const c = document.getElementById('card-comet'), m = [...document.querySelectorAll('.mk.known')].find(a => a.querySelector('b')?.textContent === id);
                 const f = k => c.querySelector(`[data-f=${k}]`).textContent;
                 return { shown: !c.hidden && getComputedStyle(c).display !== 'none' && getComputedStyle(c).visibility !== 'hidden', id: f('id'), what: f('what'), when: f('when'), href: c.getAttribute('href'),
-                  at: [c.style.left, c.style.top], dot: m && [m.style.left, m.style.top], sel: m?.classList.contains('sel') }; }""")
-            want = {"shown": True, "id": "3I/ATLAS", "what": verdict, "when": f"Position on {date_text(day)}", "href": f"comet.html?id=3I%2FATLAS&day={day}"}
-            assert {k: g[k] for k in want} == want and g["at"] == g["dot"] and g["sel"], f"day {day}: featured card {g}"
-        print(f"PASS featured card: 3I/ATLAS (real, {verdict}) sits by its dot on days {', '.join(map(str, DAYS))} with that date and links to its page on it")
+                  at: [c.style.left, c.style.top], dot: m && [m.style.left, m.style.top], sel: m?.classList.contains('sel'), dim: m?.classList.contains('faint') }; }""", fid)
+            want = {"shown": True, "id": fid, "what": verdict, "when": f"Position on {date_text(day)}", "href": f"comet.html?id={urllib.parse.quote(fid, safe='()')}&day={day}", "dim": False}
+            assert api[fid]["real"] and {k: g[k] for k in want} == want and g["at"] == g["dot"] and g["sel"], f"day {day}: featured card {g}"
+        print(f"PASS featured card: {', '.join(f'{d}: {f}' for d, f in zip(DAYS, picked))}; each bright on the map, by its dot with its verdict and that date, linking to its page on it")
 
         # a click while the replay runs (the one Explore opens with) opens the day that was clicked, once, however many clicks follow
         await explore(ex, "/explore.html", settle=False)

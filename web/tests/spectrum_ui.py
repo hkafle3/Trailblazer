@@ -78,15 +78,18 @@ async def desktop(b):
     r = await result(pg)
     print("  ", r["where"], "|", r["status"])
     check("Gaia DR3 4472836047939582592" in r["where"], "desktop: the Gaia star's id is shown")
+    warn = await pg.evaluate("(() => { const w = document.getElementById('spec-warn'); return w.hidden ? '' : w.textContent; })()")
+    check("read high" in warn, f"desktop: the crowded G 13.6 star says its neighbours add light (2MASS: it reads 1.3 to 1.5 times high): {warn!r}")
     clean_checks(r, "desktop, G 13.6 star")
     async with pg.expect_download() as dl:
         await pg.click("#spec-csv")
     rows = open(await (await dl.value).path()).read().strip().split("\n")
     check(len(rows) - 1 == len(r["points"]) and rows[0].startswith("wavelength_um,"), f"desktop: CSV has {len(rows) - 1} rows for {len(r['points'])} points")
+    if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-star-g13.6.png"))
     await pg.click("#spec-log")
     logged = await pg.evaluate("document.querySelectorAll('#spec-chart circle.pt').length")
     check(logged == sum(1 for p in r["points"] if p["flux"] > 0), f"desktop: log scale draws the {logged} points above zero")
-    if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-star-g13.6.png"))
+    if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-star-g13.6-log.png"))
     await pg.click("#spec-log")
     url = pg.url
     # a drag still re-centres while picking is on
@@ -101,13 +104,20 @@ async def desktop(b):
     # Barnard's Star itself: saturated everywhere, gaps that say so
     await pg.goto(f"{BASE}/timelapse.html?target=barnard")
     await pg.wait_for_function("__lapse.state.m && __lapse.state.m.key === 'barnard'")
+    # by keyboard this time (Enter on the photo picks the star in its middle), with Log scale already on: the empty
+    # chart while it loads must not hang the page (log of 0)
     await pg.click("#spec-mode")
-    f = await pg.evaluate("(() => { const s = __lapse.state, f = s.m.frames[s.i]; return __spec.screenOfPix(f.x, f.y); })()")
-    await pg.mouse.click(*f)
+    await pg.evaluate("document.getElementById('spec-log').click()")
+    await pg.focus("#patch"); await pg.keyboard.press("Enter")
+    check(await pg.evaluate("document.body.classList.contains('speccing') && __lapse.state.m.key === 'barnard'"), "desktop: Enter on the photo in pick mode picks its middle, no re-centre")
+    r3 = await result(pg)
+    await pg.evaluate("document.getElementById('spec-log').click()")
     r3 = await result(pg)
     sat = sum("saturated" in g["why"] for g in r3["gaps"])
     print("  ", r3["where"], "|", r3["status"])
     check("Gaia DR3 4472832130942575872" in r3["where"], "desktop: Barnard's Star is named by its Gaia id")
+    grey = await pg.evaluate("[document.getElementById('spec-chart').classList.contains('greyed'), [...document.querySelectorAll('#spec-chart .why')].map(t => t.textContent).join(' ')]")
+    check(grey[0] and "Too bright" in grey[1], f"desktop: Barnard's chart is greyed with the reason on it: {grey[1]!r}")
     check(len(r3["points"]) <= 5 and r3["hollow"] == r3["circles"] == len(r3["points"]) and sat >= 90 and "saturates" in r3["status"] and r3["ticks"] == len(r3["gaps"]),
           f"desktop, Barnard's Star: {len(r3['points'])} points (all hollow), {len(r3['gaps'])} gaps ({sat} saturated), {r3['ticks']} gap ticks, nothing at zero")
     if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-barnard.png"))

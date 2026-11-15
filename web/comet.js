@@ -57,16 +57,19 @@ function photos(d) {
     return { fig: f, src: img.src, alt: img.alt, mjd: p.mjd, ring: 'ring', label: date(p.mjd, { day: 'numeric', month: 'short', year: 'numeric' }) };
   });
   $('c-photos-panel').hidden = false;
-  player(items);
+  // it opens on the photo where the comet is brightest (the most light measured at it), then plays on in date order
+  player(items, shots.reduce((b, p, k) => (p.flux > shots[b].flux ? k : b), 0));
 }
 
 // The photo strip's player: one large frame above the thumbnails, stepping through them in date order and looping,
 // under the time-lapse's own timeline (patch.css .tl: a dot per photo, the date over the play/pause handle).
 // Every photo is centred on the comet, so the comet holds still in the ring while the stars slide past.
-// items: [{ fig, src, alt, mjd, label, ring }]; a live photo's src arrives later (set). Starts playing when it scrolls
-// into view, except with reduced motion. Clicking a thumbnail shows it (and pauses); arrow keys step the handle.
+// items: [{ fig, src, alt, mjd, label, ring }]; it opens on photo `start` and starts playing from there when it scrolls
+// into view, except with reduced motion. Live photos (start null): each src arrives later (set), and the frame stays empty
+// until open(k) names the one to open on, once all are built, so it never opens on a weak photo while a clear one loads.
+// Clicking a thumbnail shows it (and pauses); arrow keys step the handle.
 const PLAY_MS = 600;
-function player(items) {
+function player(items, start = null) {
   const N = items.length, wrap = el('div', 'player');
   wrap.innerHTML = `<div class="pv-mini big"><img alt=""><span class="ring" style="left:50%;top:50%"></span></div>
     <div class="tl"><div class="tl-line"><div class="tl-dots" aria-hidden="true"></div><output class="tl-date">&nbsp;</output>
@@ -78,11 +81,12 @@ function player(items) {
   const [img, ring, line, knob, out] = ['img', '.ring', '.tl-line', '.tl-knob', '.tl-date'].map(q => wrap.querySelector(q));
   const t0 = items[0].mjd, span = items[N - 1].mjd - t0, pos = m => (span ? 4 + 92 * (m - t0) / span : 50) + '%';
   for (const it of items) { const d = el('i', 'tl-visit'); d.style.left = pos(it.mjd); wrap.querySelector('.tl-dots').append(d); }
-  let i = -1, timer = null, touched = false;
+  let i = -1, timer = null, touched = false, inView = false, wait = start == null;
+  ring.style.visibility = 'hidden';   // no ring over an empty frame
   const go = k => {
     const it = items[k];
     if (!it.src) return;
-    i = k; img.src = it.src; img.alt = it.alt; ring.className = it.ring;
+    i = k; img.src = it.src; img.alt = it.alt; ring.className = it.ring; ring.style.visibility = '';
     line.style.setProperty('--x', pos(it.mjd)); out.textContent = it.label;
     const h = out.offsetWidth / 2;   // the date stays over the handle, but never past the line's ends (a phone's first photo)
     out.style.left = `clamp(${h}px, ${pos(it.mjd)}, calc(100% - ${h}px))`;
@@ -103,11 +107,12 @@ function player(items) {
   });
   items.forEach((it, k) => it.fig.addEventListener('click', () => { if (it.src) { play(false); go(k); } }));
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  new IntersectionObserver((es, o) => { if (es.some(e => e.isIntersecting)) { o.disconnect(); if (!calm) play(true); } }).observe(wrap);
-  const first = items.findIndex(it => it.src);
-  if (first >= 0) go(first);
-  // until someone steps or it plays, the earliest photo built so far is the one shown
-  return { set(k, src) { items[k].src = src; if (i < 0 || (!timer && !touched && k < i)) go(k); } };
+  new IntersectionObserver((es, o) => { if (es.some(e => e.isIntersecting)) { o.disconnect(); inView = true; if (!calm && !wait) play(true); } }).observe(wrap);
+  if (!wait) go(start);
+  return {
+    set(k, src) { items[k].src = src; },   // a live photo is built: its thumbnail can be clicked
+    open(k) { wait = false; if (touched || !items[k]?.src) return; go(k); if (inView && !calm) play(true); },
+  };
 }
 
 // A badge by the title only when the measurement is clear: "detected" or "quiet" (bake/comet_spectrum.py co2_verdict)
@@ -239,7 +244,10 @@ function knownPhotos(c, picks) {
     fig.append(plate, label, vis); box.append(fig);
     return { fig, cv, ringEl, vis, s, mjd: MJD0 + s.day, label: date(MJD0 + s.day, { day: 'numeric', month: 'short', year: 'numeric' }), alt: `${c.id} on ${label}`, ring: 'ring earlier' };
   });
-  panel.append(note); panel.hidden = false;
+  // said once, under the strip, when a photo had a star's saturated centre filled in (live/cutout.js paint)
+  const cores = el('p', 'pv-info cores', 'Bright star centres are filled in: SPHEREx saturates there.');
+  cores.hidden = true;
+  panel.append(note, cores); panel.hidden = false;
   const pl = player(items);
   let started = false;
   new IntersectionObserver(async (es, o) => {
@@ -249,7 +257,7 @@ function knownPhotos(c, picks) {
     await pool(items, 2, async (it, k) => {
       try {
         const p = await knownPhoto(it.s), mag = magAt(c.detail.mags, it.s.day);
-        paint(it.cv, p);
+        if (paint(it.cv, p)) cores.hidden = false;
         Object.assign(it.fig.dataset, { verdict: p.verdict, snr: p.snr == null ? '' : p.snr.toFixed(1), ra: it.s.ra, dec: it.s.dec });
         // fewer comparison photos than wanted (one failed to load, or few at this wavelength): the number is less sure
         it.vis.textContent = p.verdict === 'seen' ? `Seen \u00b7 SNR ${Math.round(p.snr)}${p.few ? ' \u00b7 less sure' : ''}`
@@ -257,16 +265,19 @@ function knownPhotos(c, picks) {
         it.fig.title = p.snr == null ? `Not measured: ${p.why}` : `SNR ${p.snr.toFixed(1)} at the ring, after taking away what the same spot shows at the same wavelength in ${p.refs} photo${p.refs === 1 ? '' : 's'} without the comet${p.few ? ' (less sure: fewer photos to compare with)' : ''}${mag ? `; JPL magnitude ${mag.toFixed(1)}` : ''}`;
         if (p.few) it.fig.dataset.few = '1';
         it.ring = it.ringEl.className = p.verdict === 'seen' ? 'ring' : 'ring earlier';
-        pl.set(k, it.cv.toDataURL());
+        pl.set(k, it.cv.toDataURL()); it.mag = mag;
       } catch (e) { it.vis.textContent = 'Photo unavailable'; it.fig.dataset.verdict = 'error'; console.warn(e); }
       note.textContent = `Built ${++done} of ${items.length} photos\u2026`;
     });
     const count = v => items.filter(it => it.fig.dataset.verdict === v).length, seen = count('seen'), faint = count('faint'), n = items.length;
     const ms = items.map(it => magAt(c.detail.mags, it.s.day)).filter(m => m != null), lo = Math.min(...ms).toFixed(1), hi = Math.max(...ms).toFixed(1);
-    // "too faint" only from measured visits: a photo that failed or could not be measured says nothing about brightness
+    // "could not see" only from measured visits: a photo that failed or could not be measured says nothing about brightness
     note.textContent = seen ? `Seen in ${seen} of ${n} visit${n === 1 ? '' : 's'}: light in the ring at SNR 5 or more, once the stars there are taken away.`
       : !faint ? `These photos could not be measured.`
-      : `Too faint to see in ${faint < n ? `${faint} of ${n} visits` : n === 1 ? 'this visit' : `any of the ${n} visits`}${ms.length ? ` (JPL magnitude ${lo === hi ? lo : `${lo} to ${hi}`})` : ''}.`;
+      : `SPHEREx could not see it in ${faint < n ? `${faint} of ${n} visits` : n === 1 ? 'this visit' : 'any visit'}${ms.length ? ` (JPL magnitude ${lo === hi ? lo : `${lo} to ${hi}`})` : ''}. The ring shows where JPL says it was.`;
+    // the player opens on the clearest photo: the highest SNR where it is seen, else where JPL has it brightest
+    const best = (v, f) => items.reduce((b, it) => (it.fig.dataset.verdict === v && (b < 0 || f(it) > f(items[b])) ? items.indexOf(it) : b), -1);
+    pl.open(seen ? best('seen', it => +it.fig.dataset.snr) : best('faint', it => -(it.mag ?? 99)));
   }).observe(panel);
 }
 

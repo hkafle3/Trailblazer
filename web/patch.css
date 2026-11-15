@@ -91,6 +91,7 @@ body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
   padding: calc(12 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); pointer-events: none;
   font: 400 calc(20 * var(--e)) / 1 var(--panel-font); color: #fff; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
 body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4s, visibility 0s .4s; }
+#ld-text { min-width: 24ch; text-align: right; }   /* one width for every step, so names placed clear of it stay clear */
 #ld-line { display: block; width: 100%; min-width: calc(200 * var(--e)); height: max(1.5px, calc(3 * var(--e)));
   background: linear-gradient(#fff, #fff) 0 0 / var(--p, 0%) 100% no-repeat, rgba(255, 255, 255, .25); transition: background-size .4s; }
 @media (prefers-reduced-motion: reduce) { #loading, body.busy #loading, #ld-line { transition: none; } }
@@ -216,6 +217,10 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
 #spec-chart .gap { stroke: #8a8a8a; stroke-width: 2; }
 #spec-chart .err { stroke-width: 1; opacity: .5; }
 #spec-chart .pt.doubt { fill: #000; stroke-width: 1.4; }
+#spec-chart.greyed :is(.pt, .err) { fill: #000; stroke: #6b6b6b; opacity: .5; }   /* too bright: what is left is not a spectrum */
+#spec-chart .why { font-size: 12px; fill: #fff; }
+.pv-spec .warn { color: var(--comet); }
+.pv-spec [hidden] { display: none; }
 .spec-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: calc(10 * var(--e)); font: 400 max(10px, calc(17 * var(--e))) / 1.2 var(--panel-font); color: #cfd6e4; }
 .spec-key i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
 .spec-key i.hollow { box-sizing: border-box; border: 1.5px solid #fff; }
@@ -384,8 +389,9 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   body.lapse:not(.sky) .pv-spec h2 { display: block; position: absolute; z-index: 1; right: 0; top: 0; width: 44px; height: 44px; margin: 0; font-size: 0; }
   body.lapse:not(.sky) .pv-spec .close { width: 44px; height: 44px; margin-right: 0; }
   body.lapse:not(.sky) .pv-spec .pv-scroll { display: flex; flex-direction: column; min-height: 0; max-height: none !important; overflow-y: auto; padding: 4px 22px 12px 0; }
-  body.lapse:not(.sky) #spec-chart { order: -2; margin: 0 22px 0 0; width: calc(100% - 22px); }
-  body.lapse:not(.sky) .spec-key { order: -1; }
+  body.lapse:not(.sky) #spec-chart { order: -3; margin: 0 22px 0 0; width: calc(100% - 22px); }
+  body.lapse:not(.sky) .spec-key { order: -2; }
+  body.lapse:not(.sky) :is(#spec-status, .spec-line) { order: -1; }
   body.lapse:not(.sky) .pv-spec .pv-info { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: #e8e8e8; }
   body.lapse:not(.sky) .spec-key { font-size: 11px; }
   body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; margin-left: -11px; }
