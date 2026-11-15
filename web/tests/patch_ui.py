@@ -130,16 +130,21 @@ async def main():
         await pg.click("label[for=diff]")
         print("PASS colour key, spoken: Color Difference is described as orange brighter, blue dimmer, and so is the photo while it is on")
 
-        # phones: Tab follows the one column from top to bottom (the markup is in that order)
+        # phones (T1, tool tabs): Tab goes timeline, the five tabs, Discovered, then the open card's controls; another tab's
+        # card takes its place in the order (hidden cards are skipped)
         await pg.set_viewport_size({"width": 390, "height": 844})
         await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready)
-        await pg.focus("#play"); order = ["play"]
-        for _ in range(12):
-            await pg.keyboard.press("Tab"); order.append(await pg.evaluate("document.activeElement.id || document.activeElement.className"))
-        want = ["play", "state", "coords", "det", "fov", "sp-dial", "sp-on", "ly-heat", "still", "diff"]
-        seen = [x for x in order if x in want]
-        assert seen[:len(want)] == want, f"Tab order on a phone: {order}"
-        print("PASS phone tab order: timeline, Discovered, Coordinates, Band, Zoom, the Spectral dial and its box, then the three toggles, as they appear")
+        async def tab_order(n=10):
+            await pg.focus("#play"); order = ["play"]
+            for _ in range(n):
+                await pg.keyboard.press("Tab"); order.append(await pg.evaluate("document.activeElement.id || document.activeElement.dataset.t || document.activeElement.className"))
+            return order
+        for tab, card in (("options", ["fov"]), ("spectral", ["sp-dial", "sp-on"]), ("others", ["still", "diff"]), ("info", ["coords", "det"])):
+            await pg.click(f".pv-tabs [data-t={tab}]")
+            order = await tab_order()
+            want = ["play", "options", "spectral", "layers", "others", "info", "state", *card]
+            assert order[:len(want)] == want, f"Tab order on a phone, {tab} open: {order}"
+        print("PASS phone tab order: timeline, the five tabs, Discovered, then the open card (Zoom; the dial and its box; the toggles; Coordinates and Band)")
 
         # the left cards shrink with the screen: every control inside them stays on screen, down to 320 px
         for w in (320, 390):
