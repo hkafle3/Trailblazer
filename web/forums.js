@@ -6,7 +6,7 @@
   const list = $('threads'), count = $('count'), q = $('q'), region = $('region'), date = $('date'), known = $('known');
   const DAY = 864e5, RAD = Math.PI / 180, SHOW = 3;   // comments shown per thread before "more"
   const VOTE = { comet: ['comet', 'var(--comet)'], asteroid: ['asteroid', 'var(--asteroid)'], glitch: ['glitch', 'var(--glitch)'], unsure: ['unsure', 'var(--unsure)'] };
-  let threads = [];
+  let threads = null;   // null until /api/threads answers: the filters leave "Loading" or a failed load on screen
 
   // ---- sky regions: north/south by Dec; near the ecliptic or the Milky Way by latitude within 15 degrees ----
   const eclLat = (ra, dec) => Math.asin(Math.sin(dec * RAD) * Math.cos(23.44 * RAD) - Math.cos(dec * RAD) * Math.sin(23.44 * RAD) * Math.sin(ra * RAD)) / RAD;
@@ -70,6 +70,7 @@
   }
 
   function render() {
+    if (!threads) return;
     const ws = words(q.value), days = +date.value, since = days ? Date.now() - days * DAY : 0, inRegion = REGION[region.value];
     const shown = threads.filter(t =>
       (!known.checked || t.kind === 'known') && (!since || t.last >= since) && (!inRegion || inRegion(t)) &&
