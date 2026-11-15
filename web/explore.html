@@ -1,12 +1,13 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Explore · Trailblazer</title>
+<title>Explore Â· Trailblazer</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
+<link rel="stylesheet" href="explore.css">
 <link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
 <link rel="preload" as="image" href="data/visits.png">
 <link rel="preload" as="fetch" href="data/coverage.json" crossorigin>
@@ -15,6 +16,7 @@
 
 <!-- The map: real SPHEREx sky, coverage replay (canvas), heat map of patches people checked (canvas), grid and ecliptic (svg).
      Markers and cards are filled in by explore.js from /api/comets and /api/explored. -->
+<div class="xstage">
 <div class="map-wrap">
   <div class="map" id="map">
     <img class="sky" src="data/sky.jpg" alt="All-sky picture from SPHEREx" fetchpriority="high" decoding="async" onload="this.classList.add('ld')">
@@ -51,50 +53,40 @@
   </div>
 </div>
 
+<!-- Timeline (Homepage-2): one tick per month SPHEREx took photos, the year under each January, today's date over the handle.
+     Drag anywhere on it to move through time; click the handle to replay the sky filling in. Built by explore.js. -->
+<div class="tl" id="tl">
+  <div class="tl-line" id="tl-line">
+    <div class="tl-ticks" id="tl-ticks" aria-hidden="true"></div>
+    <output class="tl-date" id="t-date">&nbsp;</output>
+    <button class="tl-knob" id="play" type="button" role="slider" aria-label="Date. Drag to move through time; press to replay the sky filling in." aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+      <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
+    </button>
+  </div>
+  <input id="time" type="range" min="0" max="529" value="529" hidden>
+</div>
+</div>
+
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
   <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
 </header>
 
-<div class="hero">
-  <h1>The sky moves.<br><span class="glow-text">Catch it.</span></h1>
-  <p class="sub">Spot the dot that jumps between two photos. Anyone can look.</p>
-</div>
-
 <details class="layers" id="layers">
-  <summary class="glass"><svg class="ic"><use href="icons.svg#stack"/></svg>Layers<svg class="ic chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
-  <div class="layers-body glass" aria-label="Map layers">
-  <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg><em><em class="wide-only">SPHEREx </em>photos</em></span><input class="sw" type="checkbox" id="ly-photos" checked></label>
-  <label class="layer" style="--c:var(--people)"><span><svg class="ic"><use href="icons.svg#eye"/></svg><em>Explored<em class="wide-only"> by people</em></em></span><input class="sw" type="checkbox" id="ly-people"></label>
-  <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
-  <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#comet"/></svg><em>Comets<em class="wide-only"> found</em></em></span><input class="sw" type="checkbox" id="ly-comets" checked></label>
-  <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#move"/></svg><em>Comet<em class="wide-only"> paths</em></em></span><input class="sw" type="checkbox" id="ly-paths" checked></label>
-  <label class="layer" style="--c:var(--known)"><span><svg class="ic"><use href="icons.svg#known"/></svg><em>Known<em class="wide-only"> objects</em></em></span><input class="sw" type="checkbox" id="ly-known" checked></label>
-</div>
+  <summary>Layers<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></summary>
+  <div class="layers-body" aria-label="Map layers">
+    <h2>Layers</h2>
+    <label class="layer" style="--c:var(--photo)"><input class="cbx" type="checkbox" id="ly-photos" checked><span>SPHEREx photos</span></label>
+    <label class="layer" style="--c:var(--people)"><input class="cbx" type="checkbox" id="ly-people"><span>Heat map</span></label>
+    <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
+    <label class="layer" style="--c:var(--comet)"><input class="cbx" type="checkbox" id="ly-comets" checked><span>Comets found</span></label>
+    <label class="layer" style="--c:var(--comet)"><input class="cbx" type="checkbox" id="ly-paths" checked><span>Comet paths</span></label>
+    <label class="layer" style="--c:var(--known)"><input class="cbx" type="checkbox" id="ly-known" checked><span>Known objects</span></label>
+  </div>
 </details>
 
-<div class="timebar glass">
-  <button class="play plain" id="play" aria-label="Replay the sky filling in"><svg class="ic i-play"><use href="icons.svg#play"/></svg><svg class="ic i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.6"/><rect x="14" y="5" width="4" height="14" rx="1.6"/></svg></button>
-  <div class="track">
-    <output class="bubble" id="t-bubble" aria-hidden="true"></output>
-    <input class="range" id="time" type="range" min="0" max="529" value="529" aria-label="Date">
-    <div class="ends" aria-hidden="true"><span>Start</span><span>Latest</span></div>
-  </div>
-  <div class="now"><b id="t-date">&nbsp;</b><span id="t-pct">&nbsp;</span></div>
-</div>
 
-<aside class="start">
-  <div class="stats glass">
-    <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%">
-      <span class="orb"></span><b>&nbsp;</b><span class="lbl">of the sky photographed</span>
-    </div>
-    <div class="stat" id="people-meter" style="--c:var(--people);--p:0%">
-      <span class="orb"></span><b><span data-n="seen">&nbsp;</span> <small>/ <span data-n="total"></span></small></b><span class="lbl">patches checked &middot; example data</span>
-    </div>
-  </div>
-  <a class="btn cta" id="go-unexplored">Start catching <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-  <a class="link" href="guide.html"><svg class="ic"><use href="icons.svg#book"/></svg>How to find a comet</a>
-</aside>
 <div class="readout" id="readout" hidden></div>
 
 <script type="module" src="explore.js"></script>

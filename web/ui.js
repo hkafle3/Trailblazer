@@ -233,10 +233,9 @@
   const STEPS = [
     { title: 'Welcome to Trailblazer', text: 'NASA’s SPHEREx telescope photographs the whole sky again and again. Anything that moves between photos is a comet or an asteroid. Take a one-minute look around, or skip it.' },
     { sel: '.map-wrap', title: 'The whole sky, flat', text: 'This is the entire sky unrolled like a world map. The bright band is our galaxy. Orange dots are comets people found, blue ones are already known.' },
-    { sel: '.timebar', title: 'Watch it get photographed', text: 'Press play to see SPHEREx scan the sky, strip by strip, over its first year and a half.' },
-    { sel: '.layers', title: 'More, when you want it', text: 'Layers hides the extras: coverage, where people have looked, comets and known objects. Leave them alone to start.' },
-    { sel: '#go-unexplored', title: 'Your first hunt', text: 'Not sure where to look? This takes you to a patch nobody has checked yet. You can also click anywhere on the sky.' },
-    { title: 'You’re ready', text: 'Compare two photos, spot the dot that jumped, and tag it. Sign in any time to join the conversation.', last: true },
+    { sel: '.tl', title: 'Watch it get photographed', text: 'Drag the round handle to move through time, or click it to watch SPHEREx scan the sky, strip by strip, over its first year and a half.' },
+    { sel: '.layers', title: 'More, when you want it', text: 'Layers switches the extras on and off: photos, the heat map of where people have looked, comets, their paths and known objects.' },
+    { title: 'You’re ready', text: 'Click anywhere on the sky to look closer, compare two photos, spot the dot that jumped, and tag it. Sign in any time to join the conversation.', last: true },
   ];
   let tourEl = null;
   function startTour() {
@@ -256,7 +255,7 @@
         h('div', { class: 'row' },
           s.last ? h('span') : h('button', { class: 'skip', type: 'button', text: 'Skip tour', onclick: () => end() }),
           i > 0 && !s.last ? h('button', { class: 'btn ghost small', type: 'button', text: 'Back', onclick: () => go(-1) }) : '',
-          h('button', { class: 'btn', type: 'button', text: s.last ? 'Start catching' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) { end(); document.getElementById('go-unexplored')?.click(); } else go(1); } })));
+          h('button', { class: 'btn', type: 'button', text: s.last ? 'Start exploring' : i === 0 ? 'Show me' : 'Next', onclick: () => { if (s.last) end(); else go(1); } })));
       card.querySelectorAll('.btn').forEach(b => delete b.dataset.cb); scanButtons();
       const t = s.sel && document.querySelector(s.sel); if (t) t.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
       place(); card.querySelector('.btn:last-child')?.focus({ preventScroll: true });
@@ -289,7 +288,7 @@
   if (/[?&]guide=1/.test(location.search)) openGuide();
   new MutationObserver(() => scanButtons()).observe(document.body, { childList: true, subtree: true });
   if (isExplore && (!store.get('ch.tour') || /[?&]tour=1/.test(location.search))) {
-    const wait = setInterval(() => { if (document.body.dataset.ready || document.querySelector('#go-unexplored[href]')) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);
+    const wait = setInterval(() => { if (document.body.dataset.ready) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);
     setTimeout(() => clearInterval(wait), 15000);
   }
 })();

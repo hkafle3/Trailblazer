@@ -28,7 +28,16 @@
   .craft img { transition: transform .6s var(--ease); }
   .craft:hover img { transform: translateY(calc(-10 * var(--s))); }
   .scene a:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
-  @media (prefers-reduced-motion: reduce) { .craft img, .home-sky img { transition: none; } }
+  .scene { cursor: pointer; }
+  .home-sky { view-transition-name: sky; }   /* the same name as the Explore map: the oval glides into place there */
+
+  /* Leaving for Explore: Earth and SPHEREx drop away and fade, then the page changes. */
+  .earth, .craft { transition: transform .9s cubic-bezier(.55, 0, .8, .2), opacity .8s ease-in; }
+  .leaving .earth { transform: translateY(45%); opacity: 0; }
+  .leaving .craft { transform: translateY(calc(520 * var(--s))) scale(.9); opacity: 0; transition-delay: .05s; }
+  .leaving .home-sky img { filter: grayscale(.6) brightness(1.2) contrast(1.05); }
+  .leaving .scene { cursor: default; }
+  @media (prefers-reduced-motion: reduce) { .craft img, .home-sky img, .earth, .craft { transition: none; } }
 </style>
 </head>
 <body class="home nostars">
@@ -45,6 +54,25 @@
   <a class="craft" href="explore.html" title="Explore the sky" aria-label="Explore with SPHEREx"><img src="data/home/spherex.png" alt="The SPHEREx space telescope"></a>
 </main>
 
+<script>
+  // Click anywhere on the scene, or the Explore tab: drop Earth and SPHEREx, then go to Explore.
+  (() => {
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let going = false;
+    const go = e => {
+      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;   // new tab etc.: let the browser do it
+      e.preventDefault();
+      if (going) return;
+      going = true;
+      if (reduce) { location.href = 'explore.html'; return; }
+      document.body.classList.add('leaving');
+      setTimeout(() => { location.href = 'explore.html'; }, 850);
+    };
+    document.querySelector('.scene').addEventListener('click', go);
+    document.querySelector('.topbar nav a[href="explore.html"]').addEventListener('click', go);
+    addEventListener('pageshow', () => { going = false; document.body.classList.remove('leaving'); });   // back button: show the scene again
+  })();
+</script>
 <script src="ui.js"></script>
 </body>
 </html>

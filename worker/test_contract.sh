@@ -27,7 +27,7 @@ check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
 check "home page served" "/" 200 'Trailblazer'
-check "Explore map page served" "/explore.html" 200 'The sky moves'
+check "Explore map page served" "/explore" 200 'id="tl"'
 check "Forums page served" "/forums.html" 200 'Forums'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "Comets list page served" "/comet.html" 200 'id="c-list"'
