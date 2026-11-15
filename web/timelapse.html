@@ -844,7 +844,7 @@ function back() {
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, idle: () => { if (owed) { owed = false; back(); } } });
-talk = discuss({ state, api: API, setFound, found: () => found, spot, status: text => setStatus(text) });
+talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text) });
 window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 // ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
@@ -899,7 +899,10 @@ addEventListener('spectral-channel', e => {
   if (!spectral.active.size) document.getElementById('det').value = e.detail.detector;   // the Band follows the dial at once
   clearTimeout(spTimer); spTimer = setTimeout(spSync, 300);   // and the time-lapse once the dial stops
 });
-addEventListener('spectral-layers', () => { clearTimeout(spTimer); spSync(); });
+addEventListener('spectral-layers', () => {
+  for (const [k, why] of spMissed) if (why !== 'no visits') spMissed.delete(k);   // a layer that failed (not one with no data) is tried again
+  clearTimeout(spTimer); spSync();
+});
 addEventListener('spectral-full', () => setStatus(`${spectral.max} layers at most. Click one to turn it off.`));
 Object.defineProperties(window.__lapse, { channels: { value: CHANNELS }, builds: { get: () => builds } });   // for tests/spectral_ui.py
 
@@ -925,7 +928,7 @@ fov.oninput = () => { setFov(); draw(); };
 for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat']])
   document.getElementById(id).onchange = e => { state[key] = e.target.checked; draw(); };
 addEventListener('keydown', e => {
-  if (!state.m || /INPUT|SELECT/.test(e.target.tagName) || e.target === playBtn) return;
+  if (!state.m || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.target === playBtn) return;   // typing a comment moves the caret, not the visit
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); state.i = (state.i + (e.key === 'ArrowRight' ? 1 : -1) + state.m.frames.length) % state.m.frames.length; draw(); }
 });
 
