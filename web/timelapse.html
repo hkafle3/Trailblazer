@@ -383,7 +383,12 @@ window.__sky = { sky, pointToRadec, radecToPoint, mollForward, mollInverse, pick
 TARGETS.forEach(t => load(t.key).then(m => { mapMarks[t.key] = m; }).catch(() => {}));
 mapEl.addEventListener('click', e => {
   const b = mapEl.getBoundingClientRect(), rd = mollInverse((e.clientX - b.left) / b.width * MW, (e.clientY - b.top) / b.height * MH);
-  if (rd) { [sky.ra, sky.dec] = rd; sky.fovGoal = 6; }
+  if (!rd) return;
+  if (!renderer) {   // no 3D sky to fly through: open that spot's time-lapse straight away
+    document.getElementById('coords').value = `${rd[0].toFixed(4)} ${rd[1].toFixed(4)}`;
+    return search(rd[0], rd[1], document.getElementById('det').value, { diff: true });
+  }
+  [sky.ra, sky.dec] = rd; sky.fovGoal = 6;
 });
 
 // ---------- loop: the star field drifts slowly behind the time-lapse ----------
