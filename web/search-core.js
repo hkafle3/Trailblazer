@@ -35,8 +35,10 @@ export function parse(q) {
     const g = groups.at(-1);
     if (!g || t.sign || LEAD.has(t.unit) || !MORE.has(g.at(-1).unit) || g.length === 3) groups.push([t]); else g.push(t);
   }
-  const plain = toks.every(t => !t.unit);
-  if (plain && (toks.length === 4 || toks.length === 6)) { const k = toks.length / 2; groups = [toks.slice(0, k), toks.slice(k)]; }
+  // plain numbers: a sign starts the Dec ("08 55 10.8 -7.245"); else 4 or 6 split in half ("08 55 10.8 07 14 42")
+  const plain = toks.every(t => !t.unit), k = toks.findIndex((t, i) => i && t.sign);
+  if (plain && toks.length > 2) groups = k > 0 ? [toks.slice(0, k), toks.slice(k)] : toks.length % 2 ? groups : [toks.slice(0, toks.length / 2), toks.slice(toks.length / 2)];
+  if (groups.some(g => g.length > 3)) return { error: 'That is more than an RA and a Dec.', help: 'Type RA, then Dec:' };
   if (groups.length > 2) return { error: 'That is more than an RA and a Dec.', help: 'Type RA, then Dec:' };
   const text = g => g.map(t => t.text).join(g.some(t => t.unit) ? '' : ' ');
   const vals = groups.map((g, i) => {

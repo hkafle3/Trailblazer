@@ -8,7 +8,7 @@
 // or coordinates drop the pin card with "Look closer". The address keeps the search: /explore?q=269.45+4.69.
 // Keys: / or Cmd+K focuses the box, arrows move through the suggestions, Enter picks, Escape closes.
 import { trackAt } from './skymap.js';
-import { flyTo as viewFly, W, A } from './explore-view.js';
+import { flyTo as viewFly, W, A, hooks as view } from './explore-view.js';
 import { flyTo as deskFly } from './explore-desktop.js';
 import { TARGETS, parse, matchLocal, sep, sesameRaDec } from './search-core.js';
 
@@ -40,7 +40,7 @@ $('whole').before(opener);
 
 let hooks = { showPin() {}, feature() {} }, rows = [], active = -1, look = null;   // look: the Sesame state for the text in the box
 const markers = () => [...document.querySelectorAll('#marks .mk')].filter(m => m.comet);
-const where = c => trackAt(c.track, day()) ?? [c.ra, c.dec];
+const where = c => (trackAt(c.track, day()) ?? [c.ra, c.dec]).slice(0, 2);   // trackAt adds the magnitude
 
 // ---- the suggestions ----
 // rows: what Enter or a click can pick. { kind: 'coord' | 'target' | 'comet' | 'sesame', ... }
@@ -74,6 +74,8 @@ function render() {
   } else if (p && !local) {   // numbers, but not a place yet: say which number is wrong, or what is missing
     note = p.error ? `<p>${esc(p.error)}</p><p class="help">${esc(p.help)}<br>${EXAMPLES}</p>`
       : `<p>That reads as RA ${f2(p.half)}°. Add the Dec.</p><p class="help">Type RA, then Dec: <code>08h55m10.8s -07d14m42s</code> or <code>133.80 -7.25</code></p>`;
+    // letters too: it may be a catalog name that reads like numbers ("1H 0323+342"), so the star catalogs stay one Enter away
+    if (p.error && /[a-z]/i.test(q)) html = group('STAR CATALOGS', row({ kind: 'sesame', q }, ring, `Look up "${esc(q)}"`, '<span class="s">SIMBAD</span>', true));
   } else {   // a name: our targets and comets, the matched part in bold; else the star catalogs on Enter
     html = group('TARGETS', m.targets.map(x => targetRow(x.t, x.label === x.t.name ? bold(x.label, x.s, x.e) : esc(x.t.name), x.label === x.t.name ? '' : `<span class="s">${bold(x.label, x.s, x.e)}</span>`)).join(''));
     html += group('COMETS', m.comets.map(x => cometRow(x.c, bold(x.c.id, x.s, x.e), x.c.co2 === 'detected' ? '<span class="s hot">CO2 glow</span>' : '')).join(''));
@@ -105,6 +107,7 @@ function fly(ra, dec) {
 function pick(r) {
   if (!r) return;
   if (r.kind === 'sesame') return lookUp(r.q);
+  view.stop();   // the replay stops, so a comet stays where it was found
   let text = input.value.trim();
   const pin = (ra, dec, name, href) => {
     if (phone.matches && !$('csheet').hidden) $('csheet').querySelector('.sheet-x').click();   // a comet's sheet would cover the pin card
@@ -143,15 +146,19 @@ async function lookUp(q) {
   if (!cache.has(key)) {
     look = { q, state: 'looking' }; render();
     const c = ctl = new AbortController(), timer = setTimeout(() => c.abort(), 6000);
+    let ans;
     try {
       const r = await fetch(`https://cds.unistra.fr/cgi-bin/nph-sesame/-oJ/SNV?${encodeURIComponent(q)}`, { signal: c.signal });
-      cache.set(key, sesameRaDec(await r.text()));
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      cache.set(key, ans = sesameRaDec(await r.text()));   // only real answers are kept
     } catch {
-      if (ctl !== c) return;   // replaced by a newer search
-      if (!c.signal.aborted) { look = { q, state: 'fail' }; return render(); }
-      cache.set(key, null);   // 6 s and nothing: the same as not found
+      if (ctl !== c) return;   // replaced by a newer search, or the search was closed
+      // 6 s and nothing reads as not found; a failed request says so. Neither is kept: Enter asks again.
+      look = { q, state: c.signal.aborted ? 'none' : 'fail' }; ctl = null;
+      return render();
     } finally { clearTimeout(timer); }
     if (ctl !== c || input.value.trim() !== q) return;
+    ctl = null;
   }
   const hitRaDec = cache.get(key);
   if (!hitRaDec) { look = { q, state: 'none' }; return render(); }
@@ -164,6 +171,7 @@ input.addEventListener('focus', () => { if (phone.matches) document.body.classLi
 form.addEventListener('submit', e => {   // Enter, or the phone keyboard's search key
   e.preventDefault();
   if (active >= 0) pick(rows[active]);
+  else if (look && look.q === input.value.trim() && !ctl) lookUp(look.q);   // not found or failed: Enter asks again
 });
 input.addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -172,7 +180,7 @@ input.addEventListener('keydown', e => {
     if (rows.length) setActive((active + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length);
   } else if (e.key === 'Escape') {
     e.preventDefault(); e.stopPropagation();   // a search field would clear itself; explore.js's Escape closes the pin, here it only closes the search
-    if (phone.matches) back(); else if (!panel.hidden) show(false); else input.blur();
+    if (phone.matches) back(); else if (!panel.hidden) { drop(); show(false); } else input.blur();
   }
 });
 list.addEventListener('pointerdown', e => e.preventDefault());   // keep the focus in the box
@@ -190,7 +198,7 @@ clear.addEventListener('click', () => {
 // phones: the button opens the box at the top (the focus must happen inside the tap, or iOS keeps the keyboard down)
 function open() {
   if (phone.matches) document.body.classList.add('xs-on', 'xs-typing');
-  input.focus(); input.select();
+  input.focus(); input.select(); render();   // render: the box may already have the focus, with its list closed
 }
 function back() {   // the plain map, with the button
   drop(); input.value = ''; show(false);
