@@ -166,11 +166,11 @@ def main():
     print(f"done ok {st['ok']} failed {st['failed']} retries {RETRIES[0]} in {st['secs']:.0f}s ({st['ok'] / st['secs']:.0f}/s)", flush=True)
 
 
-def _check():   # parser and SIP against astropy on the saved sample header: python -c "import sky_headers; sky_headers._check()"
+def check(path):   # parser and SIP against astropy on a saved header: uv run --with astropy python bake/sky_headers.py --check FILE
     from astropy.io import fits
     from astropy.wcs import WCS
     import warnings; warnings.simplefilter("ignore")
-    buf = open(sys.argv[1], "rb").read()
+    buf = open(path, "rb").read()
     h, e = parse(buf)
     w = WCS(fits.Header.fromstring(buf[2880:e].decode("ascii")))
     for (ra, dec), (r2, d2) in zip(corners(h), w.calc_footprint(axes=(h["NAXIS1"], h["NAXIS2"]))):
@@ -179,4 +179,4 @@ def _check():   # parser and SIP against astropy on the saved sample header: pyt
 
 
 if __name__ == "__main__":
-    _check() if sys.argv[1:2] == ["--check"] and sys.argv.pop(1) else main()
+    check(sys.argv[2]) if sys.argv[1:2] == ["--check"] else main()
