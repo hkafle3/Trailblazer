@@ -1,0 +1,82 @@
+/* A comet's page (comet.html?id=, comet.js): the candidate page's layout and parts (discuss.css .cpage, Ming's patch.css),
+   plus what only a measured or known comet has. No new parts: each rule says which of his it reuses.
+   The older rounded-glass rules for these ids and classes (styles.css, ui.css) are undone here where they still match. */
+
+/* the older page's spacing, corners and gradient title (styles.css .comet-head, .talk, .composer; ui.css .talk) */
+.cpage .comet-head { margin: 0; }
+.cpage .talk { padding: 0; border-radius: 0; background: none; border: 0; }
+.cpage .talk .composer { padding-top: 0; border-top: 0; }
+.cpage .comet-grid, .cpage .col { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.cpage .head #c-cat, .cpage .head #c-verdict { color: #cfd6e4; }
+.cpage .co2.detected { color: var(--comet); }   /* the verdict on the CO2 band, coloured as on the Comets list */
+
+/* Where it is: his card, the mini map in his mini-map box (as on the candidate page), the date in his timeline's type,
+   then "Find on map" as his arrow button */
+.cpage .wherecard { display: block; }
+.cpage .wherecard #c-when { margin: calc(18 * var(--e)) 0 0; font: 300 max(13px, calc(24 * var(--e))) / 1 var(--head-font); color: #e8e8e8; }
+.cpage .wherecard #c-when:empty { display: none; }
+.cpage .wherecard #c-where { margin-top: calc(8 * var(--e)); white-space: pre; }
+.cpage .wherecard .pv-state { width: auto; margin-top: calc(26 * var(--e)); }
+.cpage .wherecard .skymini { box-shadow: none; }
+.cpage .wherecard .where { white-space: normal; line-height: 0; }   /* ui.css .wherecard .where kept the markup's line breaks */
+
+/* photos: his mini-map boxes (discuss.css .frames), the cutouts brightened as before (styles.css .plate img) */
+.cpage .frames figure { font-size: max(11px, calc(22 * var(--e))); text-align: center; }
+.cpage .frames figure.now { color: #fff; }
+
+/* measurements: one box, four values in his info type over Space Mono numbers */
+.cpage .measures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(20 * var(--e)) calc(40 * var(--e)); }
+.cpage .measures div { padding: 0; border: 0; display: grid; gap: calc(10 * var(--e)); align-content: start; }
+.cpage .measures .pv-info { margin: 0; }
+.cpage .measures b { font: 400 max(17px, calc(36 * var(--e))) / 1.1 var(--panel-font); color: #fff; }
+.cpage .measures small { font: 400 max(11px, calc(20 * var(--e))) var(--panel-font); color: #cfd6e4; }
+
+/* spectrum: a box with his card heading; the chart keeps its colours (styles.css .spectrum), its text in his type */
+.cpage .spec-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; margin-bottom: calc(20 * var(--e)); }
+.cpage .spectrum h2, .cpage .empty-box h2 { margin: 0; font: 400 max(18px, calc(36 * var(--e))) / 1.1 var(--panel-font); letter-spacing: 0; color: #fff; }
+.cpage .spec-head .pv-info { margin: 0; }
+.cpage .spectrum text { font-family: var(--panel-font); }
+.cpage .spectrum .lab { font: 400 12px var(--panel-font); fill: #fff; }
+.cpage .spectrum .legend { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: calc(14 * var(--e)); }
+
+/* example and known comets: the box with his info lines; each SPHEREx visit a white-outlined pill (his Spectral chips,
+   patch.css .sp-chip, without the remove mark); the way out his arrow button */
+.cpage .empty-box { display: grid; gap: calc(22 * var(--e)); justify-items: start; }
+.cpage .empty-box .pv-info { margin: 0; }
+.cpage .empty-box .visits { display: flex; flex-wrap: wrap; gap: 10px; }
+.cpage .visits a { display: inline-flex; align-items: center; height: max(28px, calc(44 * var(--e))); padding: 0 14px; box-sizing: border-box; border: max(1px, calc(2 * var(--e))) solid #fff; border-radius: 999px;
+  font: 400 max(12px, calc(20 * var(--e))) / 1 var(--panel-font); color: #fff; white-space: nowrap; transition: background .15s, color .15s; }
+.cpage .visits a:hover, .cpage .visits a:focus-visible { background: #fff; color: #000; outline: 0; }
+.cpage .empty-box .pv-state { width: auto; gap: calc(24 * var(--e)); }
+
+/* comments: the candidate page's boxes; "was asteroid" quieter */
+.cpage .post .was { color: #8b93a3; }
+.cpage #t-list > .pv-info { margin: 0; }
+.cpage .compose .row #c-note { flex: 1; }
+.cpage .compose .row .pv-state { flex: none; }
+
+/* the right column: the tag rows' counts and the tally line under them */
+.cpage .verdict #t-head { margin: calc(14 * var(--e)) 0 0; }
+.cpage .missing { margin: 0; }
+.cpage .missing a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+
+/* phones: one column; the map and tags come before the photos and the comments, so a tag is picked next to the form */
+@media (max-width: 900px) {
+  .cpage > .left, .cpage .comet-grid:not([hidden]), .cpage > .right { display: contents; }
+  .cpage > * > *, .cpage .comet-grid > * { min-width: 0; }
+  .cpage .comet-head { order: 0; }
+  .cpage #c-patch { order: 1; }
+  .cpage #c-map { order: 2; }
+  .cpage .col { order: 3; }
+  .cpage .verdict { order: 4; }
+  .cpage .talk { order: 5; }
+  .cpage .missing { order: 1; }
+  .cpage .col, .cpage .talk { gap: 18px; }
+  .cpage .measures { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px 16px; }
+  .cpage .measures .pv-info { font-size: 12px; }
+  .cpage .wherecard .where { max-width: 360px; }
+  .cpage .wherecard #c-where { font-size: 12px; }
+  .cpage .wherecard .pv-state, .cpage .empty-box .pv-state { width: min(100%, 300px); }
+  .cpage .frames figure { font-size: 11px; }
+  .cpage .spectrum .legend, .cpage .spec-head .pv-info { font-size: 12px; }
+}

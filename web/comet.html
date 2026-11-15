@@ -8,6 +8,9 @@
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
 <link rel="stylesheet" href="search.css">   <!-- Ming's Forums search box and selects (.f-search, .f-row, .f-box) -->
+<link rel="stylesheet" href="patch.css">    <!-- Ming's patch-viewer parts: boxes, cards, the arrow button, check boxes -->
+<link rel="stylesheet" href="discuss.css">  <!-- the candidate page's layout (.cpage), shared by a comet's page -->
+<link rel="stylesheet" href="comet.css">    <!-- what only a comet's page has: photos, measurements, spectrum, visits -->
 <!-- also in header.css; Chrome only honours it reliably when it is in the page itself, so the Explore map can glide into the mini map -->
 <style>
 @view-transition { navigation: auto; }
@@ -22,6 +25,7 @@
 </header>
 
 <main class="shell">
+  <script>if (new URLSearchParams(location.search).get('id')) document.currentScript.parentNode.className = 'cpage';</script>   <!-- one comet: the candidate page's layout -->
   <!-- The Comets tab (comet.js list()): one shelf per answer. Search and the filter row change every shelf. -->
   <section id="c-list" hidden>
     <h1 class="sr-only">Comets</h1>
@@ -54,76 +58,80 @@
     <p class="sr-only" id="l-status" role="status" aria-live="polite"></p>   <!-- says how many comets match after each search or filter change -->
   </section>
 
-  <div class="comet-head">
-    <h1 id="c-id">&nbsp;</h1>
-    <span class="chip likely" id="c-verdict" hidden></span>
-    <span class="chip cat" id="c-cat"><svg class="ic" style="width:15px;height:15px"><use href="icons.svg#known"/></svg><span></span></span>
-    <a class="btn ghost" id="c-patch" hidden>Open its patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+  <!-- One comet (comet.js), laid out like the candidate page (Forums.png): wide boxes on the left, cards on the right -->
+  <div class="left">
+    <section class="pv-frame head comet-head">
+      <h1 id="c-id">&nbsp;</h1>
+      <span class="pv-info" id="c-cat"><span></span></span>
+      <span class="pv-info" id="c-verdict" hidden></span>
+    </section>
+
+    <div class="left comet-grid">
+      <div class="left col">
+        <section class="pv-frame empty-box" id="c-empty" hidden>
+          <p class="pv-info">Example comet: its photos and spectrum appear here once its dots are measured.</p>
+          <div class="actions"><a class="pv-state" href="comet.html?id=3I%2FATLAS"><span>See a real one: 3I/ATLAS</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a></div>
+        </section>
+
+        <section class="pv-frame" id="c-photos-panel" aria-label="SPHEREx photos" hidden>
+          <div class="frames" id="c-photos"></div>
+        </section>
+
+        <section class="pv-frame measures" id="c-measures" hidden>
+          <div><span class="pv-info">Speed across the sky</span><b><span data-f="speed"></span> <small>arcsec / hour</small></b></div>
+          <div><span class="pv-info">Direction</span><b data-f="dir"></b></div>
+          <div><span class="pv-info">First photographed</span><b data-f="first"></b></div>
+          <div><span class="pv-info">SPHEREx photos</span><b data-f="n"></b></div>
+        </section>
+
+        <section class="pv-frame spectrum" id="c-spec-panel" hidden>
+          <div class="spec-head"><h2>Light by wavelength</h2><span class="pv-info" id="c-spec-note"></span></div>
+          <svg id="spec" viewBox="0 0 900 250" role="img" aria-label="SPHEREx spectrum of the comet"></svg>
+          <div class="legend pv-info" id="c-legend"></div>
+        </section>
+      </div>
+
+      <section class="left talk" aria-label="Comments">
+        <div class="left" id="t-list"></div>
+        <form class="composer pv-desc compose" id="c-compose">
+          <textarea class="box" rows="2" maxlength="1000" placeholder="Add a comment" aria-label="Your comment"></textarea>
+          <input class="box nick" name="author" maxlength="24" placeholder="Your nickname" aria-label="Your nickname" autocomplete="nickname" hidden>
+          <!-- Turnstile site key (public). On localhost the always-pass test key is used instead, to match the test secret in worker/.dev.vars -->
+          <div class="cf-turnstile" data-sitekey="0x4AAAAAAGBTgXAx-fdK_qGx" data-theme="dark" data-size="flexible" data-appearance="interaction-only"></div>
+          <div class="row"><span class="pv-info" id="c-note" role="status">A tag is optional. It counts as your vote.</span><button class="pv-state" type="submit" disabled><span>Post</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></button></div>
+        </form>
+      </section>
+    </div>
   </div>
 
-  <div class="comet-grid">
-    <div class="col">
-      <!-- Where it is: the Explore map in small, the comet on its path for the date in ?day= (comet.js where()).
-           In the page from the first paint, so the Explore map can glide into it (view-transition-name: sky). -->
-      <section class="panel glass wherecard" id="c-map" hidden>
+  <div class="right comet-side">
+    <a class="pv-state" id="c-patch" hidden><span>Open its patch</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+    <!-- Where it is: the Explore map in small, the comet on its path for the date in ?day= (comet.js where()).
+         In the page from the first paint, so the Explore map can glide into it (view-transition-name: sky). -->
+    <section class="pv-card wherecard" id="c-map" aria-labelledby="c-map-h" hidden>
+      <h2 id="c-map-h">Where it is</h2>
+      <div class="where">
         <div class="skymini" id="c-mini">
           <svg viewBox="0 0 2000 1000" preserveAspectRatio="none" aria-hidden="true"><path id="c-mini-path"/></svg>
           <i id="c-mini-dot" hidden></i>
         </div>
-        <div>
-          <h2>Where it is</h2>
-          <p id="c-when"></p>
-          <p class="where" id="c-where">&nbsp;</p>
-          <a class="btn ghost" id="c-find" hidden>Find on map <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-        </div>
-      </section>
-      <script>document.getElementById('c-map').hidden = !new URLSearchParams(location.search).get('id');</script>
-
-      <section class="panel glass empty-card" id="c-empty" hidden>
-        <p>Example comet: its photos and spectrum appear here once its dots are measured.</p>
-        <div class="actions"><a class="btn ghost" href="comet.html?id=3I%2FATLAS">See a real one: 3I/ATLAS</a></div>
-      </section>
-
-      <section class="panel glass" id="c-photos-panel" hidden>
-        <div class="nights" id="c-photos"></div>
-      </section>
-
-      <section class="glass measures" id="c-measures" hidden>
-        <div title="Speed across the sky"><svg class="ic"><use href="icons.svg#speed"/></svg><b><span data-f="speed"></span> <small>arcsec / hour</small></b></div>
-        <div title="Direction of travel"><svg class="ic"><use href="icons.svg#compass"/></svg><b data-f="dir"></b></div>
-        <div title="First photographed by SPHEREx"><svg class="ic"><use href="icons.svg#calendar"/></svg><b data-f="first"></b></div>
-        <div title="SPHEREx photos of it"><svg class="ic"><use href="icons.svg#stack"/></svg><b><span data-f="n"></span> <small>photos</small></b></div>
-      </section>
-
-      <section class="panel glass spectrum" id="c-spec-panel" hidden>
-        <div class="head"><h2>Light by wavelength</h2><span class="example" id="c-spec-note"></span></div>
-        <svg id="spec" viewBox="0 0 900 250" role="img" aria-label="SPHEREx spectrum of the comet"></svg>
-        <div class="legend" id="c-legend"></div>
-      </section>
-    </div>
-
-    <aside class="talk glass">
-      <div class="verdict">
-        <h2 id="t-head">&nbsp;</h2>
-        <div class="tally"><i class="t-comet"></i><i class="t-asteroid"></i><i class="t-glitch"></i><i class="t-unsure"></i></div>
-        <div class="tally-key"><span class="t-comet">Comet <b data-t="comet">0</b></span><span class="t-asteroid">Asteroid <b data-t="asteroid">0</b></span><span class="t-glitch">Glitch <b data-t="glitch">0</b></span><span class="t-unsure">Not sure <b data-t="unsure">0</b></span></div>
       </div>
-      <div id="t-list"></div>
+      <p class="pv-info" id="c-when"></p>
+      <p class="pv-info" id="c-where">&nbsp;</p>
+      <a class="pv-state" id="c-find" hidden><span>Find on map</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+    </section>
+    <script>document.getElementById('c-map').hidden = !new URLSearchParams(location.search).get('id');</script>
 
-      <form class="composer">
-        <div class="tagpick" role="radiogroup" aria-label="Your tag">
-          <label><input type="radio" name="tag" value="comet"><span class="tag comet">Comet</span></label>
-          <label><input type="radio" name="tag" value="asteroid"><span class="tag asteroid">Asteroid</span></label>
-          <label><input type="radio" name="tag" value="glitch"><span class="tag glitch">Glitch</span></label>
-          <label><input type="radio" name="tag" value="unsure"><span class="tag unsure">Not sure</span></label>
-        </div>
-        <input class="nick" name="author" maxlength="24" placeholder="Your nickname" aria-label="Your nickname" autocomplete="nickname" hidden>
-        <textarea rows="2" maxlength="1000" placeholder="Add a comment" aria-label="Your comment"></textarea>
-        <!-- Turnstile site key (public). On localhost the always-pass test key is used instead, to match the test secret in worker/.dev.vars -->
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAGBTgXAx-fdK_qGx" data-theme="dark" data-size="flexible" data-appearance="interaction-only"></div>
-        <div class="row"><span class="faint" id="c-note" role="status" style="font-size:12.5px">A tag is optional. It counts as your vote.</span><button class="btn small" type="submit" disabled>Post</button></div>
-      </form>
-    </aside>
+    <section class="pv-card verdict" aria-labelledby="c-tags-h">
+      <h2 id="c-tags-h">Tags</h2>
+      <fieldset class="tags"><legend class="sr-only">Your tag</legend>
+        <label class="pv-row" style="--c:var(--comet)"><input class="cbx" type="radio" name="tag" value="comet" form="c-compose"><span>Comet</span><span class="count" data-t="comet">0</span></label>
+        <label class="pv-row" style="--c:var(--asteroid)"><input class="cbx" type="radio" name="tag" value="asteroid" form="c-compose"><span>Asteroid</span><span class="count" data-t="asteroid">0</span></label>
+        <label class="pv-row" style="--c:var(--glitch)"><input class="cbx" type="radio" name="tag" value="glitch" form="c-compose"><span>Glitch</span><span class="count" data-t="glitch">0</span></label>
+        <label class="pv-row" style="--c:var(--unsure)"><input class="cbx" type="radio" name="tag" value="unsure" form="c-compose"><span>Not sure</span><span class="count" data-t="unsure">0</span></label>
+      </fieldset>
+      <p class="pv-info" id="t-head">&nbsp;</p>
+    </section>
   </div>
 </main>
 
