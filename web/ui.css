@@ -30,12 +30,12 @@ body.page { background: #04060b; }
 }
 .glass, .panel, .rail, .talk, .practice { border-radius: var(--pebble); }
 :is(.topbar, .timebar, .layers > summary, #hint, #timeline).glass { border-radius: 999px; }
-/* the top bar stays nearly solid: pages scroll under it, and without the (removed) blur the content showed through at 22%; 97% hides it */
+/* the top bar is solid: pages scroll under it, and without the (removed) blur the content showed through at 22% (even 3% left a ghost of the big comet titles) */
 .topbar.glass {
   background:
     radial-gradient(140% 120% at 0% 0%, rgba(127, 184, 255, .14), transparent 55%),
     radial-gradient(120% 120% at 100% 100%, rgba(155, 140, 255, .09), transparent 60%),
-    rgba(9, 12, 21, .97);
+    rgb(9, 12, 21);
 }
 .panel, .rail, .talk { padding: 26px 30px; }
 .plate { border-radius: 30%; }
