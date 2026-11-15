@@ -376,12 +376,16 @@ async function post(request, env) {
 // thread instead: the check runs inside the insert, in one D1 batch (one transaction), so two posts at once make one row.
 const NEAR_DEG = 1 / 60, MJD0 = 60789;   // MJD0: day 0 of Explore's timeline (web/skymap.js)
 const DATE = /^\d{4}-\d{2}-\d{2}$/, ZERO = () => ({ comet: 0, asteroid: 0, glitch: 0, unsure: 0 });
-// candidates within NEAR_DEG of (?1 ra, ?2 dec), in visit ?3 (NULL: any visit). ?4 is cos(dec): flat sky is exact
-// enough at 1 arcmin; RA wraps at 0/360. ?5 is NEAR_DEG.
-const NEAR_SQL = `visit IS NOT NULL AND (?3 IS NULL OR visit = ?3) AND abs(dec - ?2) <= ?5 AND
+// candidates within NEAR_DEG of (?1 ra, ?2 dec) whose visit shares a day with ?3 to ?6 (first and last day; NULL: any
+// visit). A visit's days, not its first day alone: the exposures in a visit depend on the channel and detector it was
+// built at, so one dot seen in one visit can start a day apart. ?4 is cos(dec): flat sky is exact enough at 1 arcmin;
+// RA wraps at 0/360. ?5 is NEAR_DEG.
+const NEAR_SQL = `visit IS NOT NULL AND (?3 IS NULL OR (visit <= ?6 AND coalesce(json_extract(detail, '$.candidate.visit.end'), visit) >= ?3))
+  AND abs(dec - ?2) <= ?5 AND
   (min(abs(ra - ?1), 360 - abs(ra - ?1)) * ?4) * (min(abs(ra - ?1), 360 - abs(ra - ?1)) * ?4) + (dec - ?2) * (dec - ?2) <= ?5 * ?5`;
-const nearArgs = (ra, dec, visit) => [ra, dec, visit, Math.cos(dec * RAD), NEAR_DEG];
-const CAND_COLS = 'id, ra, dec, det, visit, author, created_at';
+const nearArgs = (ra, dec, from, to = from) => [ra, dec, from, Math.cos(dec * RAD), NEAR_DEG, to];
+const CAND_COLS = `id, ra, dec, det, visit, json_extract(detail, '$.candidate.visit.end') AS visit_end,
+  json_extract(detail, '$.candidate.channel') AS channel, author, created_at`;
 
 // the visit as the time-lapse knows it (live/pipeline.js frames): first and last day, mean time, exposures, wavelength
 function readVisit(v) {
@@ -406,9 +410,13 @@ function readSpot(b) {
   if (typeof b.det !== 'string' || !/^D[1-6]$/.test(b.det)) return bad('det', 'det must be D1 to D6');
   const visit = readVisit(b.visit);
   if (!visit) return bad('visit', 'visit must be {start, end, mjd, exposures, lam} from a SPHEREx visit');
+  // the Spectral channel the time-lapse was built at (1 to 102, 17 per detector, as in ?ch=), or none: the best-covered wavelength
+  const channel = b.channel ?? null;
+  if (channel !== null && !(Number.isInteger(channel) && channel >= 1 && channel <= 102 && `D${Math.ceil(channel / 17)}` === b.det))
+    return bad('channel', 'channel must be 1 to 102, on the detector det');
   const author = typeof b.author === 'string' ? b.author.trim() : '';
   if (!AUTHOR.test(author)) return bad('author', 'author must be 1 to 24 letters, digits, spaces, _ . or -');
-  return { spot: { ra: +b.ra.toFixed(6), dec: +b.dec.toFixed(6), det: b.det, visit, author } };
+  return { spot: { ra: +b.ra.toFixed(6), dec: +b.dec.toFixed(6), det: b.det, channel, visit, author } };
 }
 // Cloudflare's rate limit (wrangler.toml CANDIDATES_LIMIT), per IP and per route, before the body is read
 async function limited(request, env, route) {
@@ -433,18 +441,19 @@ async function createCandidate(request, env) {
   if (body.length > 1000) return json({ error: 'body must be at most 1000 characters', field: 'body' }, 400);
   const h = await human(b, request, env);
   if (h.refused) return h.refused;
-  const db = env.DB, now = Date.now(), near = nearArgs(s.ra, s.dec, s.visit.start);
-  const detail = JSON.stringify({ candidate: { visit: s.visit } });
+  const db = env.DB, now = Date.now(), near = nearArgs(s.ra, s.dec, s.visit.start, s.visit.end);
+  // what the candidate page rebuilds its frames with: the detector and channel it was reported at
+  const detail = JSON.stringify({ candidate: { visit: s.visit, det: s.det, channel: s.channel } });
   let res;
   try {
     res = await db.batch([
       // the next free id, C-0175 and up; nothing when a candidate is already within 1 arcmin in this visit
       db.prepare(`INSERT INTO comets (id, kind, ra, dec, day, tail, real, detail, det, visit, author, created_at)
         SELECT (SELECT printf('C-%04d', coalesce(max(CAST(substr(id, 3) AS INTEGER)), 174) + 1) FROM comets WHERE id GLOB 'C-[0-9][0-9][0-9][0-9]'),
-          'comet', ?1, ?2, ?6, -150, 1, ?7, ?8, ?3, ?9, ?10
+          'comet', ?1, ?2, ?7, -150, 1, ?8, ?9, ?3, ?10, ?11
         WHERE NOT EXISTS (SELECT 1 FROM comets WHERE ${NEAR_SQL})`).bind(...near, Math.max(0, Math.floor(s.visit.mjd - MJD0)), detail, s.det, s.author, now),
       db.prepare(`INSERT INTO comments (comet_id, author, tag, body, created_at)
-        SELECT id, ?6, ?7, ?8, ?9 FROM comets WHERE ${NEAR_SQL} ORDER BY created_at, id LIMIT 1`).bind(...near, s.author, b.tag, body, now),
+        SELECT id, ?7, ?8, ?9, ?10 FROM comets WHERE ${NEAR_SQL} ORDER BY created_at, id LIMIT 1`).bind(...near, s.author, b.tag, body, now),
       db.prepare('INSERT INTO turnstile_tokens (hash, created_at) SELECT ?, ? WHERE ? AND changes() = 1').bind(h.hash, now, h.claim ? 1 : 0),
       db.prepare(`SELECT ${CAND_COLS} FROM comets WHERE ${NEAR_SQL} ORDER BY created_at, id LIMIT 1`).bind(...near),
     ]);

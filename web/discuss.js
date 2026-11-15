@@ -52,7 +52,8 @@ export function discuss(page) {
   function showFound(m, f) {
     // a found= link to a candidate (the address keeps the Discovered state) is that candidate's, so it follows the visit
     if (page.found() && page.found() !== mine && near.list.some(x => x.id === page.found())) mine = page.found();
-    const c = near.list.find(x => x.visit === f.start);
+    // the same visit: one that shares a day with this one (its first day can differ by channel and detector)
+    const c = near.list.find(x => x.visit <= (f.end ?? f.start) && (x.visit_end ?? x.visit) >= f.start);
     if (c && (!page.found() || page.found() === mine)) {
       if (page.found() !== c.id) page.setFound(c.id, page.spot(m.ra, m.dec));
       mine = c.id;
@@ -165,7 +166,7 @@ export function discuss(page) {
 
   const spotBody = () => {
     const [m, f] = openOn;
-    return { ra: +(m.ra % 360).toFixed(4), dec: +m.dec.toFixed(4), det: m.detector,
+    return { ra: +(m.ra % 360).toFixed(4), dec: +m.dec.toFixed(4), det: m.detector, ...(m.channel != null ? { channel: m.channel + 1 } : {}),
       visit: { start: f.start, end: f.end ?? f.start, mjd: f.mjd, exposures: f.exposures, lam: f.lam, ...(f.epochs ? { epochs: f.epochs } : {}) } };
   };
   async function send(path, body) {

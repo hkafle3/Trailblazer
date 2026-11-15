@@ -3,6 +3,7 @@
 // Everything from the API is set with textContent.
 import { fwd } from './skymap.js';
 import { userName } from './discuss.js';
+import { CHANNELS } from './live/spectral.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -27,7 +28,8 @@ function head(c) {
   $('c-by').replaceChildren('Reported by ', el('b', null, c.author), ` · ${new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · visit `,
     el('b', null, visitDate(c.visit)), ' · ', el('b', null, c.det));
   const lapse = $('c-lapse');
-  lapse.href = `timelapse.html?ra=${c.ra.toFixed(4)}&dec=${c.dec.toFixed(4)}&det=${c.det}`;
+  const ch = c.detail?.candidate?.channel;
+  lapse.href = `timelapse.html?ra=${c.ra.toFixed(4)}&dec=${c.dec.toFixed(4)}&det=${c.det}${ch ? `&ch=${ch}` : ''}`;
   const [u, v] = fwd(c.ra, c.dec);
   $('c-dot').style.left = u * 100 + '%'; $('c-dot').style.top = v * 100 + '%';
   $('c-find').href = `explore.html?focus=${encodeURIComponent(c.id)}&day=${c.day ?? 0}`;
@@ -50,12 +52,15 @@ function talk(c) {
 
 // the spot at each visit: the time-lapse's own pipeline, the middle CROP pixels, the dot ringed where it was measured
 function frames(c) {
+  // the channel it was reported at (detail.candidate.channel, 1 to 102), as the time-lapse built it; older candidates
+  // have none and get the detector's best-covered wavelength, as before
+  const ch = CHANNELS[(c.detail?.candidate?.channel ?? 0) - 1];
   const box = $('c-frames'), note = $('c-frames-note');
   const w = new Worker('live/pipeline.js', { type: 'module' });
   const fail = text => { note.textContent = text; w.terminate(); };
   w.onerror = e => { e.preventDefault(); fail('Frames unavailable right now.'); };
   w.onmessage = ({ data: m }) => {
-    if (m.type === 'empty') return fail(`No SPHEREx images of this spot on ${c.det}.`);
+    if (m.type === 'empty') return fail(`No SPHEREx images of this spot${ch ? ` in channel ${ch.n + 1}` : ` on ${c.det}`}.`);
     if (m.type === 'error') return fail('Frames unavailable right now.');
     if (m.type !== 'done') return;
     w.terminate();
@@ -70,7 +75,8 @@ function frames(c) {
         img.data.set([255 * s, 247 * s, 235 * s, 255], j);
       }
       g.putImageData(img, 0, 0);
-      const ring = el('span', f.start === c.visit ? 'ring' : 'ring earlier');   // the reported visit orange, the others blue
+      const end = c.detail?.candidate?.visit?.end ?? c.visit, reported = f.start <= end && (f.end ?? f.start) >= c.visit;   // shares a day with it
+      const ring = el('span', reported ? 'ring' : 'ring earlier');   // the reported visit orange, the others blue
       const fx = f.x ?? (G - 1) / 2, fy = f.y ?? (G - 1) / 2;
       ring.style.left = (fx - x0 + .5) / CROP * 100 + '%'; ring.style.top = (G - 1 - fy - x0 + .5) / CROP * 100 + '%';
       plate.append(cv, ring);
@@ -79,7 +85,7 @@ function frames(c) {
     }));
     note.remove();
   };
-  w.postMessage({ id: 1, ra: c.ra, dec: c.dec, det: c.det, api: '' });
+  w.postMessage({ id: 1, ra: c.ra, dec: c.dec, det: ch?.detector ?? c.det, api: '', band: ch ? [ch.lo, ch.hi, ch.um] : null });
 }
 
 function composer(c) {
