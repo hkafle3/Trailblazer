@@ -706,7 +706,7 @@ async function select(key, opts) {
 // Cloudflare Worker (worker/) only finds the images. Results are kept for this session.
 const API = P.get('api') || '';   // the same Worker serves this page and /api (npm run dev); ?api= points elsewhere
 // the last LIVE_KEPT results, for an instant return to a spot (about 650 KB each); the least recently shown goes first
-const live = new Map(), LIVE_KEPT = 12;   // 12: room for the Spectral card's layers too
+const live = new Map(), LIVE_KEPT = 8;
 function remember(key, m) { live.delete(key); live.set(key, m); if (live.size > LIVE_KEPT) live.delete(live.keys().next().value); return m; }
 let lastCell = null;   // the heat-map cell of the last check posted
 // One pipeline worker for the page's life, so a re-centre reuses the image list and the pixels it already read.
