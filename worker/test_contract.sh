@@ -122,8 +122,18 @@ assert len(after) == 1 and after[0]["checks"] == before + 1 == got["checks"], f"
 for r, d in [(0, 90), (360, -90), (359.999, 0), (0, -90)]:   # grid edges land in a real cell
     c = call("/api/checks", {"ra": r, "dec": d})["cell"]
     assert 0 <= c < 3339, f"({r}, {d}) -> cell {c}"
+# the rate limit: 10 checks a minute per visitor, then 429 and nothing written (locally the visitor is the
+# CF-Connecting-IP header, so each run is a fresh visitor; on Cloudflare the edge sets that header itself)
+import os, urllib.error
+who = {"Content-Type": "application/json", "CF-Connecting-IP": f"contract-{os.getpid()}"}
+send = lambda: urllib.request.urlopen(urllib.request.Request(base + "/api/checks", data=b'{"ra": 200.5, "dec": -60.5}', headers=who, method="POST"), timeout=30)
+counts = [json.load(send())["checks"] for _ in range(10)]
+try: send(); raise AssertionError("11th check in a minute was accepted")
+except urllib.error.HTTPError as e: assert e.code == 429, f"11th check got {e.code}"
+cell = [c for c in call("/api/explored")["cells"] if c["ra_min"] <= 200.5 < c["ra_max"] and c["dec_min"] <= -60.5 < c["dec_max"]]
+assert cell[0]["checks"] == counts[-1], f"a refused check was written: {cell[0]['checks']} vs {counts[-1]}"
 PY
-    then echo "PASS opening a spot adds one check to its cell, shown on the map; grid edges land in real cells"
+    then echo "PASS opening a spot adds one check to its cell, shown on the map; grid edges land in real cells; 11th check a minute refused"
     else echo "FAIL heat map checks"; fails=$((fails + 1)); fi
     post "check: not JSON" "nope" 400 'body must be JSON' /api/checks
     post "check: ra out of range" '{"ra":400,"dec":4}' 400 '"field":"ra"' /api/checks

@@ -261,8 +261,8 @@ function search(ra, dec, det, opts = {}) {
     else if (m.type === 'done') {
       w.terminate(); job = null;
       live.set(key, prep(m.manifest));
-      // one check for the Explore heat map (POST /api/checks); a failed count never blocks the time-lapse
-      fetch(API + '/api/checks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra, dec }) }).catch(() => {});
+      // one check for the Explore heat map (POST /api/checks); keepalive so leaving the page at once does not cancel it
+      fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra, dec }) }).catch(() => {});
       setStatus(`${m.manifest.frames.length} visits, built in ${((performance.now() - t0) / 1000).toFixed(1)} s from NASA's public SPHEREx copy`);
       show(live.get(key), query, opts);
     }

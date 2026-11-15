@@ -245,15 +245,16 @@ const cellBox = c => {
 const SUGGEST = { ra: 77, dec: 30.4 };
 const sep = (ra1, d1, ra2, d2) =>
   Math.acos(Math.min(1, Math.sin(d1 * RAD) * Math.sin(d2 * RAD) + Math.cos(d1 * RAD) * Math.cos(d2 * RAD) * Math.cos((ra1 - ra2) * RAD))) / RAD;
+// every cell, nearest to RW Aurigae first: worked out once when the Worker starts, so a request only walks the list
+// (scanning all 3,339 cells per request came close to the free plan's 10 ms CPU limit)
+const NEAR = Array.from({ length: CELLS }, (_, c) => {
+  const b = cellBox(c), ra = (b.ra_min + b.ra_max) / 2, dec = (b.dec_min + b.dec_max) / 2;
+  return { c, ra: +ra.toFixed(2), dec: +dec.toFixed(2), d: sep(ra, dec, SUGGEST.ra, SUGGEST.dec) };
+}).sort((x, y) => x.d - y.d);
 function suggest(seen) {
   if (!seen.has(cellAt(SUGGEST.ra, SUGGEST.dec))) return SUGGEST;
-  let best = null, bestSep = Infinity;
-  for (let c = 0; c < CELLS; c++) {
-    if (seen.has(c)) continue;
-    const b = cellBox(c), ra = (b.ra_min + b.ra_max) / 2, dec = (b.dec_min + b.dec_max) / 2, d = sep(ra, dec, SUGGEST.ra, SUGGEST.dec);
-    if (d < bestSep) { bestSep = d; best = { ra: +ra.toFixed(2), dec: +dec.toFixed(2) }; }
-  }
-  return best ?? SUGGEST;
+  const near = NEAR.find(x => !seen.has(x.c));
+  return near ? { ra: near.ra, dec: near.dec } : SUGGEST;   // ponytail: every cell checked keeps RW Aurigae; unreachable in practice
 }
 
 // Which patch-sized cells people have opened, and one nobody has, for the heat map and "Unexplored patch".
