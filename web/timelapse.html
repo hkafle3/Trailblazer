@@ -79,7 +79,8 @@
 
   <!-- Spectral: SPHEREx splits its light into 102 channels. Scroll over the dial (or drag it, or use the arrow keys) to step
        through them; tick the box to make that channel an active layer. Active layers sit in the box above; click one to
-       turn it off. The channel data is still to come: the page keeps the list (state.spectral) and announces changes. -->
+       turn it off. The time-lapse is built at the dial's channel; two or more active layers make a colour composite
+       (the "Spectral, wired" block in the script). -->
   <section class="pv-card pv-spectral" aria-label="Spectral">
     <h2 class="at" style="--x:20;--cy:49">Spectral</h2>
     <span class="at t24" style="--x:22;--cy:102" id="sp-active-label">Active</span>
@@ -125,6 +126,7 @@
 import * as THREE from 'three';
 import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } from './sky.js';
 import { recenterable, panToSky, heatCell } from './live/recenter.js';
+import { CHANNELS, colourOf, align, mix } from './live/spectral.js';
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -193,12 +195,10 @@ const leaveFound = (ra, dec) => { if (found && spot(ra, dec) !== foundAt) setFou
 setFound(P.get('found'), P.has('ra') && P.has('dec') ? spot(P.get('ra'), P.get('dec')) : null);
 
 // ---------- Spectral: a dial through SPHEREx's 102 spectral channels, and the list of active ones ----------
-// SPHEREx has 6 detectors of 17 channels each, 0.75 to 5.0 µm. Channel centres here are spaced evenly in log wavelength
-// across each detector's band (the bands' published edges), close to the real ones; swap in the measured centres when
-// the per-channel data arrives. The dial runs from the lowest channel (needle left) to the highest (needle right).
-const SP_BANDS = [[0.75, 1.11], [1.11, 1.64], [1.64, 2.42], [2.42, 3.82], [3.82, 4.42], [4.42, 5.00]];
-const CHANNELS = SP_BANDS.flatMap(([lo, hi], d) => Array.from({ length: 17 }, (_, k) =>
-  ({ n: d * 17 + k, detector: `D${d + 1}`, um: lo * (hi / lo) ** ((k + 0.5) / 17) })));
+// SPHEREx has 6 detectors of 17 channels each, 0.75 to 5.0 µm: CHANNELS (live/spectral.js) is the mission's own channel
+// definition, even steps in log wavelength across each detector's band. The dial runs from the lowest channel (needle
+// left) to the highest (needle right). The time-lapse follows it, and the active layers make a colour composite
+// (the "Spectral, wired" block below).
 const nmOf = c => Math.round(c.um * 1000);
 const spectral = (() => {
   const dial = document.getElementById('sp-dial'), needle = document.getElementById('sp-needle'), box = document.getElementById('sp-active');
@@ -212,10 +212,10 @@ const spectral = (() => {
     const [x1, y1] = polar(deg, 120), [x2, y2] = polar(deg, 146);
     ticks.insertAdjacentHTML('beforeend', `<line class="tick" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`);
   }
-  const api = { i: Math.floor(N / 2), active: new Set(), touched: false };
+  const api = { i: Math.floor(N / 2), active: new Set(), touched: false, max: 3 };   // max: active layers at once (one build each)
   function emit() {
     state.spectral = [...api.active].sort((a, b) => a - b).map(n => CHANNELS[n]);
-    dispatchEvent(new CustomEvent('spectral-layers', { detail: state.spectral }));   // for the per-channel layers, once their data exists
+    dispatchEvent(new CustomEvent('spectral-layers', { detail: state.spectral }));   // the composite follows (spSync)
   }
   function paint() {
     const c = CHANNELS[api.i];
@@ -245,8 +245,14 @@ const spectral = (() => {
     const cur = box.querySelector('.cur');   // more layers than fit: scroll the box to the one on the dial
     if (cur) box.scrollLeft = Math.max(0, Math.min(box.scrollLeft, cur.offsetLeft - 8), cur.offsetLeft + cur.offsetWidth - box.clientWidth + 8);
   }
-  api.set = (i, byUser = true) => { i = Math.max(0, Math.min(N - 1, Math.round(i))); if (byUser) api.touched = true; if (i !== api.i) { api.i = i; paint(); } };
-  api.toggle = (n, want = !api.active.has(n)) => { want ? api.active.add(n) : api.active.delete(n); chips(); emit(); };
+  api.set = (i, byUser = true) => {
+    i = Math.max(0, Math.min(N - 1, Math.round(i))); if (byUser) api.touched = true; if (i !== api.i) { api.i = i; paint(); }
+    if (byUser) dispatchEvent(new CustomEvent('spectral-channel', { detail: CHANNELS[i] }));   // the time-lapse rebuilds at it
+  };
+  api.toggle = (n, want = !api.active.has(n)) => {
+    if (want && !api.active.has(n) && api.active.size >= api.max) { paint(); return void dispatchEvent(new CustomEvent('spectral-full')); }
+    want ? api.active.add(n) : api.active.delete(n); chips(); emit();
+  };
   // open on the channel nearest the patch's own wavelength, until the user turns the dial
   api.follow = um => { if (!api.touched) api.set(CHANNELS.reduce((b, c) => (Math.abs(Math.log(c.um / um)) < Math.abs(Math.log(CHANNELS[b].um / um)) ? c.n : b), 0), false); };
 
@@ -308,30 +314,46 @@ function stack(m) {
   m.med = med; m.sd = sd; m.heatHi = Math.max(1e-6, sorted[Math.floor(0.995 * (sorted.length - 1))]);
 }
 
-// colour of grid pixel (c, r) of frame f, written to data[j..j+3]
-function shade(m, f, c, r, data, j) {
-  const G = m.grid, k = r * G + c, v = f.px[k], ref = m.frames[0];
+// Color Difference's colour for a change of d noise units, in a field whose target peaks at hi
+function diffRgb(d, hi) {
+  if (!Number.isFinite(d)) return [60, 60, 66];
+  const a = Math.min(1, Math.abs(d) / Math.max(12, 0.25 * hi));   // 12 noise units, or a quarter of a bright star's peak
+  return d > 0 ? [255 * a, 154 * a, 77 * a] : [127 * a, 184 * a, 255 * a];
+}
+// grey level (0 to 1) of grid pixel (c, r) of frame f, or null for "no data"
+function level(m, f, c, r) {
+  const G = m.grid, k = r * G + c, v = f.px[k];
   const { lo, hi: fieldHi } = m.stretch, hi = m.hiDisplay;
   // asinh scaled to the field, with the target's peak as white: a very bright star (Barnard, R Draconis) compresses
   // the curve instead of crushing every other star in a wide view to black
   const A = Math.asinh(10 * (hi - lo) / (fieldHi - lo));
-  let rgb;
-  if (state.diff && f !== ref) {   // the first visit is the reference: subtracted from itself it is all black, so show the photo
-    const d = v - ref.px[k];
-    if (!Number.isFinite(d)) rgb = [60, 60, 66];
-    else { const a = Math.min(1, Math.abs(d) / Math.max(12, 0.25 * hi)); rgb = d > 0 ? [255 * a, 154 * a, 77 * a] : [127 * a, 184 * a, 255 * a]; }   // 12 noise units, or a quarter of a bright star's peak
-  } else {
-    // Hide Stationary: take away each pixel's median over all visits, so whatever stays put vanishes and only changes remain
-    const x0 = state.still ? v - m.med[k] : v;
-    // NaN next to the star means its core saturated the detector: draw it as the brightest value.
-    // NaN anywhere else is outside SPHEREx's coverage for that visit: draw it as "no data".
-    if (!Number.isFinite(x0) && !(f.x != null && Math.hypot(c - f.x, G - 1 - r - f.y) < 7)) rgb = [22, 26, 34];
-    else {
-      const x = Number.isFinite(x0) ? Math.asinh(Math.max(0, (x0 - (state.still ? 0 : lo)) / (fieldHi - lo)) * 10) / A : (state.still ? 0 : 1);
-      const g = Math.min(1, x);
-      rgb = [255 * g, 247 * g, 235 * g];
-    }
+  // Hide Stationary: take away each pixel's median over all visits, so whatever stays put vanishes and only changes remain
+  const x0 = state.still ? v - m.med[k] : v;
+  // NaN next to the star means its core saturated the detector: draw it as the brightest value.
+  // NaN anywhere else is outside SPHEREx's coverage for that visit: draw it as "no data".
+  if (!Number.isFinite(x0) && !(f.x != null && Math.hypot(c - f.x, G - 1 - r - f.y) < 7)) return null;
+  const x = Number.isFinite(x0) ? Math.asinh(Math.max(0, (x0 - (state.still ? 0 : lo)) / (fieldHi - lo)) * 10) / A : (state.still ? 0 : 1);
+  return Math.min(1, x);
+}
+// The Spectral composite at pixel k of visit n: each layer in its wavelength's colour (live/spectral.js mix). Color
+// Difference on a composite is the change since the first visit averaged over the layers that have both visits.
+function blend(comp, n, c, r, k) {
+  const fr = comp.layers.map(L => L.frames[n]);
+  if (state.diff && n > 0) {
+    const ds = comp.layers.map((L, q) => fr[q] && L.frames[0] ? fr[q].px[k] - L.frames[0].px[k] : NaN).filter(Number.isFinite);
+    return diffRgb(ds.length ? ds.reduce((a, b) => a + b) / ds.length : NaN, comp.main.hiDisplay);
   }
+  return mix(comp.layers.map((L, q) => fr[q] ? level(L.m, fr[q], c, r) : null), comp.colours) ?? [22, 26, 34];
+}
+
+// colour of grid pixel (c, r) of frame f, written to data[j..j+3]
+function shade(m, f, c, r, data, j) {
+  const G = m.grid, k = r * G + c, ref = m.frames[0];
+  let rgb;
+  if (state.comp?.main === m) rgb = blend(state.comp, m.frames.indexOf(f), c, r, k);
+  // the first visit is the reference: subtracted from itself it is all black, so show the photo
+  else if (state.diff && f !== ref) rgb = diffRgb(f.px[k] - ref.px[k], m.hiDisplay);
+  else { const g = level(m, f, c, r); rgb = g == null ? [22, 26, 34] : [255 * g, 247 * g, 235 * g]; }
   if (state.heat && m.sd) {   // Heat: the pixels that change most between visits glow, dark red to pale yellow
     const h = Math.min(1, m.sd[k] / m.heatHi);
     if (h > 0.2) { const a = 0.85 * (h - 0.2) / 0.8, hc = ramp(h, HEAT); rgb = rgb.map((t, n) => t * (1 - a) + hc[n] * a); }
@@ -350,6 +372,7 @@ function view(m) {
 function draw() {
   const m = state.m; if (!m) return;
   if (state.still || state.heat) stack(m);
+  if (state.still && state.comp?.main === m) state.comp.layers.forEach(L => stack(L.m));
   const G = m.grid, f = m.frames[state.i], v = view(m), { cw, ch, ox, oy } = v;
   const W = patch.width, H = patch.height, sx = W / cw, sy = H / ch;
   // the view can start part-way into a pixel, so one more column and row are drawn and placed by the fraction;
@@ -596,6 +619,7 @@ function show(m, query, opts = {}) {
   panel(m); draw();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : ''));
   knownFor(m);
+  spSync();
 }
 
 // Known comets and asteroids that passed through the patch during each visit (GET /api/known, IMCCE SkyBoT; idea and
@@ -680,7 +704,7 @@ async function select(key, opts) {
 // Cloudflare Worker (worker/) only finds the images. Results are kept for this session.
 const API = P.get('api') || '';   // the same Worker serves this page and /api (npm run dev); ?api= points elsewhere
 // the last LIVE_KEPT results, for an instant return to a spot (about 650 KB each); the least recently shown goes first
-const live = new Map(), LIVE_KEPT = 8;
+const live = new Map(), LIVE_KEPT = 12;   // 12: room for the Spectral card's layers too
 function remember(key, m) { live.delete(key); live.set(key, m); if (live.size > LIVE_KEPT) live.delete(live.keys().next().value); return m; }
 let lastCell = null;   // the heat-map cell of the last check posted
 // One pipeline worker for the page's life, so a re-centre reuses the image list and the pixels it already read.
@@ -721,7 +745,9 @@ function search(ra, dec, det, opts = {}) {
   if (!opts.keep) { rc.reset(); draw(); }   // another search: a pending move of the photo is dropped
   owed = false; asked++;   // a rollback still waiting for a gesture, or a target still loading: this search replaces it
   leaveFound(ra, dec);
-  const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
+  const ch = spMain(), c = CHANNELS[ch];   // the Spectral dial's channel picks the detector; null: the best-covered wavelength
+  if (c) document.getElementById('det').value = det = c.detector;
+  const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}${c ? `@${ch}` : ''}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}${spQuery()}`;
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
   const t0 = performance.now(), id = job = ++builds;
   builder ??= new Worker('live/pipeline.js', { type: 'module' });
@@ -742,16 +768,18 @@ function search(ra, dec, det, opts = {}) {
     if (m.id !== job) return;
     if (m.type === 'progress') setStatus(m.text + '...');
     else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
+    else if (m.type === 'empty' && m.of != null) fail(`None of the ${m.of} visits here has channel ${ch + 1}.`, ' Try another channel.');
     else if (m.type === 'empty') fail(`No SPHEREx images of this spot on ${det} yet.`, ' Try another detector.');
     else if (m.type === 'error') fail(`${brief(m.error)}.`, ' The examples on the Explore page always work.', m.error);
     else if (m.type === 'done') {
       job = 0;
-      remember(key, prep(m.manifest));
-      setStatus(`${m.manifest.frames.length} visits, built in ${((performance.now() - t0) / 1000).toFixed(1)} s from NASA's public SPHEREx copy`);
+      remember(key, prep(Object.assign(m.manifest, { channel: c ? ch : null })));
+      const secs = ((performance.now() - t0) / 1000).toFixed(1), n = m.manifest.frames.length;
+      setStatus(c ? `${n} of ${m.manifest.visits_all} visits have channel ${ch + 1}, built in ${secs} s` : `${n} visits, built in ${secs} s from NASA's public SPHEREx copy`);
       show(live.get(key), query, opts);
     }
   };
-  builder.postMessage({ id, ra, dec, det, api: API });
+  builder.postMessage({ id, ra, dec, det, api: API, band: c ? [c.lo, c.hi, c.um] : null });
 }
 
 // ---------- re-centre: click a spot, drag the photo, or the arrow keys with the photo in focus (live/recenter.js) ----------
@@ -763,7 +791,7 @@ function recenter(pan) {
   if (home) return select(home.key, { keep: true });
   document.getElementById('coords').value = `${ra.toFixed(4)} ${dec.toFixed(4)}`;
   document.getElementById('det').value = m.detector;   // a baked target keeps its own detector when it goes live
-  history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${m.detector}`);   // the URL names the new spot at once
+  history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${m.detector}${spQuery()}`);   // the URL names the new spot at once
   search(ra, dec, m.detector, { keep: true });
 }
 // back to the view the frames on screen describe (photo, box, band, discovery, URL): the photo and the panel always
@@ -775,7 +803,7 @@ function back() {
   setFound(...shownFound);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;
   document.getElementById('det').value = m.detector;
-  const query = m.key.startsWith('live') ? `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}` : `?target=${m.key}`;
+  const query = m.key.startsWith('live') ? `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}` : `?target=${m.key}`;
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : ''));
   return true;
 }
@@ -786,6 +814,62 @@ const rc = recenterable(patch, {
   moved: () => draw(), commit: recenter, idle: () => { if (owed) { owed = false; back(); } } });
 window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
+// ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
+// The main channel is the lowest active layer, or with none the dial's channel once the dial is turned (before that, and
+// after a Band change, the build takes the detector's best-covered wavelength as before). The main build carries
+// the timeline, the motion and Gaia check and the known objects; each other layer is one more build of the same spot
+// (a second pipeline worker, one at a time, kept in `live`), its frames matched to the main ones by visit.
+const spMain = () => spectral.active.size ? Math.min(...spectral.active) : spectral.touched ? spectral.i : null;
+const spQuery = () => (spectral.touched ? `&ch=${spectral.i + 1}` : '') + (spectral.active.size ? `&layers=${state.spectral.map(c => c.n + 1).join(',')}` : '');
+const spMissed = new Map();   // "spot@channel" -> why that layer could not be built, so it is not asked again
+let spTimer = 0, spWorker = null, spJob = null, spBuilds = 0;
+function spSync() {
+  const m = state.m; if (!m || state.mode === 'sky') return;
+  const ch = spMain();
+  // a baked target is one fixed wavelength: a channel asks for that spot live
+  if (ch !== (m.channel ?? null) || (ch != null && !m.key.startsWith('live'))) return search(m.ra, m.dec, m.detector, { keep: true });
+  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${found ? `&found=${encodeURIComponent(found)}` : ''}`);
+  const spot = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, have = [], missing = [], missed = [];
+  for (const { n, detector } of state.spectral) {
+    const lm = n === ch ? m : live.get(`${spot},${detector}@${n}`);
+    if (lm) have.push([n, lm]); else if (spMissed.has(`${spot}@${n}`)) missed.push(n + 1); else missing.push(n);
+  }
+  const was = state.comp;
+  state.comp = have.length > 1 ? { main: m, layers: have.map(([n, lm]) => ({ n, m: lm, frames: lm === m ? m.frames : align(m.frames, lm.frames) })),
+    colours: have.map(([n]) => colourOf(CHANNELS[n].um)) } : null;
+  if (was || state.comp) draw();
+  if (missing.length) spLayer(m, missing[0], missing.length);
+  else if (state.spectral.length > 1) setStatus(`${have.length} layers in colour${missed.length ? `. No data here for channel ${missed.join(' and ')}` : ''}`);
+}
+function spLayer(m, n, left) {
+  const c = CHANNELS[n], spot = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, key = `${spot},${c.detector}@${n}`;
+  if (spJob?.key === key) return;   // already building
+  const id = ++spBuilds; spJob = { key, id };
+  spWorker ??= new Worker('live/pipeline.js', { type: 'module' });
+  setStatus(`Adding channel ${n + 1}${left > 1 ? `, ${left} layers to go` : ''}...`);
+  const end = why => { spJob = null; if (why) spMissed.set(`${spot}@${n}`, why); spSync(); };
+  spWorker.onmessage = ({ data: d }) => {
+    if (spJob?.id !== id || d.id !== id || d.type === 'progress' || d.type === 'frame') return;
+    if (d.type === 'done') { remember(key, prep(Object.assign(d.manifest, { channel: n }))); end(); }
+    else end(d.type === 'empty' ? 'no visits' : brief(d.error));
+  };
+  spWorker.onerror = e => { e.preventDefault(); spWorker.terminate(); spWorker = null; if (spJob?.id === id) end('pipeline failed'); };
+  spWorker.postMessage({ id, ra: m.ra, dec: m.dec, det: c.detector, api: API, band: [c.lo, c.hi, c.um] });
+}
+// a ?ch= and ?layers= link opens on the same channel and layers
+function spRestore() {
+  const ch = +P.get('ch');
+  if (ch >= 1 && ch <= CHANNELS.length) spectral.set(ch - 1);
+  for (const n of (P.get('layers') || '').split(',').map(Number)) if (n >= 1 && n <= CHANNELS.length) spectral.toggle(n - 1, true);
+}
+addEventListener('spectral-channel', e => {
+  if (!spectral.active.size) document.getElementById('det').value = e.detail.detector;   // the Band follows the dial at once
+  clearTimeout(spTimer); spTimer = setTimeout(spSync, 300);   // and the time-lapse once the dial stops
+});
+addEventListener('spectral-layers', () => { clearTimeout(spTimer); spSync(); });
+addEventListener('spectral-full', () => setStatus(`${spectral.max} layers at most. Click one to turn it off.`));
+Object.defineProperties(window.__lapse, { channels: { value: CHANNELS }, builds: { get: () => builds } });   // for tests/spectral_ui.py
+
 document.getElementById('search').onsubmit = e => {
   e.preventDefault();
   const c = parseCoords(document.getElementById('coords').value);
@@ -793,7 +877,8 @@ document.getElementById('search').onsubmit = e => {
   search(c.ra, c.dec, document.getElementById('det').value);
 };
 // a new detector reloads the spot on screen straight away (Enter in the box loads a typed position)
-document.getElementById('det').onchange = () => { if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit(); };
+// The dial lets go of its channel, so the build takes that detector's best-covered wavelength and the dial follows it
+document.getElementById('det').onchange = () => { spectral.touched = false; if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit(); };
 // the target buttons live in the Explore page's Examples menu now (explore.html links here with ?target=)
 
 const playBtn = document.getElementById('play');
@@ -945,6 +1030,7 @@ function frame(now) {
   renderer?.render(scene, camera);
 }
 requestAnimationFrame(frame);
+spRestore();
 if (P.has('ra') && P.has('dec')) {
   const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
