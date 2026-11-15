@@ -5,6 +5,7 @@ import { RAD, wrap, fwdLon, fwd, inv, trackAt, dayParam, dayDate, LAST_DAY, MJD0
 import * as phoneUI from './explore-phone.js';   // phones: pan, pinch, names, sheets
 import './explore-desktop.js';   // desktops: drag, wheel, double click, zoom buttons and keys
 import { onView } from './explore-view.js';
+import './explore-deep.js';   // sharp sky tiles when zoomed far in
 import * as search from './search.js';   // the search box: names, RA and Dec, star catalogs
 for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]]) {   // projection round trip
   const [r2, d2] = inv(...fwd(ra, dec));

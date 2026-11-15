@@ -20,7 +20,9 @@
 //   hooks.stop()           set by explore.js: stops the coverage replay. Call it on any pan or zoom.
 import { fwd, inv } from './skymap.js';
 
-export const MAXW = 3200;   // ponytail: data/sky.jpg is 2000 px wide and turns soft past this; deeper zoom could load the HiPS tiles sky.js uses
+// the deepest zoom: one pixel of the screen per pixel of the sharpest SPHEREx sky tiles (HiPS order 5, 12.9 arcsec),
+// which explore-deep.js draws over data/sky.jpg past about 2,500 px
+export const MAXW = Math.round(90600 / devicePixelRatio);   // ponytail: read once; a window dragged to a screen with another pixel ratio keeps this limit until reload
 export const hooks = { stop() {} };
 const stage = document.querySelector('.xstage'), wrap = document.querySelector('.map-wrap');
 export let W = 0, X = 0, Y = 0, A = null;
