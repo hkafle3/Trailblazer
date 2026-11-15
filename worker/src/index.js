@@ -501,20 +501,25 @@ const cellBox = c => {
   const [k, n] = GRID[i], j = c - k, r = x => +x.toFixed(3);
   return { ra_min: r(360 * j / n), ra_max: r(360 * (j + 1) / n), dec_min: r(90 - (i + 1) * DEC_STEP), dec_max: r(90 - i * DEC_STEP) };
 };
-// A spot to suggest: RW Aurigae's patch while nobody has opened it, then the unopened cell nearest to it
-const SUGGEST = { ra: 77, dec: 30.4 };
-const sep = (ra1, d1, ra2, d2) =>
-  Math.acos(Math.min(1, Math.sin(d1 * RAD) * Math.sin(d2 * RAD) + Math.cos(d1 * RAD) * Math.cos(d2 * RAD) * Math.cos((ra1 - ra2) * RAD))) / RAD;
-// every cell, nearest to RW Aurigae first: worked out once when the Worker starts, so a request only walks the list
-// (scanning all 3,339 cells per request came close to the free plan's 10 ms CPU limit)
-const NEAR = Array.from({ length: CELLS }, (_, c) => {
+// Galactic latitude (J2000 north galactic pole at RA 192.85948, Dec 27.12825)
+const galacticLat = (ra, dec) => Math.asin(Math.sin(dec * RAD) * Math.sin(27.12825 * RAD)
+  + Math.cos(dec * RAD) * Math.cos(27.12825 * RAD) * Math.cos((ra - 192.85948) * RAD)) / RAD;
+// Cells worth suggesting for a first look: away from the crowded Milky Way plane (|b| > 10) and outside the deep-field
+// polar caps (|ecliptic latitude| < 75). Worked out once per isolate, so a request only walks this list
+// (scanning all 3,339 cells with trig per request came close to the free plan's 10 ms CPU limit).
+const ELIGIBLE = Array.from({ length: CELLS }, (_, c) => {
   const b = cellBox(c), ra = (b.ra_min + b.ra_max) / 2, dec = (b.dec_min + b.dec_max) / 2;
-  return { c, ra: +ra.toFixed(2), dec: +dec.toFixed(2), d: sep(ra, dec, SUGGEST.ra, SUGGEST.dec) };
-}).sort((x, y) => x.d - y.d);
-function suggest(seen) {
-  if (!seen.has(cellAt(SUGGEST.ra, SUGGEST.dec))) return SUGGEST;
-  const near = NEAR.find(x => !seen.has(x.c));
-  return near ? { ra: near.ra, dec: near.dec } : SUGGEST;   // ponytail: every cell checked keeps RW Aurigae; unreachable in practice
+  return { c, ra: +ra.toFixed(2), dec: +dec.toFixed(2), ok: Math.abs(galacticLat(ra, dec)) > 10 && Math.abs(eclipticLat(ra, dec)) < 75 };
+}).filter(x => x.ok);
+// A spot to suggest: one of the eligible cells with the fewest checks (unchecked first), picked at random per request
+function suggest(counts) {
+  let low = Infinity, pick = [];
+  for (const x of ELIGIBLE) {
+    const n = counts.get(x.c) ?? 0;
+    if (n < low) { low = n; pick = [x]; } else if (n === low) pick.push(x);
+  }
+  const { ra, dec } = pick[Math.floor(Math.random() * pick.length)];
+  return { ra, dec };
 }
 
 // Which patch-sized cells people have opened, and one nobody has, for the heat map and "Unexplored patch".
@@ -522,7 +527,7 @@ function suggest(seen) {
 async function explored(env) {
   const rows = (await env.DB.prepare('SELECT cell, n FROM checks WHERE n > 0 AND cell >= 0 AND cell < ?').bind(CELLS).all()).results;
   const cells = rows.map(({ cell, n }) => ({ ...cellBox(cell), checks: n }));
-  return json({ total: CELLS, cells, suggest: suggest(new Set(rows.map(r => r.cell))) }, 200, { 'Cache-Control': 'no-store' });
+  return json({ total: CELLS, cells, suggest: suggest(new Map(rows.map(r => [r.cell, r.n]))) }, 200, { 'Cache-Control': 'no-store' });
 }
 
 // Someone opened a spot (the time-lapse calls this once a live time-lapse has built): one more check for its cell.

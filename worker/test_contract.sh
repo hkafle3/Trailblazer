@@ -32,6 +32,35 @@ check "home page served" "/" 200 'Trailblazer'
 check "Explore map page served" "/explore" 200 'id="tl"'
 check "Forums page served" "/forums.html" 200 'Forums'
 check "explored grid" "/api/explored" 200 '"total":3339'
+# the unexplored suggestion: a least-checked cell away from the Milky Way plane and the polar caps, picked at random
+if python3 - "$BASE" <<'PY'
+import json, math, sys, urllib.request
+base = sys.argv[1]
+get = lambda: json.load(urllib.request.urlopen(urllib.request.Request(base + "/api/explored", headers={"User-Agent": "comet-hunt-contract-test"}), timeout=60))
+R = math.pi / 180
+gal = lambda ra, dec: math.asin(math.sin(dec * R) * math.sin(27.12825 * R) + math.cos(dec * R) * math.cos(27.12825 * R) * math.cos((ra - 192.85948) * R)) / R
+ecl = lambda ra, dec: math.asin(math.sin(dec * R) * math.cos(23.4393 * R) - math.cos(dec * R) * math.sin(23.4393 * R) * math.sin(ra * R)) / R
+grid, k = [], 0   # the heat map's grid (worker/src/index.js): 51 bands of Dec, about 3.5 degrees of RA per cell
+for i in range(51):
+    n = max(1, round(360 * math.cos((90 - (i + .5) * 180 / 51) * R) / 3.5)); grid.append((k, n)); k += n
+def cell(ra, dec):
+    i = min(50, math.floor((90 - dec) / (180 / 51))); k, n = grid[i]
+    return k + min(n - 1, math.floor(ra / 360 * n))
+seen = set()
+for _ in range(20):
+    e = get(); s = e["suggest"]; ra, dec = s["ra"], s["dec"]
+    counts = {cell((c["ra_min"] + c["ra_max"]) / 2, (c["dec_min"] + c["dec_max"]) / 2): c["checks"] for c in e["cells"]}
+    least = min(counts.get(k + j, 0) for i, (k, n) in enumerate(grid) for j in range(n)
+                if abs(gal(360 * (j + .5) / n, 90 - (i + .5) * 180 / 51)) > 10 and abs(ecl(360 * (j + .5) / n, 90 - (i + .5) * 180 / 51)) < 75)
+    assert counts.get(cell(ra, dec), 0) == least, f"suggest {s} has {counts.get(cell(ra, dec), 0)} checks, the least is {least}"
+    assert abs(gal(ra, dec)) > 10, f"suggest {s} is in the galactic plane (b = {gal(ra, dec):.1f})"
+    assert abs(ecl(ra, dec)) < 75, f"suggest {s} is in a polar cap (ecliptic latitude {ecl(ra, dec):.1f})"
+    seen.add(cell(ra, dec))
+assert len(seen) >= 5, f"20 requests suggested only {len(seen)} cells"
+print(f"suggest: 20 requests, {len(seen)} different cells, all least-checked, |b| > 10, |ecliptic lat| < 75")
+PY
+then echo "PASS explored suggests a least-checked cell outside the galactic plane and polar caps, varying between requests"
+else echo "FAIL explored suggestion"; fails=$((fails + 1)); fi
 check "forums feed" "/api/posts" 200 '"comet_id":'
 check "GET on the checks route" "/api/checks" 405 'use POST'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'

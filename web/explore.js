@@ -90,10 +90,19 @@ function followTracks(day) {
     place(el, ra, dec);
     if (el.classList.contains('focus')) nameSide(el);
     // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see (so does a comet
-    // opened with "Find on map"); the rest hide
-    if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
+    // opened with "Find on map")
+    // the rest hide, or show as a dim speck with the Faint comets layer on
+    if (el.dataset.always === '1') el.classList.toggle('faint', !bright);
+    else { el.hidden = !bright && !faintOn.checked; el.classList.toggle('speck', !bright); }
   }
 }
+// Faint comets layer: off by default, remembered in this browser (localStorage), redrawn at once when switched
+const faintOn = $('ly-faint');
+try { faintOn.checked = localStorage.getItem('ch.faint') === '1'; } catch { /* private mode: off */ }
+faintOn.addEventListener('change', () => {
+  try { localStorage.setItem('ch.faint', faintOn.checked ? '1' : '0'); } catch { /* private mode: fine */ }
+  followTracks(+$('time').value);
+});
 let trailN = 0;
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
@@ -185,10 +194,12 @@ const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
   }
   const url = patchUrl(suggest.ra, suggest.dec), pin = document.createElement('a');
   pin.className = 'mk patch'; pin.href = url; pin.innerHTML = '<i></i><b>unexplored</b>';
-  place(pin, suggest.ra, suggest.dec);
+  const right = place(pin, suggest.ra, suggest.dec) > 0.75;   // the suggestion can be anywhere: near the right edge, name and card go left
+  pin.classList.toggle('left', right);
   $('marks').append(pin);
   const card = $('card-patch');
   place(card, suggest.ra, suggest.dec);
+  card.classList.toggle('left', right);
   card.querySelector('[data-f=where]').textContent = `RA ${suggest.ra.toFixed(1)}  Dec ${suggest.dec >= 0 ? '+' : ''}${suggest.dec.toFixed(1)}`;
   card.querySelector('[data-f=open]').href = url;
 }).catch(err => console.warn('explored unavailable', err));
