@@ -150,7 +150,7 @@ async def main():
         await click("#play", 600)
         await cap("Difference view: orange got brighter, blue dimmer")
         await click("label:has(#diff)", 1200)
-        lt = await box(".tick >> nth=-1"); await move(lt["x"] + lt["width"] / 2, lt["y"] + 8); await pg.wait_for_timeout(300)
+        lt = await box(".tl-visit >> nth=-1"); await move(lt["x"] + lt["width"] / 2, lt["y"] + lt["height"] / 2)   # a press on the line picks the nearest visit; await pg.wait_for_timeout(300)
         await pg.mouse.down(); await pg.wait_for_timeout(90); await pg.mouse.up(); await pg.wait_for_timeout(3200)
         await click("label:has(#diff)", 900)
         # 4. another detector
