@@ -108,6 +108,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .map-wrap { position: absolute; left: 0; top: 60px; width: 100%; margin: 0; }
   body.explore .map { cursor: grab; }
   body.explore .map .grat text { display: inline; }
+  body.explore .map-wrap.deep-zoom .grat text { display: none; }
   body.explore .map .grat .pick-path { stroke: var(--known); stroke-width: 2.5; stroke-dasharray: 1 7; stroke-linecap: round; fill: none; vector-effect: non-scaling-stroke; }
 
   /* markers: a 44 px invisible tap circle round each dot; known comets show their names (explore-phone.js drops the ones that would collide) */

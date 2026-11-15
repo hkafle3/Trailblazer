@@ -28,6 +28,7 @@ function set(w, x, y) {
   X = Math.min(Math.max(0, A.w - W) + mx, Math.max(Math.min(0, A.w - W) - mx, x));
   Y = Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y));
   wrap.style.width = W + 'px'; wrap.style.left = X + 'px'; wrap.style.top = Y + 'px';
+  wrap.classList.toggle('deep-zoom', W > 1700);   // the ecliptic's label is drawn in the sky, so it grows with the zoom: hidden when close in
   whole.classList.toggle('on', atMin());
   $('zoomlvl').hidden = !atMin() || !hint.hidden;
   declutterSoon();
@@ -53,6 +54,7 @@ function start() {
 }
 function stop() {   // back to a desktop width: hand everything back to the desktop CSS
   for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
+  wrap.classList.remove('deep-zoom');
   closePeek();
   document.querySelectorAll('.mk.nm-off').forEach(m => m.classList.remove('nm-off'));
 }
@@ -137,7 +139,7 @@ function declutter() {
     const fits = r => r[0] >= 4 && r[2] <= A.w - 4 && !placed.some(p => hit(r, p)) && !dots.some(d => d[4] !== m && hit(r, d));
     let side = null;
     if (m.classList.contains('focus')) side = m.classList.contains('left');   // explore.js's nameSide() places that one
-    else if (m.classList.contains('speck') || y < A.t + 8 || y > A.b - 8 || x < 0 || x > A.w) side = must ? false : null;
+    else if (m.classList.contains('speck') || y < A.t + 8 || y > A.b - 8 || x < 0 || x > A.w) side = m === picked ? false : null;   // off screen: no name hanging in
     else side = fits(box(false)) ? false : fits(box(true)) ? true : must ? (x + o + w > A.w - 4) : null;
     out.set(m, side);
     if (side !== null) placed.push(box(side));
