@@ -12,6 +12,13 @@ export function fwdLon(lon, dec) {
   return [(x + 2 * R2) / (4 * R2), (R2 - y) / (2 * R2)];
 }
 export const fwd = (ra, dec) => fwdLon(wrap(-ra), dec);   // RA increases to the left, RA 0 in the middle
+// the reverse: [u, v] -> [ra, dec], or null outside the oval
+export function inv(u, v) {
+  const x = (u * 2 - 1) * 2 * R2, y = (1 - v * 2) * R2;
+  if ((x / (2 * R2)) ** 2 + (y / R2) ** 2 > 1) return null;
+  const th = Math.asin(y / R2), lon = Math.PI * x / (2 * R2 * Math.cos(th));
+  return [((-lon / RAD) % 360 + 360) % 360, Math.asin((2 * th + Math.sin(2 * th)) / Math.PI) / RAD];
+}
 
 // Days count from the first SPHEREx photo (data/coverage.json: mjd0, days). LAST_DAY is where Explore's timeline starts.
 export const MJD0 = 60789, LAST_DAY = 529;

@@ -1,45 +1,29 @@
 // Explore on phones (max-width 640px), direction A "full-screen map": the map is the page.
 // One finger pans, two fingers zoom around their midpoint, a double tap zooms in, the wheel zooms too.
-// Zoom sets .map-wrap's width, left and top (W, X, Y in window pixels). The sky, canvases, SVG and markers are all
-// placed in percent of it, so every layer follows and dots and names keep their pixel size.
+// The pan and zoom engine (W, X, Y, set, zoomAt, glide, the limits) is explore-view.js, shared with desktops.
 // A tap on a marker opens a peek sheet instead of leaving the page; Layers and Examples open as bottom sheets.
 // Desktop is untouched: every handler checks `phone` first, and leaving the phone width clears what this file set.
 import { fwd, trackAt, dayDate } from './skymap.js';
+import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, onView, atMin, glide, cancel } from './explore-view.js';
 
 const phone = matchMedia('(max-width: 640px)');
 const $ = id => document.getElementById(id);
 const stage = document.querySelector('.xstage'), wrap = document.querySelector('.map-wrap');
 const sheet = $('csheet'), hint = $('maphint'), whole = $('whole'), HEAD = 60;
-const MAXW = 3200;   // ponytail: data/sky.jpg is 2000 px wide and turns soft past this; deeper zoom could load the HiPS tiles sky.js uses
-export const hooks = { stop() {} };   // explore.js sets stop: a first touch on the map stops the replay
+export { hooks };   // explore.js sets stop: a first touch on the map stops the replay
 
-let W = 0, X = 0, Y = 0, A = null, touched = false, anim = 0;
-const area = () => { const h = innerHeight, bar = $('tl').getBoundingClientRect().height; return { w: innerWidth, t: HEAD, b: h - bar }; };
-const minW = () => A.w;   // whole sky: the oval exactly as wide as the screen
-const atMin = () => W <= minW() + 0.5;
+let touched = false;
+// whole sky: the oval exactly as wide as the screen. The comet sheet's top is the bottom edge while it is open
+const area = () => { const h = innerHeight, bar = $('tl').getBoundingClientRect().height; return { w: innerWidth, t: HEAD, b: h - bar, min: innerWidth, inset: sheetH }; };
+const minW = () => A.min;
 const sheetH = () => (sheet.hidden ? 0 : sheet.dataset.detent === 'full' ? Math.min(sheet.scrollHeight, A.b - 150) : 136);   // the comet sheet's height once it settles
 
-// keep the sky oval in view: an oval smaller than the screen stays inside it and a bigger one covers it, give or take
-// 15% of the screen. The margin keeps the rule continuous, so zooming around the fingers never jumps where the oval
-// grows past the screen. With the comet sheet open its top is the bottom edge, so a low comet can be raised above it.
-function set(w, x, y) {
-  W = Math.min(MAXW, Math.max(minW(), w));
-  const H = W / 2, bot = A.b - sheetH(), mx = A.w * .15, my = (bot - A.t) * .15;
-  X = Math.min(Math.max(0, A.w - W) + mx, Math.max(Math.min(0, A.w - W) - mx, x));
-  Y = Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y));
-  wrap.style.width = W + 'px'; wrap.style.left = X + 'px'; wrap.style.top = Y + 'px';
-  wrap.classList.toggle('deep-zoom', W > 1700);   // the ecliptic's label is drawn in the sky, so it grows with the zoom: hidden when close in
+onView(() => {   // after every pan and zoom: the whole-sky button, the zoom note, names placed again
+  if (!phone.matches) return;
   whole.classList.toggle('on', atMin());
   $('zoomlvl').hidden = !atMin() || !hint.hidden;
   declutterSoon();
-}
-const zoomAt = (f, px, py) => { const w = Math.min(MAXW, Math.max(minW(), W * f)), g = w / W; set(w, px - (px - X) * g, py - (py - Y) * g); };
-function glide(w, x, y, ms = 300) {   // animate to a view; any touch cancels it
-  cancelAnimationFrame(anim);
-  const [w0, x0, y0] = [W, X, Y], t0 = performance.now(), ease = t => 1 - (1 - t) ** 3;
-  const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t); set(w0 + (w - w0) * e, x0 + (x - x0) * e, y0 + (y - y0) * e); if (t < 1) anim = requestAnimationFrame(step); };
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) set(w, x, y); else anim = requestAnimationFrame(step);
-}
+});
 // the default view: the oval as tall as the space between the hint and the buttons, centred on [u] (3I/ATLAS once known)
 let homeU = .5;
 const homeView = () => { const H = A.b - A.t - 56, w = Math.min(MAXW, Math.max(minW(), 2 * H)); return [w, A.w / 2 - homeU * w, A.t + 56]; };
@@ -47,7 +31,7 @@ const wholeView = () => [minW(), 0, (A.t + A.b) / 2 - minW() / 4];
 const focus = new URLSearchParams(location.search).get('focus');   // "Find on map": open on the whole sky, the comet's name in view
 
 function start() {
-  A = area();
+  measure(area());
   if (focus) set(...wholeView()); else set(...homeView());
   try { if (!localStorage.getItem('ch.maphint')) hint.hidden = false; } catch { hint.hidden = false; }
   $('zoomlvl').hidden = !atMin() || !hint.hidden;
@@ -71,7 +55,7 @@ let last = null, moved = 0, many = false, downAt = 0, lastTap = null, swallowUnt
 const snap = () => { const p = [...pts.values()], m = [(p[0][0] + (p[1] ?? p[0])[0]) / 2, (p[0][1] + (p[1] ?? p[0])[1]) / 2]; return { m, d: p[1] ? Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]) : 0 }; };
 stage.addEventListener('pointerdown', e => {
   if (!phone.matches || e.target.closest('.tl') || (e.pointerType === 'mouse' && e.button)) return;
-  cancelAnimationFrame(anim); hooks.stop(); hideHint(); A = area();
+  cancel(); hooks.stop(); hideHint(); measure(area());
   if (!pts.size) { moved = 0; many = false; downAt = performance.now(); }
   pts.set(e.pointerId, [e.clientX, e.clientY]);
   if (pts.size > 1) many = true;
@@ -111,11 +95,11 @@ stage.addEventListener('click', e => {
 }, true);
 stage.addEventListener('wheel', e => {   // a trackpad or mouse on a narrow window
   if (!phone.matches) return;
-  e.preventDefault(); A = area(); zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .002)), e.clientX, e.clientY); touched = true;
+  e.preventDefault(); measure(area()); zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .002)), e.clientX, e.clientY); touched = true;
 }, { passive: false });
 document.addEventListener('gesturestart', e => { if (phone.matches) e.preventDefault(); });   // Safari: never zoom the page itself
 
-whole.addEventListener('click', () => { A = area(); touched = true; glide(...(atMin() ? homeView() : wholeView())); });
+whole.addEventListener('click', () => { measure(area()); touched = true; glide(...(atMin() ? homeView() : wholeView())); });
 
 // ---- names: the way map apps place them. The picked marker first, then the featured comet, comets people found, the
 // unexplored patch, deep fields, then known comets. A name goes right of its dot, else left, else it is dropped when it
@@ -214,7 +198,7 @@ function openPeek(m) {
 }
 function bringIntoView() {   // glide so the picked marker sits in the middle of the map left above the sheet
   if (!picked) return;
-  A = area();
+  measure(area());
   const m = picked, x = X + parseFloat(m.style.left) / 100 * W, y = Y + parseFloat(m.style.top) / 100 * W / 2, top = A.b - sheetH();
   glide(W, X + A.w / 2 - x, Y + (A.t + top) / 2 - y);
 }
@@ -279,7 +263,7 @@ export function ready() {
   const f = document.querySelector('#marks .mk.sel')?.comet;
   if (f && !touched && !focus) {   // centre the first view on 3I/ATLAS where the replay ends
     const [ra, dec] = f.track?.length ? trackAt(f.track, +$('time').max) : [f.ra, f.dec];
-    homeU = fwd(ra, dec)[0]; A = area(); set(...homeView());
+    homeU = fwd(ra, dec)[0]; measure(area()); set(...homeView());
   }
   declutter();
 }
@@ -287,4 +271,4 @@ export function ready() {
 // start last: everything above is declared by now
 if (phone.matches) start();
 phone.addEventListener('change', () => (phone.matches ? start() : stop()));
-addEventListener('resize', () => { if (phone.matches) { A = area(); set(W, X, Y); } });
+addEventListener('resize', () => { if (phone.matches) { measure(area()); set(W, X, Y); } });

@@ -1,15 +1,8 @@
 // Explore: the all-sky map. One Mollweide projection places everything so markers, the coverage replay
 // and the heat map line up with data/sky.jpg (RA increases to the left, RA 0 in the middle).
 // Data: data/coverage.{png,json} (built by bake/sky_assets.py), /api/comets and /api/explored (worker/).
-import { R2, RAD, wrap, fwdLon, fwd, trackAt, dayParam, dayDate, LAST_DAY, MJD0 } from './skymap.js';
+import { RAD, wrap, fwdLon, fwd, inv, trackAt, dayParam, dayDate, LAST_DAY, MJD0 } from './skymap.js';
 import * as phoneUI from './explore-phone.js';   // phones: pan, pinch, names, sheets
-// [u, v] -> [ra, dec], or null outside the oval
-function inv(u, v) {
-  const x = (u * 2 - 1) * 2 * R2, y = (1 - v * 2) * R2;
-  if ((x / (2 * R2)) ** 2 + (y / R2) ** 2 > 1) return null;
-  const th = Math.asin(y / R2), lon = Math.PI * x / (2 * R2 * Math.cos(th));
-  return [((-lon / RAD) % 360 + 360) % 360, Math.asin((2 * th + Math.sin(2 * th)) / Math.PI) / RAD];
-}
 for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]]) {   // projection round trip
   const [r2, d2] = inv(...fwd(ra, dec));
   console.assert(Math.abs(wrap(r2 - ra)) < 1e-3 && Math.abs(d2 - dec) < 1e-3, 'projection round trip failed', ra, dec);
