@@ -119,7 +119,7 @@ function draw() {
   const A = Math.asinh(10 * (hi - lo) / (fieldHi - lo));
   for (let r = 0; r < crop; r++) for (let c = 0; c < crop; c++) {
     const k = (r + o) * G + (c + o), v = f.px[k], j = 4 * (r * crop + c);
-    if (state.diff) {
+    if (state.diff && state.i > 0) {   // the first visit is the reference: subtracted from itself it is all black, so show the photo
       const d = v - ref.px[k];
       if (!Number.isFinite(d)) { img.data.set([60, 60, 66, 255], j); continue; }
       const a = Math.min(1, Math.abs(d) / Math.max(12, 0.25 * hi));   // 12 noise units, or a quarter of a bright star's peak
@@ -170,8 +170,8 @@ function draw() {
   document.querySelectorAll('.tick').forEach((t, n) => t.setAttribute('aria-current', n === state.i));
   document.getElementById('capsub').textContent =
     `${f.start} to ${f.end}: ${f.exposures} exposure${f.exposures > 1 ? 's' : ''} at ${f.lam.toFixed(3)} µm, combined, north up` +
-    (f.saturated_px ? '. White core: detector saturated' : '');
-  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff ? ', difference from first visit' : ''}`);
+    (f.saturated_px ? '. White core: detector saturated' : '') + (state.diff && state.i === 0 ? '. The reference for the difference view' : '');
+  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from first visit' : ''}`);
 }
 
 function panel(m) {
@@ -216,7 +216,9 @@ function show(m, query, opts = {}) {
 async function select(key, opts) {
   job?.terminate(); job = null; setStatus(opts?.note || '');
   document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === key));
-  show(await load(key), `?target=${key}`, opts);
+  const m = await load(key);
+  document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;   // the box always names the spot on screen
+  show(m, `?target=${key}`, opts);
 }
 
 // ---------- live: any RA/Dec. The browser does the astronomy in a Web Worker (live/pipeline.js); a small
