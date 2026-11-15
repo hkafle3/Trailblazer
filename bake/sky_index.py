@@ -7,12 +7,12 @@ edges (pixel 0.5 and 2040.5) joined by great circles. That is IRSA's own s_regio
 
   uv run --with numpy python bake/sky_index.py HEADERS.jsonl OUT_DIR
 
-File layout (little endian), version 1:
+File layout (little endian), version 2:
   "SKYI" u32 version, u32 detector, u32 cells, u32 rows, u32 folder_bytes
   u32 first_row[cells + 1]            rows of cell c are first_row[c] .. first_row[c + 1] - 1
   folder table: folder_bytes of UTF-8, folders joined by "\n" (release/level2/period/version, e.g. dr1/level2/2025W17_4B/l2b-v27-2026-196)
   padding to a multiple of 8, then rows of ROW bytes each:
-    f64 t (MJD-BEG), f32 x 12 (unit normals of the four edges, inside is n . p >= 0), u16 folder, u16 seq, u8 sub, u8 coll, u16 0
+    f64 t (MJD-BEG rounded to 6 decimals, as SIA's t_min), f32 x 12 (unit normals of the four edges, inside is n . p >= 0), u16 folder, u16 seq, u8 sub, u8 coll, u16 0
 The image's obs_id is <period>_<seq:04>_<sub>, its key <folder>/<det>/level2_<obs_id>D<det>_spx_<version>.fits.
 """
 import json, math, re, struct, sys
@@ -146,12 +146,14 @@ def build(meta, H, out_dir):
     order = [i for c in range(CELLS) for i in sorted(by_cell[c], key=lambda i: meta[i]["t"])]
     first = np.cumsum([0] + [len(b) for b in by_cell]).astype("<u4")
     ftab = "\n".join(folders).encode()
-    head = struct.pack("<4s5I", b"SKYI", 1, det, CELLS, len(order), len(ftab)) + first.tobytes() + ftab
+    head = struct.pack("<4s5I", b"SKYI", 2, det, CELLS, len(order), len(ftab)) + first.tobytes() + ftab
     head += b"\0" * (-len(head) % 8)
     rows = np.zeros(len(order), dtype=[("t", "<f8"), ("n", "<f4", 12), ("folder", "<u2"), ("seq", "<u2"), ("sub", "u1"), ("coll", "u1"), ("pad", "<u2")])
     assert rows.dtype.itemsize == ROW
     idx = np.array(order)
-    rows["t"] = [meta[i]["t"] for i in order]
+    # rounded here so the Worker prints t without toFixed (a third of its time per row). No MJD is a rounding tie
+    # (that needs 5^6 in a binary fraction's denominator), so this equals JavaScript's Number(t.toFixed(6)).
+    rows["t"] = [float(f"{meta[i]['t']:.6f}") for i in order]
     rows["n"] = N[idx].reshape(len(order), 12)
     rows["folder"] = [fidx[meta[i]["folder"]] for i in order]
     rows["seq"] = [meta[i]["seq"] for i in order]

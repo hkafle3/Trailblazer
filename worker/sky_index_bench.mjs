@@ -1,16 +1,16 @@
 // CPU of one /api/images answer from the sky index, on the cells with the most rows (the ecliptic poles' deep fields).
-// Times skyImages plus the JSON.stringify the Worker does; reads come from memory, as an R2 body already received would.
+// Times skyImagesJson, the answer text the Worker sends; reads come from memory, as an R2 body already received would.
 //   node worker/sky_index_bench.mjs INDEX_DIR [det]
 // Each point also runs in fresh child processes: "cold" (head read and unoptimised code, a new Worker instance) and
 // "cold, head cached" (head already read, code not yet warm: the second request an instance gets).
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { skyImages, skyHead, cellAt } from './src/sky_index.js';
+import { skyImages, skyImagesJson, skyHead, cellAt } from './src/sky_index.js';
 
 const [dir, det = '1', only, mode] = process.argv.slice(2);
 const file = readFileSync(`${dir}/d${det}.bin`);
 const read = async (name, off, len) => file.buffer.slice(file.byteOffset + off, file.byteOffset + off + len);
-const answer = async (ra, dec) => JSON.stringify({ ra, dec, det: `D${det}`, ...(await skyImages(read, ra, dec, det)) });
+const answer = (ra, dec) => skyImagesJson(read, ra, dec, det);   // the text /api/images sends
 
 if (only) {   // child: one cold answer; mode "head" reads the head first, as a Worker instance that already answered once has
   const [ra, dec] = only.split(',').map(Number);

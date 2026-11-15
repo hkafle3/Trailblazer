@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { skyImages, cellAt, eclipticLat } from './src/sky_index.js';
+import { skyImages, skyImagesJson, skyForget, cellAt, eclipticLat } from './src/sky_index.js';
 
 const dir = new URL('./fixtures/sky/', import.meta.url);
 const file = readFileSync(new URL('d1.bin', dir));
@@ -23,10 +23,21 @@ test("Barnard's Star: the same images, times and keys as IRSA's answer", async (
   assert.deepEqual(r.collections, { spherex_dr1: saved.collections.spherex_dr1, spherex_qr3: saved.collections.spherex_qr3 + 1 });
 });
 
+test("the JSON writer gives JSON.stringify's bytes, here and where nothing matches", async () => {
+  for (const [ra, dec] of [[saved.ra, saved.dec], [10, 10], [270, 66.560708]]) {
+    const want = JSON.stringify({ ra, dec, det: 'D1', ...(await skyImages(read, ra, dec, 1)), source: 'index' });
+    assert.equal(await skyImagesJson(read, ra, dec, 1), want);
+  }
+});
+
 test('the head is read once per file, then one read per answer', async () => {
   reads.length = 0;
   await skyImages(read, saved.ra, saved.dec, 1);
   assert.equal(reads.length, 1);
+  skyForget(1);   // a replaced file: the head is read again (2 reads), then the cell
+  reads.length = 0;
+  await skyImages(read, saved.ra, saved.dec, 1);
+  assert.equal(reads.length, 3);
 });
 
 test('a spot no fixture image covers answers no images, and errors pass through', async () => {

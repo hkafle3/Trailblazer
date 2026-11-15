@@ -3,6 +3,10 @@ name = "comet-hunt"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 
+# Workers Logs: per-request logs with CPU time, in the dashboard's Observability tab
+[observability]
+enabled = true
+
 # Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
 [assets]
 directory = "../web"
