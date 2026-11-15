@@ -1,5 +1,5 @@
 // Web Worker: builds a time-lapse for any RA/Dec in the browser, the same way bake/flipbook.py does in Python.
-// in:  {id, ra, dec, det, api}     out: {id, type:'progress'|'frame'|'done'|'empty'|'error', ...}
+// in:  {id, ra, dec, det, api, band?}     out: {id, type:'progress'|'frame'|'done'|'empty'|'error', ...}
 // The worker stays alive between builds. A new message replaces the build in flight (one with no ra only stops it), and
 // a build for a spot the listed images still cover reuses the list, their headers and the rows already read.
 // Each visit becomes one frame: exposures at one matched wavelength, reprojected north up, median combined.
@@ -35,6 +35,12 @@ function match(vs) {
   for (const e of all) { const s = score(e.lam); if (s[0] > best[0] || (s[0] === best[0] && s[1] > best[1])) { best = s; lam0 = e.lam; } }
   const picked = vs.map(v => near(v, lam0).sort((a, b) => Math.abs(a.lam - lam0) - Math.abs(b.lam - lam0)).slice(0, PER_VISIT));
   return { lam0, tol, picked: picked.map((p, n) => p.length ? p : [vs[n].reduce((a, b) => Math.abs(a.lam - lam0) < Math.abs(b.lam - lam0) ? a : b)]) };
+}
+// One spectral channel instead (band = [lo, hi, centre] in µm, live/spectral.js): per visit, the exposures whose
+// wavelength at the spot is inside the channel, nearest its centre first. A visit with none is left out.
+function inBand(vs, [lo, hi, c]) {
+  const picked = vs.map(v => v.filter(e => e.lam >= lo && e.lam < hi).sort((a, b) => Math.abs(a.lam - c) - Math.abs(b.lam - c)).slice(0, PER_VISIT));
+  return { lam0: c, tol: Math.max(c - lo, hi - c), picked: picked.filter(p => p.length) };
 }
 
 // north-up output grid about the target (bake/flipbook.py target_wcs): 0-based pixel -> [ra, dec]
@@ -128,11 +134,12 @@ const epochs = ts => {
   return g.map(x => +(x.reduce((a, b) => a + b, 0) / x.length).toFixed(4));
 };
 
-// kept between builds: the latest request, the last image list (visits of images with their headers), the wavelength
-// maps, and the Gaia stars around the last spot asked
-let cur, stop = null, list = null, mapsP = null, gaiaAt = null;
+// kept between builds: the latest request, the last image list of each detector (visits of images with their headers;
+// the Spectral card's layers can mix detectors), the wavelength maps, and the Gaia stars around the last spot asked
+let cur, stop = null, mapsP = null, gaiaAt = null;
+const lists = new Map();
 
-self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
+self.onmessage = async ({ data: { id, ra, dec, det, api, band } }) => {
   cur = id; stop?.abort();
   if (ra == null) return;
   const signal = (stop = new AbortController()).signal;
@@ -159,7 +166,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
     // slow day) only when no listed image covers the spot.
     // ponytail: an image that covers the new spot but not the searched one is not in the list, so a re-centre can
     // have fewer visits or exposures than a fresh search of the same spot; a region search in the Worker would close that.
-    let usable = list?.det === det ? list.visits.map(here).filter(v => v.length) : [];
+    let usable = lists.has(det) ? lists.get(det).map(here).filter(v => v.length) : [];
     if (!usable.length) {
       // v=2: a browser may still hold a failed search that the old Worker let it cache for a day (2026-11-14)
       const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}&v=2`, { signal });
@@ -169,7 +176,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
       if (!found.images.length) return post({ type: 'empty' });
       const vs = visits(found.images).map(v => v.slice(0, MAX_PER_VISIT));
       post({ type: 'progress', text: `${found.images.length} images in ${vs.length} visits; reading where the target falls in each`, ms: performance.now() - t0 });
-      const had = new Map((list?.visits.flat() || []).map(e => [e.key, e.h]));   // headers the last list already read
+      const had = new Map((lists.get(det) || []).flat().map(e => [e.key, e.h]));   // headers the last list already read
       let done = 0;
       await pool(vs.flat(), 8, async e => {
         e.h = had.get(e.key) ?? await imageHeader(e.key, signal);
@@ -177,13 +184,14 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
         if (++done % 10 === 0) post({ type: 'progress', text: `read ${done} of ${vs.flat().length} image headers` });
       });
       usable = vs.map(here);
-      list = { det, visits: vs.filter((_, k) => usable[k].length) };
+      lists.set(det, vs.filter((_, k) => usable[k].length));
       usable = usable.filter(v => v.length);
-      const keep = new Set(vs.flat().map(e => e.key));
+      const keep = new Set([...lists.values()].flat(2).map(e => e.key));
       for (const k of rowCache.keys()) if (!keep.has(k)) rowCache.delete(k);
     }
     if (!usable.length) return post({ type: 'empty' });
-    const { lam0, tol, picked } = match(usable);
+    const { lam0, tol, picked } = band ? inBand(usable, band) : match(usable);
+    if (!picked.length) return post({ type: 'empty', of: usable.length });   // no visit has this channel here
 
     // Gaia: the star at this spot, propagated from 2016.0 to the target epoch (2026.0).
     // The Worker answers with every 2016 position within 144" of the spot asked. A re-centre within 100" of the last
@@ -254,7 +262,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
     const q = p => all[Math.min(all.length - 1, Math.floor(p * all.length))];
     post({ type: 'done', ms: performance.now() - t0, manifest: {
       key: `live-${ra.toFixed(4)}-${dec.toFixed(4)}-${det}`, name: `RA ${ra.toFixed(4)}, Dec ${dec.toFixed(4)}`, ra, dec, detector: det,
-      grid: GRID, arcsec_per_pixel: PIX, lam0, lam_tol: tol, stretch: { lo: q(0.05), hi: q(0.997) }, motion,
+      grid: GRID, arcsec_per_pixel: PIX, lam0, lam_tol: tol, visits_all: usable.length, stretch: { lo: q(0.05), hi: q(0.997) }, motion,
       gaia: gaia ? { pmra: gaia.pmra, pmdec: gaia.pmdec, g: gaia.g, total: Math.hypot(gaia.pmra, gaia.pmdec) / 1000 } : null,
       frames } });
   } catch (err) {
