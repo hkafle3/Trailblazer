@@ -231,5 +231,8 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
 }
 @media (prefers-reduced-motion: reduce) { body.explore .map-wrap, .tl { animation: none; } }
 
+/* deep zoom (explore-deep.js): sharp sky tiles on a canvas the size of the window, right above the sky picture */
+.map .hips { inset: auto; pointer-events: none; }
+
 /* the map takes over from the homepage sky oval (same view-transition-name) */
 body.explore .map { view-transition-name: sky; }
