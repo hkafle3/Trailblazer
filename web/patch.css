@@ -283,20 +283,21 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   body.lapse:not(.sky) .pstage > .pv-mini { grid-area: panel; display: none; align-self: start; justify-self: start; width: 150px; height: auto; margin: 88px 0 0 12px; border-width: 1.5px; border-radius: 6px; z-index: 1; }
   body.lapse:not(.sky):not(.talking) .pstage[data-tab=options] > .pv-mini { display: block; }
 
-  /* Spectral: the dial on the left, its wavelength, "Add layer" and the active layers beside and under it */
-  body.lapse:not(.sky) .pv-spectral { grid-template-columns: 172px 44px minmax(0, 1fr); grid-template-rows: 30px 18px 44px auto 44px; column-gap: 12px; align-content: start; }
-  body.lapse:not(.sky) .sp-dial { grid-column: 1; grid-row: 1 / 4; align-self: end; width: 172px; height: 96px; }
-  body.lapse:not(.sky) .sp-end { grid-column: 1; grid-row: 4; font-size: 10.5px; padding-top: 4px; }
+  /* Spectral: the dial on the left; its wavelength, "Add layer" and the active layers beside it (mockup T1-2) */
+  body.lapse:not(.sky) .pv-spectral { grid-template-columns: 180px 22px minmax(0, 1fr); grid-template-rows: 34px 22px 44px 44px auto; column-gap: 12px; align-content: start; }
+  body.lapse:not(.sky) .sp-dial { grid-column: 1; grid-row: 1 / 4; align-self: start; width: 180px; height: 100px; margin-top: 2px; }
+  body.lapse:not(.sky) .sp-end { grid-column: 1; grid-row: 4; align-self: start; margin-top: 4px; font-size: 10.5px; }
   body.lapse:not(.sky) .sp-end:last-of-type { justify-self: end; }
-  body.lapse:not(.sky) #sp-nm { grid-column: 2 / 4; grid-row: 1; justify-self: start; font-size: 26px; pointer-events: none; }
-  body.lapse:not(.sky) .sp-read:not(#sp-nm) { grid-column: 2 / 4; grid-row: 2; justify-self: start; font-size: 12px; color: #ccc; text-transform: lowercase; pointer-events: none; }
-  body.lapse:not(.sky) #sp-on { grid-column: 2; grid-row: 3; margin-left: -11px; }
+  body.lapse:not(.sky) #sp-nm { grid-column: 2 / 4; grid-row: 1; justify-self: start; align-self: end; font-size: 28px; pointer-events: none; }
+  body.lapse:not(.sky) .sp-read:not(#sp-nm) { grid-column: 2 / 4; grid-row: 2; justify-self: start; align-self: start; margin-top: 2px; font-size: 12px; color: #ccc; text-transform: lowercase; pointer-events: none; }
+  body.lapse:not(.sky) #sp-on { grid-column: 2; grid-row: 3; margin: 0 -11px; }
   body.lapse:not(.sky) .sp-add { grid-column: 3; grid-row: 3; display: flex; align-items: center; min-height: 44px; font-size: 13px; cursor: pointer; }
-  body.lapse:not(.sky) #sp-active-label { grid-column: 1 / -1; grid-row: 5; align-self: center; font-size: 11.5px; color: #999; }
+  /* "Active:" and the layers on, as chips that scroll sideways when there are more than fit */
+  body.lapse:not(.sky) #sp-active-label { grid-column: 2 / 4; grid-row: 4; align-self: center; font-size: 11.5px; color: #999; }
   body.lapse:not(.sky) #sp-active-label::after { content: ":"; }
-  body.lapse:not(.sky) .sp-active { grid-column: 1 / -1; grid-row: 5; width: auto; height: 44px; margin-left: 58px; padding: 0; gap: 6px; border: 0; }
+  body.lapse:not(.sky) .sp-active { grid-column: 2 / 4; grid-row: 4; width: auto; height: 44px; min-height: 0; margin-left: 58px; padding: 0; gap: 4px; border: 0; }
   body.lapse:not(.sky) .sp-active:empty::before { font-size: 11.5px; color: #999; text-transform: lowercase; }
-  body.lapse:not(.sky) .sp-chip { height: 44px; padding: 0 12px; border: 6px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px #fff; font-size: 12px; }
+  body.lapse:not(.sky) .sp-chip { height: 44px; min-height: 0; padding: 0 10px; border: 6px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px #fff; font-size: 11.5px; gap: 6px; }
 
   /* Layers and Others: Ming's checkbox rows */
   body.lapse:not(.sky) :is(.pv-layers, .pv-others) { grid-template-columns: 44px minmax(0, 1fr); column-gap: 8px; align-content: start; align-items: center; }
