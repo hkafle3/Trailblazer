@@ -43,6 +43,10 @@ async def main():
 
         # every known comet on exactly one shelf, the right one; counts from the data
         await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-m .card")
+        # the thumbnails load after the API answers: wait until each has finished (loaded or failed), and for the fonts,
+        # before reading pixels or measuring the cards
+        await pg.wait_for_function("[...document.querySelectorAll('#s-m .card img')].every(i => i.complete)", timeout=20000)
+        await pg.evaluate("document.fonts.ready.then(() => true)")
         got = await pg.evaluate(READ)
         ids = got["m"]["ids"] + got["o"]["ids"] + got["f"]["ids"]
         assert sorted(ids) == sorted(by), f"{len(ids)} entries for {len(by)} known comets, or a comet twice"
@@ -52,8 +56,8 @@ async def main():
 
         # the measured comets' CO2 results match the API (and migration 0012), each with its own photo, all above the fold
         cards = await pg.eval_on_selector_all("#s-m .card", """cs => cs.map(c => { const r = c.getBoundingClientRect(), i = c.querySelector('img');
-          return { id: c.dataset.id, co2: c.dataset.co2, label: c.querySelector('.v').textContent, src: i.getAttribute('src'),
-            loaded: i.complete && i.naturalWidth > 0, top: r.top, bottom: r.bottom, g: c.querySelector('.v .g').className }; })""")
+          return { id: c.dataset.id, co2: c.dataset.co2, label: c.querySelector('.v').textContent, src: i?.getAttribute('src'),
+            loaded: !!i && i.complete && i.naturalWidth > 0, top: r.top, bottom: r.bottom, g: c.querySelector('.v .g').className }; })""")
         assert {c["id"]: c["co2"] for c in cards} == {i: by[i]["co2"] for i in want["m"]}, "a card's CO2 result is not the API's"
         assert {i: by[i]["co2"] for i in EXPECT} == EXPECT, f"API CO2 results changed: {[(i, by[i]['co2']) for i in EXPECT]}"
         for c in cards:
@@ -81,13 +85,17 @@ async def main():
             eu, ev = places[i]["uv"]
             assert abs(u - eu) < .01 and abs(v - ev) < .01, f"{i}: dot at {u:.3f},{v:.3f}, skymap.js puts it at {eu:.3f},{ev:.3f}"
 
-        # search and each filter change every shelf and its count
+        # search and each filter change every shelf and its count, and the status line says how many match
+        assert await pg.get_attribute("#l-status", "role") == "status", "no status line for screen readers"
         async def check(what, keep):
             g = await pg.evaluate(READ)
             for k in "mof":
                 exp = [i for i in by if shelf(by[i]) == k and keep(i)]
                 assert sorted(g[k]["ids"]) == sorted(exp) and g[k]["n"] == len(exp), f"{what}, shelf {k}: {g[k]['n']} shown, {len(exp)} expected"
                 assert g[k]["shown"] == bool(exp), f"{what}: shelf {k} shown={g[k]['shown']} with {len(exp)} comets"
+            n = len([i for i in by if keep(i)])   # what a screen reader hears: the persistent status line
+            said = await pg.text_content("#l-status")
+            assert said == (f"{n} comet{'' if n == 1 else 's'}" if n else "No comets match."), f"{what}: status says {said!r} for {n} comets"
         await pg.fill("#l-q", "ATLAS"); await check("search ATLAS", lambda i: "atlas" in i.lower())
         assert len([i for i in by if "atlas" in i.lower()]) < len(by)
         await pg.fill("#l-q", "swan"); await check("search swan", lambda i: "swan" in i.lower())
@@ -125,6 +133,27 @@ async def main():
         i, u, v = (await pg.eval_on_selector_all("#s-o .tile", """ts => ts.map(t => { const m = t.querySelector('.skymini').getBoundingClientRect(), d = t.querySelector('.skymini i').getBoundingClientRect();
           return [t.dataset.id, (d.left + d.width / 2 - m.left) / m.width, (d.top + d.height / 2 - m.top) / m.height]; })"""))[0]
         assert abs(u - p300[i]["uv"][0]) < .01 and abs(v - p300[i]["uv"][1]) < .01, f"day 300: {i} is not at its place"
+        # and Region filters by the places on that day, which differ from day 529's for some comets
+        assert any(p300[i]["south"] != places[i]["south"] for i in by), "day 300 and 529 put every comet in the same hemisphere"
+        for region in ["north", "south", "ecliptic"]:
+            await pg.select_option("#l-region", region); await check(f"day 300, region {region}", lambda i: p300[i][region])
+
+        # a measured comet with no photos (thumb null) still gets its card, with an empty ring; counts follow the data
+        spare = sorted(want["o"])[0]
+        async def stub(route):
+            d = await (await route.fetch()).json()
+            for c in d["comets"]:
+                if c["id"] in ("3I/ATLAS", spare): c.update(co2="detected", thumb=None)
+            await route.fulfill(json=d)
+        await pg.route("**/api/comets", stub)
+        await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-m .card")
+        g = await pg.evaluate(READ)
+        assert g["m"]["n"] == len(want["m"]) + 1 and g["o"]["n"] == len(want["o"]) - 1, f"stubbed counts {g['m']['n']}, {g['o']['n']}"
+        for i in ("3I/ATLAS", spare):
+            card = pg.locator(f'#s-m .card[data-id="{i}"]')
+            assert await card.is_visible() and await card.locator("img").count() == 0, f"{i}: no card, or a broken photo, without a thumb"
+            assert await card.locator(".v").text_content() == LABEL["detected"], f"{i}: wrong result without a thumb"
+        await pg.unroute("**/api/comets", stub)
 
         # the sky: a known comet's name is hidden until the pointer is on it (or it has keyboard focus)
         await pg.goto(BASE + "/explore.html"); await pg.wait_for_selector(".mk.peek:not([hidden])", state="attached")
@@ -163,7 +192,7 @@ async def main():
             await c2.close()
         await b.close()
     print(f"PASS Comets shelves: {len(by)} comets ({len(want['m'])} measured, {len(want['o'])} could be, {len(want['f'])} too faint), "
-          "CO2 results and photos, links, sky tiles on skymap.js places, search, regions, sort; sky names on hover; "
+          "CO2 results and photos (a missing one keeps its card), links, sky tiles on skymap.js places, search, regions (day 529 and 300), sort, spoken counts; sky names on hover; "
           "UTF-8 titles; comet page and list fit 390-1024 px")
 
 asyncio.run(main())

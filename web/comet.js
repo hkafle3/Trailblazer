@@ -252,7 +252,7 @@ const photosText = c => `${c.photos ?? 0} photos`;
 function card(c, href) {   // Ming's outlined arrow button (patch viewer .pv-state), with the comet's photo
   const a = el('a', `card s-${RESULT[c.co2][1]}`), ph = el('span', 'ph'), img = el('img'), v = el('span', 'v'), go = el('span', 'go');
   a.href = href; a.dataset.id = c.id; a.dataset.co2 = c.co2;
-  img.src = c.thumb; img.alt = ''; ph.append(img);
+  if (c.thumb) { img.src = c.thumb; img.alt = ''; ph.append(img); }   // a measured comet with no photos keeps an empty ring
   v.append(el('i', `g g-${RESULT[c.co2][1]}`), RESULT[c.co2][0]);
   go.innerHTML = ARROW;
   a.append(ph, el('b', null, c.id), v, el('span', 'n', photosText(c)), go);
@@ -300,10 +300,11 @@ function list() {
         return a;
       }));
       $('l-none').hidden = shown.length > 0;
+      $('l-status').textContent = shown.length ? `${shown.length} comet${shown.length === 1 ? '' : 's'}` : 'No comets match.';
     };
     for (const k of ['l-q', 'l-region', 'l-sort']) $(k).addEventListener('input', render);
     render();
-  }).catch(err => { $('l-none').textContent = 'Comets are unavailable right now.'; $('l-none').hidden = false; console.warn(err); });
+  }).catch(err => { $('l-none').textContent = $('l-status').textContent = 'Comets are unavailable right now.'; $('l-none').hidden = false; console.warn(err); });
 }
 
 if (!id) list();

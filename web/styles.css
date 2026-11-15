@@ -520,6 +520,8 @@ body:has(#ly-photos:not(:checked)) .mk.deep { display: none; }
    Ming's pieces: the Forums search box and selects (forums.css), the patch viewer's outlined arrow button (.pv-state)
    for measured comets, Forums' black box for sky tiles, and Explore's Layers button (44 px, 10 px corners) for Too faint. */
 .shell.comets { --e: calc(100vw / 2462); max-width: 1500px; padding: calc(var(--head-h) + 40px) 5vw 60px; font-family: var(--panel-font); color: #fff; }
+/* Ming's placeholder (search.css) is white at 38%, about 3.4:1 on black; at 50% it reaches 5.3:1, the 4.5:1 that text needs */
+.shell.comets .f-search input::placeholder { color: rgba(255, 255, 255, .5); }
 #c-list .filters { display: flex; flex-wrap: wrap; gap: 8px 48px; margin-top: 18px; }
 #c-list .filters .f-row { margin: 0; }
 #c-list .box { background: #000; border: 2px solid #fff; border-radius: 6px; }
