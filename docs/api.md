@@ -104,7 +104,9 @@ Each accepted token is stored as a SHA-256 hash (`turnstile_tokens`, migration 0
 A visitor who finds a moving dot on a time-lapse turns it into a candidate others can see and tag. A candidate is a `comets`
 row (kind `comet`, real, ids `C-0175` and up), so `GET /api/comets`, `GET /api/comets/:id`, `POST /api/comments`, the
 Forums and the Explore markers all work on it. Those rows carry `candidate: true` and the fields below. One dot in one
-visit is one candidate: "the same dot" means within 1 arcmin, and "the same visit" means the same first day (`visit.start`).
+visit is one candidate: "the same dot" means within 1 arcmin, and "the same visit" means one whose days (`visit.start` to
+`visit.end`) share a day with it. Not the first day alone: the exposures in a visit depend on the channel and detector
+the time-lapse was built at, so the same visit can start a day later in another channel.
 
 ### POST /api/candidates
 
@@ -112,13 +114,14 @@ visit is one candidate: "the same dot" means within 1 arcmin, and "the same visi
 POST /api/candidates
 Content-Type: application/json
 
-{ "ra": 269.4651, "dec": 4.7473, "det": "D1",
+{ "ra": 269.4651, "dec": 4.7473, "det": "D1", "channel": 6,
   "visit": { "start": "2026-08-23", "end": "2026-08-24", "mjd": 61275.71, "exposures": 3, "lam": 0.7654, "epochs": [61275.1, 61276.3] },
   "tag": "comet", "body": "Moves between visits.", "author": "mira_v", "turnstile": "<token from the widget>" }
 ```
 
 - `ra` 0 to 360 (not 360), `dec` -90 to 90, numbers. The time-lapse sends the centre of the patch, where the click put the dot.
 - `det`: `D1` to `D6`.
+- `channel`: optional, the Spectral channel the time-lapse was built at, 1 to 102 as in `?ch=` (17 per detector, so it must be on `det`). Stored with `det` in `detail.candidate`; the candidate page rebuilds its frames at that channel (without one, at the detector's best-covered wavelength).
 - `visit`: the frame on screen (`live/pipeline.js`): `start` and `end` as `YYYY-MM-DD`, `mjd` within SPHEREx's mission, `exposures` 1 to 1000, `lam` 0.7 to 5.1 µm, `epochs` optional (at most 100 times, each within 30 days of `mjd`). Stored whole in `detail.candidate.visit`.
 - `tag`: required, one of `comet`, `asteroid`, `glitch`, `unsure`. It is the poster's first vote.
 - `body`: optional, at most 1000 characters after trimming.
@@ -138,7 +141,7 @@ Refusals:
 
 | Status | Body | When |
 |---|---|---|
-| 400 | `{"error":"det must be D1 to D6","field":"det"}` | bad input; `field` is `ra`, `dec`, `det`, `visit`, `tag`, `body`, `author` or `turnstile` (or `body` when it is not JSON) |
+| 400 | `{"error":"det must be D1 to D6","field":"det"}` | bad input; `field` is `ra`, `dec`, `det`, `channel`, `visit`, `tag`, `body`, `author` or `turnstile` (or `body` when it is not JSON) |
 | 403 | `{"error":"human check failed, try again"}` | Turnstile refused the token |
 | 403 | `{"error":"human check already used, try again"}` | the token already paid for a write |
 | 405 | `{"error":"use POST"}` | any other method |
@@ -148,13 +151,14 @@ Refusals:
 
 ### GET /api/candidates/near?ra=&dec=[&visit=YYYY-MM-DD]
 
-Candidates within 1 arcmin, oldest first, with their tallies and distance (`sep`, arcsec). Without `visit`, any visit (the
-time-lapse asks once per spot and picks the visit on screen). Never cached. `ra`/`dec` refusals as for `/api/images`;
+Candidates within 1 arcmin, oldest first, with their tallies and distance (`sep`, arcsec). With `visit`, those whose
+visit includes that day; without, any visit (the time-lapse asks once per spot and picks the one sharing a day with the
+visit on screen). Each row has `visit` (first day), `visit_end` and `channel` (null when none was given). Never cached. `ra`/`dec` refusals as for `/api/images`;
 a bad `visit` is `400 {"error":"visit must be YYYY-MM-DD"}`.
 
 ```json
 { "candidates": [ { "id": "C-0182", "ra": 269.4651, "dec": 4.7473, "det": "D1", "visit": "2026-08-23", "author": "mira_v",
-  "created_at": 1763200000000, "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 }, "sep": 0 } ] }
+  "visit_end": "2026-08-24", "channel": 6, "created_at": 1763200000000, "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 }, "sep": 0 } ] }
 ```
 
 ### POST /api/sightings
@@ -175,7 +179,7 @@ Refusals: `400` with `field` `name` (1 to 40 letters, digits, spaces and `( ) / 
 
 ### On the other routes
 
-- `GET /api/comets` and `/api/comets/:id`: a candidate has `candidate: true`, `det`, `visit` (first day), `author`, `created_at`; `/api/comets/:id` adds `detail.candidate.visit`.
+- `GET /api/comets` and `/api/comets/:id`: a candidate has `candidate: true`, `det`, `visit` (first day), `author`, `created_at`; `/api/comets/:id` adds `detail.candidate` (`visit`, `det`, `channel`).
 - `POST /api/comments`: a tag alone, with an empty `body`, is now accepted (the candidate page's Tags card). Without a tag the body still needs 1 to 1000 characters.
 - Explore keeps a candidate's marker hollow and labelled candidate until it has at least 5 tags and 60% say comet.
 
