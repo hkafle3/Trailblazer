@@ -2,7 +2,7 @@
 // IRSA's search (SIA) and ESA's Gaia archive send no CORS header and IRSA throws intermittent 502s, so this
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
-//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
+//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=
 //   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
@@ -21,13 +21,13 @@ function position(url) {
 }
 
 // IRSA answers 502 now and then; a few quick retries with jitter get through (measured 2026-11-14)
-async function fetchRetry(url, tries = 5, ms = 20000) {
+async function fetchRetry(url, tries = 5, ms = 20000, withStatus = false) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
       const text = await r.text();
-      if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return text;
+      if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return withStatus ? [r.status, text] : text;
       last = `HTTP ${r.status}`;
     } catch (e) { last = String(e); }
     // short waits: one 502 is common, a run of them is rare; doubling from 400 ms cost 14 s on 2026-11-14
@@ -167,6 +167,63 @@ function ipacStars(text) {
     if (pmra === pmra && pmdec === pmdec) stars.push({ ra: +v[iRa], dec: +v[iDec], pmra, pmdec, g: +v[iG] });
   }
   return stars;
+}
+
+// hours "16 28 36.29" or degrees "-16 48 16.4" -> decimal degrees
+function sexagesimal(text, hours) {
+  const n = String(text).trim().match(/[+-]?\d+(?:\.\d+)?/g);
+  if (!n) return NaN;
+  const sign = /^\s*-/.test(text) ? -1 : 1;
+  const [a, b = 0, c = 0] = n.map(x => Math.abs(Number(x)));
+  return sign * (a + b / 60 + c / 3600) * (hours ? 15 : 1);
+}
+
+// SkyBoT rows -> { comets, asteroids, omitted }, or null when any row cannot be read (then the answer is unavailable,
+// never a cached partial or empty result). Comets always; asteroids V <= 21 on the exact magnitude, brightest 8.
+function skybotRows(rows) {
+  const comets = [], bright = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object' || typeof r.Class !== 'string' || !r.Class.trim() || !String(r.Name || r.Num || '').trim()) return null;   // no name: unrelated rows would merge into one path
+    const hms = /^\s*(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['RA (hms)'] ?? ''), dms = /^\s*[+-]?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['DEC (dms)'] ?? '');
+    if (!hms || !dms || +hms[2] >= 60 || +hms[3] >= 60 || +dms[2] >= 60 || +dms[3] >= 60) return null;
+    const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
+    if (!(ra >= 0 && ra < 360 && dec >= -90 && dec <= 90)) return null;
+    const vm = r['VMag (mag)'];   // a magnitude may be missing (null or empty), never garbled
+    if (vm != null && vm !== '' && !Number.isFinite(Number(vm))) return null;
+    const mag = Number(vm);
+    const body = { name: String(r.Name || r.Num), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? mag : null, err: Number(r['Err (arcsec)']) || 0 };
+    if (r.Class === 'Comet') comets.push(body);
+    else if (body.mag != null && body.mag <= 21) bright.push(body);
+  }
+  bright.sort((a, b) => a.mag - b.mag);
+  const out = b => ({ ...b, mag: b.mag == null ? null : +b.mag.toFixed(1) });   // round only for the answer
+  return { comets: comets.map(out), asteroids: bright.slice(0, 8).map(out), omitted: Math.max(0, bright.length - 8) };
+}
+
+// Known comets and asteroids in a time-lapse frame at its time, from IMCCE SkyBoT (planets left out). Geocentric.
+// Asteroids fainter than V = 21 are dropped and at most 8 kept; comets are kept even without a magnitude.
+// From kzkei's version (branch include-documentation-and-scope). Contract: docs/api.md.
+async function known(url) {
+  const p = position(url);
+  if (p.error) return json(p, 400);
+  const t = Number(url.searchParams.get('t'));
+  if (!url.searchParams.has('t') || !Number.isFinite(t) || t < 40000 || t > 80000) return json({ error: 't must be an MJD' }, 400);
+  const q = new URLSearchParams({
+    '-ep': String(t + 2400000.5), '-ra': String(p.ra), '-dec': String(p.dec), '-rd': '0.15',
+    '-mime': 'json', '-output': 'object', '-objFilter': '101', '-from': 'comet-hunt',
+  });
+  let rows;
+  try {
+    const [status, text] = await fetchRetry(`https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?${q}`, 2, 15000, true);
+    // SkyBoT says "nothing in the cone" with 204; a blank 200 is a broken answer, never a cached "nothing here"
+    rows = status === 204 ? [] : text.trim() ? JSON.parse(text) : null;
+  } catch {
+    return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  }
+  if (!Array.isArray(rows)) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  const read = skybotRows(rows);
+  if (!read) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  return json({ ra: p.ra, dec: p.dec, t, ...read }, 200, { 'Cache-Control': 'public, max-age=86400' });
 }
 
 // Tag tallies per comet: each person's latest tag is their vote (so nobody counts twice)
@@ -364,7 +421,7 @@ export default {
       try { return await (id === null ? comets(url, env) : comet(id, env)); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
-    const route = { '/api/images': images, '/api/gaia': gaia }[url.pathname];
+    const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
     const key = new URL(url); key.searchParams.set('cache', 'v2');

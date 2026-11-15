@@ -30,6 +30,22 @@ check "GET on the checks route" "/api/checks" 405 'use POST'
 check "home page served" "/" 200 'The sky moves'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "Comets list page served" "/comet.html" 200 'id="c-list"'
+check "known: t missing" "/api/known?ra=77.3&dec=27.3" 400 't must be an MJD'
+check "known: t not an MJD" "/api/known?ra=77.3&dec=27.3&t=2026" 400 't must be an MJD'
+check "known: ra out of range" "/api/known?ra=400&dec=27.3&t=61285" 400 'ra must be 0 to 360'
+# SkyBoT at one of C/2025 R2 (SWAN)'s SPHEREx photos (2 Sep 2026): the comet is there, within 30 arcsec of where JPL put it
+if python3 - "$BASE" <<'PY'
+import json, math, sys, urllib.request
+base = sys.argv[1]
+k = json.load(urllib.request.urlopen(urllib.request.Request(base + "/api/known?ra=77.3058&dec=27.3551&t=61285.0302", headers={"User-Agent": "comet-hunt-contract-test"}), timeout=60))
+swan = [c for c in k["comets"] if c["name"] == "C/2025 R2"]
+assert swan, f"no C/2025 R2 in {k}"
+d = math.hypot((swan[0]["ra"] - 77.3058) * math.cos(math.radians(27.3551)), swan[0]["dec"] - 27.3551) * 3600
+assert d < 30, f"C/2025 R2 is {d:.0f} arcsec from its photo position"
+assert all(a["mag"] <= 21 for a in k["asteroids"]) and len(k["asteroids"]) <= 8, "asteroid cut not applied"
+PY
+then echo "PASS known: SkyBoT puts C/2025 R2 within 30 arcsec of its SPHEREx photo"
+else echo "FAIL known: SkyBoT check"; fails=$((fails + 1)); fi
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below
 curl -s -m 30 -D - -o /dev/null "$BASE/api/images?ra=400&dec=4" | grep -qi 'access-control-allow-origin: \*' && echo "PASS CORS header present" || { echo "FAIL CORS header missing"; fails=$((fails + 1)); }
