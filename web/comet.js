@@ -18,30 +18,21 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 
 function talk(c) {
   const t = c.tags, n = t.comet + t.asteroid + t.glitch + t.unsure;
-  $('t-head').innerHTML = '';
-  if (n) { $('t-head').append(`${t.comet} of ${n} `, el('span', null, 'say comet')); }
-  else $('t-head').textContent = 'No tags yet';
+  $('t-head').textContent = n ? `${t.comet} of ${n} say comet` : 'No tags yet';
   if (c.kind === 'comet' && n) { $('c-verdict').textContent = t.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }
-  document.querySelector('.verdict .tally').hidden = !n;
-  document.querySelector('.verdict .tally-key').hidden = !n;
-  for (const k of ['comet', 'asteroid', 'glitch', 'unsure']) {
-    document.querySelector(`.verdict .t-${k}`).style.setProperty('--n', t[k]);
-    document.querySelector(`[data-t=${k}]`).textContent = t[k];
-  }
+  for (const k of ['comet', 'asteroid', 'glitch', 'unsure']) document.querySelector(`[data-t=${k}]`).textContent = t[k];
   const list = $('t-list');
   list.replaceChildren();
   for (const m of c.comments.filter(m => m.body)) list.append(comment(m));   // tags without text still count as votes
-  if (!c.comments.some(m => m.body)) list.append(el('p', 'faint', 'Nobody has said anything yet.'));
-  function comment(m) {
-    const a = el('article', 'comment');
-    a.append(el('span', 'av', m.author.slice(0, 2).toUpperCase()));
-    const who = el('div', 'who');
-    who.append(el('b', null, m.author), el('time', null, ago(m.created_at)));
-    const before = earlierTag(m);
-    if (m.tag && before && before !== m.tag) who.append(el('span', 'was', `was ${before === 'unsure' ? 'not sure' : before}`));
-    if (m.tag) who.append(el('span', `tag ${m.tag}`, m.tag === 'unsure' ? 'not sure' : m.tag));
-    a.append(who, el('p', null, m.body));
-    return a;
+  if (!c.comments.some(m => m.body)) list.append(el('p', 'pv-info', 'Nobody has said anything yet.'));
+  function comment(m) {   // one box each, as on the candidate page: name and time in his info type, the tag as his legend dot
+    const box = el('article', 'pv-frame post'), who = el('p', 'pv-info');
+    who.append(el('b', null, m.author), ` · ${ago(m.created_at)}`);
+    const name = k => (k === 'unsure' ? 'not sure' : k), before = earlierTag(m);
+    if (m.tag) { const g = el('span', 'lg', name(m.tag)); g.style.setProperty('--c', `var(--${m.tag})`); g.prepend(el('i')); who.append(g); }
+    if (m.tag && before && before !== m.tag) who.append(el('span', 'was', ` (was ${name(before)})`));
+    box.append(who, el('p', 'body', m.body));
+    return box;
   }
   function earlierTag(m) {
     const mine = c.comments.filter(x => x.author === m.author && x.tag && x.created_at < m.created_at);
@@ -55,7 +46,7 @@ function photos(d) {
   const yr = new Set(d.photos.map(p => date(p.mjd, { year: 'numeric' }))).size > 1 ? { year: 'numeric' } : {};
   d.photos.forEach((p, i) => {
     const f = el('figure', i === d.photos.length - 1 ? 'now' : '');
-    const plate = el('div', 'plate');
+    const plate = el('div', 'plate pv-mini');
     const img = el('img'); img.src = `data/comets/${d.dir ?? '3i-atlas'}/${p.file}`; img.alt = `${d.name ?? 'The comet'} on ${date(p.mjd, { day: 'numeric', month: 'short' })}`;
     const ring = el('span', i === d.photos.length - 1 ? 'ring' : 'ring earlier'); ring.style.left = '50%'; ring.style.top = '50%';
     plate.append(img, ring);
@@ -70,7 +61,8 @@ function photos(d) {
 function co2Badge(state) {
   const text = { detected: 'CO2 glow detected', quiet: 'No gas glow' }[state];
   if (!text) return;
-  const b = el('span', `chip co2 ${state}`, text);
+  const b = el('span', `pv-info lg co2 ${state}`, text);   // his legend dot: orange for a glow, grey for none
+  b.style.setProperty('--c', state === 'detected' ? 'var(--comet)' : '#aeb6c6'); b.prepend(el('i'));
   b.title = state === 'detected' ? 'SPHEREx sees extra light at 4.26 µm, where carbon dioxide gas glows'
     : 'The comet is clearly seen, with no extra light at 4.26 µm';
   $('c-cat').after(b);
@@ -170,13 +162,13 @@ function known(c) {
   shots.forEach((s, i) => { if (i === 0 || s.day - shots[i - 1].day >= 5) visits.push(s); });
   const list = el('div', 'visits');
   for (const v of visits) {   // each photo carries the comet's exact position at that moment (bake/known_comets.py)
-    const a = el('a', 'chip', date(MJD0 + v.day, { day: 'numeric', month: 'short', year: 'numeric' }));
+    const a = el('a', 'visit', date(MJD0 + v.day, { day: 'numeric', month: 'short', year: 'numeric' }));
     a.href = `timelapse.html?ra=${v.ra.toFixed(4)}&dec=${v.dec.toFixed(4)}&det=D1`;
     a.title = `Open the patch where it was (RA ${v.ra.toFixed(2)}, Dec ${v.dec.toFixed(2)})`;
     list.append(a);
   }
-  box.insertBefore(list, first); box.insertBefore(el('p', 'faint', 'Known comet from JPL. Its spectrum is not measured yet.'), first);
-  if (c.detail.faint) box.insertBefore(el('p', 'faint', `Predicted too faint to see clearly in SPHEREx photos (brightest magnitude ${c.detail.mag_in_photo ?? 'unknown'} while photographed).`), first);
+  box.insertBefore(list, first); box.insertBefore(el('p', 'pv-info', 'Known comet from JPL. Its spectrum is not measured yet.'), first);
+  if (c.detail.faint) box.insertBefore(el('p', 'pv-info', `Predicted too faint to see clearly in SPHEREx photos (brightest magnitude ${c.detail.mag_in_photo ?? 'unknown'} while photographed).`), first);
   box.hidden = false;
 }
 
@@ -196,7 +188,7 @@ function composer(c) {
   let submitting = false;
   const sync = () => {
     nick.hidden = !!userName();
-    for (const x of form.querySelectorAll('input')) x.disabled = submitting;
+    for (const x of form.elements) if (x.tagName === 'INPUT') x.disabled = submitting;   // the tag rows too (form="c-compose")
     text.readOnly = submitting;
     btn.disabled = submitting || !text.value.trim() || (!nick.hidden && !nick.value.trim());
   };
@@ -209,7 +201,7 @@ function composer(c) {
     if (btn.disabled) return;
     const token = window.turnstile?.getResponse() || form.querySelector('[name=cf-turnstile-response]')?.value;
     if (!token) return say('One moment, checking you are human…', true);
-    const sent = text.value, tag = form.querySelector('[name=tag]:checked')?.value;
+    const sent = text.value, tag = form.elements.tag.value;
     const stored = userName(), author = stored || nick.value.trim();
     submitting = true; sync();
     try {
@@ -220,7 +212,7 @@ function composer(c) {
       if (!r.ok) throw new Error(out.error || `Could not post (${r.status})`);
       c.comments.push(out.comment); c.tags = out.tags;
       talk(c);
-      if (text.value === sent) { text.value = ''; form.querySelectorAll('[name=tag]').forEach(x => { x.checked = false; }); }
+      if (text.value === sent) { text.value = ''; form.elements.tag.forEach(x => { x.checked = false; }); }
       say(hint);
     } catch (err) {
       say(err.message, true);
@@ -273,7 +265,7 @@ function tile(c, href, at) {   // the comet page's mini map (.skymini) in small:
 }
 
 function list() {
-  document.querySelector('.comet-head').hidden = document.querySelector('.comet-grid').hidden = true;
+  for (const e of document.querySelectorAll('.comet-head, .comet-grid, .comet-side')) e.hidden = true;
   document.querySelector('main').classList.add('comets');
   $('c-list').hidden = false;
   document.title = 'Comets · Trailblazer';
@@ -324,8 +316,8 @@ else fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() :
   console.warn(err);
   $('c-id').textContent = err === 404 ? 'Comet not found' : 'Could not load this comet';
   $('c-cat').hidden = true;
-  document.querySelector('.comet-grid').hidden = true;   // no empty tallies or comment form for a comet that is not there
-  const p = el('p', 'faint'), a = el('a', null, 'See all comets');
+  for (const e of document.querySelectorAll('.comet-grid, .comet-side')) e.hidden = true;   // no empty tallies or comment form for a comet that is not there
+  const p = el('p', 'pv-frame pv-info missing'), a = el('a', null, 'See all comets');
   a.href = 'comet.html';
   p.append(err === 404 ? 'There is no comet by that name. ' : 'Try again in a moment. ', a);
   document.querySelector('.comet-head').after(p);
