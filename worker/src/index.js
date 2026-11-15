@@ -3,7 +3,7 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=
-//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   (D1)   See docs/api.md.
+//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
@@ -264,6 +264,13 @@ async function comet(id, env) {
     detail: c.detail ? JSON.parse(c.detail) : null, comments: talk.results });
 }
 
+// The Forums feed: the latest comments across every comet, newest first, with where each comet is
+async function posts(env) {
+  const rows = (await env.DB.prepare(`SELECT m.comet_id, m.author, m.tag, m.body, m.created_at, c.kind, c.ra, c.dec, c.real
+    FROM comments m JOIN comets c ON c.id = m.comet_id WHERE m.body != '' ORDER BY m.created_at DESC, m.id DESC LIMIT 200`).all()).results;
+  return json({ posts: rows.map(r => ({ ...r, real: !!r.real })) }, 200, { 'Cache-Control': 'no-store' });
+}
+
 // Post a comment (a tag makes it a vote). Turnstile first, so bots cost nothing below it.
 const TAGS = ['comet', 'asteroid', 'glitch', 'unsure'];
 async function post(request, env) {
@@ -405,6 +412,10 @@ export default {
     if (url.pathname === '/api/checks') {
       if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
       try { return await check(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/posts') {
+      try { return await posts(env); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     if (url.pathname === '/api/explored') {
