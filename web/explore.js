@@ -186,7 +186,6 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   if (focus) { marks.append(...marks.querySelectorAll('.focus')); marks.querySelectorAll('.focus').forEach(nameSide); }   // on top of its neighbours, its name on the map
   showByDay();
 }).catch(err => console.warn('comets unavailable', err));
-search.init({ ready: cometsLoaded, showPin: (...a) => { before = null; shown = a.slice(0, 2); showPin(...a); }, feature });
 
 // A click on a comet: the map zooms toward it, then the page changes and the map becomes that page's mini map
 // (the shared view-transition-name "sky"). Browsers without page-to-page view transitions, and people who
@@ -244,7 +243,9 @@ const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
 }).catch(err => console.warn('explored unavailable', err));
 
 // ---- phones: names placed without collisions, the first view centred on 3I/ATLAS (explore-phone.js) ----
-Promise.all([cometsLoaded, exploredLoaded]).then(() => phoneUI.ready());
+const mapReady = Promise.all([cometsLoaded, exploredLoaded]).then(() => phoneUI.ready());
+// the search: ?q= waits for the phone's first view, so it is not re-centred after the result
+search.init({ ready: mapReady, showPin: (...a) => { before = null; shown = a; showPin(...a); }, feature });
 
 // ---- timeline (Homepage-2): a tick for every month SPHEREx photographed, the year under each January, ----
 // the date over a round handle. The line runs from the first of the first month to the last day of data.

@@ -12,6 +12,8 @@ for (const q of ['08h55m10.8s -07d14m42s', '08:55:10.8 -07:14:42', '08 55 10.8 -
 for (const q of ['269.45 4.69', '269.45, +4.69', 'RA 269.45 Dec 4.69', 'ra=269.45 dec=4.69', 'RA 269.45° Dec +4.69°', '  269.45   4.69 '])
   near(parse(q), 269.45, 4.69, q);
 near(parse('17h57m48s +04d41m36s'), 269.45, 4.6933, 'the help text example');
+near(parse('08 55 10.8 -7.245'), 133.795, -7.245, 'sexagesimal RA, decimal Dec');
+near(parse('08 55 10.8 07 14 42'), 133.795, 7.245, 'six plain numbers, no sign');
 near(parse('0 -90'), 0, -90, 'the south pole');
 near(parse('360 0'), 0, 0, 'RA 360 is RA 0');
 
