@@ -226,7 +226,7 @@ const CO2 = { detected: ['CO2 glow detected', 'detected'], quiet: ['No gas glow'
 function list() {
   document.querySelector('.comet-head').hidden = document.querySelector('.comet-grid').hidden = true;
   $('c-list').hidden = false;
-  document.title = 'Comets · Comet Catcher';
+  document.title = 'Comets · Trailblazer';
   fetch('/api/comets').then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(({ comets }) => {
     const rank = c => (c.co2 === 'detected' ? 0 : c.co2 ? 1 : 2);
     const known = comets.filter(c => c.kind === 'known' && c.real).sort((a, b) => rank(a) - rank(b) || (b.photos ?? 0) - (a.photos ?? 0));
@@ -242,7 +242,7 @@ function list() {
 
 if (!id) list();
 else fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
-  document.title = `${c.id} · Comet Catcher`;
+  document.title = `${c.id} · Trailblazer`;
   $('c-id').textContent = c.id;
   $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : c.real ? 'Known comet · JPL catalog' : 'Known object') : 'Not in any catalog';
   if (c.kind === 'comet') { const p = $('c-patch'); p.href = `timelapse.html?ra=${c.ra}&dec=${c.dec}&det=D1&diff=1`; p.hidden = false; }

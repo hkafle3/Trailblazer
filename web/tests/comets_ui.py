@@ -29,7 +29,7 @@ async def main():
         assert await pg.is_hidden("#c-list") and await pg.is_visible(".comet-grid"), "comet page shows the list"
 
         # the sky: a known comet's name is hidden until the pointer is on it (or it has keyboard focus)
-        await pg.goto(BASE + "/"); await pg.wait_for_selector(".mk.peek:not([hidden])", state="attached")
+        await pg.goto(BASE + "/explore.html"); await pg.wait_for_selector(".mk.peek:not([hidden])", state="attached")
         mk = pg.locator(".mk.peek:not([hidden])").first
         assert not await mk.locator("b").is_visible(), "name shows before hover"
         await mk.locator("i").hover(); await pg.wait_for_timeout(300)

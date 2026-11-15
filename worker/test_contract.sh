@@ -26,7 +26,9 @@ case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is 
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
-check "home page served" "/" 200 'The sky moves'
+check "home page served" "/" 200 'Trailblazer'
+check "Explore map page served" "/explore.html" 200 'The sky moves'
+check "Forums page served" "/forums.html" 200 'Forums'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "Comets list page served" "/comet.html" 200 'id="c-list"'
 check "unknown route" "/api/nope" 404 'not found'

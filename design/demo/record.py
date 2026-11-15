@@ -126,7 +126,7 @@ async def main():
         await cdp.send("Page.startScreencast", {"format": "jpeg", "quality": 90, "maxWidth": 1920, "maxHeight": 1080, "everyNthFrame": 1})
 
         # 1. the sky
-        await goto(BASE + "/", 4000)
+        await goto(BASE + "/explore.html", 4000)
         await cap("SPHEREx photographs the whole sky in infrared")
         await pg.wait_for_timeout(3500)
         await cap("Replay how the sky filled in, pass by pass")
@@ -188,7 +188,7 @@ async def main():
         await pg.keyboard.press("Escape"); await pg.wait_for_timeout(700)
         # end
         await cap("")
-        await goto(BASE + "/", 3000)
+        await goto(BASE + "/explore.html", 3000)
         await cap("Comet Catcher: real SPHEREx data, anyone can help")
         await move(720, 450); await pg.wait_for_timeout(4500)
         await cap(""); await pg.wait_for_timeout(900)

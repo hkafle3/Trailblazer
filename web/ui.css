@@ -30,13 +30,6 @@ body.page { background: #04060b; }
 }
 .glass, .panel, .rail, .talk, .practice { border-radius: var(--pebble); }
 :is(.topbar, .timebar, .layers > summary, #hint, #timeline).glass { border-radius: 999px; }
-/* the top bar is solid: pages scroll under it, and without the (removed) blur the content showed through at 22% (even 3% left a ghost of the big comet titles) */
-.topbar.glass {
-  background:
-    radial-gradient(140% 120% at 0% 0%, rgba(127, 184, 255, .14), transparent 55%),
-    radial-gradient(120% 120% at 100% 100%, rgba(155, 140, 255, .09), transparent 60%),
-    rgb(9, 12, 21);
-}
 .panel, .rail, .talk { padding: 26px 30px; }
 .plate { border-radius: 30%; }
 .nights .plate { border-radius: 50%; }
@@ -52,22 +45,11 @@ body.page { background: #04060b; }
 .glow-text { background: linear-gradient(100deg, #fff 10%, var(--comet) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .comet-head h1, .guide-grid h1 { background: linear-gradient(180deg, #fff, #b9c6e6); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
-/* ---------- Top bar ---------- */
-.topbar { gap: 20px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 20px 50px -20px rgba(0, 0, 0, .8), 0 0 60px -30px rgba(127, 184, 255, .5); }
+/* ---------- Top bar: see header.css ---------- */
 .brand-mark::before { animation: twinkle 3s ease-in-out infinite; }
 @keyframes twinkle { 50% { opacity: .55; transform: scale(.8); } }
-.topbar nav a { position: relative; transition: color .2s, background .2s; }
-.topbar nav a.on { background: rgba(255, 255, 255, .11); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
-.topbar nav a.on::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #d4d8e2; box-shadow: 0 0 8px rgba(212, 216, 226, .8); }
-.topbar nav a:focus-visible, .btn:focus-visible, .iconbtn:focus-visible, .av:focus-visible, summary:focus-visible { outline: 2px solid var(--known); outline-offset: 3px; }
+.btn:focus-visible, .iconbtn:focus-visible, .av:focus-visible, summary:focus-visible { outline: 2px solid var(--known); outline-offset: 3px; }
 
-/* The search is a round button until you use it. */
-@media (min-width: 641px) {
-  .search { width: 40px; padding: 0 11px; cursor: pointer; transition: width .45s var(--ease), background .3s, border-color .3s; }
-  .search input { opacity: 0; transition: opacity .25s; }
-  .search:focus-within, .search:hover { width: 320px; }
-  .search:focus-within input, .search:hover input { opacity: 1; }
-}
 .iconbtn { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: rgba(0, 0, 0, .25); color: var(--ink-2); cursor: pointer; font: 600 14px/1 var(--display); transition: color .2s, border-color .2s, background .2s; }
 .iconbtn:hover { color: #fff; border-color: rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .08); }
 .av { cursor: pointer; border: 1px solid rgba(255, 255, 255, .18); transition: box-shadow .25s; }
@@ -251,17 +233,8 @@ body.explore .start .link:hover { color: #fff; }
 /* Tour card sits on top of busy content: make it nearly opaque. */
 .tour-card, .sheet, .menu-pop { background: radial-gradient(140% 120% at 0% 0%, rgba(127, 184, 255, .14), transparent 55%), rgba(10, 14, 24, .94); }
 @media (max-width: 640px) {
-  .topbar .iconbtn { display: none; }                        /* the tour is in the account menu and the guide on phones */
-  .topbar { gap: 2px; padding-right: 6px; }
-  .topbar nav a { padding: 0 8px; }
-  .authbox .btn.small { height: 34px; padding: 0 12px; font-size: 13px; }
-}
-@media (max-width: 640px) {
   body.explore .map-wrap { top: auto; }
-  .topbar nav { margin: 0 auto 0 0; }
-  .topbar .authbox { flex: none; }
 }
-@media (max-width: 640px) { .topbar .authbox .av { display: grid; } }
 
 /* ---------- Inner pages share the home page's sky: dark, with stars, no photo behind ---------- */
 body.page { background: radial-gradient(80% 60% at 50% 0%, #0c1226, #05070e 70%, #03040a); }
@@ -348,9 +321,6 @@ body.page::after { background: radial-gradient(55% 45% at 8% 0%, rgba(127, 184, 
 @media (max-width: 640px) {
   .mk .trail { --ts: .45; }
   html, body { overflow-x: hidden; }
-  .topbar .search { display: none; }
-  .topbar nav { margin: 0 auto 0 0; }
-  .topbar nav a { padding: 0 9px; font-size: 14px; }
 }
 
 /* ---------- Round 4: trails, play/pause, mini sky map, loading ---------- */

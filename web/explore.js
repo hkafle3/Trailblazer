@@ -67,12 +67,6 @@ $('map').addEventListener('pointermove', e => {   // live coordinates beside the
 $('map').addEventListener('pointerleave', () => { readout.hidden = true; });
 $('pin-x').addEventListener('click', () => { pin.hidden = true; });
 addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; });
-$('search').addEventListener('submit', e => {
-  e.preventDefault();
-  const [ra, dec] = $('q').value.trim().split(/[\s,]+/).map(Number);
-  if (Number.isFinite(ra) && Number.isFinite(dec) && ra >= 0 && ra < 360 && Math.abs(dec) <= 90) showPin(ra, dec);
-  else $('q').setCustomValidity('Type RA and Dec in degrees, e.g. 269.45 4.69'), $('q').reportValidity(), $('q').setCustomValidity('');
-});
 
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
 // Known comets move: their marker follows the JPL path in `track` ([[day, ra, dec, magnitude], ...] every 10 days)
