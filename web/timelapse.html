@@ -1024,9 +1024,9 @@ async function openSpec(ra, dec, year = 2026) {
     if (!mine()) return;
     spec.res = res;
     const doubt = res.points.filter(p => p.doubt).length, sat = res.gaps.filter(g => /saturated/.test(g.why)).length;
-    specStatus(res.points.length ? `${res.points.length} of 102 channels measured${doubt ? `, ${doubt} doubtful (hollow)` : ''}${res.gaps.length ? `, ${res.gaps.length} gaps` : ''}. From ${res.covering} exposures.`
-      : sat > res.gaps.length / 2 ? `SPHEREx saturates on this star at ${sat} of 102 wavelengths: it is too bright to measure cleanly here. Fainter stars work.`
-      : `No usable exposure of this spot (${res.found} exposures searched).`);
+    const bright = sat >= 10 && sat > res.gaps.length / 2 ? `SPHEREx saturates on this star at ${sat} of 102 wavelengths: it is too bright to measure cleanly. Fainter stars work.` : '';
+    specStatus(res.points.length ? `${res.points.length} of 102 channels measured${doubt ? `, ${doubt} doubtful (hollow)` : ''}${res.gaps.length ? `, ${res.gaps.length} gaps` : ''}. From ${res.covering} exposures.${bright ? ` ${bright}` : ''}`
+      : bright || `No usable exposure of this spot (${res.found} exposures searched).`);
     specEl('spec-csv').disabled = !res.points.length;
     specChart(); draw();
   } catch (e) {
@@ -1117,7 +1117,10 @@ function specChart() {
   specEl('spec-key').innerHTML = res.points.length ? Object.entries(SPEC_COLOURS).map(([d, c]) => `<span><i style="background:${c}"></i>${d}</span>`).join('') + '<span><i class="hollow"></i>doubtful</span>' : '';
 }
 addEventListener('resize', () => { if (spec.at) specChart(); });
-window.__spec = { spec, open: openSpec, csv: () => spectrumCsv(spec.res.points) };   // for tests/spectrum_ui.py
+// for tests/spectrum_ui.py: the CSV text, and where a sky spot or a FITS pixel of the photo is on screen (CSS px)
+const screenOfPix = (x, y) => { const m = state.m, G = m.grid, v = view(m), r = patch.getBoundingClientRect(); return [r.left + (x - v.ox + 0.5) / v.cw * r.width, r.top + (G - 1 - y - v.oy + 0.5) / v.ch * r.height]; };
+window.__spec = { spec, open: openSpec, csv: () => spectrumCsv(spec.res.points), screenOfPix,
+  screenOf: (ra, dec) => { const m = state.m, [e, n] = offset(m, ra, dec); return screenOfPix((m.grid - 1) / 2 - e / m.arcsec_per_pixel, (m.grid - 1) / 2 + n / m.arcsec_per_pixel); } };
 
 document.getElementById('search').onsubmit = e => {
   e.preventDefault();
