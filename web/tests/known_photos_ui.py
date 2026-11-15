@@ -41,7 +41,7 @@ async def strip(b):
       const p = f.querySelector('.pv-mini').getBoundingClientRect(), r = f.querySelector('.ring').getBoundingClientRect(), cv = f.querySelector('canvas');
       const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let lit = 0; for (let k = 0; k < d.length; k += 4) lit += d[k] > 40;
       return { ra: +f.dataset.ra, dec: +f.dataset.dec, verdict: f.dataset.verdict, snr: f.dataset.snr === '' ? null : +f.dataset.snr,
-        vis: f.querySelector('.vis').textContent, w: cv.width, lit, off: Math.hypot(r.x + r.width / 2 - p.x - p.width / 2, r.y + r.height / 2 - p.y - p.height / 2) };
+        vis: f.querySelector('.vis').textContent, few: f.dataset.few === '1', w: cv.width, lit, off: Math.hypot(r.x + r.width / 2 - p.x - p.width / 2, r.y + r.height / 2 - p.y - p.height / 2) };
     })""")
     assert len(figs) == len(picks) == 4, f"{len(figs)} photos for {len(picks)} visits"
     for f, s in zip(figs, picks):
@@ -49,7 +49,7 @@ async def strip(b):
         assert f["w"] == 96 and f["lit"] > 200, f"photo not drawn: {f}"
         assert f["off"] < 1, f"ring {f['off']:.1f} px off the photo's centre"
         if f["snr"] is None: assert f["verdict"] in ("unmeasured", "error") and "Seen" not in f["vis"], f
-        elif f["snr"] >= 5: assert f["verdict"] == "seen" and f["vis"].startswith("Seen"), f
+        elif f["snr"] >= 5: assert f["verdict"] == "seen" and f["vis"].startswith("Seen") and (("less sure" in f["vis"]) == f["few"]), f
         else: assert f["verdict"] == "faint" and f["vis"].startswith("Too faint"), f
     seen = sum(f["verdict"] == "seen" for f in figs)
     note = await pg.text_content("#c-photos-panel .frames-note")
@@ -91,9 +91,11 @@ async def player(b):
     # the big frame shows the photo of the highlighted thumbnail, the ring at its centre
     same = await pg.evaluate("() => { const i = +document.querySelector('.player').dataset.i, f = document.querySelectorAll('#c-photos figure')[i]; return f.classList.contains('on') && f.querySelector('img').src === document.querySelector('.player img').src }")
     assert same, "big frame and highlighted thumbnail differ"
+    assert "Playing" in await pg.get_attribute(".player .tl-knob", "aria-label"), "the handle does not say it is playing"
     await pg.click(".player .tl-knob")   # pause
     i0 = await pg.get_attribute(".player", "data-i"); await pg.wait_for_timeout(1500)
     assert await pg.get_attribute(".player", "data-i") == i0 and not await pg.get_attribute(".player", "data-playing"), "pause did not stop it"
+    assert "Paused" in await pg.get_attribute(".player .tl-knob", "aria-label"), "the handle does not say it is paused"
     k = (int(i0) + 2) % n
     await pg.locator("#c-photos figure").nth(k).click()
     assert await pg.get_attribute(".player", "data-i") == str(k) and "on" in (await pg.locator("#c-photos figure").nth(k).get_attribute("class")), "thumbnail click did not jump"

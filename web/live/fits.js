@@ -129,3 +129,52 @@ export async function imageRows(key, h, y0, y1, signal) {
   for (let i = 0; i < out.length; i++) out[i] = dv.getFloat32(4 * i, false) * bs + bz;
   return out;
 }
+
+// ---------- FLAGS: the quality bits of each pixel (the HDU after the IMAGE), a RICE_1 tile-compressed image ----------
+// SPHEREx L2 stores it as a binary table with one compressed tile per row (ZTILE1 = NAXIS1, ZTILE2 = 1), so a range
+// of rows is: their 8-byte descriptors (length, heap offset), then their bytes in the heap, each row decoded alone.
+export async function flagsHeader(key, h, signal) {
+  const off = h._dataOffset + Math.ceil(Math.abs(h.BITPIX) / 8 * h.NAXIS1 * h.NAXIS2 / 2880) * 2880;
+  let buf = await range(key, off, off + 11519, signal), p;
+  while ((p = parseCards(buf)).end < 0) {
+    if (buf.length > 200000) throw new Error(`no END card in the FLAGS header of ${key}`);
+    const more = await range(key, off + buf.length, off + buf.length + 11519, signal), all = new Uint8Array(buf.length + more.length);
+    all.set(buf); all.set(more, buf.length); buf = all;
+  }
+  const f = p.h;
+  if (f.EXTNAME !== 'FLAGS' || !f.ZIMAGE || f.ZCMPTYPE !== 'RICE_1' || f.ZTILE2 !== 1 || f.ZTILE1 !== f.ZNAXIS1 || f.NAXIS1 !== 8)
+    throw new Error(`FLAGS of ${key} is not stored as expected (${f.EXTNAME}, ${f.ZCMPTYPE})`);
+  f._dataOffset = off + Math.ceil(p.end / 2880) * 2880;
+  f._heap = f._dataOffset + (f.THEAP ?? f.NAXIS1 * f.NAXIS2);
+  return f;
+}
+
+// cfitsio's fits_rdecomp for 4-byte pixels: per block of `nblock` pixels a 5-bit code (fs + 1), then the pixel
+// differences, zigzag mapped: Rice codes (a run of zeros, a 1, fs low bits), or raw 32-bit values when fs is 25
+export function riceDecode(bytes, n, nblock = 32) {
+  const out = new Int32Array(n);
+  let bit = 32, last = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
+  const read = k => { let v = 0; for (let i = 0; i < k; i++, bit++) v = v * 2 + ((bytes[bit >> 3] >> (7 - (bit & 7))) & 1); return v; };
+  for (let i = 0; i < n;) {
+    const fs = read(5) - 1, end = Math.min(n, i + nblock);
+    if (fs < 0) { for (; i < end; i++) out[i] = last; continue; }
+    for (; i < end; i++) {
+      let d;
+      if (fs === 25) d = read(32);
+      else { let z = 0; while (!read(1)) z++; d = z * 2 ** fs + read(fs); }
+      d = d % 2 ? -Math.floor(d / 2) - 1 : d / 2;   // zigzag back to a signed difference
+      out[i] = last = (last + d) | 0;
+    }
+  }
+  return out;
+}
+
+// rows y0..y1 (0-based, inclusive) of FLAGS -> Int32Array, full width
+export async function flagRows(key, f, y0, y1, signal) {
+  const desc = new DataView((await range(key, f._dataOffset + 8 * y0, f._dataOffset + 8 * (y1 + 1) - 1, signal)).buffer);
+  const rows = Array.from({ length: y1 - y0 + 1 }, (_, k) => [desc.getInt32(8 * k, false), desc.getInt32(8 * k + 4, false)]);
+  const a = Math.min(...rows.map(r => r[1])), b = Math.max(...rows.map(r => r[1] + r[0]));
+  const heap = await range(key, f._heap + a, f._heap + b - 1, signal), w = f.ZNAXIS1, out = new Int32Array(rows.length * w);
+  rows.forEach(([len, o], k) => out.set(riceDecode(heap.subarray(o - a, o - a + len), w, f.ZVAL1 ?? 32), k * w));
+  return out;
+}
