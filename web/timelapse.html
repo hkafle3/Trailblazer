@@ -20,7 +20,9 @@
 
 <!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Spectral, Layers, Others. Middle: the patch.
      Right: the whole region as a mini-map, Discovered/Undiscovered, Descriptions. Bottom: Explore's month timeline. -->
-<div class="pstage" id="stage">
+<div class="pstage" id="stage" data-tab="options">
+  <!-- phones only (patch.css): Back, the target's name and position over the photo -->
+  <div class="pv-title"><a class="pv-back" href="explore.html" aria-label="Back to Explore"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4M10 6l-6 6 6 6"/></svg></a><h1 id="pv-name"></h1><span id="pv-radec"></span></div>
   <!-- In reading order, which is the phone's one-column order: the photo, the timeline, Discovered and the mini-map,
        Descriptions (with what the patch shows), then Options, Spectral, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
   <div class="pv-frame">
@@ -47,6 +49,9 @@
       </button>
     </div>
   </div>
+
+  <!-- phones only (patch.css): one tool card at a time under the timeline; a press sets data-tab on the stage -->
+  <div class="pv-tabs" role="group" aria-label="Tools"><button type="button" data-t="options" aria-pressed="true">Options</button><button type="button" data-t="spectral" aria-pressed="false">Spectral</button><button type="button" data-t="layers" aria-pressed="false">Layers</button><button type="button" data-t="others" aria-pressed="false">Others</button><button type="button" data-t="info" aria-pressed="false">Info</button></div>
 
   <a class="pv-state" id="state" href="forums.html"><span id="state-label">Undiscovered</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
   <!-- the whole region SPHEREx cut out for this spot; the white box is the part in the big frame, the ring is the target -->
@@ -102,6 +107,7 @@
     <input class="at cbx" style="--x:124;--y:407" type="checkbox" id="sp-on">
     <label class="at sp-read" style="--x:241;--cy:408" for="sp-on" id="sp-nm">&nbsp;</label>
     <label class="at sp-read" style="--x:241;--cy:438" for="sp-on">Nanometers</label>
+    <label class="sp-add" for="sp-on">Add layer</label>
   </section>
 
   <section class="pv-card pv-layers" aria-label="Layers">
@@ -623,6 +629,8 @@ function show(m, query, opts = {}) {
   Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.diff ? m.frames.length - 1 : opts.t != null ? Math.max(0, m.frames.findIndex(f => f.at_t)) : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
+  document.getElementById('pv-name').textContent = m.key.startsWith('live') ? 'Sky spot' : m.name;   // the phone's title row
+  document.getElementById('pv-radec').textContent = `RA ${m.ra.toFixed(2)} Dec ${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(2)}`;
   panel(m); draw();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : ''));
   knownFor(m);
@@ -922,6 +930,14 @@ document.getElementById('det').onchange = () => {
   if (spectral.active.size && state.m) return spectral.clear();
   if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit();
 };
+// phones: the tab strip shows one tool card (patch.css reads data-tab on the stage)
+const tabs = document.querySelector('.pv-tabs');
+tabs.onclick = e => {
+  const t = e.target.closest('[data-t]'); if (!t) return;
+  document.getElementById('stage').dataset.tab = t.dataset.t;
+  for (const b of tabs.children) b.setAttribute('aria-pressed', b === t);
+  moreBelow();   // Info's list may now scroll inside its panel
+};
 // the target buttons live in the Explore page's Examples menu now (explore.html links here with ?target=)
 
 const playBtn = document.getElementById('play');
@@ -929,7 +945,7 @@ function stop() { state.playing = false; playBtn.classList.remove('on'); }
 function togglePlay() { if (state.playing) return stop(); state.playing = true; state.last = 0; playBtn.classList.add('on'); }
 // Zoom: drag right to zoom in. The bar fills as you do: 12 arcmin (the whole region) is empty, 1 arcmin is full.
 const fov = document.getElementById('fov');
-const setFov = () => { state.fov = 13 - +fov.value; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
+const setFov = () => { state.fov = 13 - +fov.value; fov.parentElement.dataset.w = `${state.fov} arcmin wide`; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
 fov.value = 13 - state.fov; setFov();
 fov.oninput = () => { setFov(); draw(); };
 for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat']])
