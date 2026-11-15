@@ -70,7 +70,7 @@ function player(items) {
   const N = items.length, wrap = el('div', 'player');
   wrap.innerHTML = `<div class="pv-mini big"><img alt=""><span class="ring" style="left:50%;top:50%"></span></div>
     <div class="tl"><div class="tl-line"><div class="tl-dots" aria-hidden="true"></div><output class="tl-date">&nbsp;</output>
-    <button class="tl-knob" type="button" role="slider" aria-label="Photo. Press to play the photos in turn; arrow keys step." aria-valuemin="0" aria-valuemax="${N - 1}" aria-valuenow="0">
+    <button class="tl-knob" type="button" role="slider" aria-label="Photo. Paused; press to play the photos in turn, arrow keys step." aria-valuemin="0" aria-valuemax="${N - 1}" aria-valuenow="0">
     <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
     <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
     </button></div></div>`;
@@ -78,18 +78,24 @@ function player(items) {
   const [img, ring, line, knob, out] = ['img', '.ring', '.tl-line', '.tl-knob', '.tl-date'].map(q => wrap.querySelector(q));
   const t0 = items[0].mjd, span = items[N - 1].mjd - t0, pos = m => (span ? 4 + 92 * (m - t0) / span : 50) + '%';
   for (const it of items) { const d = el('i', 'tl-visit'); d.style.left = pos(it.mjd); wrap.querySelector('.tl-dots').append(d); }
-  let i = -1, timer = null;
+  let i = -1, timer = null, touched = false;
   const go = k => {
     const it = items[k];
     if (!it.src) return;
     i = k; img.src = it.src; img.alt = it.alt; ring.className = it.ring;
     line.style.setProperty('--x', pos(it.mjd)); out.textContent = it.label;
+    const h = out.offsetWidth / 2;   // the date stays over the handle, but never past the line's ends (a phone's first photo)
+    out.style.left = `clamp(${h}px, ${pos(it.mjd)}, calc(100% - ${h}px))`;
     knob.setAttribute('aria-valuenow', k); knob.setAttribute('aria-valuetext', `Photo ${k + 1} of ${N}, ${it.label}`);
     items.forEach((x, n) => x.fig.classList.toggle('on', n === k));
     wrap.dataset.i = k;
   };
   const step = s => { for (let n = 1; n <= N; n++) { const k = (((i + s * n) % N) + N) % N; if (items[k].src) return go(k); } };
-  const play = on => { clearInterval(timer); timer = on ? setInterval(() => step(1), PLAY_MS) : null; knob.classList.toggle('on', on); wrap.dataset.playing = on ? '1' : ''; };
+  const play = on => {
+    touched = true;
+    clearInterval(timer); timer = on ? setInterval(() => step(1), PLAY_MS) : null; knob.classList.toggle('on', on); wrap.dataset.playing = on ? '1' : '';
+    knob.setAttribute('aria-label', on ? 'Photo. Playing; press to pause, arrow keys step.' : 'Photo. Paused; press to play the photos in turn, arrow keys step.');
+  };
   knob.addEventListener('click', () => play(!timer));
   knob.addEventListener('keydown', e => {
     const s = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
@@ -100,7 +106,8 @@ function player(items) {
   new IntersectionObserver((es, o) => { if (es.some(e => e.isIntersecting)) { o.disconnect(); if (!calm) play(true); } }).observe(wrap);
   const first = items.findIndex(it => it.src);
   if (first >= 0) go(first);
-  return { set(k, src) { items[k].src = src; if (i < 0) go(k); } };
+  // until someone steps or it plays, the earliest photo built so far is the one shown
+  return { set(k, src) { items[k].src = src; if (i < 0 || (!timer && !touched && k < i)) go(k); } };
 }
 
 // A badge by the title only when the measurement is clear: "detected" or "quiet" (bake/comet_spectrum.py co2_verdict)
@@ -244,8 +251,11 @@ function knownPhotos(c, picks) {
         const p = await knownPhoto(it.s), mag = magAt(c.detail.mags, it.s.day);
         paint(it.cv, p);
         Object.assign(it.fig.dataset, { verdict: p.verdict, snr: p.snr == null ? '' : p.snr.toFixed(1), ra: it.s.ra, dec: it.s.dec });
-        it.vis.textContent = p.verdict === 'seen' ? `Seen \u00b7 SNR ${Math.round(p.snr)}` : p.verdict === 'faint' ? `Too faint${mag ? ` \u00b7 mag ${mag.toFixed(1)}` : ''}` : 'Cannot measure';
-        it.fig.title = p.snr == null ? 'No usable light measurement at the ring here' : `SNR ${p.snr.toFixed(1)} at the ring, after taking away what the same spot shows in ${p.refs} photo${p.refs === 1 ? '' : 's'} without the comet${mag ? `; JPL magnitude ${mag.toFixed(1)}` : ''}`;
+        // fewer comparison photos than wanted (one failed to load, or few at this wavelength): the number is less sure
+        it.vis.textContent = p.verdict === 'seen' ? `Seen \u00b7 SNR ${Math.round(p.snr)}${p.few ? ' \u00b7 less sure' : ''}`
+          : p.verdict === 'faint' ? `Too faint${mag ? ` \u00b7 mag ${mag.toFixed(1)}` : ''}` : 'Cannot measure';
+        it.fig.title = p.snr == null ? `Not measured: ${p.why}` : `SNR ${p.snr.toFixed(1)} at the ring, after taking away what the same spot shows at the same wavelength in ${p.refs} photo${p.refs === 1 ? '' : 's'} without the comet${p.few ? ' (less sure: fewer photos to compare with)' : ''}${mag ? `; JPL magnitude ${mag.toFixed(1)}` : ''}`;
+        if (p.few) it.fig.dataset.few = '1';
         it.ring = it.ringEl.className = p.verdict === 'seen' ? 'ring' : 'ring earlier';
         pl.set(k, it.cv.toDataURL());
       } catch (e) { it.vis.textContent = 'Photo unavailable'; it.fig.dataset.verdict = 'error'; console.warn(e); }

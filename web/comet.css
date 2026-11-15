@@ -93,4 +93,5 @@
 .cpage .frames figure { cursor: pointer; }
 .cpage .frames figure:not(.on) .pv-mini { opacity: .55; }
 .cpage .frames .vis { margin: 0; font-size: max(10px, calc(18 * var(--e))); }
+.cpage .frames figure { align-content: start; }   /* a two-line label under one photo keeps every photo on one line */
 .cpage #c-photos-panel .frames-note { margin-top: calc(30 * var(--e)); line-height: 1.5; }
