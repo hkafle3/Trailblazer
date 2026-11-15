@@ -7,6 +7,8 @@
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 import { skyImagesJson, eclipticLat } from './sky_index.js';
+// the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
+import THUMBS from '../../web/data/comets/thumbs/index.json';
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
@@ -270,14 +272,15 @@ const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, d
 // Comets people found plus known objects, for the map's markers
 async function comets(url, env) {
   // for the Comets list: the CO2 verdict of a measured comet, how many SPHEREx photos it is in, and its thumbnail (the
-  // brightest of the photos its page shows). Read inside D1, so the Worker never parses the large detail column.
+  // brightest of the photos its page shows; for a known comet without them, its clearest baked SPHEREx photo, THUMBS).
+  // Read inside D1, so the Worker never parses the large detail column.
   const [rows, tags] = await Promise.all([env.DB.prepare(`SELECT id, kind, ra, dec, day, tail, real, track, det, visit, author, created_at,
     json_extract(detail, '$.co2_verdict') AS co2, COALESCE(json_extract(detail, '$.exposures'), json_array_length(detail, '$.spherex')) AS photos,
     json_extract(detail, '$.faint') AS faint,
     'data/comets/' || json_extract(detail, '$.dir') || '/' || (SELECT json_extract(p.value, '$.file') FROM json_each(detail, '$.photos') p
       ORDER BY json_extract(p.value, '$.flux') DESC LIMIT 1) AS thumb
     FROM comets`).all(), tallies(env.DB)]);
-  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, thumb: c.thumb } : {}) })) });
+  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, thumb: c.thumb ?? (THUMBS[c.id] ? `data/comets/thumbs/${THUMBS[c.id].file}` : null) } : {}) })) });
 }
 
 // One comet for its page: position, tags, the measured detail (photos, spectrum) and its discussion
