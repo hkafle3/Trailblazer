@@ -62,14 +62,18 @@ const SPX_COLS = ['obs_id', 't_min', 'access_url', 'energy_bandpassname', 'datap
 function spherexRows(text) {
   const lines = text.split('\n'), head = lines[0].replace(/\r$/, '').split(',');
   const ix = SPX_COLS.map(k => head.indexOf(k)), need = Math.max(...ix) + 1;
-  if (ix.includes(-1)) return parseCsv(text);   // unexpected layout: be correct, not fast
+  if (ix.includes(-1) || lines[0].includes('"')) return parseCsv(text);   // unexpected layout: be correct, not fast
   const out = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].replace(/\r$/, '');
     if (!line) continue;
     const f = line.split(',', need), q = line.indexOf('"');
-    // a quote among our columns (including a quoted field that runs onto the next line): parse the whole answer properly
-    if (q !== -1) { let end = need - 1; for (const x of f) end += x.length; if (q <= end) return parseCsv(text); }
+    if (q !== -1) {   // a quote among our columns, or an odd count (a field running onto the next line): parse it all properly
+      let end = need - 1, n = 0;
+      for (const x of f) end += x.length;
+      for (let k = q; k !== -1; k = line.indexOf('"', k + 1)) n++;
+      if (q <= end || n % 2) return parseCsv(text);
+    }
     out.push(Object.fromEntries(SPX_COLS.map((k, n) => [k, f[ix[n]]])));
   }
   return out;
