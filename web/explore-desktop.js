@@ -4,6 +4,7 @@
 // zooms in 2x, and the +, - and whole-sky buttons (bottom right) or the + - 0 and arrow keys do the same.
 // The whole sky is the oval where the page's CSS puts it; nothing here writes to the page until the first pan or zoom.
 import { W, X, Y, A, hooks, measure, set, zoomAt, glide, glideZoom, cancel, onView, atMin, atMax } from './explore-view.js';
+import * as view from './explore-view.js';
 
 const phone = matchMedia('(max-width: 640px)');
 const $ = id => document.getElementById(id);
@@ -107,3 +108,6 @@ addEventListener('keydown', e => {
   } else return;
   e.preventDefault();
 });
+
+// the search (search.js): glide so sky position (ra, dec) is in the middle, at zoom z (1 = whole sky) or closer if already in
+export function flyTo(ra, dec, z = 4) { begin(); view.flyTo(ra, dec, Math.max(W, A.min * z), 600); }

@@ -60,6 +60,7 @@ export function glide(w, x, y, ms = 300) {
 }
 export const glideZoom = (f, px, py, ms = 250) => glide(...scaled(f, px, py), ms);
 export function flyTo(ra, dec, w = W, ms = 400) {
+  w = Math.min(MAXW, Math.max(A.min, w));   // centre at the width set() will allow, or a clamped width puts the spot off centre
   const [u, v] = fwd(ra, dec);
   glide(w, A.w / 2 - u * w, (A.t + A.b) / 2 - v * w / 2, ms);
 }

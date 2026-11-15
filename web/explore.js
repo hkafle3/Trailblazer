@@ -5,6 +5,7 @@ import { RAD, wrap, fwdLon, fwd, inv, trackAt, dayParam, dayDate, LAST_DAY, MJD0
 import * as phoneUI from './explore-phone.js';   // phones: pan, pinch, names, sheets
 import './explore-desktop.js';   // desktops: drag, wheel, double click, zoom buttons and keys
 import { onView } from './explore-view.js';
+import * as search from './search.js';   // the search box: names, RA and Dec, star catalogs
 for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]]) {   // projection round trip
   const [r2, d2] = inv(...fwd(ra, dec));
   console.assert(Math.abs(wrap(r2 - ra)) < 1e-3 && Math.abs(d2 - dec) < 1e-3, 'projection round trip failed', ra, dec);
@@ -37,12 +38,15 @@ const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(ne
 
 // ---- click anywhere on the oval: drop a pin with a small card; "Look closer" opens that patch (difference view on) ----
 const pin = $('pin'), readout = $('readout');
-function showPin(ra, dec) {
+// the search names the pin (an Examples target, a star) and can open its own time-lapse
+function showPin(ra, dec, name = 'Patch of sky', href = patchUrl(ra, dec)) {
   const u = place(pin, ra, dec), v = fwd(ra, dec)[1];
   pin.classList.toggle('left', u > 0.7);
   pin.classList.toggle('up', v > 0.62);
-  pin.querySelector('[data-f=where]').textContent = `RA ${ra.toFixed(1)}\u00b0  Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(1)}\u00b0`;
-  pin.querySelector('[data-f=open]').href = patchUrl(ra, dec);
+  pin.querySelector('.eyebrow').textContent = name;
+  const f2 = x => (Math.abs(x) + 1e-9).toFixed(2);   // halves round away from zero (133.795 reads 133.80)
+  pin.querySelector('[data-f=where]').textContent = `RA ${f2(ra)}\u00b0 Dec ${dec < 0 ? '-' : '+'}${f2(dec)}\u00b0`;
+  pin.querySelector('[data-f=open]').href = href;
   pin.hidden = false;
   pin.querySelector('.pin-ring').style.animation = 'none'; void pin.offsetWidth; pin.querySelector('.pin-ring').style.animation = '';   // replay the drop
 }
@@ -119,9 +123,34 @@ faintOn.addEventListener('change', () => {
   followTracks(+$('time').value);
 });
 let trailN = 0;
+const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
+// the featured card shows comet c: 3I/ATLAS, a candidate opened with "Where it is", or a comet picked in the search
+// (`marker`: its dot, whose name hides while the card shows)
+let cardLink = null;
+function feature(c, marker) {
+  const card = $('card-comet'), what = card.querySelector('[data-f=what]'), when = card.querySelector('[data-f=when]');
+  if (marker) { document.querySelectorAll('#marks .mk.sel').forEach(m => m.classList.remove('sel')); marker.classList.add('sel'); }
+  if (cardLink) links.splice(links.indexOf(cardLink), 1);
+  links.push(cardLink = { el: card, id: c.id, found: c.kind === 'comet', track: c.track, ra: c.ra, dec: c.dec, candidate: c.candidate });
+  card.classList.remove('comet', 'known'); card.classList.add(c.kind);   // the Comets found or Known objects layer shows or hides it with its marker (styles.css)
+  card.dataset.day = c.day ?? 0;
+  card.querySelector('[data-f=id]').textContent = c.id;
+  what.className = 'tag'; when.textContent = ''; cardTrack = null;
+  if (c.candidate) {   // a reported dot: candidate until 5 tags, most of them comet
+    const n = votes(c), t = c.tags;
+    what.textContent = n < 5 || t.comet / n < 0.6 ? 'candidate' : 'likely comet';
+    when.textContent = `${t.comet} of ${n} tags`;
+  } else {   // its CO2 verdict, as on its page (bake/comet_spectrum.py); followTracks() places it and writes the date
+    what.textContent = { detected: 'CO2 glow detected', quiet: 'No gas glow' }[c.co2] ?? 'No clear signal';
+    what.classList.add(c.co2 === 'detected' ? 'comet' : 'unsure');
+    cardTrack = c.track?.length ? c.track : null;   // no path (or an empty one): its fixed place, no date
+  }
+  if (!cardTrack) card.classList.toggle('left', place(card, c.ra, c.dec) > 0.75);
+  card.hidden = false;
+  if (marker) { followTracks(+$('time').value); card.style.visibility = +card.dataset.day <= +$('time').value ? '' : 'hidden'; }
+}
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
-  const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
   // the card: 3I/ATLAS, our measured comet, following its JPL path. No card while a comet is being found, except a
   // candidate's ("Where it is" on its page), which says it is one
   const featured = focus ? comets.find(c => c.id === focus && c.candidate) : comets.find(c => c.id === '3I/ATLAS');
@@ -152,28 +181,12 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
   }
-  if (featured) {
-    links.push({ el: card, id: featured.id, found: featured.kind === 'comet', track: featured.track, ra: featured.ra, dec: featured.dec, candidate: featured.candidate });
-    card.classList.add(featured.kind);   // the Comets found or Known objects layer shows or hides it with its marker (styles.css)
-    card.dataset.day = featured.day ?? 0;
-    card.querySelector('[data-f=id]').textContent = featured.id;
-    const what = card.querySelector('[data-f=what]');
-    if (featured.candidate) {   // a reported dot: candidate until 5 tags, most of them comet
-      const n = votes(featured), t = featured.tags;
-      what.textContent = n < 5 || t.comet / n < 0.6 ? 'candidate' : 'likely comet';
-      card.querySelector('[data-f=when]').textContent = `${t.comet} of ${n} tags`;
-    } else {   // its CO2 verdict, as on its page (bake/comet_spectrum.py); followTracks() places it and writes the date
-      what.textContent = { detected: 'CO2 glow detected', quiet: 'No gas glow' }[featured.co2] ?? 'No clear signal';
-      what.classList.add(featured.co2 === 'detected' ? 'comet' : 'unsure');
-      cardTrack = featured.track?.length ? featured.track : null;   // no path (or an empty one): its fixed place, no date
-    }
-    if (!cardTrack) card.classList.toggle('left', place(card, featured.ra, featured.dec) > 0.75);
-    card.hidden = false;
-  }
+  if (featured) feature(featured);
   followTracks(+$('time').value);
   if (focus) { marks.append(...marks.querySelectorAll('.focus')); marks.querySelectorAll('.focus').forEach(nameSide); }   // on top of its neighbours, its name on the map
   showByDay();
 }).catch(err => console.warn('comets unavailable', err));
+search.init({ ready: cometsLoaded, showPin: (...a) => { before = null; shown = a.slice(0, 2); showPin(...a); }, feature });
 
 // A click on a comet: the map zooms toward it, then the page changes and the map becomes that page's mini map
 // (the shared view-transition-name "sky"). Browsers without page-to-page view transitions, and people who
@@ -372,8 +385,8 @@ let showByDay = () => {};
     play.classList.add('on');
     timer = setInterval(() => { setDay(+slider.value + 2); if (+slider.value >= meta.days) stop(); }, 40);
   };
-  // Ed: the replay plays every time Explore opens. A link to a day (?day=, Find on map) lands on that day instead,
+  // Ed: the replay plays every time Explore opens. A link to a day (?day=, Find on map) or a search (?q=) lands on that day instead,
   // and reduced motion starts still on the last day.
-  if (!new URLSearchParams(location.search).has('day') && !matchMedia('(prefers-reduced-motion: reduce)').matches) { setDay(0); timeline.onPress(); }
+  if (!['day', 'q'].some(k => new URLSearchParams(location.search).has(k)) && !matchMedia('(prefers-reduced-motion: reduce)').matches) { setDay(0); timeline.onPress(); }
   document.body.dataset.ready = '1';
 })();
