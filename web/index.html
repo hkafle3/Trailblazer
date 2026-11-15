@@ -14,6 +14,7 @@
   <div class="map" id="map" title="Click anywhere to open that patch">
     <img class="sky" src="data/sky.jpg" alt="All-sky picture from SPHEREx">
     <canvas class="cover" id="cover" width="1000" height="500"></canvas>
+    <canvas class="depth" id="depth" width="1000" height="500"></canvas>
     <canvas class="heat" id="heat" width="2000" height="1000"></canvas>
     <svg class="grat" viewBox="0 0 2000 1000" preserveAspectRatio="none">
       <path id="grat"/>
@@ -21,6 +22,7 @@
       <text dy="-10"><textPath href="#ecl" startOffset="5%">most comets travel near this line</textPath></text>
     </svg>
   </div>
+  <div id="spot" class="spot" hidden></div>
 
   <div class="marks" id="marks">
     <a class="mapcard glass" id="card-comet" hidden>
@@ -43,10 +45,12 @@
   <a class="av" title="Example user">OO</a>
 </header>
 
-<div class="hero"><h1>Find the dots that move.</h1></div>
+<div class="hero"><h1>Find the dots that move.</h1><p>The oval is the whole sky, in SPHEREx infrared. The dashed line is where most comets travel.</p></div>
 
 <aside class="layers glass" aria-label="Map layers">
-  <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg>SPHEREx photos</span><input class="sw" type="checkbox" id="ly-photos" checked></label>
+  <label class="layer" style="--c:var(--photo)"><span><svg class="ic"><use href="icons.svg#photo"/></svg>First photo</span><input class="sw" type="checkbox" id="ly-photos" checked></label>
+  <label class="layer" style="--c:var(--known)"><span><svg class="ic"><use href="icons.svg#known"/></svg>How often</span><input class="sw" type="checkbox" id="ly-depth" checked></label>
+  <div class="depth-key"><span>once</span><i></i><i></i><i></i><i></i><span>many times</span></div>
   <label class="layer" style="--c:var(--people)"><span><svg class="ic"><use href="icons.svg#eye"/></svg>Explored by people</span><input class="sw" type="checkbox" id="ly-people"></label>
   <div class="heat-key"><span>never</span><i></i><i></i><i></i><i></i><span>often</span></div>
   <label class="layer" style="--c:var(--comet)"><span><svg class="ic"><use href="icons.svg#comet"/></svg>Comets found</span><input class="sw" type="checkbox" id="ly-comets" checked></label>
@@ -60,7 +64,12 @@
 </div>
 
 <aside class="start glass">
-  <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%" title="Sky photographed by SPHEREx">
+  <div class="poles" role="group" aria-label="Ecliptic pole deep fields">
+    <a class="btn small ghost" id="go-nep" href="patch.html?ra=270.0000&amp;dec=66.5607&amp;det=D1&amp;diff=1">North pole</a>
+    <a class="btn small ghost" id="go-sep" href="patch.html?ra=90.0000&amp;dec=-66.5607&amp;det=D1&amp;diff=1">South pole</a>
+  </div>
+  <p class="pole-note" id="pole-note">The poles are where SPHEREx returns most often.</p>
+  <div class="stat" id="photo-meter" style="--c:var(--photo);--p:100%" title="Share of the sky SPHEREx has photographed at least once">
     <svg class="ic lg"><use href="icons.svg#photo"/></svg><b>&nbsp;</b><i></i>
   </div>
   <div class="stat" id="people-meter" style="--c:var(--people);--p:0%" title="Patches checked by people (example data)">

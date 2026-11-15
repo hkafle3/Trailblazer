@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patch · Comet Hunt</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page">
+
+<header class="topbar glass">
+  <a class="brand" href="./"><span class="brand-mark"></span>Comet Hunt</a>
+  <nav><a href="./">Explore</a><a href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
+  <form class="search" id="search"><svg class="ic"><use href="icons.svg#search"/></svg><input id="q" placeholder="Sky position, e.g. 269.45 4.69" aria-label="Go to a sky position"></form>
+  <a class="av" title="Example user">OO</a>
+</header>
+
+<main class="shell">
+  <div class="crumbs">
+    <a href="./">Explore</a><span class="faint">/</span>
+    <span class="mono" id="where">Loading</span>
+    <span class="chip" id="cadence" hidden></span>
+    <span class="right" style="display:flex;gap:8px;align-items:center">
+      <select id="preset" class="preset" aria-label="Preset field"></select>
+      <select id="det" class="preset" aria-label="SPHEREx detector">
+        <option value="D1">D1</option><option value="D2">D2</option><option value="D3">D3</option>
+        <option value="D4">D4</option><option value="D5">D5</option><option value="D6">D6</option>
+      </select>
+    </span>
+  </div>
+  <div class="patch-grid" id="patch">
+    <section class="viewer" id="viewer">
+      <div class="load" id="load">
+        <p id="status" role="status">Loading this patch…</p>
+        <div class="loadbar" id="loadbar" aria-hidden="true"><i id="load-fill" class="indeterminate"></i></div>
+      </div>
+      <div class="dock glass">
+        <div class="seg" role="radiogroup" aria-label="How to compare the photos">
+          <label><input type="radio" name="mode" id="m-side" checked><span>Side by side</span></label>
+          <label><input type="radio" name="mode" id="m-blink"><span>Blink</span></label>
+          <label><input type="radio" name="mode" id="m-diff"><span>Remove still stars</span></label>
+          <label><input type="radio" name="mode" id="m-play"><span>Play</span></label>
+        </div>
+        <label class="tool" style="--c:var(--known)"><input class="sw" type="checkbox" id="t-known" checked>Known objects</label>
+        <label class="tool"><input class="sw" type="checkbox" id="t-invert">Invert</label>
+        <label class="tool" title="Contrast"><span>Contrast</span><input class="range" id="contrast" type="range" min="80" max="220" value="115" style="--p:25%" aria-label="Contrast"></label>
+      </div>
+
+      <div class="frames">
+        <figure class="frame earlier">
+          <figcaption><b id="cap-role">Earlier</b><span id="cap-a"></span><span class="mode-note">Later photo minus earlier photo. Still stars cancel out.</span></figcaption>
+          <div class="plate" id="plate-a">
+            <canvas id="cv-a" width="144" height="144"></canvas>
+            <div id="known-a"></div>
+            <span class="scale" id="scale">2′</span>
+          </div>
+        </figure>
+        <figure class="frame later">
+          <figcaption><b>Later</b><span id="cap-b"></span></figcaption>
+          <div class="plate" id="plate-b">
+            <canvas id="cv-b" width="144" height="144"></canvas>
+            <div id="known-b"></div>
+          </div>
+        </figure>
+      </div>
+
+      <div class="timeline" id="timeline">
+        <div class="tl-track" id="tl-track">
+          <div class="tl-rail"></div>
+          <div class="tl-window" id="tl-window"></div>
+          <div class="tl-fill" id="tl-fill"></div>
+          <div class="tl-ticks" id="tl-ticks"></div>
+          <div class="tl-head" id="tl-head"></div>
+        </div>
+        <div class="tl-ends">
+          <span id="tl-start"></span>
+          <span id="tl-now"></span>
+          <span id="tl-end"></span>
+        </div>
+      </div>
+      <div class="playbar">
+        <label class="tool" style="--c:var(--comet)"><input class="sw" type="checkbox" id="play-span">Earlier to later</label>
+        <label class="tool">Speed <b id="speed-label">2/s</b><input class="range" id="speed" type="range" min="0.5" max="8" step="0.5" value="2" style="--p:20%" aria-label="Playback speed in frames per second"></label>
+        <button class="btn small ghost" id="play-toggle" type="button" aria-pressed="false">Play</button>
+      </div>
+      <div class="stripbar">
+        <div class="seg" role="radiogroup" aria-label="Which photo a thumbnail sets">
+          <label><input type="radio" name="pick" id="pick-a" checked><span>Set earlier</span></label>
+          <label><input type="radio" name="pick" id="pick-b"><span>Set later</span></label>
+        </div>
+      </div>
+      <div class="strip glass" id="strip" aria-label="Frames in this patch"></div>
+    </section>
+
+    <aside class="rail glass">
+      <div class="flagbox" id="flagbox">
+        <div class="flaghead">
+          <h2>Mark a mover</h2>
+          <button class="textbtn" id="flag-min" type="button" aria-expanded="true" aria-controls="flag-body">Minimize</button>
+        </div>
+        <div id="flag-body">
+          <p id="flag-help">Click the same dot in the earlier photo, then in the later one. The mark stays unverified.</p>
+          <button class="btn small" id="flag-arm" type="button">Start two clicks</button>
+          <div id="flag-out"></div>
+          <div class="facts" id="facts"></div>
+          <p class="chip" id="known-chip" style="justify-self:start;--c:var(--known)"></p>
+          <label class="tool" for="fov">Field of view <b id="fov-label">12′</b></label>
+          <input class="range" id="fov" type="range" min="1" max="12" step="0.5" value="12" style="--p:100%" aria-label="Field of view in arcminutes">
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script type="module" src="patch.js"></script>
+</body>
+</html>

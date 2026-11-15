@@ -20,7 +20,10 @@ check "comets marked as example" "/api/comets" 200 '"example":true'
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
 check "home page served" "/" 200 'Find the dots that move'
+check "north pole preset" "/" 200 'ra=270.0000&amp;dec=66.5607'
+check "south pole preset" "/" 200 'ra=90.0000&amp;dec=-66.5607'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
+check "cadence banner" "/timelapse.html" 200 'id="cadence"'
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below
 curl -s -m 30 -D - -o /dev/null "$BASE/api/images?ra=400&dec=4" | grep -qi 'access-control-allow-origin: \*' && echo "PASS CORS header present" || { echo "FAIL CORS header missing"; fails=$((fails + 1)); }

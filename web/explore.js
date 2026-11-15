@@ -1,6 +1,7 @@
 // Explore: the all-sky map. One Mollweide projection places everything so markers, the coverage replay
 // and the heat map line up with data/sky.jpg (RA increases to the left, RA 0 in the middle).
 // Data: data/coverage.{png,json} (built by bake/sky_assets.py), /api/comets and /api/explored (worker/).
+import { POLES, timelapseHref } from './skypos.js';
 const R2 = Math.SQRT2, RAD = Math.PI / 180;
 const wrap = d => ((d + 180) % 360 + 360) % 360 - 180;
 
@@ -27,7 +28,20 @@ for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]])
 
 const $ = id => document.getElementById(id);
 const place = (el, ra, dec) => { const [u, v] = fwd(ra, dec); el.style.left = u * 100 + '%'; el.style.top = v * 100 + '%'; return u; };
-const patchUrl = (ra, dec) => `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=D1&diff=1`;
+const patchUrl = (ra, dec) => timelapseHref(ra, dec, { diff: true });
+
+// Ecliptic poles: the high-cadence deep fields. Markers sit on the map; the same links are in the side panel.
+for (const p of POLES) {
+  const a = document.createElement('a');
+  a.className = 'mk pole';
+  a.href = patchUrl(p.ra, p.dec);
+  a.title = p.name;
+  a.innerHTML = `<i></i><b>${p.short}</b>`;
+  if (place(a, p.ra, p.dec) > 0.88) a.classList.add('left');
+  $('marks').append(a);
+  const btn = $(`go-${p.id}`);
+  if (btn) btn.href = a.href;
+}
 const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(`${url}: HTTP ${r.status}`))));
 
 // ---- grid and ecliptic ----
@@ -51,6 +65,20 @@ $('map').addEventListener('click', e => {
   const b = e.currentTarget.getBoundingClientRect(), rd = inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height);
   if (rd) location.href = patchUrl(...rd);
 });
+$('map').addEventListener('mousemove', e => {
+  const b = e.currentTarget.getBoundingClientRect();
+  const rd = inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height);
+  const tip = $('spot');
+  if (!rd) { tip.hidden = true; return; }
+  const info = lookupCell(rd[0], rd[1]);
+  const wrap = e.currentTarget.parentElement.getBoundingClientRect();
+  tip.hidden = false;
+  tip.style.left = Math.min(e.clientX - wrap.left + 14, wrap.width - 220) + 'px';
+  tip.style.top = (e.clientY - wrap.top + 16) + 'px';
+  const n = !info || !info.n ? 'No photos yet' : info.n >= 255 ? '255+ photos' : `${info.n} photo${info.n === 1 ? '' : 's'}`;
+  tip.innerHTML = `RA ${rd[0].toFixed(1)}&nbsp;&nbsp;Dec ${rd[1] >= 0 ? '+' : ''}${rd[1].toFixed(1)}<b>${n} · click opens the patch</b>`;
+});
+$('map').addEventListener('mouseleave', () => { $('spot').hidden = true; });
 $('search').addEventListener('submit', e => {
   e.preventDefault();
   const [ra, dec] = $('q').value.trim().split(/[\s,]+/).map(Number);
@@ -124,9 +152,10 @@ getJson('/api/explored').then(({ total, cells, suggest }) => {
 }).catch(err => console.warn('explored unavailable', err));
 
 // ---- SPHEREx coverage replay ----
-// coverage.png: R*256+G = day of first photo, A = covered. The day for every pixel of the oval is computed once,
-// so moving the slider only compares numbers.
+// coverage.png: R*256+G = day of first photo, B = how many D1 photos cover the cell (capped at 255), A = covered.
+// The day and the count for every pixel of the oval are computed once, so the slider only compares numbers.
 let showByDay = () => {};
+let lookupCell = () => null;
 (async () => {
   const meta = await getJson('data/coverage.json');
   const img = new Image(); img.src = 'data/coverage.png'; await img.decode();
@@ -135,27 +164,45 @@ let showByDay = () => {};
   const px = src.getImageData(0, 0, 720, 360).data;
 
   const cv = $('cover'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
-  const OUT = 65535, NEVER = 65534, day = new Uint16Array(W * H);
-  let inside = 0;
+  const depth = $('depth'), dg = depth.getContext('2d');
+  const OUT = 65535, NEVER = 65534, day = new Uint16Array(W * H), count = new Uint8Array(W * H);
+  let inside = 0, maxCount = 1;
+  const cellIndex = (ra, dec) => (Math.min(359, Math.floor((90 - dec) / meta.step)) * 720 + Math.min(719, Math.floor(((ra % 360) + 360) % 360 / meta.step))) * 4;
+  lookupCell = (ra, dec) => {
+    const k = cellIndex(ra, dec);
+    if (!px[k + 3]) return { n: 0, day: null };
+    return { n: px[k + 2], day: px[k] * 256 + px[k + 1] };
+  };
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const rd = inv((i + .5) / W, (j + .5) / H);
-    let v = OUT;
+    let v = OUT, n = 0;
     if (rd) {
-      const k = (Math.min(359, Math.floor((90 - rd[1]) / meta.step)) * 720 + Math.min(719, Math.floor(rd[0] / meta.step))) * 4;
-      v = px[k + 3] ? px[k] * 256 + px[k + 1] : NEVER;
+      const info = lookupCell(rd[0], rd[1]);
+      v = info.day == null ? NEVER : info.day;
+      n = info.n;
+      if (n > maxCount) maxCount = n;
       inside++;
     }
     day[j * W + i] = v;
+    count[j * W + i] = n;
   }
 
   const out = g.createImageData(W, H), o = out.data, slider = $('time');
+  const dout = dg.createImageData(W, H), od = dout.data;
   const FRESH = 9;   // days a newly photographed strip stays lit up
+  const photos = n => n >= 255 ? '255+ photos' : `${n} photo${n === 1 ? '' : 's'}`;
   showByDay = () => { for (const el of document.querySelectorAll('[data-day]')) el.style.visibility = +el.dataset.day <= +slider.value ? '' : 'hidden'; };
   function draw() {
     const d = +slider.value; let lit = 0;
+    const logMax = Math.log1p(maxCount);
     for (let k = 0; k < day.length; k++) {
-      const v = day[k], q = k * 4;
-      if (v === OUT) { o[q + 3] = 0; continue; }
+      const v = day[k], q = k * 4, n = count[k];
+      if (v === OUT) { o[q + 3] = 0; od[q + 3] = 0; continue; }
+      if (v <= d && n > 1) {
+        const t = Math.log1p(n) / logMax;
+        const shown = Math.max(0, (t - 0.42) / 0.58);   // a handful of photos stays clear; the poles, which were shot many times, light up
+        od[q] = 170; od[q + 1] = 205; od[q + 2] = 255; od[q + 3] = Math.round(210 * shown);
+      } else od[q + 3] = 0;
       if (v <= d) {
         lit++;
         const age = d - v, fresh = age < FRESH && d < meta.days;
@@ -163,15 +210,23 @@ let showByDay = () => {};
       } else { o[q] = 3; o[q + 1] = 5; o[q + 2] = 10; o[q + 3] = 232; }
     }
     g.putImageData(out, 0, 0);
+    dg.putImageData(dout, 0, 0);
     const pct = lit / inside * 100;   // Mollweide is equal-area, so counting pixels counts sky fairly
     const when = new Date((meta.mjd0 + d - 40587) * 864e5);
     $('t-date').textContent = when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-    $('t-pct').textContent = (pct > 99.5 ? Math.floor(pct) : Math.round(pct)) + '% photographed';
+    $('t-pct').textContent = (pct > 99.5 ? Math.floor(pct) : Math.round(pct)) + '% first photographed';
     slider.style.setProperty('--p', d / meta.days * 100 + '%');
     $('photo-meter').style.setProperty('--p', pct + '%');
     $('photo-meter').querySelector('b').textContent = Math.floor(pct) + '%';
     showByDay();
   }
+  const poleLine = POLES.map(p => {
+    const info = lookupCell(p.ra, p.dec);
+    const btn = $(`go-${p.id}`);
+    if (btn) btn.title = `${p.name}. ${photos(info.n)} on detector D1. Each exposure near one wavelength opens as its own frame.`;
+    return `${p.short} ${photos(info.n)}`;
+  }).join(' · ');
+  $('pole-note').textContent = `${poleLine}. Each one near the same wavelength is its own frame.`;
   slider.max = meta.days;
   slider.value = meta.days;
   slider.addEventListener('input', draw);

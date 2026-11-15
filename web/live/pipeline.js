@@ -1,12 +1,12 @@
 // Web Worker: builds a time-lapse for any RA/Dec in the browser, the same way bake/flipbook.py does in Python.
 // in:  {ra, dec, det, api}     out: {type:'progress'|'frame'|'done'|'empty'|'error', ...}
-// Each visit becomes one frame: exposures at one matched wavelength, reprojected north up, median combined.
+// Each exposure at the matched wavelength becomes one frame, reprojected north up.
 import { imageHeader, imageRows, worldToPix, wavelengthAt } from './fits.js';
 
 // 3 sigma: the user typed the spot, so this is detection at a known position. At 5 sigma WISE 0855 kept only
 // 2 of 4 visits and its fitted motion went to 18 "/yr; at 3 it keeps 4 and measures 6.45 (published 8.1).
 const SNR_MIN = Number(new URLSearchParams(self.location.search).get('snr') || 3);
-const GRID = 144, PIX = 5.0, PER_VISIT = 3, MAX_PER_VISIT = 30, SIZE = 2040, D2R = Math.PI / 180;
+const GRID = 144, PIX = 5.0, SIZE = 2040, D2R = Math.PI / 180;
 const post = (m, transfer) => self.postMessage(m, transfer || []);
 
 async function pool(items, n, fn) {   // run fn over items, at most n at a time (polite to S3)
@@ -15,23 +15,19 @@ async function pool(items, n, fn) {   // run fn over items, at most n at a time 
   return out;
 }
 
-function visits(imgs, gap = 20) {
-  const out = [];
-  for (const x of imgs) (out.length && x.t - out.at(-1).at(-1).t <= gap) ? out.at(-1).push(x) : out.push([x]);
-  return out;
-}
-
 const median = a => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[s.length >> 1] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
 
-// the same rule as bake/flipbook.py match(): the wavelength the most visits have, within one filter width
+// One exposure is one frame. A 20-day bin used to hide most of the files behind a single visit.
+// Wavelength grouping stays: only exposures within one filter width of the shared wavelength are kept,
+// so a blink is the same color, not a brightness change from a different part of the detector.
 function match(vs) {
   const all = vs.flat(), tol = median(all.map(e => e.bw));
   const near = (v, l0) => v.filter(e => Math.abs(e.lam - l0) <= tol);
   const score = l0 => [vs.filter(v => near(v, l0).length).length, -vs.reduce((s, v) => s + Math.min(...v.map(e => Math.abs(e.lam - l0))), 0)];
   let lam0 = all[0].lam, best = score(lam0);
   for (const e of all) { const s = score(e.lam); if (s[0] > best[0] || (s[0] === best[0] && s[1] > best[1])) { best = s; lam0 = e.lam; } }
-  const picked = vs.map(v => near(v, lam0).sort((a, b) => Math.abs(a.lam - lam0) - Math.abs(b.lam - lam0)).slice(0, PER_VISIT));
-  return { lam0, tol, picked: picked.map((p, n) => p.length ? p : [vs[n].reduce((a, b) => Math.abs(a.lam - lam0) < Math.abs(b.lam - lam0) ? a : b)]) };
+  const picked = vs.map(v => near(v, lam0)).filter(p => p.length);
+  return { lam0, tol, picked };
 }
 
 // north-up output grid about the target (bake/flipbook.py target_wcs): 0-based pixel -> [ra, dec]
@@ -99,6 +95,7 @@ function centroid(a, guess, r = 3) {
 
 const year = mjd => 2000 + (mjd - 51544.5) / 365.25;
 const date = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
+const clock = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(11, 16);
 
 self.onmessage = async ({ data: { ra, dec, det, api } }) => {
   try {
@@ -109,8 +106,8 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
     if (!found.images.length) return post({ type: 'empty' });
     const maps = await fetch(new URL('../data/wavemaps.json', import.meta.url)).then(r => r.json());
     if (!maps[det]) return post({ type: 'error', error: `no wavelength map for ${det} yet` });
-    const vs = visits(found.images).map(v => v.slice(0, MAX_PER_VISIT));
-    post({ type: 'progress', text: `${found.images.length} images in ${vs.length} visits; reading where the target falls in each`, ms: performance.now() - t0 });
+    const vs = found.images.map(e => [e]);
+    post({ type: 'progress', text: `${found.images.length} exposures on ${det}; reading the wavelength at this spot in each`, ms: performance.now() - t0 });
 
     let done = 0;
     await pool(vs.flat(), 8, async e => {
@@ -122,6 +119,8 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
     const usable = vs.map(v => v.filter(e => e.lam != null)).filter(v => v.length);
     if (!usable.length) return post({ type: 'empty' });
     const { lam0, tol, picked } = match(usable);
+    if (!picked.length) return post({ type: 'empty' });
+    post({ type: 'progress', text: `${picked.length} exposures at ${lam0.toFixed(2)} µm, of ${found.images.length} on ${det}` });
 
     // Gaia, fetched while frames build: the star at this spot, propagated from 2016.0 to the target epoch (2026.0)
     const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}`).then(r => r.ok ? r.json() : null).catch(() => null).then(g => g?.stars || []);
@@ -129,13 +128,15 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
     const frames = [];
     for (const [n, v] of picked.entries()) {
       const arrs = (await pool(v, 3, e => reproject(e, ra, dec))).filter(Boolean);
+      if (!arrs.length) continue;
       const stack = new Float32Array(GRID * GRID).map((_, k) => median(arrs.map(a => a[k])));
       const ts = v.map(e => e.t), mjd = ts.reduce((a, b) => a + b, 0) / ts.length;
-      frames.push({ px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, year: year(mjd), exposures: arrs.length,
+      frames.push({ px: stack, start: date(mjd), end: date(mjd), time: clock(mjd), mjd, year: year(mjd), exposures: arrs.length,
         lam: v.reduce((s, e) => s + e.lam, 0) / v.length, lam_spread: Math.max(...v.map(e => Math.abs(e.lam - lam0))),
-        matched: Math.max(...v.map(e => Math.abs(e.lam - lam0))) <= tol, bw: v.reduce((s, e) => s + e.bw, 0) / v.length });
+        matched: true, bw: v.reduce((s, e) => s + e.bw, 0) / v.length });
       post({ type: 'frame', n, of: picked.length, ms: performance.now() - t0 });
     }
+    if (!frames.length) return post({ type: 'empty' });
 
     // measure first, starting at the typed spot and following the source frame to frame
     const c0 = (GRID - 1) / 2;

@@ -20,7 +20,7 @@
     <h1>C-0147</h1>
     <span class="chip likely">Likely comet</span>
     <span class="chip cat"><svg class="ic" style="width:15px;height:15px"><use href="icons.svg#known"/></svg>Not in any catalog</span>
-    <a class="btn ghost" href="timelapse.html?target=rwaur&diff=1">Open its patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
+    <a class="btn ghost" href="patch.html?target=rwaur&diff=1">Open its patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
   </div>
 
   <div class="comet-grid">
@@ -95,7 +95,7 @@
           <label><input type="radio" name="tag"><span class="tag unsure">Not sure</span></label>
         </div>
         <textarea rows="2" placeholder="Add a comment" aria-label="Your comment"></textarea>
-        <div class="row"><span class="faint" style="font-size:12.5px">A tag is optional. It counts as your vote.</span><button class="btn small" type="button">Post</button></div>
+        <div class="row"><span class="faint" style="font-size:12.5px">A tag is optional. It counts as your vote.</span><button class="btn small" id="post" type="button">Post</button></div>
       </form>
     </aside>
   </div>
@@ -123,6 +123,27 @@
     add("text", { class: "lab", x: sx(l), y: sy(f) - 24, "text-anchor": "middle" }, name);
     add("text", { x: sx(l), y: sy(f) - 10, "text-anchor": "middle" }, l + " µm");
   }
+  document.getElementById('post').onclick = () => {
+    const box = document.querySelector('.composer');
+    const text = box.querySelector('textarea').value.trim();
+    const picked = box.querySelector('input:checked');
+    if (!text && !picked) return;
+    const art = document.createElement('article');
+    art.className = 'comment';
+    const av = document.createElement('span'); av.className = 'av'; av.textContent = 'OO';
+    const who = document.createElement('div'); who.className = 'who';
+    who.innerHTML = '<b>you</b><time>now</time>';
+    if (picked) {
+      const src = picked.parentElement.querySelector('.tag');
+      const tag = src.cloneNode(true);
+      who.append(tag);
+    }
+    const p = document.createElement('p');
+    p.textContent = text || 'Tagged, with no note. This comment stays in this browser only.';
+    art.append(av, who, p);
+    box.before(art);
+    box.querySelector('textarea').value = '';
+  };
 </script>
 </body>
 </html>
