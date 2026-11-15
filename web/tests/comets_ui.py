@@ -159,7 +159,9 @@ async def main():
         await pg.unroute("**/api/comets", stub)
 
         # the sky: a known comet's name is hidden until the pointer is on it (or it has keyboard focus)
-        await pg.goto(BASE + "/explore.html"); await pg.wait_for_selector(".mk.peek:not([hidden])", state="attached")
+        await pg.goto(BASE + "/explore.html"); await pg.wait_for_selector("body[data-ready='1']")
+        await pg.wait_for_function("!document.getElementById('play').classList.contains('on')", timeout=60000)   # the replay Explore opens with has ended: markers hold still
+        await pg.wait_for_selector(".mk.peek:not([hidden])", state="attached")
         mk = pg.locator(".mk.peek:not([hidden])").first
         assert not await mk.locator("b").is_visible(), "name shows before hover"
         await mk.locator("i").hover(); await pg.wait_for_timeout(300)
