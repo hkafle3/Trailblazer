@@ -4,8 +4,8 @@
 //   scale()         -> [x, y] grid pixels per CSS pixel, or null while there is no photo
 //   moved()         the photo moved: redraw it shifted by .pan (sky outside the loaded grid stays empty)
 //   commit(pan)     make the spot `pan` from the built centre the new centre (build it, update the URL and the box)
-// The page calls reset() when frames for a new centre land and when another search starts (it also drops a pending
-// arrow-key move), and asks moving() before it swaps frames mid-gesture. One pointer at a time: a second finger is
+// The page calls reset() when frames for a new centre land and when another search starts (it also ends a pending
+// arrow-key move or a drag still held), and asks moving() before it swaps frames mid-gesture. One pointer at a time: a second finger is
 // ignored until the first lifts.
 import { tanDeproject } from './fits.js';
 
@@ -17,13 +17,15 @@ export function panToSky(ra, dec, pan, arcsecPerPixel) {
   return tanDeproject({ CRVAL1: ra, CRVAL2: dec }, pan[0] * a, pan[1] * a);
 }
 
-// The Explore heat map's cell for a spot, the same grid as worker/src/index.js cellAt: 51 bands of Dec, each cut into
-// about 3.5 degree steps of RA. The page posts a check only when a build lands in a new cell, so nudging around one
-// spot counts once (and stays under the Worker's 10 a minute limit).
+// The Explore heat map's cell for a spot: worker/src/index.js cellAt(ra % 360, dec), the same arithmetic step for step
+// so the floating point agrees at cell edges. 51 bands of Dec, each cut into about 3.5 degree steps of RA. The page posts
+// a check only when a result it shows lands in a new cell, so nudging around one spot counts once (and stays under the
+// Worker's 10 a minute limit). Returns "band,cell in band".
+const BANDS = 51, DEC_STEP = 180 / BANDS, RAD = Math.PI / 180;
 export function heatCell(ra, dec) {
-  const step = 180 / 51, i = Math.min(50, Math.floor((90 - dec) / step));
-  const n = Math.max(1, Math.round(360 * Math.cos((90 - (i + 0.5) * step) * Math.PI / 180) / 3.5));
-  return `${i},${Math.min(n - 1, Math.floor(((ra % 360) + 360) % 360 / 360 * n))}`;
+  const i = Math.min(BANDS - 1, Math.floor((90 - dec) / DEC_STEP));
+  const n = Math.max(1, Math.round(360 * Math.cos((90 - (i + .5) * DEC_STEP) * RAD) / 3.5));
+  return `${i},${Math.min(n - 1, Math.floor(ra % 360 / 360 * n))}`;
 }
 
 export function recenterable(el, { scale, moved, commit, hint = 'Drag or click to re-center' }) {
@@ -92,7 +94,11 @@ export function recenterable(el, { scale, moved, commit, hint = 'Drag or click t
 
   return {
     get pan() { return pan; },
-    reset() { glide = null; pan = [0, 0]; clearTimeout(nudge); nudge = 0; },
+    // ends everything in progress: the eased move, a pending arrow-key move and a drag still held (its release is ignored)
+    reset() {
+      glide = null; pan = [0, 0]; clearTimeout(nudge); nudge = 0;
+      if (grab) { try { el.releasePointerCapture(grab.id); } catch {} grab = null; el.classList.remove('drag'); }
+    },
     moving: () => !!(grab || nudge),
   };
 }

@@ -154,12 +154,13 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
       const [lam, bw] = wavelengthAt(maps[det], p[0], p[1]);
       return [{ ...e, lam, bw }];
     });
-    // Re-centre: the list is reused while every visit in it still has an image on the new spot. A visit that
-    // drops out means the move left the list's coverage, so IRSA is asked again (20 to 30 s on a slow day).
-    // ponytail: an image that covers the new spot but not the searched one is not in the list, so a frame can have
-    // fewer exposures than a fresh search of the same spot; a region search in the Worker would close that.
-    let usable = list?.det === det ? list.visits.map(here) : [];
-    if (!usable.length || usable.some(v => !v.length)) {
+    // Re-centre: the list is reused while any of its images covers the new spot. Visits with no image there are left
+    // out of this build (the list keeps them, so moving back brings them back); IRSA is asked again (20 to 30 s on a
+    // slow day) only when no listed image covers the spot.
+    // ponytail: an image that covers the new spot but not the searched one is not in the list, so a re-centre can
+    // have fewer visits or exposures than a fresh search of the same spot; a region search in the Worker would close that.
+    let usable = list?.det === det ? list.visits.map(here).filter(v => v.length) : [];
+    if (!usable.length) {
       // v=2: a browser may still hold a failed search that the old Worker let it cache for a day (2026-11-14)
       const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}&v=2`, { signal });
       const found = await res.json();

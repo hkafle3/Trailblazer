@@ -1,7 +1,8 @@
 """Browser check for re-centring the time-lapse: click a spot, drag the photo, arrow keys. Needs the app up (npm run dev)
 and the network (IRSA, NASA's S3 copy of SPHEREx); takes a few minutes on a slow IRSA day.
 Run: uv run -q --with playwright python web/tests/recenter_ui.py [base url]   (default http://127.0.0.1:8787)
-Starts live 1.5 arcmin north of Barnard's Star (after a failed wavelength-map download, which must not stick), clicks
+Starts live 1.5 arcmin north of Barnard's Star (after a failed pipeline download and a failed wavelength-map download,
+neither of which may stick), clicks
 the star, then nudges, drags, taps, drags with two fingers, cancels a drag, switches detector during a key move, fails
 a re-centre on purpose, and finally moves 4 degrees away, out of the listed images. Precision is 1 SPHEREx pixel
 (6.15 arcsec); the photo's grid is 5 arcsec per pixel. Throughout, the photo, the URL and the box must name one spot."""
@@ -101,15 +102,28 @@ async def main():
             u = (float(q["ra"][0]), float(q["dec"][0])); bx = tuple(map(float, v["box"].split()))
             return max(sep(u, (v["ra"], v["dec"])), sep(bx, (v["ra"], v["dec"])))
 
-        # ---- a failed wavelength-map download is not remembered by the long-lived worker: the next search builds
-        left = [1]
-        async def flaky(route):
-            if left[0]: left[0] -= 1; await route.fulfill(status=503, body="busy")
-            else: await route.continue_()
-        await ctx.route("**/data/wavemaps.json", flaky)
+        def flaky(left):   # a route that fails `left` times, then lets requests through
+            async def h(route):
+                if left[0]: left[0] -= 1; await route.fulfill(status=503, body="busy")
+                else: await route.continue_()
+            return h
+        status = lambda: pg.evaluate("document.getElementById('status').textContent")
+        new_error = "s => { const e = document.getElementById('status'); return e.className === 'err' && e.textContent !== s; }"
+
+        # ---- the pipeline worker fails to download: an error, and the next search starts a new worker
+        dead, left = [1], [1]
+        await ctx.route("**/live/pipeline.js", flaky(dead))
+        await ctx.route("**/data/wavemaps.json", flaky(left))
         await pg.goto(f"{BASE}/timelapse.html?ra={START[0]}&dec={START[1]}&det=D1")
         await pg.wait_for_function("document.getElementById('status').className === 'err'", timeout=60000)
-        first = await pg.evaluate("document.getElementById('status').textContent")
+        broken = await status()
+
+        # ---- a failed wavelength-map download is not remembered by the long-lived worker: the next search builds
+        await pg.evaluate("document.getElementById('search').requestSubmit()")
+        await pg.wait_for_function(new_error, arg=broken, timeout=60000)
+        first = await status()
+        check(dead[0] == 0 and "pipeline" in broken and "wavelength maps" in first,
+              f"worker: a failed pipeline download says '{broken}', and the next search starts a new worker (it got as far as '{first}')")
         cdp = await ctx.new_cdp_session(pg)
 
         # ---- live start, 1.5 arcmin from the star
@@ -124,11 +138,17 @@ async def main():
         # ---- the page's heat-map cell matches the Worker's cellAt (taken from worker/src/index.js itself)
         src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "worker", "src", "index.js")).read()
         grid = src[src.index("const BANDS"):src.index("const cellBox")]
-        bad = await pg.evaluate("""async src => { const { heatCell } = await import('./live/recenter.js');
-          const cellAt = new Function(src + '; return (ra, dec) => [cellAt(ra, dec), GRID];')();
-          const spots = [[0, 0], [359.999, 0.01], [269.4463, 4.7922], [265.4, 4.8], [10, 89.99], [200, -89.99], [123.4, -45.6], [331.096, -56.801], [77.3, 27.35]];
-          return spots.filter(([ra, dec]) => { const [c, G] = cellAt(ra, dec), [i, j] = heatCell(ra, dec).split(',').map(Number); return G[i][0] + j !== c; }); }""", grid)
-        check(not bad, f"heatmap: the page's cell matches the Worker's cellAt at 9 spots, poles and RA 0/360 included (mismatches {bad})")
+        res = await pg.evaluate("""async src => { const { heatCell } = await import('./live/recenter.js');
+          const [cellAt, G, STEP] = new Function(src + '; return [cellAt, GRID, DEC_STEP];')();
+          // ordinary spots, the poles, RA 0/360, and every band edge and cell edge as the Worker's own arithmetic places them
+          const spots = [[0, 0], [359.999, 0.01], [269.4463, 4.7922], [10, 90], [200, -90], [123.4, -45.6], [7.2, 14.1176], [360, 10]];
+          for (let i = 0; i < G.length; i++) {
+            const n = G[i][1], decs = [90 - i * STEP, 90 - (i + .5) * STEP, 90 - (i + 1) * STEP];
+            for (const dec of decs) for (let j = 0; j <= n; j++) spots.push([360 * j / n, dec], [j / n * 360, dec], [(j + 1e-12) / n * 360, dec]);
+          }
+          const bad = spots.filter(([ra, dec]) => { const [i, j] = heatCell(ra, dec).split(',').map(Number); return G[i][0] + j !== cellAt(ra % 360, dec); });
+          return [spots.length, bad.slice(0, 5)]; }""", grid)
+        check(not res[1], f"heatmap: the page's cell matches the Worker's cellAt at {res[0]} spots, band and cell edges included (mismatches {res[1]})")
         check(p0 == 1, f"heatmap: the first build posted {p0} check")
         check(images() >= 1, f"start: live build in {time.time() - t0:.1f} s, {v['frames']} visits, {images()} /api/images request seen")
 
@@ -233,6 +253,29 @@ async def main():
         check(v["mdet"] == "D2" and "det=D2" in v["url"] and sep((v["ra"], v["dec"]), (before["ra"], before["dec"])) < 1 and agree(v) < 1,
               f"detector: D2 built at the same spot in {dt:.1f} s ({v['url']})")
 
+        # ---- a detector chosen during a gesture: the gesture ends, and when that search fails the page goes back to
+        # the spot on screen (D3 searches fail here on purpose; no
+        # earlier step built D3, so nothing is cached for it)
+        await ctx.route("**/api/images*det=D3*", lambda route: route.fulfill(status=502, content_type="application/json", body='{"error":"IRSA is not answering"}'))
+        settled = "s => { const e = document.getElementById('status'); return (e.className === 'err' && e.textContent !== s) || __lapse.state.m !== window.__was; }"
+        a = v; await mark(); s0 = ""
+        await pg.evaluate("document.getElementById('status').textContent = ''")   # so the same error text counts as new
+        await pg.mouse.move(a["cx"], a["cy"]); await pg.mouse.down(); await pg.mouse.move(a["cx"] + 40, a["cy"] + 20, steps=4)
+        await pg.select_option("#det", "D3")
+        await pg.mouse.move(a["cx"] + 90, a["cy"] + 50, steps=4); await pg.mouse.up()
+        await pg.wait_for_function(settled, arg=s0, timeout=90000); await pg.wait_for_timeout(500); v = await view()
+        drag = await pg.evaluate("document.getElementById('patch').classList.contains('drag')")
+        check(v["key"] == a["key"] and v["pan"] == [0, 0] and v["det"] == v["mdet"] == "D2" and agree(v) < 1 and not drag,
+              f"held drag: choosing D3 ended it, its release moved nothing, the failed D3 search went back ('{v['status']}', selector {v['det']})")
+        a = v; await mark(); s0 = ""
+        await pg.evaluate("document.getElementById('status').textContent = ''")   # so the same error text counts as new
+        await pg.mouse.move(a["cx"], a["cy"]); await pg.mouse.down(); await pg.mouse.move(a["cx"] + 80, a["cy"] + 50, steps=5); await pg.mouse.up()
+        await pg.select_option("#det", "D3")
+        await pg.wait_for_function(settled, arg=s0, timeout=90000); await pg.wait_for_timeout(500); v = await view()
+        check(v["key"] == a["key"] and v["pan"] == [0, 0] and v["det"] == v["mdet"] == "D2" and agree(v) < 1,
+              f"replaced re-centre: D3 chosen before it landed, D3 failed, back at the spot on screen ({v['url']}, box '{v['box']}', selector {v['det']})")
+        await ctx.unroute("**/api/images*det=D3*")
+
         # ---- a re-centre that fails goes back to the last spot: photo, URL and box agree with the panel
         await ctx.route("**/api/images*", lambda route: route.fulfill(status=502, content_type="application/json", body='{"error":"IRSA is not answering"}'))
         keep = v
@@ -248,11 +291,21 @@ async def main():
         pan = -4 * 3600 / v["aps"]
         await pg.evaluate(f"__lapse.recenter([{pan}, 0])")
         want = deproject((v["ra"], v["dec"]), pan * v["aps"], 0)
-        dt = await rebuilt(400000); v = await view()
+        # the result lands while a finger holds the photo: not shown, so no heat-map check yet
+        await cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        await touch("touchStart", [(0, v["cx"], v["cy"])]); await touch("touchMove", [(0, v["cx"] + 20, v["cy"])])
+        t0 = time.time()
+        await pg.wait_for_function("/visits, built|always work|detector\\./.test(document.getElementById('status').textContent)", timeout=400000)
+        dt = time.time() - t0; await pg.wait_for_timeout(500)
+        held = await pg.evaluate("__lapse.state.m === window.__was")
+        check(held and posts() == p1, f"heatmap: a result that landed during a held drag was not shown and posted {posts() - p1} checks")
+        await touch("touchCancel"); await cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": False})
+        await pg.evaluate(f"__lapse.recenter([{pan}, 0])")   # the same spot again: the kept result, shown now
+        await rebuilt(); v = await view()
         off = sep((v["ra"], v["dec"]), want)
-        check(images() > n0 and off <= PIXEL and v["frames"] >= 2 and "built" in v["status"],
+        check(images() > n0 and off <= PIXEL and v["frames"] >= 2 and "Back at" not in v["status"],
               f"leave: new /api/images request ({images() - n0}), {v['frames']} visits at the new spot ({off:.2f}\" off), built in {dt:.1f} s")
-        check(posts() == p1 + 1, f"heatmap: the move into a new cell posted {posts() - p1} check ({posts()} in all for {landed[0]} builds)")
+        check(posts() == p1 + 1, f"heatmap: the move into a new cell, once shown, posted {posts() - p1} check ({posts()} in all for {landed[0]} builds)")
         check(v["cached"] <= 8 and landed[0] > 8, f"cache: {landed[0]} live builds, {v['cached']} kept for instant return (at most 8)")
         await b.close()
     sys.exit(1 if fails else 0)
