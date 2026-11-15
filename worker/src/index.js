@@ -2,7 +2,7 @@
 // IRSA's search (SIA) and ESA's Gaia archive send no CORS header and IRSA throws intermittent 502s, so this
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
-//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
+//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=
 //   GET /api/comets   GET /api/explored   (example data until D1 holds real labels; see docs/api.md)
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 import { COMETS, SUGGEST, exploredCells } from './example-data.js';
@@ -103,6 +103,49 @@ async function gaia(url) {
   }
 }
 
+// hours "16 28 36.29" or degrees "-16 48 16.4" -> decimal degrees
+function sexagesimal(text, hours) {
+  const n = String(text).trim().match(/[+-]?\d+(?:\.\d+)?/g);
+  if (!n) return NaN;
+  const sign = /^\s*-/.test(text) ? -1 : 1;
+  const [a, b = 0, c = 0] = n.map(x => Math.abs(Number(x)));
+  return sign * (a + b / 60 + c / 3600) * (hours ? 15 : 1);
+}
+
+// Known bodies in this frame, from IMCCE SkyBoT: asteroids and comets, not planets.
+// Geocentric. Asteroids fainter than V = 21 are dropped, and at most 8 are returned.
+// Comets are kept even when SkyBoT sends no magnitude. The baked MPC ephemeris is the
+// fallback the page uses when this route does not answer.
+async function known(url) {
+  const p = position(url);
+  if (p.error) return json(p, 400);
+  const t = Number(url.searchParams.get('t'));
+  if (!url.searchParams.has('t') || !Number.isFinite(t) || t < 40000 || t > 80000) return json({ error: 't must be an MJD' }, 400);
+  const q = new URLSearchParams({
+    '-ep': String(t + 2400000.5), '-ra': String(p.ra), '-dec': String(p.dec), '-rd': '0.15',
+    '-mime': 'json', '-output': 'object', '-objFilter': '101', '-from': 'comet-hunt',
+  });
+  let rows;
+  try {
+    const text = await fetchRetry(`https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?${q}`, 3);
+    rows = text.trim() ? JSON.parse(text) : [];   // 204: nothing in the cone, not an outage
+  } catch {
+    return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  }
+  if (!Array.isArray(rows)) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  const comets = [], bright = [];
+  for (const r of rows) {
+    const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
+    if (!Number.isFinite(ra) || !Number.isFinite(dec)) continue;
+    const mag = Number(r['VMag (mag)']);
+    const body = { name: String(r.Name || r.Num || 'object'), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? +mag.toFixed(1) : null, err: Number(r['Err (arcsec)']) || 0 };
+    if (r.Class === 'Comet') comets.push(body);
+    else if (body.mag != null && body.mag <= 21) bright.push(body);
+  }
+  bright.sort((a, b) => a.mag - b.mag);
+  return json({ ra: p.ra, dec: p.dec, t, comets, asteroids: bright.slice(0, 8), omitted: Math.max(0, bright.length - 8) }, 200, { 'Cache-Control': 'public, max-age=86400' });
+}
+
 // Comets people found plus known objects, for the map's markers
 const comets = () => json({ example: true, comets: COMETS }, 200, { 'Cache-Control': 'public, max-age=60' });
 
@@ -116,7 +159,7 @@ export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
-    const route = { '/api/images': images, '/api/gaia': gaia, '/api/comets': comets, '/api/explored': explored }[url.pathname];
+    const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known, '/api/comets': comets, '/api/explored': explored }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     const cache = caches.default, hit = await cache.match(request);
     if (hit) return hit;

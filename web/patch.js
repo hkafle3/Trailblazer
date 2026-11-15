@@ -1,6 +1,7 @@
 // Designed patch viewer. Frames come from a baked manifest or from the same live worker as timelapse.html.
 // Comparison modes are the design's CSS (:has on the radios). This file paints the pixels and the flag.
 import { POLES, cadenceText, deepField } from './skypos.js';
+import { asteroidsAt, cometsAt, eastNorth, loadEph } from './known.js';
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" },
@@ -25,6 +26,9 @@ const state = {
   play: 0,
   playing: false,
   resumed: false,
+  eph: null,
+  ephErr: false,
+  sky: new Map(),
 };
 
 function parseCoords(text) {
@@ -129,15 +133,214 @@ function setCadence(ra, dec) {
   el.style.color = deepField(ra, dec) ? 'var(--people)' : '#ffc285';
 }
 
-function knownLayer(host, m) {
+function markerPos(m, crop, east, north) {
+  const c0 = (m.grid - 1) / 2, pix = m.arcsec_per_pixel;
+  return [(c0 - east / pix - crop.o) / crop.size * 100, (c0 - north / pix - crop.o) / crop.size * 100];
+}
+
+function skyKey(m, frame) {
+  return `${m.ra.toFixed(4)},${m.dec.toFixed(4)},${Number(frame.mjd).toFixed(2)}`;
+}
+
+function inFrame(m, body) {
+  const [east, north] = eastNorth(m.ra, m.dec, body.ra, body.dec);
+  const c0 = (m.grid - 1) / 2, pix = m.arcsec_per_pixel;
+  const x = c0 - east / pix, y = c0 - north / pix;
+  if (!(x >= 0 && y >= 0 && x <= m.grid - 1 && y <= m.grid - 1)) return null;
+  return { name: body.name, east, north, mag: body.mag };
+}
+
+function median(values) {
+  const s = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!s.length) return NaN;
+  const i = s.length >> 1;
+  return s.length % 2 ? s[i] : (s[i - 1] + s[i]) / 2;
+}
+
+function frameNoise(frame, grid) {
+  if (frame._noise) return frame._noise;
+  const fin = [], q = (grid - 36) / 2;
+  for (let y = q; y < q + 36; y++) for (let x = q; x < q + 36; x++) {
+    const v = frame.px[y * grid + x];
+    if (Number.isFinite(v)) fin.push(v);
+  }
+  const m0 = median(fin);
+  const noise = 1.4826 * median(fin.map(v => Math.abs(v - m0))) || 1;
+  frame._noise = { m0, noise };
+  return frame._noise;
+}
+
+// Same 3× noise bar as the centered star, and the same stretch as the picture.
+// The peak must sit within 2 pixels (10″) of the catalog position, so a bright
+// star nearby is not counted as this body. A 3× peak that the stretch paints
+// as sky does not get a circle.
+function sourceAt(frame, m, east, north) {
+  if (!frame?.px) return { visible: false, snr: 0 };
+  const grid = m.grid, c0 = (grid - 1) / 2;
+  const x0 = c0 - east / m.arcsec_per_pixel, y0 = c0 - north / m.arcsec_per_pixel;
+  if (!(x0 >= 0 && y0 >= 0 && x0 <= grid - 1 && y0 <= grid - 1)) return { visible: false, snr: 0 };
+  const { m0, noise } = frameNoise(frame, grid);
+  let peak = -Infinity, sat = 0, n = 0;
+  const r = 2;
+  for (let y = Math.max(0, Math.floor(y0 - r)); y <= Math.min(grid - 1, Math.ceil(y0 + r)); y++) {
+    for (let x = Math.max(0, Math.floor(x0 - r)); x <= Math.min(grid - 1, Math.ceil(x0 + r)); x++) {
+      if ((x - x0) ** 2 + (y - y0) ** 2 > r * r) continue;
+      const v = frame.px[y * grid + x];
+      n++;
+      if (!Number.isFinite(v)) sat++;
+      else if (v > peak) peak = v;
+    }
+  }
+  if (n && sat > 0.5 * n) return { visible: true, snr: Infinity };
+  const snr = Number.isFinite(peak) ? (peak - m0) / noise : 0;
+  const { lo, hi: fieldHi } = m.stretch || { lo: 0, hi: 1 };
+  const hi = m.hiDisplay || fieldHi;
+  const span = fieldHi - lo || 1;
+  const A = Math.asinh(10 * Math.max(1e-6, (hi - lo) / span));
+  const gray = Math.min(1, Math.asinh(Math.max(0, (peak - lo) / span) * 10) / A) * 255;
+  // 3× noise is a detection. It still has to survive the same stretch as the picture,
+  // or the circle lands on a pixel the eye reads as sky.
+  return { visible: snr > 3 && gray >= 40, snr };
+}
+
+function bodiesFor(m, frame) {
+  if (!frame || !Number.isFinite(frame.mjd)) return { comets: [], asteroids: [], error: '', source: '' };
+  const sky = state.sky.get(skyKey(m, frame));
+  // SkyBoT is an n-body cone, so it wins when it answers. The baked two-body orbit
+  // is drawn only when SkyBoT does not answer, and it can sit arcminutes off.
+  if (!sky) return { comets: [], asteroids: [], error: '', source: '' };
+  const mark = list => (list || []).filter(b => {
+    const c0 = (m.grid - 1) / 2, pix = m.arcsec_per_pixel;
+    const x = c0 - b.east / pix, y = c0 - b.north / pix;
+    return x >= 0 && y >= 0 && x <= m.grid - 1 && y <= m.grid - 1;
+  }).map(b => ({ ...b, ...sourceAt(frame, m, b.east, b.north) }));
+  if (!sky.error) {
+    const place = (list, kind) => mark((list || []).map(b => ({ ...inFrame(m, b), kind })).filter(b => b.name));
+    return { comets: place(sky.comets, 'comet'), asteroids: place(sky.asteroids, 'asteroid'), error: '', source: 'skybot' };
+  }
+  const comets = state.eph ? cometsAt(state.eph, m.ra, m.dec, frame.mjd) : [];
+  return { comets: mark(comets), asteroids: [], error: sky?.error || '', source: 'mpc' };
+}
+
+function shortName(name) {
+  return String(name).replace(/\s*\([^)]*\)$/, '');
+}
+
+function catalogPhrase(list, none, noun) {
+  const on = list.filter(b => b.visible), off = list.filter(b => !b.visible);
+  const names = on.map(b => shortName(b.name)).join(', ');
+  const hidden = off.length === 1
+    ? `${shortName(off[0].name)} catalogued, not visible in this exposure`
+    : `${off.length} ${noun} catalogued, none visible in this exposure`;
+  if (on.length && off.length) return `${names} · ${hidden}`;
+  if (on.length) return names;
+  if (off.length) return hidden;
+  return none;
+}
+
+function catalogLine(m, frame) {
+  if (!frame || !Number.isFinite(frame.mjd)) return 'This frame has no time, so the catalogs cannot be placed';
+  const { comets, asteroids, error, source } = bodiesFor(m, frame);
+  if (!source && !error) return state.ephErr ? 'Comet catalog did not load' : 'Checking catalogs…';
+  if (state.ephErr && error) return 'Comet catalog did not load · ' + error;
+  if (error) {
+    const on = comets.filter(b => b.visible);
+    return on.length
+      ? `SkyBoT is not answering. Baked orbit: ${on.map(c => shortName(c.name)).join(', ')}`
+      : 'SkyBoT is not answering. No baked comet is visible in this exposure';
+  }
+  return `${catalogPhrase(comets, 'no catalog comet', 'comets')} · ${catalogPhrase(asteroids, 'no asteroid at mag 21 or brighter', 'asteroids')}`;
+}
+
+function catalogTitle(m, frame) {
+  const fallback = 'A circle is drawn only when this exposure is brighter than the sky at that position.';
+  if (!frame) return fallback;
+  const { comets, asteroids } = bodiesFor(m, frame);
+  const off = [...comets, ...asteroids].filter(b => !b.visible && Number.isFinite(b.snr));
+  if (off.length !== 1) return fallback;
+  const b = off[0];
+  if (!(b.snr > 3)) return `${shortName(b.name)} is ${b.snr.toFixed(1)}× the noise in this exposure. A circle needs 3×, and the pixel has to show against the stars.`;
+  return `${shortName(b.name)} is above the noise, but too faint to see in this picture.`;
+}
+
+function knownLayer(host, m, frame, crop) {
   host.replaceChildren();
-  if (!m || String(m.key || '').startsWith('live-')) return;
-  const kn = document.createElement('span');
-  kn.className = 'kn';
-  kn.style.left = '50%';
-  kn.style.top = '50%';
-  kn.innerHTML = `<b>${m.name}</b>`;
-  host.append(kn);
+  if (!m || !frame) return;
+  if (!String(m.key || '').startsWith('live-')) {
+    const name = document.createElement('span');
+    name.className = 'kn';
+    name.style.left = '50%';
+    name.style.top = '50%';
+    name.innerHTML = `<b>${m.name}</b>`;
+    host.append(name);
+  }
+  const { comets, asteroids } = bodiesFor(m, frame);
+  for (const b of [...comets, ...asteroids].filter(b => b.visible)) {
+    const el = document.createElement('span');
+    el.className = `kn ${b.kind === 'comet' ? 'comet' : 'ast'}`;
+    const [left, top] = markerPos(m, crop, b.east, b.north);
+    el.style.left = left + '%';
+    el.style.top = top + '%';
+    el.title = b.name;
+    const lab = document.createElement('b');
+    const short = b.name.replace(/\s*\([^)]*\)$/, '');
+    lab.textContent = b.mag ? `${short}  ${b.mag}` : short;
+    el.append(lab);
+    host.append(el);
+  }
+}
+
+function visibleFrames() {
+  const m = state.m;
+  if (!m?.frames.length) return [];
+  if ($('m-play').checked) return [m.frames[Math.min(m.frames.length - 1, Math.max(0, state.play))]];
+  return [m.frames[state.a], m.frames[state.b]].filter(Boolean);
+}
+
+let catToken = 0, catTimer = 0;
+function paintKnown() {
+  const m = state.m;
+  if (!m?.frames.length) return;
+  const crop = cropOf(m);
+  const frames = visibleFrames();
+  if ($('m-play').checked) {
+    knownLayer($('known-a'), m, frames[0], crop);
+    knownLayer($('known-b'), m, null, crop);
+    placeFlag($('known-a'), state.marks.find(k => k.frame === state.play), crop);
+  } else {
+    knownLayer($('known-a'), m, frames[0], crop);
+    knownLayer($('known-b'), m, frames[1], crop);
+    placeFlag($('known-a'), state.marks.find(k => k.which === 'a' && k.frame === state.a), crop);
+    placeFlag($('known-b'), state.marks.find(k => k.which === 'b' && k.frame === state.b), crop);
+  }
+  const focus = $('m-play').checked ? frames[0] : frames[1] || frames[0];
+  $('known-chip').textContent = catalogLine(m, focus);
+  $('known-chip').title = catalogTitle(m, focus);
+}
+
+function scheduleCatalog() {
+  const token = ++catToken;
+  paintKnown();
+  clearTimeout(catTimer);
+  catTimer = setTimeout(() => { ensureCatalog(token); }, 120);
+}
+
+async function ensureCatalog(token) {
+  const m = state.m;
+  if (!m) return;
+  if (!state.eph && !state.ephErr) {
+    try { state.eph = await loadEph(); }
+    catch { state.ephErr = true; }
+  }
+  if (token !== catToken) return;
+  paintKnown();
+  for (const f of visibleFrames()) {
+    if (!Number.isFinite(f?.mjd)) continue;
+    const key = skyKey(m, f);
+    if (!state.sky.has(key)) state.sky.set(key, await asteroidsAt(m.ra, m.dec, f.mjd));
+    if (token !== catToken) return;
+    paintKnown();
+  }
 }
 
 function placeFlag(host, mark, crop) {
@@ -272,6 +475,7 @@ function showFrame(n, role) {
   $('cap-a').textContent = frameLabel(f);
   moveTimeline(n);
   paintWindow();
+  scheduleCatalog();
   const thumbs = $('strip').children;
   for (let i = 0; i < thumbs.length; i++) thumbs[i].classList.toggle('playhead', role === 'Playing' && i === n);
   const el = thumbs[n], strip = $('strip');
@@ -343,14 +547,6 @@ function render() {
   $('fov').value = String(state.fov);
   paintRange($('fov'));
   $('fov-label').textContent = `${(+state.fov).toFixed(state.fov < 10 ? 1 : 0)}′`;
-  knownLayer($('known-a'), m);
-  knownLayer($('known-b'), m);
-  placeFlag($('known-a'), state.marks.find(k => k.which === 'a' && k.frame === state.a), crop);
-  placeFlag($('known-b'), state.marks.find(k => k.which === 'b' && k.frame === state.b), crop);
-  $('known-chip').textContent = String(m.key || '').startsWith('live-')
-    ? 'Comet and asteroid reticles are not drawn yet'
-    : `Centered on ${m.name}. Comet and asteroid reticles are not drawn yet`;
-
   const strip = $('strip');
   const keep = strip.scrollTop;
   strip.replaceChildren();
@@ -370,6 +566,7 @@ function render() {
   drawTimeline(m);
   if (state.playing) showPlaying(state.play);
   else if ($('m-play').checked) showFrame(state.play, 'Paused');
+  else scheduleCatalog();
   facts(m, fa, fb);
   showFlag(m, fa, fb);
 }
@@ -472,6 +669,7 @@ function setStatus(text) {
 function openManifest(m) {
   stopPlay();
   state.m = decode(m);
+  state.sky = new Map();
   state.play = 0;
   state.a = 0;
   state.b = Math.max(1, m.frames.length - 1);

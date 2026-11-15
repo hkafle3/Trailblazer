@@ -315,8 +315,12 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 .scale { position: absolute; left: 12px; bottom: 12px; width: 16.66%; padding-top: 5px; border-top: 1.5px solid rgba(255, 255, 255, .8); font: 400 10.5px/1 var(--mono); color: rgba(255, 255, 255, .8); text-shadow: 0 1px 3px #000; white-space: nowrap; }
 .track { position: absolute; inset: 0; width: 100%; height: 100%; }
 .track line { stroke: rgba(255, 255, 255, .55); stroke-width: .4; stroke-dasharray: 1.2 1.6; }
-.kn { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 1.5px solid var(--known); border-radius: 5px; }
+.kn { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 1.5px solid var(--known); border-radius: 5px; pointer-events: none; }
 .kn b { position: absolute; left: 28px; top: 2px; font: 500 11px/16px var(--mono); color: #c4dcff; white-space: nowrap; text-shadow: 0 1px 4px #000; }
+.kn.comet, .kn.ast { width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border-style: dashed; background: transparent; }
+#known-chip { white-space: normal; height: auto; max-width: 100%; line-height: 1.35; padding: 6px 12px; }
+.kn.comet { border-color: var(--comet); }
+.kn.comet b { color: #ffd7b8; }
 .mode-note { display: none; }
 /* Blink and Remove still stars show one plate: the later photo laid over the earlier one. */
 .viewer:has(#m-blink:checked, #m-diff:checked) .frames { grid-template-columns: minmax(0, 490px); justify-content: center; }

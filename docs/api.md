@@ -48,11 +48,21 @@ Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 
 
 Gaia DR3 stars within 0.04 degrees, with proper motions, for checking measured star motion. `503` when ESA's archive is down.
 
+## GET /api/known?ra=&dec=&t=
+
+Asteroids and comets inside a 0.15° cone at one time, from IMCCE SkyBoT (planets excluded). `t` is an MJD. Asteroids of V magnitude 21 or brighter are kept, at most 8, brightest first. Comets are all kept; `mag` is null when SkyBoT sends none. Cached for a day. `503` when SkyBoT is down, and the patch then falls back to the baked Minor Planet Center orbits in `web/data/comet_eph.json`. `400` when `t` is missing or not an MJD. Which catalog is used for what, and when the patch draws a circle, is in [catalogs.md](catalogs.md).
+
+```json
+{ "ra": 246.71, "dec": -16.79, "t": 60897.0,
+  "comets": [ { "name": "3I", "ra": 246.72, "dec": -16.79, "mag": null, "err": 0.97 } ],
+  "asteroids": [ { "name": "Saville", "ra": 247.12, "dec": -16.81, "mag": 17.4, "err": 0.02 } ],
+  "omitted": 0 }
+```
+
 ## Planned (not built)
 
 - `POST /api/comments` `{ dot, text, tag? }` with a Turnstile token: tag is one of `comet`, `asteroid`, `glitch`, `unsure`.
 - `GET /api/comets/:id`: one comet with its dots, photos, measurements and comment thread.
-- `GET /api/known?ra=&dec=&t=`: known comets and asteroids at a spot and time, from IMCCE SkyBoT.
 
 ## Tests
 
