@@ -124,7 +124,8 @@ def measured(name, comets):
         d = json.loads((ROOT / "web/data/comets" / re.sub(r"[^a-z0-9]+", "-", c.lower()).strip("-") / "comet.json").read_text())
         if c in known:
             k = known[c]
-            d = dict(d, q=k["q"], tp=k["tp"], spherex=k["spherex"], mags=[[t, m] for t, _, _, m in k["track"] if m is not None and t % 10 == 0])
+            d = dict(d, q=k["q"], tp=k["tp"], spherex=k["spherex"], mags=[[t, m] for t, _, _, m in k["track"] if m is not None and t % 10 == 0],
+                     **{f: k[f] for f in ("faint", "mag_in_photo") if f in k})   # catalog fields from --known (0010 on); the UPDATE would drop them
         sql.append(f"UPDATE comets SET detail = {q(json.dumps(d, separators=(',', ':')))} WHERE id = {q(c)};")
     out = ROOT / f"worker/migrations/{name}.sql"
     out.write_text("\n".join(sql) + "\n")

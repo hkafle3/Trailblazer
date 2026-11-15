@@ -41,7 +41,7 @@ GRID = 144         # output frame is GRID x GRID pixels
 PIX_ARCSEC = 5.0
 
 
-def get(url, tries=30):  # about an hour of patience: IRSA's TAP was down for long stretches on 2026-11-14
+def get(url, tries=50):  # about an hour of patience: IRSA's TAP was down for long stretches on 2026-11-14
     for i in range(tries):
         try:
             with urllib.request.urlopen(url, timeout=180) as r:
@@ -50,7 +50,9 @@ def get(url, tries=30):  # about an hour of patience: IRSA's TAP was down for lo
                 raise IOError(data[:60])
             return data
         except Exception as e:
-            wait = min(120, 4 * 2 ** i)
+            # 2026-11-15: SIA answered an instant 502 to about 2 of 3 requests and the full answer (after ~21 s) to the
+            # rest, so the first 20 retries of an instant 502 come quickly; after that, back off for long outages
+            wait = 2 if i < 20 and "502" in str(e) else min(120, 4 * 2 ** i)
             print(f"  retry {i + 1}/{tries} in {wait}s: {str(e)[:80]}", flush=True)
             time.sleep(wait)
     raise IOError(f"gave up: {url[:120]}")
