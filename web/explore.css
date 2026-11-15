@@ -143,7 +143,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   /* sheets: Layers and Examples rise from the bottom over the timeline; the comet sheet sits on the timeline */
   body.explore .layers-body, .csheet {
     position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; width: auto; margin: 0; padding: 0 22px calc(18px + env(safe-area-inset-bottom));
-    display: block; border: 0; border-top: 2px solid #fff; border-radius: 0; background: rgba(4, 6, 12, .985); box-shadow: 0 -20px 50px -20px #000; font-family: var(--panel-font); color: #fff;
+    display: block; border: 0; border-top: 2px solid #fff; border-radius: 0; background: #04060c; box-shadow: 0 -20px 50px -20px #000; font-family: var(--panel-font); color: #fff;
   }
   body.explore .layers-body .grab, .csheet .grab { display: block; width: 36px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: rgba(255, 255, 255, .55); }
   body.explore .layers-body .sheet-x, .csheet .sheet-x { display: grid; place-items: center; position: absolute; right: 10px; top: 4px; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fff; cursor: pointer; }
