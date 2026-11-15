@@ -55,7 +55,8 @@ async def main():
 
         async def page(url):
             pg = await ctx.new_page()
-            pg.on("console", lambda m: m.type == "error" and errors.append(f"{url}: console {m.text}"))
+            # Cloudflare Turnstile's own frame (the Discuss sheet's check, live only) logs its probes: not this page's
+            pg.on("console", lambda m: m.type == "error" and "challenges.cloudflare.com" not in (m.location or {}).get("url", "") and errors.append(f"{url}: console {m.text} at {(m.location or {}).get('url')}"))
             pg.on("pageerror", lambda e: errors.append(f"{url}: {e}"))
             await pg.goto(f"{BASE}/{url}"); await pg.wait_for_function(READY, timeout=240000); await pg.wait_for_timeout(400)
             return pg
