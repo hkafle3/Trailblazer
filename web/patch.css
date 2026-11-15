@@ -55,7 +55,7 @@ canvas#gl.drag { cursor: grabbing; }
 #search select option { background: #0b0f1a; }
 #search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 #status { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); padding: 0 8px; text-shadow: 0 1px 8px #000; }
-#status:empty { display: none; }
+#status:empty { height: 0; padding: 0; overflow: hidden; }   /* no room when empty, but still in the accessibility tree so its first message is announced */
 #status.err { color: var(--glitch); }
 #targets { display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(50vw - var(--s) / 2 - 64px); pointer-events: auto; }
 #targets button { height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 15, 26, .72); color: var(--ink-2); font: 500 13.5px var(--body); cursor: pointer; transition: color .2s, border-color .2s, background .2s, box-shadow .2s; }
