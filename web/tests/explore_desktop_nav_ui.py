@@ -200,6 +200,34 @@ async def main():
         await pg.wait_for_url(re.compile(r"/comet(\.html)?\?id="), timeout=10000)
         print(f"PASS marker: on a zoomed map a click on a known comet opens its page ({mk[2]})")
 
+        # ---- a resize keeps the zoom; a phone width and back hands the map over and returns the whole oval ----
+        await explore(pg, "/explore.html?day=529")
+        await pg.click("#zoom-in"); await settle(pg)
+        await pg.set_viewport_size({"width": 1200, "height": 800}); await settle(pg, 300)
+        base2 = await pg.evaluate("document.querySelector('.map-wrap').offsetWidth / 1.5")
+        await pg.evaluate("document.querySelector('.map-wrap').style.width = ''")
+        css = await pg.evaluate("document.querySelector('.map-wrap').offsetWidth")
+        await pg.keyboard.press("0"); await settle(pg)   # whole sky at the new size is the CSS oval
+        assert abs(base2 - css) < 2, f"after a resize the zoom is {base2 * 1.5 / css:.3f}x, not 1.5x"
+        await pg.click("#zoom-in"); await settle(pg)
+        await pg.set_viewport_size({"width": 390, "height": 844}); await settle(pg, 300)
+        await pg.set_viewport_size({"width": 1440, "height": 900}); await settle(pg, 300)
+        st = await pg.evaluate("[document.querySelector('.map-wrap').style.width, document.body.classList.contains('zoomed')]")
+        assert st == ["", False], f"back from a phone width the map kept {st}"
+        print("PASS resize: the zoom is kept across a resize; a phone width and back returns the whole oval")
+
+        # ---- less motion: no glides, a double click lands at once ----
+        rm = await b.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
+        await rm.add_init_script("localStorage.setItem('ch.tour','1')")
+        pg = await rm.new_page()
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        await explore(pg, "/explore.html?day=529")
+        b0 = (await pg.evaluate(WRAP))[2]
+        dx, dy = await pg.evaluate(EMPTY, [500, 300, 1000, 650])
+        await pg.mouse.dblclick(dx, dy)
+        assert abs((await pg.evaluate(WRAP))[2] / b0 - 2) < 0.01, "with less motion a double click did not zoom at once"
+        print("PASS less motion: a double click zooms 2x at once, no glide")
+
         assert not errors, f"page errors: {errors}"
         await b.close()
 

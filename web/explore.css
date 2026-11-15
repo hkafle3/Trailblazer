@@ -207,6 +207,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
 @media (min-width: 641px) {
   .xstage { -webkit-user-select: none; user-select: none; }
   .xstage :is(img, a) { -webkit-user-drag: none; }
+  .xstage .pincard { -webkit-user-select: text; user-select: text; }   /* its RA and Dec can still be copied */
   body.grabbing, body.grabbing * { cursor: grabbing !important; }
   body.explore .pin { pointer-events: none; } body.explore .pincard { pointer-events: auto; }   /* a double click on a fresh pin reaches the sky */
   body.explore .map:focus { outline: none; }
@@ -214,7 +215,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .map-wrap.deep-zoom .grat text { display: none; }   /* the ecliptic's label grows with the zoom */
   body.explore.zoomed .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba(0, 0, 0, .7) 65%, transparent); }
   body.explore .tl { z-index: 1; }
-  .xstage::after { content: ""; position: absolute; z-index: 0; left: -50vw; right: -50vw; top: calc(1190 * var(--e)); height: 100vh; background: linear-gradient(180deg, transparent, rgba(4, 6, 12, .92) calc(90 * var(--e))); pointer-events: none; opacity: 0; transition: opacity .3s; }
+  .xstage::after { content: ""; position: absolute; z-index: 0; left: -50vw; right: -50vw; top: calc(1060 * var(--e)); height: 100vh; background: linear-gradient(180deg, transparent, rgba(4, 6, 12, .55) calc(120 * var(--e)), rgba(4, 6, 12, .9) calc(210 * var(--e))); pointer-events: none; opacity: 0; transition: opacity .3s; }
   body.zoomed .xstage::after { opacity: 1; }
 
   /* bottom right, Layers' outlined look: the whole sky on its own, + and - in one box split by a rule */
