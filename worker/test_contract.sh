@@ -67,8 +67,8 @@ else echo "FAIL known comets"; fails=$((fails + 1)); fi
 # POST /api/comments writes to D1, so it runs against the local dev server only (Cloudflare's test secret accepts its dummy token
 # XXXX.DUMMY.TOKEN.XXXX and, measured 2026-11-14, any string; each post gets a unique one because a token is single use)
 tok() { echo "XXXX.DUMMY.TOKEN.XXXX.$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"; }
-post() {   # name, json body, expected status, expected text in the body [, route]
-  out=$(curl -s -m 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data "$2" "$BASE${5:-/api/comments}")
+post() {   # name, json body, expected status, expected text in the body [, route [, extra header]]
+  out=$(curl -s -m 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' ${6:+-H} ${6:+"$6"} --data "$2" "$BASE${5:-/api/comments}")
   code=$(printf '%s' "$out" | tail -1); body=$(printf '%s' "$out" | sed '$d')
   if [ "$code" = "$3" ] && printf '%s' "$body" | grep -q -- "$4"; then echo "PASS $1 ($code)"
   else echo "FAIL $1: got $code, wanted $3 with '$4': $(printf '%s' "$body" | head -c 200)"; fails=$((fails + 1)); fi
@@ -135,11 +135,15 @@ assert cell[0]["checks"] == counts[-1], f"a refused check was written: {cell[0][
 PY
     then echo "PASS opening a spot adds one check to its cell, shown on the map; grid edges land in real cells; 11th check a minute refused"
     else echo "FAIL heat map checks"; fails=$((fails + 1)); fi
-    post "check: not JSON" "nope" 400 'body must be JSON' /api/checks
-    post "check: ra out of range" '{"ra":400,"dec":4}' 400 '"field":"ra"' /api/checks
-    post "check: ra not a number" '{"ra":"12","dec":4}' 400 '"field":"ra"' /api/checks
-    post "check: dec missing" '{"ra":12}' 400 '"field":"dec"' /api/checks
-    post "check: dec out of range" '{"ra":12,"dec":-95}' 400 '"field":"dec"' /api/checks ;;
+    # the checks refusals use their own visitor IP per run (the rate limit counts every request, refused ones too)
+    post "check: not JSON" "nope" 400 'body must be JSON' /api/checks "CF-Connecting-IP: contract-sh-$$"
+    post "check: ra out of range" '{"ra":400,"dec":4}' 400 '"field":"ra"' /api/checks "CF-Connecting-IP: contract-sh-$$"
+    post "check: ra not a number" '{"ra":"12","dec":4}' 400 '"field":"ra"' /api/checks "CF-Connecting-IP: contract-sh-$$"
+    post "check: dec missing" '{"ra":12}' 400 '"field":"dec"' /api/checks "CF-Connecting-IP: contract-sh-$$"
+    post "check: dec out of range" '{"ra":12,"dec":-95}' 400 '"field":"dec"' /api/checks "CF-Connecting-IP: contract-sh-$$"
+    big=$(python3 -c 'print("{\"ra\":12,\"dec\":4,\"pad\":\"" + "a" * 1970 + "\"}")')
+    post "check: 2000-byte body" "$big" 413 '"error":"body too large"' /api/checks "CF-Connecting-IP: contract-sh-$$"
+    post "check: valid check still accepted" '{"ra":12,"dec":4}' 201 '"checks":' /api/checks "CF-Connecting-IP: contract-sh-$$" ;;
   *) echo "SKIP POST /api/comments and /api/checks (not a local server)" ;;
 esac
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -266,16 +266,33 @@ async function explored(env) {
 }
 
 // Someone opened a spot (the time-lapse calls this once a live time-lapse has built): one more check for its cell.
-// Cloudflare's rate limit (wrangler.toml) runs before the write, so a flood never reaches D1. It is per location and approximate;
-// a script spread over many IPs can still light up cells, which only changes the map.
+// Cloudflare's rate limit (wrangler.toml) runs first, before the body is read, so every request counts, malformed ones too.
+// It is per location and approximate; a script spread over many IPs can still light up cells, which only changes the map.
+const MAX_CHECK_BODY = 1024;
 async function check(request, env) {
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+  if (env.CHECKS_LIMIT && !(await env.CHECKS_LIMIT.limit({ key: ip })).success) return json({ error: 'too many checks, wait a minute' }, 429);
+  const tooBig = () => json({ error: 'body too large', field: 'body' }, 413);
+  if (Number(request.headers.get('Content-Length')) > MAX_CHECK_BODY) return tooBig();
+  // read at most MAX_CHECK_BODY bytes whatever Content-Length says (it can be absent or wrong with chunked bodies)
+  const chunks = [];
+  let size = 0;
+  if (request.body) {
+    const reader = request.body.getReader();
+    for (let r; !(r = await reader.read()).done;) {
+      size += r.value.byteLength;
+      if (size > MAX_CHECK_BODY) { await reader.cancel(); return tooBig(); }
+      chunks.push(r.value);
+    }
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) { bytes.set(c, at); at += c.byteLength; }
   let b;
-  try { b = await request.json(); } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }
+  try { b = JSON.parse(new TextDecoder().decode(bytes)); } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }
   if (!b || typeof b !== 'object') return json({ error: 'body must be JSON', field: 'body' }, 400);
   if (typeof b.ra !== 'number' || !(b.ra >= 0 && b.ra <= 360)) return json({ error: 'ra must be 0 to 360', field: 'ra' }, 400);
   if (typeof b.dec !== 'number' || !(b.dec >= -90 && b.dec <= 90)) return json({ error: 'dec must be -90 to 90', field: 'dec' }, 400);
-  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
-  if (env.CHECKS_LIMIT && !(await env.CHECKS_LIMIT.limit({ key: ip })).success) return json({ error: 'too many checks, wait a minute' }, 429);
   const cell = cellAt(b.ra % 360, b.dec);
   const row = await env.DB.prepare('INSERT INTO checks (cell, n) VALUES (?1, 1) ON CONFLICT(cell) DO UPDATE SET n = n + 1 RETURNING n').bind(cell).first();
   return json({ cell, checks: row.n }, 201);
