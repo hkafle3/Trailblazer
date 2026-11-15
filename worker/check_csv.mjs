@@ -64,24 +64,36 @@ const bad = [[swan, row('x', 'garbage 12', '+27 22 0', 18)], [null], [swan, row(
 const noMag = skybotRows([row('C/1', '05 09 10', '+27 22 0', null, 'Comet')]);
 const okNoMag = noMag && noMag.comets[0].mag === null;
 console.log(`${okSky && bad && okNoMag ? 'PASS' : 'FAIL'} SkyBoT rows: comet kept (with or without a magnitude), V 21.04 cut, an unreadable, impossible or unclassed row makes the answer unavailable`); fail += !(okSky && bad && okNoMag);
-// saved searches: a complete answer is kept, and served (uncached) when the service fails or answers in part
+// saved searches, on real SQLite built from the migration, with D1's 2 MB row limit: a complete answer is kept (split
+// when long) and served, uncached, when the service fails or answers in part; never for a bad request or an unsaved search
+const { DatabaseSync } = await import('node:sqlite');
+const sql = new DatabaseSync(':memory:');
+sql.exec(readFileSync(new URL('./migrations/0011_saved_searches.sql', import.meta.url), 'utf8'));
+let dbDown = false;
+const stmt = (q, a = []) => ({ q, a, bind: (...b) => stmt(q, b),
+  exec() { if (dbDown) throw new Error('D1 down'); if (a.some(v => typeof v === 'string' && Buffer.byteLength(v) > 2e6)) throw new Error('row too big'); return sql.prepare(q); },
+  async first() { return this.exec().get(...a) ?? null; }, async all() { return { results: this.exec().all(...a) }; }, async run() { return this.exec().run(...a); } });
+const DB = { prepare: q => stmt(q), async batch(list) { sql.exec('BEGIN'); try { for (const x of list) x.exec().run(...x.a); sql.exec('COMMIT'); } catch (e) { sql.exec('ROLLBACK'); throw e; } } };
 const CORS = { 'Access-Control-Allow-Origin': '*' };
-const withSaved = new Function('CORS', src.match(/async function withSaved[\s\S]*?\n}\n/)[0] + 'return withSaved;')(CORS);
-const store = new Map(); let dbDown = false;
-const DB = { prepare: sql => ({ bind: (...a) => ({
-  run: async () => { if (dbDown) throw new Error('down'); store.set(a[0], { body: a[1], saved_at: a[2] }); },
-  first: async () => { if (dbDown) throw new Error('down'); return store.get(a[0]) ?? null; } }) }) };
+const saved = new Function('CORS', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return { withSaved, backfill, savedKey };')(CORS);
 const waits = [], ctx = { waitUntil: p => waits.push(p) };
 const answer = (status, body, cc = 'public, max-age=86400') => async () => new Response(JSON.stringify(body), { status, headers: { 'Cache-Control': cc } });
-const ask = async (route, q) => { const r = await withSaved(route, new URL('https://x/api/images?' + q), { DB }, ctx); await Promise.all(waits.splice(0)); return [r.status, await r.text(), r.headers]; };
-const good = { images: [1, 2, 3] };
-const s1 = await ask(answer(200, good), 'ra=1&dec=2&det=D1');
-const s2 = await ask(answer(503, { error: 'down' }), 'det=D1&dec=2&ra=1');   // same search, parameters in another order
+const ask = async (route, q) => { const u = new URL('https://x/api/images?' + q), r = await saved.withSaved(route, u, saved.savedKey(u), { DB }, ctx); await Promise.all(waits.splice(0)); return [r.status, await r.text(), r.headers]; };
+const big = { images: Array.from({ length: 20000 }, (_, i) => ({ t: 60000 + i, key: `dr1/level2/2025W18_1B/l2b-v20-2025-${i}/image_${i}.fits`, obs: `2025W18_1B_${i}_1`, coll: 'spherex_dr1' })) };
+const s1 = await ask(answer(200, big), 'ra=1&dec=2&det=D1');
+const s2 = await ask(answer(503, { error: 'down' }), 'det=D1&dec=2&ra=1&junk=7');   // same search: other order, a junk parameter
 const s3 = await ask(answer(200, { images: [1] }, 'no-store'), 'ra=1&dec=2&det=D1');
 const s4 = await ask(answer(400, { error: 'bad' }), 'ra=1&dec=2&det=D1');
 const s5 = await ask(answer(503, { error: 'down' }), 'ra=9&dec=2&det=D1');
-dbDown = true; const s6 = await ask(answer(503, { error: 'down' }), 'ra=1&dec=2&det=D1');
-const okSaved = s1[0] === 200 && s2[0] === 200 && s2[1] === JSON.stringify(good) && s2[2].get('Cache-Control') === 'no-store' && /^\d{4}-/.test(s2[2].get('X-Saved-At') || '')
-  && s3[1] === JSON.stringify(good) && s4[0] === 400 && s5[0] === 503 && s6[0] === 503 && store.size === 1;
-console.log(`${okSaved ? 'PASS' : 'FAIL'} saved searches: kept when complete, served on a failure or a partial answer, never for a bad request or an unsaved search`); fail += !okSaved;
+await ask(answer(200, { images: [7] }), 'ra=1&dec=2&det=D1');   // a newer, shorter answer replaces every part of the old one
+const s6 = await ask(answer(503, { error: 'down' }), 'ra=1&dec=2&det=D1');
+dbDown = true; const s7 = await ask(answer(503, { error: 'down' }), 'ra=1&dec=2&det=D1'); dbDown = false;
+const hitKey = saved.savedKey(new URL('https://x/api/gaia?ra=5&dec=6&cache=v2'));   // an answer already in the edge cache
+await saved.backfill({ DB }, hitKey, new Response('{"stars":[]}', { headers: { 'Cache-Control': 'public, max-age=86400', Date: 'Sat, 14 Nov 2026 10:00:00 GMT' } }));
+const filled = sql.prepare('SELECT body, saved_at FROM searches WHERE key = ?').get(hitKey);
+const bigText = JSON.stringify(big), parts = sql.prepare("SELECT count(*) n FROM searches WHERE key = '/api/images?ra=1&dec=2&det=D1'").get().n;
+const okSaved = bigText.length > 2e6 && s1[0] === 200 && s2[0] === 200 && s2[1] === bigText && s2[2].get('Cache-Control') === 'no-store' && /^\d{4}-/.test(s2[2].get('X-Saved-At') || '')
+  && s3[1] === bigText && s4[0] === 400 && s5[0] === 503 && s6[1] === '{"images":[7]}' && parts === 1 && s7[0] === 503
+  && filled?.body === '{"stars":[]}' && filled.saved_at === Date.parse('2026-11-14T10:00:00Z');
+console.log(`${okSaved ? 'PASS' : 'FAIL'} saved searches: a ${(bigText.length / 1e6).toFixed(1)} MB answer kept in parts and served on a failure or partial answer, replaced whole, never for a bad request or unsaved search; cached answers backfilled`); fail += !okSaved;
 process.exit(fail ? 1 : 0);

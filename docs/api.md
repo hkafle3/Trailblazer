@@ -166,7 +166,7 @@ Gaia DR3 stars within 0.04 degrees, with proper motions and Gaia G brighter than
 
 ### Saved answers (D1 `searches`, all three outside searches)
 
-Every complete answer from `/api/images`, `/api/gaia` and `/api/known` is also saved in D1 under its path and sorted parameters. When the outside service fails (a `5xx`) or `/api/images` answers only in part, the last saved answer to that exact search is sent instead: `200`, the same JSON, `Cache-Control: no-store` and an `X-Saved-At` time. A search never answered before still gets the `503`; a bad request still gets its `400`. Added after IRSA's image search answered 502 for most of 2026-11-15.
+Every complete answer from `/api/images`, `/api/gaia` and `/api/known` is also saved in D1 under its path and the parameters it reads (`ra`, `dec`, `det`, `t`, `v`; others are ignored). When the outside service fails (a `5xx`) or `/api/images` answers only in part, the last saved answer to that exact search is sent instead: `200`, the same JSON, `Cache-Control: no-store` and an `X-Saved-At` time. A search never answered before still gets the `503`; a bad request still gets its `400`. Added after IRSA's image search answered 502 for most of 2026-11-15.
 
 ## Planned (not built)
 

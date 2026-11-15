@@ -425,10 +425,10 @@ export default {
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
     const key = new URL(url); key.searchParams.set('cache', 'v2');
-    const cache = caches.default, hit = await cache.match(key);
-    if (hit) return hit;
-    const res = await withSaved(route, url, env, ctx);
-    if (res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '')) ctx.waitUntil(cache.put(key, res.clone()));
+    const cache = caches.default, hit = await cache.match(key), id = savedKey(url);
+    if (hit) { ctx.waitUntil(backfill(env, id, hit.clone()).catch(e => console.warn('saving cached search', e))); return hit; }
+    const res = await withSaved(route, url, id, env, ctx);
+    if (complete(res)) ctx.waitUntil(cache.put(key, res.clone()));
     return res;
   }
 };
@@ -436,18 +436,37 @@ export default {
 // IRSA's image search answered 502 for hours on 2026-11-15. Every complete answer is also kept in D1, and when the
 // service fails (or answers only in part) the last complete answer to that exact search is served instead, uncached,
 // so a spot that worked once keeps working through an outage and fresh answers return as soon as the service does.
-async function withSaved(route, url, env, ctx) {
-  const k = new URL(url); k.searchParams.sort();
-  const id = k.pathname + k.search, res = await route(url);
-  const complete = res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '');
-  if (complete) {
+const SAVED_MAX = 2000, PART = 500000;   // searches kept; characters a row (under D1's 2 MB row limit even at 3 bytes each)
+const complete = res => res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '');
+// keyed on the parameters the searches read (and v, which marks a new answer shape), so junk parameters add no rows
+const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 't', 'v'].filter(n => url.searchParams.has(n)).map(n => [n, url.searchParams.get(n)]));
+
+async function save(env, id, body, at = Date.now()) {
+  const n = await env.DB.prepare('SELECT (SELECT count(*) FROM searches WHERE part = 0) AS n, EXISTS (SELECT 1 FROM searches WHERE key = ?) AS has').bind(id).first();
+  if (n.n >= SAVED_MAX && !n.has) return;   // ponytail: a full table takes no new searches; evict the oldest if that ever bites
+  const parts = [];
+  for (let i = 0; i < body.length; i += PART) parts.push(body.slice(i, i + PART));   // a deep field's answer can pass 2 MB
+  await env.DB.batch([env.DB.prepare('DELETE FROM searches WHERE key = ?').bind(id),   // one transaction: the old answer stays until the new one is whole
+    ...parts.map((b, i) => env.DB.prepare('INSERT INTO searches (key, part, body, saved_at) VALUES (?, ?, ?, ?)').bind(id, i, b, at))]);
+}
+
+// answers cached before saving existed are saved on their next cache hit, so they survive an outage too
+async function backfill(env, id, hit) {
+  if (!complete(hit) || await env.DB.prepare('SELECT 1 FROM searches WHERE key = ? AND part = 0').bind(id).first()) return;
+  await save(env, id, await hit.text(), Date.parse(hit.headers.get('Date')) || Date.now());
+}
+
+async function withSaved(route, url, id, env, ctx) {
+  const res = await route(url);
+  if (complete(res)) {
     const body = await res.clone().text();
-    ctx.waitUntil(env.DB.prepare('INSERT INTO searches (key, body, saved_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET body = excluded.body, saved_at = excluded.saved_at')
-      .bind(id, body, Date.now()).run().catch(e => console.warn('saving search', e)));   // too big for a row (2 MB) or D1 down: just not saved
+    ctx.waitUntil(save(env, id, body).catch(e => console.warn('saving search', e)));   // D1 down: just not saved this time
     return res;
   }
   if (res.status !== 200 && res.status < 500) return res;   // a bad request stays an error
-  const row = await env.DB.prepare('SELECT body, saved_at FROM searches WHERE key = ?').bind(id).first().catch(() => null);
-  if (!row) return res;
-  return new Response(row.body, { status: 200, headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'no-store', 'X-Saved-At': new Date(row.saved_at).toISOString() } });
+  let rows = [];
+  try { rows = (await env.DB.prepare('SELECT body, saved_at FROM searches WHERE key = ? ORDER BY part').bind(id).all()).results; } catch {}
+  if (!rows.length) return res;
+  return new Response(rows.map(r => r.body).join(''), { status: 200,
+    headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'no-store', 'X-Saved-At': new Date(rows[0].saved_at).toISOString() } });
 }
