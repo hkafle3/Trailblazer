@@ -5,7 +5,7 @@ Starts live 1.5 arcmin north of Barnard's Star (after a failed wavelength-map do
 the star, then nudges, drags, taps, drags with two fingers, cancels a drag, switches detector during a key move, fails
 a re-centre on purpose, and finally moves 4 degrees away, out of the listed images. Precision is 1 SPHEREx pixel
 (6.15 arcsec); the photo's grid is 5 arcsec per pixel. Throughout, the photo, the URL and the box must name one spot."""
-import asyncio, math, sys, time, urllib.parse
+import asyncio, math, os, sys, time, urllib.parse
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
@@ -52,8 +52,8 @@ async def main():
         ctx.on("request", lambda r: reqs.append((r.method, r.url)))
         pg = await ctx.new_page()
         images = lambda: sum("/api/images" in u for _, u in reqs)
-        gaias = lambda: sum("/api/gaia" in u for _, u in reqs)
-        builds = lambda: sum(m == "POST" and "/api/checks" in u for m, u in reqs)   # one per finished live build
+        posts = lambda: sum(m == "POST" and "/api/checks" in u for m, u in reqs)   # heat-map checks: one per new cell
+        landed = [1]   # builds that landed, the first included
 
         async def view():   # the built spot and how the photo sits on screen
             return await pg.evaluate("""() => { const s = __lapse.state, m = s.m, r = document.getElementById('patch').getBoundingClientRect();
@@ -66,7 +66,9 @@ async def main():
         async def rebuilt(timeout=240000):   # wait for the next build to land; seconds taken
             t0 = time.time()
             await pg.wait_for_function("__lapse.state.m !== window.__was || document.getElementById('status').className === 'err'", timeout=timeout)
-            return time.time() - t0
+            if await pg.evaluate("__lapse.state.m !== window.__was"): landed[0] += 1
+            await pg.wait_for_timeout(300)   # request events arrive a moment after the page sends them
+            return time.time() - t0 - 0.3
 
         async def mark():
             await pg.evaluate("window.__was = __lapse.state.m")
@@ -116,6 +118,18 @@ async def main():
         await pg.wait_for_function("__lapse.state.m && /visits, built/.test(document.getElementById('status').textContent)", timeout=240000)
         v = await view()
         check(left[0] == 0, f"maps: after a failed download ('{first}') the next search builds")
+        await pg.wait_for_timeout(1000)
+        p0 = posts()
+
+        # ---- the page's heat-map cell matches the Worker's cellAt (taken from worker/src/index.js itself)
+        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "worker", "src", "index.js")).read()
+        grid = src[src.index("const BANDS"):src.index("const cellBox")]
+        bad = await pg.evaluate("""async src => { const { heatCell } = await import('./live/recenter.js');
+          const cellAt = new Function(src + '; return (ra, dec) => [cellAt(ra, dec), GRID];')();
+          const spots = [[0, 0], [359.999, 0.01], [269.4463, 4.7922], [265.4, 4.8], [10, 89.99], [200, -89.99], [123.4, -45.6], [331.096, -56.801], [77.3, 27.35]];
+          return spots.filter(([ra, dec]) => { const [c, G] = cellAt(ra, dec), [i, j] = heatCell(ra, dec).split(',').map(Number); return G[i][0] + j !== c; }); }""", grid)
+        check(not bad, f"heatmap: the page's cell matches the Worker's cellAt at 9 spots, poles and RA 0/360 included (mismatches {bad})")
+        check(p0 == 1, f"heatmap: the first build posted {p0} check")
         check(images() >= 1, f"start: live build in {time.time() - t0:.1f} s, {v['frames']} visits, {images()} /api/images request seen")
 
         # ---- click precision: click Barnard's Star where it is in the visit on screen
@@ -131,15 +145,15 @@ async def main():
         await pg.wait_for_timeout(1500)   # request events arrive a moment after the page sends them
         new = [u for _, u in reqs[c0:]]
         check(any("/api/known" in u and f"dec={v['dec']:.4f}" in u for u in new), "click: known objects checked at the new centre")
-        check(any(m == "POST" and "/api/checks" in u for m, u in reqs[c0:]), "click: heat map check posted")
+        check(posts() == p0, f"heatmap: the click, 90\" away in the same cell, posted {posts() - p0} new checks")
         check(url_and_box(v) < 0.5, f"click: URL {v['url']} and box '{v['box']}' name the new centre")
 
         # ---- Gaia is asked only when the stars already fetched do not fit: a 1 pixel nudge on the star reuses them
-        g0 = gaias(); c = (v["ra"], v["dec"]); await mark()
+        c = (v["ra"], v["dec"]); await mark()
         await pg.focus("#patch"); await pg.keyboard.press("Shift+ArrowUp")
         dt = await rebuilt(); v = await view()
-        check(gaias() == g0 and v["ok"] and abs(sep(c, (v["ra"], v["dec"])) - 5) < 0.5,
-              f"gaia: a 5\" nudge on the star made {gaias() - g0} /api/gaia requests, panel still agrees, rebuilt in {dt:.1f} s")
+        check(dt < 2.5 and v["ok"] and abs(sep(c, (v["ra"], v["dec"])) - 5) < 0.5,
+              f"gaia: a 5\" nudge on the star rebuilt in {dt:.1f} s (limit 2.5 s), panel still agrees")
 
         # ---- drag precision: the photo follows the pointer at once, the centre moves by the dragged amount
         dx, dy = -180, 120
@@ -202,6 +216,13 @@ async def main():
               f"keys: ArrowRight moved the photo at once and the centre {sep((v['ra'], v['dec']), (v2['ra'], v2['dec'])):.1f}\" west ({off:.2f}\" off), rebuilt in {dt:.1f} s")
         v = v2
 
+        # ---- three small nudges inside one heat-map cell post no new check
+        p1 = posts()
+        for key in ("Shift+ArrowUp", "Shift+ArrowLeft", "Shift+ArrowDown"):
+            await mark(); await pg.focus("#patch"); await pg.keyboard.press(key); await rebuilt()
+        v = await view()
+        check(posts() == p1, f"heatmap: three 1 pixel nudges in one cell posted {posts() - p1} new checks")
+
         # ---- another detector chosen while a key move waits: the move is dropped and D2 builds at this spot
         before = v
         await pg.focus("#patch"); await pg.keyboard.press("ArrowRight"); await mark()
@@ -223,7 +244,7 @@ async def main():
         await ctx.unroute("**/api/images*")
 
         # ---- leaving coverage: 4 degrees west is outside every listed image, so IRSA is asked again
-        n0 = images(); await mark()
+        n0, p1 = images(), posts(); await mark()
         pan = -4 * 3600 / v["aps"]
         await pg.evaluate(f"__lapse.recenter([{pan}, 0])")
         want = deproject((v["ra"], v["dec"]), pan * v["aps"], 0)
@@ -231,7 +252,8 @@ async def main():
         off = sep((v["ra"], v["dec"]), want)
         check(images() > n0 and off <= PIXEL and v["frames"] >= 2 and "built" in v["status"],
               f"leave: new /api/images request ({images() - n0}), {v['frames']} visits at the new spot ({off:.2f}\" off), built in {dt:.1f} s")
-        check(v["cached"] <= 8 and builds() > 8, f"cache: {builds()} live builds, {v['cached']} kept for instant return (at most 8)")
+        check(posts() == p1 + 1, f"heatmap: the move into a new cell posted {posts() - p1} check ({posts()} in all for {landed[0]} builds)")
+        check(v["cached"] <= 8 and landed[0] > 8, f"cache: {landed[0]} live builds, {v['cached']} kept for instant return (at most 8)")
         await b.close()
     sys.exit(1 if fails else 0)
 

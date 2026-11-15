@@ -64,7 +64,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } from './sky.js';
-import { recenterable, panToSky } from './live/recenter.js';
+import { recenterable, panToSky, heatCell } from './live/recenter.js';
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -328,6 +328,7 @@ async function select(key, opts) {
 const API = P.get('api') || '';   // the same Worker serves this page and /api (npm run dev); ?api= points elsewhere
 // the last LIVE_KEPT results, for an instant return to a spot (about 650 KB each); the least recently shown goes first
 const live = new Map(), LIVE_KEPT = 8;
+let lastCell = null;   // the heat-map cell of the last check posted
 function remember(key, m) { live.delete(key); live.set(key, m); if (live.size > LIVE_KEPT) live.delete(live.keys().next().value); return m; }
 // One pipeline worker for the page's life, so a re-centre reuses the image list and the pixels it already read.
 // job is the number of the build in flight (0: none); a new build, or cancel(), replaces it.
@@ -372,8 +373,9 @@ function search(ra, dec, det, opts = {}) {
     else if (m.type === 'done') {
       job = 0;
       remember(key, prep(m.manifest));
-      // one check for the Explore heat map (POST /api/checks); keepalive so leaving the page at once does not cancel it
-      fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra, dec }) }).catch(() => {});
+      // one check for the Explore heat map (POST /api/checks) per cell landed in, so re-centring nearby counts once;
+      // keepalive so leaving the page at once does not cancel it
+      if (heatCell(ra, dec) !== lastCell && (lastCell = heatCell(ra, dec))) fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra, dec }) }).catch(() => {});
       setStatus(`${m.manifest.frames.length} visits, built in ${((performance.now() - t0) / 1000).toFixed(1)} s from NASA's public SPHEREx copy`);
       show(live.get(key), query, opts);
     }

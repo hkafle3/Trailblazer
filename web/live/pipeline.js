@@ -188,12 +188,11 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
     // The Worker answers with every 2016 position within 144" of the spot asked. A re-centre within 100" of the last
     // spot tries those stars first and waits for its own answer (1.5 s, or 20 s on a slow IRSA day) only when none
     // fits: a fast star's 2016 position can sit 100" from where it is now (Barnard's Star), outside the old cone.
-    // With no stars to try, the request starts now and runs beside the frames.
-    const cached = gaiaAt && Math.hypot((gaiaAt.ra - ra) * Math.cos(dec * D2R), gaiaAt.dec - dec) * 3600 <= 100 ? gaiaAt.stars : null;
-    let gaiaP = null;
-    const ask = () => gaiaP ??= fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`, { signal })   // v=3: Gaia from IRSA; drops answers cached before the switch
+    // The request still starts now, beside the frames, and its answer is dropped when the cached stars fit: waiting to
+    // ask until they fail cost re-centres about 2 s (the Worker caches /api/gaia for a day, so the extra ask is cheap).
+    const cached = gaiaAt && Math.hypot((gaiaAt.ra - ra) * Math.cos(dec * D2R), gaiaAt.dec - dec) * 3600 <= 100 ? gaiaAt.stars : [];
+    const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`, { signal })   // v=3: Gaia from IRSA; drops answers cached before the switch
      .then(r => r.ok ? r.json() : null).catch(() => null).then(g => { if (g?.stars) gaiaAt = { ra, dec, stars: g.stars }; return g?.stars || []; });
-    if (!cached) ask();
 
     const frames = [];
     for (const [n, v] of picked.entries()) {
@@ -231,8 +230,8 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
       }
       return [star, best];
     };
-    let [gaia, bestOff] = fit(seen.length && cached ? cached : []);
-    if (seen.length && !(bestOff <= slack)) [gaia, bestOff] = fit(await Promise.race([ask(), new Promise(r => setTimeout(() => r([]), 8000))]));   // Gaia late: show the frames without it
+    let [gaia, bestOff] = fit(seen.length ? cached : []);
+    if (seen.length && !(bestOff <= slack)) [gaia, bestOff] = fit(await Promise.race([gaiaP, new Promise(r => setTimeout(() => r([]), 8000))]));   // Gaia late: show the frames without it
     if (gaia && bestOff <= slack) frames.forEach(f => { [f.pred_east, f.pred_north] = pred(gaia, f); });
     else gaia = null;
     // straight-line motion fit from detected positions: at least 3 visits spanning half a year, with the

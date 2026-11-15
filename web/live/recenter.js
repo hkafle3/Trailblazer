@@ -17,6 +17,15 @@ export function panToSky(ra, dec, pan, arcsecPerPixel) {
   return tanDeproject({ CRVAL1: ra, CRVAL2: dec }, pan[0] * a, pan[1] * a);
 }
 
+// The Explore heat map's cell for a spot, the same grid as worker/src/index.js cellAt: 51 bands of Dec, each cut into
+// about 3.5 degree steps of RA. The page posts a check only when a build lands in a new cell, so nudging around one
+// spot counts once (and stays under the Worker's 10 a minute limit).
+export function heatCell(ra, dec) {
+  const step = 180 / 51, i = Math.min(50, Math.floor((90 - dec) / step));
+  const n = Math.max(1, Math.round(360 * Math.cos((90 - (i + 0.5) * step) * Math.PI / 180) / 3.5));
+  return `${i},${Math.min(n - 1, Math.floor(((ra % 360) + 360) % 360 / 360 * n))}`;
+}
+
 export function recenterable(el, { scale, moved, commit, hint = 'Drag or click to re-center' }) {
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   let pan = [0, 0], grab = null, glide = null, nudge = 0;
