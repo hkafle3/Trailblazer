@@ -619,7 +619,7 @@ function show(m, query, opts = {}) {
     fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra: m.ra, dec: m.dec }) }).catch(() => {});
   }
   shownFound = [found, foundAt];   // the discovery belongs to what is on screen: a failed search later restores it
-  Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.diff ? m.frames.length - 1 : 0, diff: !!opts.diff });
+  Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.diff ? m.frames.length - 1 : opts.t != null ? Math.max(0, m.frames.findIndex(f => f.at_t)) : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   panel(m); draw();
@@ -772,7 +772,9 @@ function search(ra, dec, det, opts = {}) {
   leaveFound(ra, dec);
   const ch = spMain(), c = CHANNELS[ch];   // the Spectral dial's channel picks the detector; null: the best-covered wavelength
   if (c) document.getElementById('det').value = det = c.detector;
-  const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}${c ? `@${ch}` : ''}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}${spQuery()}`;
+  // opts.t (a known comet's page): open on the visit with the exposure taken then (MJD), its centre ringed (pipeline.js)
+  const tq = opts.t != null ? `&t=${opts.t}` : '';
+  const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}${c ? `@${ch}` : ''}${tq}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}${spQuery()}${tq}`;
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
   const t0 = performance.now(), id = job = ++builds;
   builder ??= new Worker('live/pipeline.js', { type: 'module' });
@@ -809,7 +811,7 @@ function search(ra, dec, det, opts = {}) {
       show(live.get(key), query, opts);
     }
   };
-  builder.postMessage({ id, ra, dec, det, api: API, band: c ? [c.lo, c.hi, c.um] : null });
+  builder.postMessage({ id, ra, dec, det, api: API, band: c ? [c.lo, c.hi, c.um] : null, t: opts.t });
 }
 
 // ---------- re-centre: click a spot, drag the photo, or the arrow keys with the photo in focus (live/recenter.js) ----------
@@ -1065,7 +1067,7 @@ spRestore();
 if (P.has('ra') && P.has('dec')) {
   const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
-  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1' });
+  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}) });
 } else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1' });
 else setMode('sky');   // the whiteboard flow starts at the whole sky
 </script>
