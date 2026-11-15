@@ -438,14 +438,18 @@ export default {
 // so a spot that worked once keeps working through an outage and fresh answers return as soon as the service does.
 const SAVED_MAX = 100e6, PART = 500000;   // bytes kept (the migration's CHECK is the hard cap); characters a row (under 2 MB at 3 bytes each)
 const complete = res => res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '');
-// keyed on the parameters the searches read (and v, which marks a new answer shape), so junk parameters add no rows
-const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 't', 'v'].filter(n => url.searchParams.has(n)).map(n => [n, url.searchParams.get(n)]));
-const room = async (env, size) => (await env.DB.prepare('SELECT n FROM saved_bytes').first()).n + size <= SAVED_MAX;
+// keyed on the parameters the searches read, as the numbers they read (and v, which marks a new answer shape, cut to 8
+// characters), so junk parameters or long spellings of the same number add no rows and keys stay short
+const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 't', 'v'].filter(n => url.searchParams.has(n))
+  .map(n => { const v = url.searchParams.get(n); return [n, n === 'det' ? v.slice(0, 2) : n === 'v' ? v.slice(0, 8) : String(Number(v))]; }));
+// room for this answer after the one it replaces is gone (the triggers count the same way; the CHECK is the hard cap)
+const room = async (env, id, size) => (await env.DB.prepare('SELECT (SELECT n FROM saved_bytes) - coalesce((SELECT sum(length(CAST(body AS BLOB)) + 2 * length(CAST(key AS BLOB)) + 64) FROM searches WHERE key = ?), 0) AS n')
+  .bind(id).first()).n + size <= SAVED_MAX;
 
 // One transaction, newest answer wins: an older saved answer is deleted and the new parts go in, unless a newer answer
 // is already there (a late save of an old cached answer changes nothing). Past the byte cap an insert fails and all of it rolls back.
 async function save(env, id, body, at = Date.now()) {
-  if (!await room(env, body.length)) return;   // ponytail: a full store takes no new searches; evict the oldest if that ever bites
+  if (!await room(env, id, body.length)) return;   // ponytail: a full store takes no new searches; evict the oldest if that ever bites
   const parts = [];
   for (let i = 0; i < body.length; i += PART) parts.push(body.slice(i, i + PART));   // a deep field's answer can pass 2 MB
   await env.DB.batch([env.DB.prepare('DELETE FROM searches WHERE key = ? AND saved_at < ?').bind(id, at),
@@ -453,17 +457,22 @@ async function save(env, id, body, at = Date.now()) {
       .bind(id, i, b, at, id, at))]);
 }
 
-// answers cached before saving existed are saved on their next cache hit, so they survive an outage too
+// a cached answer newer than the saved one (or with none saved: answers cached before saving existed, or a save that
+// failed while D1 was down) is saved on its next cache hit, so it survives an outage too
 async function backfill(env, id, hit) {
-  if (!complete(hit) || await env.DB.prepare('SELECT 1 FROM searches WHERE key = ? AND part = 0').bind(id).first() || !await room(env, 0)) return;
-  await save(env, id, await hit.text(), Date.parse(hit.headers.get('Date')) || Date.now());
+  if (!complete(hit)) return;
+  const at = Number(hit.headers.get('X-Answered-At')) || Date.parse(hit.headers.get('Date')) || 0;
+  const row = await env.DB.prepare('SELECT saved_at FROM searches WHERE key = ? AND part = 0').bind(id).first();
+  if ((row && row.saved_at >= at) || !await room(env, id, 0)) return;
+  await save(env, id, await hit.text(), at);
 }
 
 async function withSaved(route, url, id, env, ctx) {
   const res = await route(url);
   if (complete(res)) {
-    const body = await res.clone().text();
-    ctx.waitUntil(save(env, id, body).catch(e => console.warn('saving search', e)));   // D1 down: just not saved this time
+    const at = Date.now(), body = await res.clone().text();
+    res.headers.set('X-Answered-At', String(at));   // kept with the cached copy, so a later backfill knows its age
+    ctx.waitUntil(save(env, id, body, at).catch(e => console.warn('saving search', e)));   // D1 down: just not saved this time
     return res;
   }
   if (res.status !== 200 && res.status < 500) return res;   // a bad request stays an error
