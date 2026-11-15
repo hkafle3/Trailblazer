@@ -36,6 +36,10 @@ SMALL = """() => { const bad = [], seen = e => { const r = e.getBoundingClientRe
     if (parseFloat(s.width) < 44 || parseFloat(s.height) < 44) bad.push(`marker ${m.querySelector('b')?.textContent} tap circle ${s.width}`); }
   return bad; }"""
 # a top rule: 2 px white on square top corners
+# timeline month labels and years on screen that touch (less than 3 px apart)
+LABELS = """() => { const r = [...document.querySelectorAll('.tl-tick b, .tl-tick small')].filter(e => getComputedStyle(e).visibility !== 'hidden').map(e => [e.textContent, e.getBoundingClientRect()]);
+  const bad = []; for (const [i, [a, ra]] of r.entries()) for (const [b, rb] of r.slice(i + 1)) if (ra.left < rb.right + 3 && rb.left < ra.right + 3 && ra.top < rb.bottom && rb.top < ra.bottom) bad.push(a + '/' + b);
+  return [r.length, bad, r.every(([, x]) => x.left >= 0 && x.right <= innerWidth)]; }"""
 RULE = """sel => { const e = document.querySelector(sel), s = getComputedStyle(e);
   return [s.borderTopWidth, s.borderTopColor, s.borderTopLeftRadius, s.borderTopRightRadius]; }"""
 
@@ -104,6 +108,9 @@ async def main():
         assert size[1] == size[4], f"the page is {size[1]} px wide in a {size[4]} px window"
         assert await pg.evaluate("scrollY") == 0 and await pg.evaluate("scrollX") == 0, "the page scrolled"
         print(f"PASS fit: the page is exactly {size[4]} x {size[3]}, nothing scrolls down or sideways")
+        n, bad, inside = await pg.evaluate(LABELS)
+        assert n >= 8 and not bad and inside, f"timeline labels: {n} shown, touching {bad}, all on screen {inside}"
+        print(f"PASS timeline: {n} month and year labels, none touching, all on screen")
         await home(pg, t)
 
         # one finger pans: every marker moves by the drag (the first view has 56 px of room upward)
@@ -215,6 +222,14 @@ async def main():
         out = subprocess.run(["node", str(pathlib.Path(__file__).with_name("straight_rules.mjs"))], capture_output=True, text=True)
         assert out.returncode == 0, out.stdout + out.stderr
         print("PASS straight rules: timeline, Layers sheet and comet sheet tops are 2 px white on square corners; " + out.stdout.strip())
+
+        # a small phone (iPhone SE, 320 x 568): still no scroll, labels apart, controls 44 px
+        await pg.set_viewport_size({"width": 320, "height": 568}); await pg.goto(BASE + "/explore.html?day=529"); await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_timeout(1200)
+        size = await pg.evaluate("[document.documentElement.scrollHeight, document.documentElement.scrollWidth, innerHeight, innerWidth]")
+        n, bad, inside = await pg.evaluate(LABELS)
+        small = await pg.evaluate(SMALL)
+        assert size[0] == size[2] and size[1] == size[3] and not bad and inside and not small, f"320 x 568: page {size}, labels touching {bad}, on screen {inside}, small targets {small}"
+        print(f"PASS small phone: at 320 x 568 nothing scrolls, {n} timeline labels apart, every tap target 44 px or more")
 
         assert not errors, f"page errors: {errors}"
         await b.close()
