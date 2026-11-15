@@ -127,7 +127,8 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
     const { lam0, tol, picked } = match(usable);
 
     // Gaia, fetched while frames build: the star at this spot, propagated from 2016.0 to the target epoch (2026.0)
-    const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}`).then(r => r.ok ? r.json() : null).catch(() => null).then(g => g?.stars || []);
+    const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`)   // v=3: Gaia from IRSA; drops answers cached before the switch
+     .then(r => r.ok ? r.json() : null).catch(() => null).then(g => g?.stars || []);
 
     const frames = [];
     for (const [n, v] of picked.entries()) {

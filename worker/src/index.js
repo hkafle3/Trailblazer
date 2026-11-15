@@ -127,7 +127,8 @@ async function gaia(url) {
   const p = position(url);
   if (p.error) return json(p, 400);
   const irsa = `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?${new URLSearchParams({ catalog: 'gaia_dr3_source', spatial: 'cone',
-    objstr: `${p.ra} ${p.dec}`, radius: '144', radunits: 'arcsec', outfmt: '1', selcols: 'ra,dec,pmra,pmdec,phot_g_mean_mag' })}`;
+    objstr: `${p.ra} ${p.dec}`, radius: '144', radunits: 'arcsec', outfmt: '1', selcols: 'ra,dec,pmra,pmdec,phot_g_mean_mag',
+    constraints: 'pmra is not null and phot_g_mean_mag < 19' })}`;   // fainter stars are below what SPHEREx measures; keeps crowded fields small
   const esa = `https://gea.esac.esa.int/tap-server/tap/sync?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv',
     QUERY: `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))` })}`;
   const ok = (source, stars) => json({ epoch: 2016.0, source, stars }, 200, { 'Cache-Control': 'public, max-age=86400' });
@@ -140,19 +141,22 @@ async function gaia(url) {
   }
 }
 
-// IRSA's IPAC table: header lines start with \ or |, the first | line names the columns, values are space separated
-// and "null" when empty. Stars without a proper motion are dropped, as the ESA query did.
+// IRSA's IPAC table: header lines start with \\ or |, the first | line names the columns, values are space separated
+// and "null" when empty. Stars without a proper motion are dropped, as the ESA query did. Values are read straight into
+// each star (no per-row temporary objects): a crowded field such as Baade's Window sends about 3,200 rows.
 function ipacStars(text) {
   const lines = text.split('\n'), head = lines.find(l => l.startsWith('|'));
   if (!head) throw new Error('IRSA sent no table');
-  const cols = head.split('|').map(c => c.trim()).filter(Boolean), at = k => cols.indexOf(k);
-  const want = { ra: at('ra'), dec: at('dec'), pmra: at('pmra'), pmdec: at('pmdec'), g: at('phot_g_mean_mag') };
-  if (Object.values(want).includes(-1)) throw new Error('IRSA table is missing a column');
+  const cols = head.split('|').map(c => c.trim()).filter(Boolean);
+  const [iRa, iDec, iPmra, iPmdec, iG] = ['ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag'].map(k => cols.indexOf(k));
+  if ([iRa, iDec, iPmra, iPmdec, iG].includes(-1)) throw new Error('IRSA table is missing a column');
   const stars = [];
   for (const l of lines) {
-    if (!l.trim() || l.startsWith('\\') || l.startsWith('|')) continue;
-    const v = l.trim().split(/\s+/), star = Object.fromEntries(Object.entries(want).map(([k, i]) => [k, Number(v[i])]));
-    if (v[want.pmra] !== 'null' && Number.isFinite(star.pmra) && Number.isFinite(star.pmdec)) stars.push(star);
+    const c0 = l.charCodeAt(0);
+    if (!l || c0 === 92 || c0 === 124) continue;   // \ or |
+    const v = l.trim().split(/\s+/);
+    const pmra = +v[iPmra], pmdec = +v[iPmdec];   // "null" -> NaN
+    if (pmra === pmra && pmdec === pmdec) stars.push({ ra: +v[iRa], dec: +v[iDec], pmra, pmdec, g: +v[iG] });
   }
   return stars;
 }
