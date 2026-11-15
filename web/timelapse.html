@@ -266,7 +266,7 @@ async function knownNext() {
   kn.todo = kn.todo.filter(x => x !== t);
   knownBusy++;
   try {
-    const r = await fetch(`${API}/api/known?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&t=${t.toFixed(4)}`);
+    const r = await fetch(`${API}/api/known?ra=${(+m.ra.toFixed(4) % 360).toFixed(4)}&dec=${m.dec.toFixed(4)}&t=${t.toFixed(4)}`);
     if (!r.ok) throw new Error(r.status);
     const k = await r.json();
     for (const [list, kind] of [[k.comets, 'comet'], [k.asteroids, 'asteroid']]) for (const o of list) {

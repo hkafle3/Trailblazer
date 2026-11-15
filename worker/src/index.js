@@ -21,13 +21,13 @@ function position(url) {
 }
 
 // IRSA answers 502 now and then; a few quick retries with jitter get through (measured 2026-11-14)
-async function fetchRetry(url, tries = 5, ms = 20000) {
+async function fetchRetry(url, tries = 5, ms = 20000, withStatus = false) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
       const text = await r.text();
-      if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return text;
+      if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return withStatus ? [r.status, text] : text;
       last = `HTTP ${r.status}`;
     } catch (e) { last = String(e); }
     // short waits: one 502 is common, a run of them is rare; doubling from 400 ms cost 14 s on 2026-11-14
@@ -183,7 +183,7 @@ function sexagesimal(text, hours) {
 function skybotRows(rows) {
   const comets = [], bright = [];
   for (const r of rows) {
-    if (!r || typeof r !== 'object' || typeof r.Class !== 'string' || !r.Class.trim()) return null;
+    if (!r || typeof r !== 'object' || typeof r.Class !== 'string' || !r.Class.trim() || !String(r.Name || r.Num || '').trim()) return null;   // no name: unrelated rows would merge into one path
     const hms = /^\s*(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['RA (hms)'] ?? ''), dms = /^\s*[+-]?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['DEC (dms)'] ?? '');
     if (!hms || !dms || +hms[2] >= 60 || +hms[3] >= 60 || +dms[2] >= 60 || +dms[3] >= 60) return null;
     const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
@@ -191,7 +191,7 @@ function skybotRows(rows) {
     const vm = r['VMag (mag)'];   // a magnitude may be missing (null or empty), never garbled
     if (vm != null && vm !== '' && !Number.isFinite(Number(vm))) return null;
     const mag = Number(vm);
-    const body = { name: String(r.Name || r.Num || 'object'), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? mag : null, err: Number(r['Err (arcsec)']) || 0 };
+    const body = { name: String(r.Name || r.Num), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? mag : null, err: Number(r['Err (arcsec)']) || 0 };
     if (r.Class === 'Comet') comets.push(body);
     else if (body.mag != null && body.mag <= 21) bright.push(body);
   }
@@ -214,8 +214,9 @@ async function known(url) {
   });
   let rows;
   try {
-    const text = await fetchRetry(`https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?${q}`, 2, 15000);
-    rows = text.trim() ? JSON.parse(text) : [];   // an empty answer (204): nothing in the cone, not an outage
+    const [status, text] = await fetchRetry(`https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?${q}`, 2, 15000, true);
+    // SkyBoT says "nothing in the cone" with 204; a blank 200 is a broken answer, never a cached "nothing here"
+    rows = status === 204 ? [] : text.trim() ? JSON.parse(text) : null;
   } catch {
     return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
   }
