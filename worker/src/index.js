@@ -178,6 +178,24 @@ function sexagesimal(text, hours) {
   return sign * (a + b / 60 + c / 3600) * (hours ? 15 : 1);
 }
 
+// SkyBoT rows -> { comets, asteroids, omitted }, or null when any row cannot be read (then the answer is unavailable,
+// never a cached partial or empty result). Comets always; asteroids V <= 21 on the exact magnitude, brightest 8.
+function skybotRows(rows) {
+  const comets = [], bright = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object' || !/^\s*\d{1,2}\s+\d{1,2}\s+[\d.]+\s*$/.test(r['RA (hms)'] ?? '') || !/^\s*[+-]?\d{1,2}\s+\d{1,2}\s+[\d.]+\s*$/.test(r['DEC (dms)'] ?? '')) return null;
+    const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
+    if (!(ra >= 0 && ra < 360 && dec >= -90 && dec <= 90)) return null;
+    const mag = Number(r['VMag (mag)']);
+    const body = { name: String(r.Name || r.Num || 'object'), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? mag : null, err: Number(r['Err (arcsec)']) || 0 };
+    if (r.Class === 'Comet') comets.push(body);
+    else if (body.mag != null && body.mag <= 21) bright.push(body);
+  }
+  bright.sort((a, b) => a.mag - b.mag);
+  const out = b => ({ ...b, mag: b.mag == null ? null : +b.mag.toFixed(1) });   // round only for the answer
+  return { comets: comets.map(out), asteroids: bright.slice(0, 8).map(out), omitted: Math.max(0, bright.length - 8) };
+}
+
 // Known comets and asteroids in a time-lapse frame at its time, from IMCCE SkyBoT (planets left out). Geocentric.
 // Asteroids fainter than V = 21 are dropped and at most 8 kept; comets are kept even without a magnitude.
 // From kzkei's version (branch include-documentation-and-scope). Contract: docs/api.md.
@@ -198,21 +216,9 @@ async function known(url) {
     return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
   }
   if (!Array.isArray(rows)) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
-  const comets = [], bright = [];
-  let read = 0;
-  for (const r of rows) {
-    const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
-    if (!Number.isFinite(ra) || !Number.isFinite(dec)) continue;
-    read++;
-    const mag = Number(r['VMag (mag)']);
-    const body = { name: String(r.Name || r.Num || 'object'), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? +mag.toFixed(1) : null, err: Number(r['Err (arcsec)']) || 0 };
-    if (r.Class === 'Comet') comets.push(body);
-    else if (body.mag != null && body.mag <= 21) bright.push(body);
-  }
-  // rows we could not read mean SkyBoT changed its answer: unavailable, never a cached "nothing here"
-  if (rows.length && !read) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
-  bright.sort((a, b) => a.mag - b.mag);
-  return json({ ra: p.ra, dec: p.dec, t, comets, asteroids: bright.slice(0, 8), omitted: Math.max(0, bright.length - 8) }, 200, { 'Cache-Control': 'public, max-age=86400' });
+  const read = skybotRows(rows);
+  if (!read) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  return json({ ra: p.ra, dec: p.dec, t, ...read }, 200, { 'Cache-Control': 'public, max-age=86400' });
 }
 
 // Tag tallies per comet: each person's latest tag is their vote (so nobody counts twice)

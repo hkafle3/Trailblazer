@@ -51,4 +51,13 @@ const esaStars = new Function(src.match(/function esaStars[\s\S]*?\n}\n/)[0] + '
 const okEsa = isDeepStrictEqual(esaStars('ra,dec,pmra,pmdec,g\r\n269.4485,4.73942,-801.551,10362.394,8.193974\r\n'), [{ ra: 269.4485, dec: 4.73942, pmra: -801.551, pmdec: 10362.394, g: 8.193974 }]);
 let esaThrew = false; try { esaStars('<html>ESA error</html>'); } catch { esaThrew = true; }
 console.log(`${okEsa && esaThrew ? 'PASS' : 'FAIL'} ESA Gaia CSV: stars read, an error page refused`); fail += !(okEsa && esaThrew);
+// SkyBoT rows: every row must read, the V <= 21 cut uses the exact magnitude, comets always kept
+const sexagesimal = new Function(src.match(/function sexagesimal[\s\S]*?\n}\n/)[0] + 'return sexagesimal;')();
+const skybotRows = new Function('sexagesimal', src.match(/function skybotRows[\s\S]*?\n}\n/)[0] + 'return skybotRows;')(sexagesimal);
+const row = (Name, ra, dec, mag, Class = 'MB>Middle') => ({ Name, 'RA (hms)': ra, 'DEC (dms)': dec, 'VMag (mag)': mag, Class, 'Err (arcsec)': 1 });
+const swan = row('C/2025 R2', '05 09 14.4693', '+27 21 19.971', 20.3, 'Comet');
+const sky = skybotRows([swan, row('bright', '05 09 10', '+27 22 0', 18.8), row('just faint', '05 09 11', '+27 22 1', 21.04)]);
+const okSky = sky && sky.comets[0]?.name === 'C/2025 R2' && Math.abs(sky.comets[0].ra - 77.31029) < 1e-4 && sky.asteroids.map(a => a.name).join() === 'bright';
+const bad = [[swan, row('x', 'garbage 12', '+27 22 0', 18)], [null], [swan, row('y', '25 00 00', '+27 22 0', 18)]].every(r => skybotRows(r) === null);
+console.log(`${okSky && bad ? 'PASS' : 'FAIL'} SkyBoT rows: comet kept, V 21.04 cut, an unreadable or impossible row makes the answer unavailable`); fail += !(okSky && bad);
 process.exit(fail ? 1 : 0);

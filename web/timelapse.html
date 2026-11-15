@@ -244,35 +244,45 @@ function show(m, query, opts = {}) {
 // route from kzkei). A visit spans days and a known asteroid crosses the patch in hours, so SkyBoT is asked at each
 // distinct exposure time of the visit (f.epochs; baked targets have only the visit's middle). Three at a time, the
 // frame on screen first, after the frames show: a slow SkyBoT never holds up the time-lapse.
+// One queue for the whole page, at most three requests at once. Showing another target replaces the waiting work with
+// that target's (requests already sent finish); each frame keeps its unchecked times, so coming back resumes them.
+let knownQueue = [], knownBusy = 0;
 function knownFor(m) {
-  if (m.knownAsked) return;
-  m.knownAsked = true;
-  const jobs = [];
-  m.frames.forEach(f => { f.known = { left: (f.epochs ?? [f.mjd]).length, failed: 0, bodies: new Map() }; });
+  for (const f of m.frames) f.known ??= { todo: [...(f.epochs ?? [f.mjd])], left: (f.epochs ?? [f.mjd]).length, failed: 0, bodies: new Map() };
+  knownQueue = [];
   for (let k = 0; k < m.frames.length; k++) {
     const f = m.frames[(state.i + k) % m.frames.length];
-    for (const t of f.epochs ?? [f.mjd]) jobs.push([f, t]);
+    for (const t of f.known.todo) knownQueue.push([m, f, t]);
   }
-  const next = async () => {
-    for (let job; (job = jobs.shift());) {
-      const [f, t] = job, kn = f.known;
-      try {
-        const r = await fetch(`${API}/api/known?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&t=${t.toFixed(4)}`);
-        if (!r.ok) throw new Error(r.status);
-        const k = await r.json();
-        for (const [list, kind] of [[k.comets, 'comet'], [k.asteroids, 'asteroid']]) for (const o of list) {
-          const b = kn.bodies.get(o.name) ?? { kind, mag: o.mag, pts: [] };
-          b.pts.push([t, o.ra, o.dec]); b.pts.sort((x, y) => x[0] - y[0]); kn.bodies.set(o.name, b);
-        }
-      } catch { kn.failed++; }
-      kn.left--;
-      if (state.m === m && m.frames[state.i] === f) draw();
-    }
-  };
-  for (let n = 0; n < 3; n++) next();
+  while (knownBusy < 3 && knownQueue.length) knownNext();
 }
-// east/north offset in arcsec of (ra, dec) from the patch centre, the short way round in RA
-const offset = (m, ra, dec) => [(((ra - m.ra + 540) % 360) - 180) * 3600 * Math.cos(m.dec * D2R), (dec - m.dec) * 3600];
+async function knownNext() {
+  const job = knownQueue.shift();
+  if (!job) return;
+  const [m, f, t] = job, kn = f.known;
+  kn.todo = kn.todo.filter(x => x !== t);
+  knownBusy++;
+  try {
+    const r = await fetch(`${API}/api/known?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&t=${t.toFixed(4)}`);
+    if (!r.ok) throw new Error(r.status);
+    const k = await r.json();
+    for (const [list, kind] of [[k.comets, 'comet'], [k.asteroids, 'asteroid']]) for (const o of list) {
+      const b = kn.bodies.get(o.name) ?? { kind, mag: o.mag, pts: [] };
+      b.pts.push([t, o.ra, o.dec]); b.pts.sort((x, y) => x[0] - y[0]); kn.bodies.set(o.name, b);
+    }
+  } catch { kn.failed++; }
+  kn.left--; knownBusy--;
+  if (state.m === m && m.frames[state.i] === f) draw();
+  knownNext();
+}
+// east/north offset in arcsec of (ra, dec) from the patch centre, through the frames' own TAN projection
+// (pipeline.js gridWorld, inverted): a flat approximation drifts by pixels near the celestial poles
+function offset(m, ra, dec) {
+  const d0 = m.dec * D2R, d = dec * D2R, da = (ra - m.ra) * D2R;
+  const cosc = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(da);
+  if (cosc <= 0) return [Infinity, Infinity];   // the far side of the sky: never in view
+  return [Math.cos(d) * Math.sin(da) / cosc / D2R * 3600, (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(da)) / cosc / D2R * 3600];
+}
 const dayMonth = mjd => { const d = new Date((mjd - 40587) * 864e5); return `${d.getUTCDate()} ${MONTH[d.getUTCMonth()]}`; };
 // the panel's list: what passed through during this visit, one per line, comets first (names are text, never HTML)
 function knownList(f) {
@@ -280,7 +290,8 @@ function knownList(f) {
   if (!k) return void (el.textContent = '');
   if (k.failed === n) return void (el.textContent = 'Catalog check unavailable right now');
   const rows = [...k.bodies].sort((a, b) => (a[1].kind === 'comet' ? 0 : 1) - (b[1].kind === 'comet' ? 0 : 1));
-  if (!rows.length) return void (el.textContent = k.left ? `Checking ${n - k.left} of ${n} exposure times…` : 'None passed through during this visit');
+  if (!rows.length) return void (el.textContent = k.left ? `Checking ${n - k.left} of ${n} exposure times…`
+    : k.failed ? `None found at ${n - k.failed} of ${n} exposure times; ${k.failed} could not be checked` : 'None passed through during this visit');
   el.replaceChildren(...rows.slice(0, 4).map(([name, b]) => {
     const line = document.createElement('span'), dot = document.createElement('i');
     line.className = 'known-row'; dot.style.background = b.kind === 'comet' ? 'var(--comet)' : 'var(--known)';
