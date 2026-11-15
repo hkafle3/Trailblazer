@@ -1,6 +1,8 @@
 """Browser check for the Comets tab (shelves), the sky's hover names, page titles and the comet page's width, in headless
 Chrome. Needs the app up (npm run dev). Expected values come from GET /api/comets and skymap.js, never from the page.
-Run: uv run -q --with playwright python web/tests/comets_ui.py [base url]   (default http://127.0.0.1:8787)"""
+Also, in WebKit (iPhone, 390x844, light and dark): the page is dark behind the header and under the search box.
+Run: uv run -q --with playwright python web/tests/comets_ui.py [base url]   (default http://127.0.0.1:8787)
+     (WebKit once: uv run -q --with playwright python -m playwright install webkit)"""
 import asyncio, sys, urllib.parse
 from playwright.async_api import async_playwright
 
@@ -28,6 +30,39 @@ CLIPPED = """() => { const W = innerWidth, out = [];
   for (const e of document.querySelectorAll('main *')) { const r = e.getBoundingClientRect();
     if (r.width && r.height && getComputedStyle(e).visibility !== 'hidden' && (r.right > W + 1 || r.left < -1)) out.push(e.id || e.className || e.tagName); }
   return { overflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - W, out: out.slice(0, 5) }; }"""
+
+# The color behind a point: every background color in the stack under it, painted over the page itself (<html>).
+# An <html> with no color of its own counts as white: iPhone Safari (iOS 27) showed white there on the Comets list,
+# because it did not carry <body>'s color out to the page. Gradients and images do not count, only flat colors.
+UNDER = """([x, y]) => { const rgba = e => (getComputedStyle(e).backgroundColor.match(/[\\d.]+/g) || []).map(Number),
+    root = rgba(document.documentElement); let c = root.length === 3 || root[3] === 1 ? root.slice(0, 3) : [255, 255, 255];
+  for (const e of document.elementsFromPoint(x, y).reverse()) { const [r, g, b, a = 1] = rgba(e);
+    if (e !== document.documentElement && a > 0) c = [r * a + c[0] * (1 - a), g * a + c[1] * (1 - a), b * a + c[2] * (1 - a)]; }
+  const l = v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
+  return .2126 * l(c[0]) + .7152 * l(c[1]) + .0722 * l(c[2]); }"""
+DARK_PAGES = ["/comet", "/", "/explore", "/timelapse", "/comet?id=3I%2FATLAS", "/candidate?id=none", "/forums"]
+
+
+async def dark_on_iphone(p):
+    """WebKit as an iPhone at 390x844, light and dark: behind the header and under the search box is dark (luminance at
+    most 0.1) on the Comets list, and behind the header on every other page."""
+    b = await p.webkit.launch()
+    out = []
+    for scheme in ["light", "dark"]:
+        ctx = await b.new_context(**{**p.devices["iPhone 14"], "viewport": {"width": 390, "height": 844}}, color_scheme=scheme)
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+        pg = await ctx.new_page()
+        for path in DARK_PAGES:
+            await pg.goto(BASE + path); await pg.wait_for_timeout(1200)
+            pts = await pg.evaluate("""() => { const h = document.querySelector('.topbar').getBoundingClientRect(), s = document.querySelector('#c-list:not([hidden]) .f-search');
+              const at = { header: [4, h.top + h.height / 2] }; if (s) { const r = s.getBoundingClientRect(); at.search = [4, r.bottom + 6]; } return at; }""")
+            for where, xy in pts.items():
+                lum = await pg.evaluate(UNDER, xy)
+                out.append(f"{scheme} {path} {where} {lum:.3f}")
+                assert lum <= .1, f"WebKit {scheme}: {path} is not dark behind the {where} ({lum:.3f})"
+        await ctx.close()
+    await b.close()
+    return out
 
 
 async def main():
@@ -196,8 +231,10 @@ async def main():
                     assert not hit, f"{path} at {w}px: the comments panel covers the comet's panels"
             await c2.close()
         await b.close()
+        dark = await dark_on_iphone(p)
+    print("WebKit iPhone 390x844, luminance behind (at most 0.1):\n  " + "\n  ".join(dark))
     print(f"PASS Comets shelves: {len(by)} comets ({len(want['m'])} measured, {len(want['o'])} could be, {len(want['f'])} too faint), "
           "CO2 results and photos (a missing one keeps its card), links, sky tiles on skymap.js places, search, regions (day 529 and 300), sort, spoken counts; sky names on hover; "
-          "UTF-8 titles; comet page and list fit 390-1024 px")
+          "UTF-8 titles; comet page and list fit 390-1024 px; dark behind header and search in WebKit, light and dark")
 
 asyncio.run(main())
