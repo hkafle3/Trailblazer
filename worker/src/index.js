@@ -57,7 +57,7 @@ function parseCsv(text) {
 
 // SPHEREx search results: only the columns we use, all before any quoted field, so a plain split per line is enough.
 // The full parser cost about 100 ms of CPU on a deep-field answer (free plan: 10 ms); this costs about 5 ms.
-// A line with a quote inside those columns goes through the full parser instead.
+// Any line where that shortcut could be wrong sends the whole answer through the full parser.
 const SPX_COLS = ['obs_id', 't_min', 'access_url', 'energy_bandpassname', 'dataproduct_subtype'];
 function spherexRows(text) {
   const lines = text.split('\n'), head = lines[0].replace(/\r$/, '').split(',');
@@ -67,9 +67,9 @@ function spherexRows(text) {
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].replace(/\r$/, '');
     if (!line) continue;
-    let f = line.split(',', need);
-    const q = line.indexOf('"');
-    if (q !== -1 && q <= f.join(',').length) f = Object.values(parseCsv(lines[0] + '\n' + line)[0] || {});
+    const f = line.split(',', need), q = line.indexOf('"');
+    // a quote among our columns (including a quoted field that runs onto the next line): parse the whole answer properly
+    if (q !== -1) { let end = need - 1; for (const x of f) end += x.length; if (q <= end) return parseCsv(text); }
     out.push(Object.fromEntries(SPX_COLS.map((k, n) => [k, f[ix[n]]])));
   }
   return out;
