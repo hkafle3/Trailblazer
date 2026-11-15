@@ -87,6 +87,9 @@ def render(name):
                       (lambda m, v: f"Too faint near 4.26 µm to tell gas from noise (best: {datetime.strptime(m, '%Y-%m').strftime('%B %Y')}, "
                                     f"{fmt(v['excess'])} ± {v['sigma']:.1f} mJy)")(*min(((m, v) for m, v in d["co2"].items() if "excess" in v), key=lambda mv: mv[1]["sigma"]))
                       if any("excess" in v for v in d["co2"].values()) else
+                      # photographed in the band, but never with enough light measured on both sides of it to compare against
+                      "Seen in the CO2 band, but not on both sides of it to compare"
+                      if any(v["n_band"] >= 2 for v in d["co2"].values()) else
                       f"Too few SPHEREx photos in the CO2 band to tell ({sum(v['n_band'] for v in d['co2'].values())} in all)")
             fig.text(0.42, 0.075, text, color=c, fontsize=24, fontweight="bold")
             fig.text(0.42, 0.035, detail, color=MUTED, fontsize=12)
