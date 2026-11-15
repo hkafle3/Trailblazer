@@ -55,6 +55,34 @@ function parseCsv(text) {
   return body.map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
 }
 
+// SPHEREx search results: only the columns we use, all before any quoted field, so a plain split per line is enough.
+// The full parser cost about 100 ms of CPU on a deep-field answer (free plan: 10 ms); this costs about 5 ms.
+// Any line where that shortcut could be wrong sends the whole answer through the full parser.
+const SPX_COLS = ['obs_id', 't_min', 'access_url', 'energy_bandpassname', 'dataproduct_subtype'];
+function spherexRows(text) {
+  if (text.includes('\r')) return parseCsv(text);   // IRSA ends lines with \n alone; anything else takes the careful path
+  const lines = text.split('\n'), head = lines[0].split(',');
+  const ix = SPX_COLS.map(k => head.indexOf(k)), need = Math.max(...ix) + 1;
+  // unexpected layout (a column missing or named twice, a quoted header): be correct, not fast
+  if (ix.includes(-1) || ix.some(i => head.indexOf(head[i], i + 1) !== -1) || lines[0].includes('"')) return parseCsv(text);
+  const out = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.includes(',')) continue;   // the full parser skips one-field lines too
+    const f = line.split(',', need), q = line.indexOf('"');
+    if (q !== -1) {   // a quote among our columns, or an odd count (a field running onto the next line): parse it all properly
+      let end = need - 1, n = 0;
+      for (const x of f) end += x.length;
+      for (let k = q; k !== -1; k = line.indexOf('"', k + 1)) n++;
+      if (q <= end || n % 2) return parseCsv(text);
+    }
+    out.push(Object.fromEntries(SPX_COLS.map((k, n) => [k, f[ix[n]]])));
+  }
+  return out;
+}
+// one wavelength well inside each detector's range (they overlap a little at the edges), so IRSA returns one detector
+const BAND = { D1: '8.5e-7 9.5e-7', D2: '1.3e-6 1.4e-6', D3: '1.9e-6 2.1e-6', D4: '3.0e-6 3.2e-6', D5: '4.0e-6 4.2e-6', D6: '4.6e-6 4.8e-6' };
+
 function s3Key(row) {
   try {
     const key = JSON.parse(row.cloud_access).aws.key;
@@ -68,8 +96,8 @@ async function images(url) {
   if (p.error) return json(p, 400);
   const det = url.searchParams.get('det') || 'D1';
   if (!/^D[1-6]$/.test(det)) return json({ error: 'det must be D1 to D6' }, 400);
-  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} 0.001`, RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`)
-    .then(parseCsv);
+  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} 0.001`, BAND: BAND[det], RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`)
+    .then(spherexRows);
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches
   const e = 23.4393 * Math.PI / 180, a = p.ra * Math.PI / 180, d = p.dec * Math.PI / 180;
   const beta = Math.asin(Math.sin(d) * Math.cos(e) - Math.cos(d) * Math.sin(e) * Math.sin(a)) * 180 / Math.PI;

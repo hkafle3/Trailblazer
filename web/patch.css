@@ -46,7 +46,10 @@ canvas#gl.drag { cursor: grabbing; }
 #search input, #search select { height: 48px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 15, 26, .8); color: var(--ink); font: 400 14px var(--body); padding: 0 22px; outline: 0; transition: border-color .2s; }
 #search input:focus, #search select:focus { border-color: rgba(255, 255, 255, .4); }
 #search input { min-width: 0; }
-#search select { padding-right: 14px; cursor: pointer; }
+/* our own chevron, with the same room on the right as the text has on the left (the browser's sat on the edge) */
+#search select { appearance: none; -webkit-appearance: none; padding-right: 44px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23c9d2e3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 20px center; background-size: 11px 8px; }
 #search select option { background: #0b0f1a; }
 #search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 #search .btn { height: 48px; }
@@ -96,5 +99,5 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 body.busy #patch { animation: breathe 1.6s ease-in-out infinite; }
 
 /* the search's go button: an arrow, so it reads as "go to this spot", not as a second play button */
-#search .btn.go { width: 48px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+#search .btn.go { width: 48px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(11, 15, 26, .8); border: 1px solid rgba(255, 255, 255, .14); }   /* same surface as the pills beside it */
 #search .btn.go .ic { width: 18px; height: 18px; }
