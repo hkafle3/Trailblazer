@@ -13,7 +13,7 @@ Run: uv run -q --with astropy --with pillow --with certifi --with reproject sh -
 Flags: --all-visits (every SPHEREx visit, how the known comets are published); --most (find exposures with IRSA's
 moving-object search, one request per visit, instead of hundreds of SIA requests).
 """
-import csv, io, json, re, sys, urllib.parse
+import csv, functools, io, json, re, sys, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -93,16 +93,25 @@ def horizons_at(pdes, mjds):
     return [pos[j] for j in jds]
 
 
+@functools.lru_cache
+def spkid(pdes):
+    """JPL's SPK-ID for a comet designation (the comet itself, not a fragment), from the Small-Body Database."""
+    return json.loads(get("https://ssd-api.jpl.nasa.gov/sbdb.api?" + urllib.parse.urlencode({"des": pdes})).decode())["object"]["spkid"]
+
+
 def most_rows(pdes, a, b):
     """SPHEREx exposures whose outline MOST says the comet crossed between days a and b (since MJD0), as rows shaped
     like SIA's (the fields exposures_known reads), DR1 before QR3 so DR1 wins a duplicate."""
     day = lambda d: (datetime(1858, 11, 17) + timedelta(days=MJD0 + d)).strftime("%Y-%m-%d")
+    # by NAIF ID (JPL's SPK-ID): MOST refuses a designation shared with fragments ("2023 R1" also matches C/2023 R1-B)
     url = "https://irsa.ipac.caltech.edu/cgi-bin/MOST/nph-most?" + urllib.parse.urlencode(
-        {"catalog": "spherex", "input_type": "name_input", "obj_name": pdes, "obj_type": "Comet",
+        {"catalog": "spherex", "input_type": "naifid_input", "obj_naifid": spkid(pdes),
          "obs_begin": day(np.floor(a)), "obs_end": day(np.ceil(b) + 1), "output_mode": "Brief"})
     lines = get(url).decode().splitlines()
     head = next((l for l in lines if l.startswith("|")), None)
     assert head, f"MOST answered without a table (an empty answer still has one): {lines[:5]}"
+    named = next(l for l in lines if l.startswith("\\object_name"))
+    assert f"({pdes})" in named or f"/{pdes})" in named, f"MOST found another object for {pdes}: {named}"
     bars = [i for i, ch in enumerate(head) if ch == "|"]
     cols = [head[i + 1:j].strip() for i, j in zip(bars, bars[1:])]
     out = []
