@@ -31,16 +31,32 @@
   .craft img { transition: transform .6s var(--ease); }
   .craft:hover img { transform: translateY(calc(-10 * var(--s))); }
   .scene a:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
-  .scene { cursor: pointer; }
+  .scene { cursor: pointer; -webkit-tap-highlight-color: transparent; }   /* no tinted flash over the whole scene on tap */
   .home-sky { view-transition-name: sky; }   /* the same name as the Explore map: the oval glides into place there */
 
-  /* Leaving for Explore: Earth and SPHEREx drop away and fade, then the page changes. */
-  .earth, .craft { transition: transform .9s cubic-bezier(.55, 0, .8, .2), opacity .8s ease-in; }
-  .leaving .earth { transform: translateY(45%); opacity: 0; }
-  .leaving .craft { transform: translateY(calc(520 * var(--s))) scale(.9); opacity: 0; transition-delay: .05s; }
+  /* Leaving for Explore: a lift-off. The camera rises off Earth toward the sky, so the nearer a layer is, the further it
+     moves: Earth falls away and fades into the dark, SPHEREx climbs on into the sky and shrinks with distance, the oval
+     grows a touch (the Explore map takes it from there) and the stars barely drift. Transform and opacity only. */
+  :root { --lift: cubic-bezier(.3, 0, .65, .45); --lift-out: cubic-bezier(.45, 0, .2, 1); }
+  .earth { transform-origin: 50% 0; scale: 1.01; }   /* 1% spare, so the idle drift below never shows its side edges */
+  .earth img { position: relative; transition: opacity .65s ease-in; }
+  /* Earth's black silhouette behind it: the picture fades into it, so Earth darkens as it falls instead of turning see-through */
+  .earth::before { content: ""; position: absolute; inset: 0; background: #000; mask: url(data/home/earth.png) 0 0 / 100% 100%; }
+  .earth, .craft, .home-sky, #home-stars { transition: translate .9s var(--ease), transform 1s var(--lift), opacity .9s ease-in; }
+  .home-sky, #home-stars { transition-timing-function: var(--ease), var(--lift-out), ease-in; }
+  .leaving .earth { transform: translateY(75%) scale(.9); opacity: 0; transition-duration: .9s, 1s, .4s; transition-delay: 0s, 0s, .55s; }
+  .leaving .earth img { opacity: 0; }
+  .leaving .craft { transform: translateY(calc(-420 * var(--s))) scale(.5); opacity: 0; transition-duration: .9s, .95s, .45s; transition-delay: 0s, 0s, .45s; }
+  .leaving .home-sky { transform: scale(1.035); }
+  .leaving #home-stars { transform: scale(1.015); }   /* about the oval's centre, set by the star script */
   .leaving .home-sky img { filter: grayscale(.6) brightness(1.2) contrast(1.05); }
   .leaving .scene { cursor: default; }
-  @media (prefers-reduced-motion: reduce) { .craft img, .home-sky img, .earth, .craft { transition: none; } }
+  /* Idle: the mouse tilts the view a few pixels, nearer layers more (the script sets --mx and --my, -1 to 1) */
+  #home-stars { translate: calc(var(--mx, 0) * -2px) calc(var(--my, 0) * -1px); }
+  .home-sky { translate: calc(var(--mx, 0) * -4px) calc(var(--my, 0) * -2px); }
+  .earth { translate: calc(var(--mx, 0) * -8px) calc(var(--my, 0) * -4px); }
+  .craft { translate: calc(var(--mx, 0) * -11px) calc(var(--my, 0) * -6px); }
+  @media (prefers-reduced-motion: reduce) { .craft img, .home-sky img, .earth, .earth img, .craft, .home-sky, #home-stars { transition: none; } }
 </style>
 </head>
 <body class="home nostars">
@@ -54,7 +70,7 @@
 <main class="scene">
   <h1 class="sr-only">Trailblazer: find comets in NASA SPHEREx images</h1>
   <a class="home-sky" href="explore.html" title="Explore the sky" aria-label="Explore the whole sky SPHEREx has photographed"><img src="data/sky.jpg" alt=""></a>
-  <img class="earth" src="data/home/earth.png" alt="" fetchpriority="high">
+  <div class="earth"><img src="data/home/earth.png" alt="" fetchpriority="high"></div>
   <a class="craft" href="explore.html" title="Explore the sky" aria-label="Explore with SPHEREx"><img src="data/home/spherex.png" alt="The SPHEREx space telescope"></a>
 </main>
 
@@ -70,11 +86,18 @@
       going = true;
       if (reduce) { location.href = 'explore.html'; return; }
       document.body.classList.add('leaving');
-      setTimeout(() => { location.href = 'explore.html'; }, 850);
+      setTimeout(() => { location.href = 'explore.html'; }, 950);
     };
     document.querySelector('.scene').addEventListener('click', go);
     document.querySelector('.topbar nav a[href="explore.html"]').addEventListener('click', go);
     addEventListener('pageshow', () => { going = false; document.body.classList.remove('leaving'); });   // back button: show the scene again
+    // the idle tilt: desktop pointers only, not for less motion; read once a frame
+    if (reduce || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    let x = 0, y = 0, queued = 0;
+    addEventListener('pointermove', e => {
+      x = e.clientX / innerWidth * 2 - 1; y = e.clientY / innerHeight * 2 - 1;
+      queued ||= requestAnimationFrame(() => { queued = 0; document.body.style.setProperty('--mx', x.toFixed(3)); document.body.style.setProperty('--my', y.toFixed(3)); });
+    });
   })();
 </script>
 <script>
@@ -106,6 +129,7 @@
         d[i] = d[i + 1] = d[i + 2] = .945 * v - 6.4;   // the oval's filter: brightness(.9) contrast(1.05)
       }
       cv.width = w; cv.height = h; cv.style.width = w * k + 'px'; cv.style.height = h * k + 'px';
+      cv.style.transformOrigin = `${cx * k}px ${cy * k}px`;   // the lift-off grows the stars about the oval's centre
       g.putImageData(img, 0, 0);
     };
     let queued = 0;
