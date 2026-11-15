@@ -465,6 +465,10 @@ function draw() {
     // what a name must not cover: the measured positions and the predicted ring (boxes), then each name placed so far
     const taken = shown.map(fr => { const [x, y] = toPx(fr.x, fr.y); return [x - 12, y - 12, x + 12, y + 12]; });
     if (f.pred_east != null) { const [gx, gy] = predPx(f); taken.push([gx - 19, gy - 19, gx + 19, gy + 19]); }
+    if (document.body.classList.contains('busy')) {   // and the loading caption in its corner, while it shows
+      const L = document.getElementById('loading'), q = W / patch.clientWidth;
+      taken.push([L.offsetLeft * q, L.offsetTop * q, (L.offsetLeft + L.offsetWidth) * q, (L.offsetTop + L.offsetHeight) * q]);
+    }
     const rings = taken.length;   // for tests/patch checks: window.__labels = { rings, names }
     const hits = r => r[0] < 0 || r[1] < 0 || r[2] > W || r[3] > H || taken.some(t => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
     for (const [name, b] of f.known.bodies) {
@@ -760,7 +764,10 @@ function cancel() { if (job) builder?.postMessage({ id: ++builds }); job = 0; }
 const statusEl = document.getElementById('status');
 // a short reason for the status line; the full error stays in its tooltip
 const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
-function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); moreBelow(); }
+let busyWas = false;
+function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : '';
+  if (document.body.classList.toggle('busy', !!job && !err) !== busyWas) { busyWas = !busyWas; draw(); }   // names move off the caption, and back
+  moreBelow(); }
 // a card whose content runs past its height fades out at the bottom until it is scrolled to the end (patch.css .more)
 // It is also a Tab stop while it scrolls (tabindex 0), so the keyboard can reach rows below the fold; otherwise not.
 function moreBelow() {
@@ -882,7 +889,7 @@ function back() {
 // (the exact box, not clientWidth's whole pixels, since pointer positions are fractional)
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
-  moved: () => draw(), commit: recenter, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
+  moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
 talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text) });
 window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
@@ -1144,6 +1151,17 @@ const fov = document.getElementById('fov');
 const setFov = () => { state.fov = 13 - +fov.value; fov.parentElement.dataset.w = `${state.fov} arcmin wide`; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
 fov.value = 13 - state.fov; setFov();
 fov.oninput = () => { setFov(); draw(); };
+// the wheel, a pinch and +/- on the photo (live/recenter.js) move the same bar: k times the width, in the bar's 0.5
+// arcmin steps, about the middle. `want` keeps small trackpad steps adding up between bar steps. Zooming only crops
+// the frames already built (no fetch), so the photo redraws at once, once per screen refresh.
+let want = state.fov, zoomDraw = 0;
+function zoomBy(k) {
+  if (Math.abs(want - state.fov) >= .5) want = state.fov;   // the bar was dragged since
+  want = Math.min(12, Math.max(1, want * k));
+  fov.value = 13 - want;   // the bar snaps it to its step and range
+  if (13 - +fov.value === state.fov) return;
+  setFov(); zoomDraw ||= requestAnimationFrame(() => { zoomDraw = 0; draw(); });
+}
 for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat']])
   document.getElementById(id).onchange = e => { state[key] = e.target.checked; draw(); };
 addEventListener('keydown', e => {

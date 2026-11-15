@@ -84,12 +84,14 @@ body:has(#diff:checked) #legend .lg-key { display: flex; }   /* the colour key, 
 #legend i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; }
 body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 /* While a time-lapse builds, the frame says what is happening, with a thin line filling as the frames are made, on the
-   legend's dark backdrop. It fades in after a beat, so a re-centre that lands within a second shows none. */
-#loading { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: calc(18 * var(--e));
-  padding: calc(22 * var(--e)) calc(30 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); pointer-events: none;
-  font: 400 calc(24 * var(--e)) / 1 var(--panel-font); color: #fff; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
+   legend's dark backdrop. It fades in after a beat, so a re-centre that lands within a second shows none. It sits in the
+   top-right corner, across from the Spectrum button, so it never covers the target in the middle; known objects' names
+   keep clear of it while it shows (draw() in timelapse.html). */
+#loading { position: absolute; right: calc(18 * var(--e)); top: calc(16 * var(--e)); display: grid; justify-items: end; gap: calc(12 * var(--e));
+  padding: calc(12 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); pointer-events: none;
+  font: 400 calc(20 * var(--e)) / 1 var(--panel-font); color: #fff; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
 body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4s, visibility 0s .4s; }
-#ld-line { display: block; width: calc(320 * var(--e)); height: max(1.5px, calc(3 * var(--e)));
+#ld-line { display: block; width: 100%; min-width: calc(200 * var(--e)); height: max(1.5px, calc(3 * var(--e)));
   background: linear-gradient(#fff, #fff) 0 0 / var(--p, 0%) 100% no-repeat, rgba(255, 255, 255, .25); transition: background-size .4s; }
 @media (prefers-reduced-motion: reduce) { #loading, body.busy #loading, #ld-line { transition: none; } }
 
@@ -385,5 +387,6 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   body.lapse:not(.sky) .spec-key { font-size: 11px; }
   body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; margin-left: -11px; }
   body.lapse:not(.sky) .spec-csv { height: 44px; padding: 0 16px; border-width: 1.5px; font-size: 12.5px; }
+  body.lapse:not(.sky) #loading { right: 6px; top: 6px; padding: 8px 10px; gap: 7px; font-size: 11px; }
   body.lapse:not(.sky) .pv-specbtn { left: 6px; top: 6px; height: 44px; padding: 0 14px 0 10px; border-width: 1.5px; font-size: 12.5px; gap: 6px; }
 }
