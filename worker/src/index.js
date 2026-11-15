@@ -30,8 +30,8 @@ async function fetchRetry(url, tries = 5, ms = 20000, withStatus = false) {
       if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return withStatus ? [r.status, text] : text;
       last = `HTTP ${r.status}`;
     } catch (e) { last = String(e); }
-    // short waits: one 502 is common, a run of them is rare; doubling from 400 ms cost 14 s on 2026-11-14
-    await new Promise(res => setTimeout(res, 300 * 1.5 ** i + Math.random() * 200));
+    // short waits: one 502 is common; doubling from 400 ms cost 14 s on 2026-11-14. Capped at 2 s for long retry runs.
+    await new Promise(res => setTimeout(res, Math.min(2000, 300 * 1.5 ** i + Math.random() * 200)));
   }
   throw new Error(last);
 }
@@ -95,12 +95,15 @@ async function images(url) {
   if (p.error) return json(p, 400);
   const det = url.searchParams.get('det') || 'D1';
   if (!/^D[1-6]$/.test(det)) return json({ error: 'det must be D1 to D6' }, 400);
-  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} 0.001`, BAND: BAND[det], RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`)
-    .then(spherexRows);
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches
   const e = 23.4393 * Math.PI / 180, a = p.ra * Math.PI / 180, d = p.dec * Math.PI / 180;
   const beta = Math.asin(Math.sin(d) * Math.cos(e) - Math.cos(d) * Math.sin(e) * Math.sin(a)) * 180 / Math.PI;
   const colls = Math.abs(beta) > 75 ? [...WIDE, ...DEEP] : WIDE;
+  // On 2026-11-15 IRSA's search failed most requests with an instant 502 and answered about one in three after ~21 s,
+  // so each try waits up to 45 s and the instant failures are retried, one at a time per search. 40 tries are shared
+  // out (the free plan allows 50 outside requests per visit, and D1 and the cache need a few).
+  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} 0.001`, BAND: BAND[det], RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`,
+    Math.floor(40 / colls.length), 45000).then(spherexRows);
   const results = await Promise.allSettled(colls.map(search));
   if (results.slice(0, WIDE.length).some(r => r.status === 'rejected'))   // an empty answer must mean "no images", never "search failed"
     return json({ error: 'IRSA search is not answering, try again or pick a baked target', retry_after: 30 }, 503, { 'Retry-After': '30' });
