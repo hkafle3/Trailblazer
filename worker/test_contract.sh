@@ -111,6 +111,7 @@ case "$BASE" in
     post "blank body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"   \",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
     long=$(python3 -c 'print("a" * 1001)')
     post "too-long body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"$long\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
+    post "a tag alone is a vote" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"unsure\",\"body\":\"\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"tag":"unsure","body":""'
     post "bad tag" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"star\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"tag"'
     post "bad author name" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"<b>x</b>\",\"turnstile\":\"$(tok)\"}" 400 '"field":"author"'
     post "missing turnstile token" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"$who\"}" 400 '"field":"turnstile"'
