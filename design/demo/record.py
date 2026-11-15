@@ -1,5 +1,5 @@
 """Smooth demo of Comet Catcher (start the dev server on 8790 with a fresh database first; pass another base URL as the first argument) -> frames/*.jpg + frames.json (timestamps) + events.json (captions, fast-forward spans).
-Hidden Chrome on the GPU, 1440x810 CSS px at 4/3 scale = 1920x1080 frames, every frame Chrome paints (CDP screencast),
+Hidden Chrome on the GPU, 1440x810 frames (the screencast sends CSS-pixel size), every frame Chrome paints (CDP screencast),
 an eased cursor and captions drawn in the page. Run against the local demo server (fresh database, test Turnstile key)."""
 import asyncio, base64, json, math, sys, time
 from pathlib import Path
