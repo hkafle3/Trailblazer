@@ -94,6 +94,24 @@ const filled = sql.prepare('SELECT body, saved_at FROM searches WHERE key = ?').
 const bigText = JSON.stringify(big), parts = sql.prepare("SELECT count(*) n FROM searches WHERE key = '/api/images?ra=1&dec=2&det=D1'").get().n;
 const okSaved = bigText.length > 2e6 && s1[0] === 200 && s2[0] === 200 && s2[1] === bigText && s2[2].get('Cache-Control') === 'no-store' && /^\d{4}-/.test(s2[2].get('X-Saved-At') || '')
   && s3[1] === bigText && s4[0] === 400 && s5[0] === 503 && s6[1] === '{"images":[7]}' && parts === 1 && s7[0] === 503
-  && filled?.body === '{"stars":[]}' && filled.saved_at === Date.parse('2026-11-14T10:00:00Z');
+  && filled?.body === '{"stars":[]}' && filled.saved_at === Date.parse('2026-11-14T10:00:00Z')
+  && sql.prepare('SELECT n FROM saved_bytes').get().n === sql.prepare('SELECT sum(length(CAST(body AS BLOB))) n FROM searches').get().n;
+// a late save of yesterday's cached answer never replaces a newer one
+await saved.backfill({ DB }, '/api/known?ra=1', new Response('{"old":1}', { headers: { 'Cache-Control': 'public, max-age=86400', Date: 'Sat, 14 Nov 2026 10:00:00 GMT' } }));
+sql.prepare("UPDATE searches SET body = '{\"new\":1}', saved_at = ? WHERE key = '/api/known?ra=1'").run(Date.now());
+const late = new Function('CORS', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return save;')(CORS);
+await late({ DB }, '/api/known?ra=1', '{"old":1}', Date.parse('2026-11-14T10:00:00Z'));
+const okOrder = sql.prepare("SELECT body FROM searches WHERE key = '/api/known?ra=1'").get().body === '{"new":1}';
+// the 100 MB cap holds even for two saves at once that each saw room: one fits, the other rolls back whole
+const chunk = 'x'.repeat(600000);
+sql.prepare('UPDATE saved_bytes SET n = 99000000').run();   // 1 MB of room left
+await Promise.allSettled([late({ DB }, '/api/a', chunk + chunk), late({ DB }, '/api/b', chunk + chunk)]);   // 1.2 MB each, in 3 parts
+const capped = sql.prepare("SELECT count(DISTINCT key) k FROM searches WHERE key IN ('/api/a', '/api/b')").get().k, total = sql.prepare('SELECT n FROM saved_bytes').get().n;
+sql.prepare('UPDATE saved_bytes SET n = 99000000').run(); await late({ DB }, '/api/c', 'x'.repeat(400000)); await late({ DB }, '/api/d', 'x'.repeat(400000));
+const okCap = capped === 0 && total <= 100e6 && sql.prepare("SELECT count(DISTINCT key) k FROM searches WHERE key IN ('/api/c', '/api/d')").get().k === 2;
+sql.prepare('UPDATE saved_bytes SET n = 99700000').run();
+await Promise.allSettled([late({ DB }, '/api/e', 'x'.repeat(200000)), late({ DB }, '/api/f', 'x'.repeat(200000))]);   // each fits alone, not both
+const okRace = sql.prepare("SELECT count(DISTINCT key) k FROM searches WHERE key IN ('/api/e', '/api/f')").get().k === 1 && sql.prepare('SELECT n FROM saved_bytes').get().n <= 100e6;
+console.log(`${okOrder && okCap && okRace ? 'PASS' : 'FAIL'} saved searches: the newest answer wins, the 100 MB cap holds for one save or two at once`); fail += !(okOrder && okCap && okRace);
 console.log(`${okSaved ? 'PASS' : 'FAIL'} saved searches: a ${(bigText.length / 1e6).toFixed(1)} MB answer kept in parts and served on a failure or partial answer, replaced whole, never for a bad request or unsaved search; cached answers backfilled`); fail += !okSaved;
 process.exit(fail ? 1 : 0);

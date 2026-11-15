@@ -436,23 +436,26 @@ export default {
 // IRSA's image search answered 502 for hours on 2026-11-15. Every complete answer is also kept in D1, and when the
 // service fails (or answers only in part) the last complete answer to that exact search is served instead, uncached,
 // so a spot that worked once keeps working through an outage and fresh answers return as soon as the service does.
-const SAVED_MAX = 2000, PART = 500000;   // searches kept; characters a row (under D1's 2 MB row limit even at 3 bytes each)
+const SAVED_MAX = 100e6, PART = 500000;   // bytes kept (the migration's CHECK is the hard cap); characters a row (under 2 MB at 3 bytes each)
 const complete = res => res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '');
 // keyed on the parameters the searches read (and v, which marks a new answer shape), so junk parameters add no rows
 const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 't', 'v'].filter(n => url.searchParams.has(n)).map(n => [n, url.searchParams.get(n)]));
+const room = async (env, size) => (await env.DB.prepare('SELECT n FROM saved_bytes').first()).n + size <= SAVED_MAX;
 
+// One transaction, newest answer wins: an older saved answer is deleted and the new parts go in, unless a newer answer
+// is already there (a late save of an old cached answer changes nothing). Past the byte cap an insert fails and all of it rolls back.
 async function save(env, id, body, at = Date.now()) {
-  const n = await env.DB.prepare('SELECT (SELECT count(*) FROM searches WHERE part = 0) AS n, EXISTS (SELECT 1 FROM searches WHERE key = ?) AS has').bind(id).first();
-  if (n.n >= SAVED_MAX && !n.has) return;   // ponytail: a full table takes no new searches; evict the oldest if that ever bites
+  if (!await room(env, body.length)) return;   // ponytail: a full store takes no new searches; evict the oldest if that ever bites
   const parts = [];
   for (let i = 0; i < body.length; i += PART) parts.push(body.slice(i, i + PART));   // a deep field's answer can pass 2 MB
-  await env.DB.batch([env.DB.prepare('DELETE FROM searches WHERE key = ?').bind(id),   // one transaction: the old answer stays until the new one is whole
-    ...parts.map((b, i) => env.DB.prepare('INSERT INTO searches (key, part, body, saved_at) VALUES (?, ?, ?, ?)').bind(id, i, b, at))]);
+  await env.DB.batch([env.DB.prepare('DELETE FROM searches WHERE key = ? AND saved_at < ?').bind(id, at),
+    ...parts.map((b, i) => env.DB.prepare('INSERT INTO searches (key, part, body, saved_at) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM searches WHERE key = ? AND saved_at > ?)')
+      .bind(id, i, b, at, id, at))]);
 }
 
 // answers cached before saving existed are saved on their next cache hit, so they survive an outage too
 async function backfill(env, id, hit) {
-  if (!complete(hit) || await env.DB.prepare('SELECT 1 FROM searches WHERE key = ? AND part = 0').bind(id).first()) return;
+  if (!complete(hit) || await env.DB.prepare('SELECT 1 FROM searches WHERE key = ? AND part = 0').bind(id).first() || !await room(env, 0)) return;
   await save(env, id, await hit.text(), Date.parse(hit.headers.get('Date')) || Date.now());
 }
 
