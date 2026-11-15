@@ -531,3 +531,5 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 #c-empty .visits { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
 #c-empty h2 { font-size: 20px; }
 .mk.known.faint { opacity: .35; }   /* a known comet too faint to see on this date */
+.chip.co2.detected { color: var(--comet); border-color: color-mix(in srgb, var(--comet) 55%, transparent); }   /* carbon dioxide glow */
+.chip.co2.quiet { color: var(--ink-2); }
