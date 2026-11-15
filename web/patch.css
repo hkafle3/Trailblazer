@@ -188,7 +188,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   .pv-desc .pv-scroll { padding-left: 0; }
   .pv-desc label { font-size: 15px; }
   /* the left cards keep their own layout, at three quarters of a pixel per design pixel (339 px wide) */
-  .pv-options, .pv-spectral, .pv-layers, .pv-others { --e: .75px; width: calc(452 * var(--e)); max-width: 100%; }
+  .pv-options, .pv-spectral, .pv-layers, .pv-others { --e: min(.75px, calc((100vw - 32px) / 452)); width: calc(452 * var(--e)); max-width: 100%; }
   .pv-desc .box { width: min(100%, 320px); height: 34px; font-size: 14px; margin-top: 10px; }
   .pv-desc .sub, .pv-info { font-size: 13px; }
   #status { font-size: 12px; }

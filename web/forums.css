@@ -4,7 +4,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
 
 :root { --panel-font: "Space Mono", ui-monospace, monospace; }
-body.forums { --e: calc(100vw / 2462); }
+body.forums { --e: calc(100vw / 2462); min-width: 0; }   /* styles.css sets 1100 px for the map pages */
 .fstage {
   display: grid; grid-template-columns: calc(1686 * var(--e)) calc(452 * var(--e)); column-gap: calc(97 * var(--e)); align-items: start;
   padding: calc(231 * var(--e)) 0 calc(140 * var(--e)) calc(135 * var(--e)); position: relative; z-index: 1;

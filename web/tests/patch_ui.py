@@ -139,6 +139,20 @@ async def main():
         assert seen[:len(want)] == want, f"Tab order on a phone: {order}"
         print("PASS phone tab order: timeline, Discovered, Coordinates, Band, Zoom, the Spectral dial and its box, then the three toggles, as they appear")
 
+        # the left cards shrink with the screen: every control inside them stays on screen, down to 320 px
+        for w in (320, 390):
+            await pg.set_viewport_size({"width": w, "height": 844}); await pg.wait_for_timeout(300)
+            out = await pg.evaluate("[...document.querySelectorAll('.pv-options .at, .pv-spectral .at, .pv-layers .at, .pv-others .at')].filter(e => { const r = e.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth; }).map(e => e.id || e.textContent)")
+            assert not out, f"{w} px: off screen {out}"
+        print("PASS phone cards: every left-card control stays on screen at 320 and 390 px")
+        # Forums (same shared stylesheet): no sideways scroll at tablet and phone widths (styles.css asks 1100 px of body)
+        for w in (390, 700, 900):
+            await pg.set_viewport_size({"width": w, "height": 844}); await pg.goto(f"{BASE}/forums.html"); await pg.wait_for_timeout(500)
+            assert not await pg.evaluate("document.documentElement.scrollWidth > innerWidth"), f"Forums scrolls sideways at {w} px"
+        print("PASS forums width: no sideways scroll at 390, 700 and 900 px")
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready)
+
+
         # month names on the timeline never touch, from a narrow phone to a desktop
         TOUCH = """() => { const r = [...document.querySelectorAll('.tl-tick:not(.quiet) b')].map(b => b.getBoundingClientRect()).sort((a, b) => a.left - b.left), bad = [];
             for (let i = 1; i < r.length; i++) if (r[i].left < r[i - 1].right + 2) bad.push(Math.round(r[i - 1].right - r[i].left)); return [r.length, bad]; }"""
