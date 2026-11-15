@@ -240,6 +240,11 @@ code, m = post("cand-b-%d" % pid, dec=round(dec + 30 / 3600, 6), tag="asteroid",
 assert code == 200 and m.get("merged") and m["id"] == cid, (code, m)
 assert count() == before + 1, "a merged post made a row"
 assert call("/api/comets/" + cid)[1]["tags"]["asteroid"] == 1
+# the same visit seen at another channel and detector starts a day later: it shares a day, so it joins too
+code, m2 = post("cand-b2-%d" % pid, det="D1", channel=5, visit={**visit, "start": "2025-08-29", "epochs": [60917.0]})
+assert code == 200 and m2.get("merged") and m2["id"] == cid, (code, m2)
+assert count() == before + 1, "a channel's report of the same visit made a row"
+assert [x["id"] for x in call("/api/candidates/near?ra=%s&dec=%s&visit=2025-08-30" % (ra, dec))[1]["candidates"]] == [cid], "last day of the visit"
 # the near check finds it in that visit, and not in another
 _, n = call("/api/candidates/near?ra=%s&dec=%s&visit=2025-08-28" % (ra, dec + 20 / 3600))
 assert [x["id"] for x in n["candidates"]] == [cid] and n["candidates"][0]["tags"]["comet"] == 1, n
@@ -250,6 +255,10 @@ code, far = post("cand-c-%d" % pid, dec=round(dec + 90 / 3600, 6))
 assert code == 201 and far["id"] != cid, (code, far)
 code, other = post("cand-c-%d" % pid, visit={**visit, "start": "2026-03-11", "end": "2026-03-11", "mjd": 61110.436, "epochs": [61110.4]})
 assert code == 201 and other["id"] not in (cid, far["id"]), (code, other)
+# a report at a channel stores the channel and its detector for the candidate page's frames
+code, chd = post("cand-ch-%d" % pid, dec=round(dec - 90 / 3600, 6), det="D2", channel=20)
+assert code == 201 and call("/api/comets/" + chd["id"])[1]["detail"]["candidate"] | {"visit": None} == {"visit": None, "det": "D2", "channel": 20}, chd
+assert call("/api/comets/" + cid)[1]["detail"]["candidate"]["channel"] is None
 # two posts at once at a fresh spot: one row, both get its id
 ra2, out = round((ra + 7) % 360, 4), []
 ts = [threading.Thread(target=lambda i=i: out.append(call("/api/candidates", {"ra": ra2, "dec": dec, "det": "D1", "visit": visit, "tag": "comet", "author": "racer%d" % i, "turnstile": tok()}, "cand-race%d-%d" % (i, pid)))) for i in range(2)]
@@ -261,6 +270,7 @@ rows = count()
 for k, (field, change) in enumerate([("ra", {"ra": 400}), ("ra", {"ra": "12"}), ("dec", {"dec": -95}), ("det", {"det": "D9"}), ("tag", {"tag": "star"}), ("tag", {"tag": None}),
                       ("visit", {"visit": {"start": "2025-8-28"}}), ("visit", {"visit": {**visit, "exposures": 0}}), ("visit", {"visit": {**visit, "mjd": 1}}),
                       ("visit", {"visit": {**visit, "start": "1900-01-01"}}), ("visit", {"visit": {**visit, "end": "9999-12-31"}}), ("visit", {"visit": {**visit, "mjd": 61110.4}}),
+                      ("channel", {"channel": 200}), ("channel", {"channel": 5}), ("channel", {"channel": "5"}),
                       ("author", {"author": "<b>x</b>"}), ("body", {"body": "a" * 1001}), ("body", {"body": 5}), ("turnstile", {"turnstile": ""})]):
     code, e = post("cand-bad-%d-%d" % (k, pid), **change)   # its own IP each, under the 5 a minute limit
     assert code == 400 and e.get("field") == field, (field, change, code, e)
@@ -283,7 +293,7 @@ assert code == 201 and s["sighting"]["name"] == "2001 FM127" and s["sighting"]["
 assert count() == rows, "a sighting made a candidate"
 assert call("/api/sightings", {"name": "<script>", "ra": ra, "dec": dec, "det": "D1", "visit": visit, "author": "tester"}, "seen-%d" % pid)[1].get("field") == "name"
 PY
-    then echo "PASS candidates: create C-NNNN with its fields, same-visit 1-arcmin repost joins it, other visit or 1.5' away is new, two at once make one, refusals 400, 6th a minute 429, sighting stored alone"
+    then echo "PASS candidates: create C-NNNN with its fields (channel and detector kept), same-visit 1-arcmin repost joins it (also from another channel starting a day later), other visit or 1.5' away is new, two at once make one, refusals 400, 6th a minute 429, sighting stored alone"
     else echo "FAIL candidates"; fails=$((fails + 1)); fi
     # the checks refusals use their own visitor IP per run (the rate limit counts every request, refused ones too)
     post "check: not JSON" "nope" 400 'body must be JSON' /api/checks "CF-Connecting-IP: contract-sh-$$"
