@@ -1,6 +1,6 @@
 """Real known comets for the map: where each one was during the SPHEREx survey, and which SPHEREx photos caught it.
 
-1. JPL's Small-Body Database: comets that pass within 5 AU of the Sun between mid-2024 and mid-2027.
+1. JPL's Small-Body Database: comets that pass within 5 AU of the Sun between mid-2023 and mid-2028.
 2. JPL Horizons: each comet's sky position and predicted total magnitude every 2 days, Apr 2025 to Oct 2026.
    Keep the ones brighter than MAG_LIMIT at some point (bright enough for SPHEREx to plausibly see).
 3. SPHEREx: every photo in bake/coverage/exposures.jsonl (detector D1) whose outline held the comet at the
@@ -20,7 +20,8 @@ CACHE = ROOT / "bake" / "cache" / "known"
 OUT = ROOT / "bake" / "cache" / "known_comets.json"
 MJD0, DAYS = 60789, 529               # coverage start (2025-04-24) and length, from web/data/coverage.json
 STEP = 2                              # days between ephemeris points
-MAG_LIMIT = 16.0
+MAG_LIMIT = 18.0
+FAINT = 16.0                          # brightest predicted magnitude in a photo fainter than this: flagged faint
 
 
 def fetch(url, tries=6):
@@ -35,9 +36,9 @@ def fetch(url, tries=6):
 
 
 def candidates():
-    """Comets with perihelion between 2024-06 and 2027-06 inside 5 AU, from JPL's Small-Body Database."""
+    """Comets with perihelion between 2023-06 and 2028-06 inside 5 AU, from JPL's Small-Body Database."""
     q = urllib.parse.urlencode({"fields": "full_name,pdes,q,tp,M1,K1", "sb-kind": "c",
-                                "sb-cdata": json.dumps({"AND": ["q|LT|5", "tp|GT|2460462.5", "tp|LT|2461557.5"]})})
+                                "sb-cdata": json.dumps({"AND": ["q|LT|5", "tp|GT|2460096.5", "tp|LT|2461923.5"]})})
     d = json.loads(fetch("https://ssd-api.jpl.nasa.gov/sbdb_query.api?" + q))
     return [dict(zip(d["fields"], r)) for r in d["data"]]
 
@@ -138,7 +139,14 @@ def main():
         hit = inside(px, py, polys[ok])
         shots = sorted(zip(t[ok][hit].round(4).tolist(), ids[ok][hit].tolist(), px[hit].round(4).tolist(), py[hit].round(4).tolist()))
         name = c["full_name"].strip()
-        out.append(dict(name=name, pdes=c["pdes"], q=c.get("q"), tp=c.get("tp"),
+        if not shots and "2025 N1" not in c["pdes"]:
+            continue   # never in a D1 photo
+        m = np.array([np.nan if v is None else v for v in mags], float)
+        good = ~np.isnan(m)
+        pm = np.interp([s[0] for s in shots], days[good], m[good]) if good.any() and shots else []
+        best = round(float(min(pm)), 2) if len(pm) else None
+        out.append(dict(name=name, pdes=c["pdes"], q=c.get("q"), tp=c.get("tp"), mag_in_photo=best,
+                        faint=best is None or best > FAINT,
                         track=[[int(d), round(float(r), 4), round(float(dc), 4), m] for d, (r, dc), m in zip(days, track, mags)],
                         spherex=[dict(day=d, obs=o, ra=r, dec=dc) for d, o, r, dc in shots]))   # exact position at each photo
         print(f"  {name}: brightest {min(m for m in mags if m is not None) if any(m is not None for m in mags) else 'n/a'}, SPHEREx D1 photos {len(shots)}", flush=True)
