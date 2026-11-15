@@ -1,0 +1,118 @@
+/* "Discuss this": the sheet on the time-lapse (discuss.js) and the candidate page (candidate.html). Only Ming's components
+   (patch.css), in his 2462 x 1420 design frame (--e is one design pixel). Each rule says which of his parts it reuses. */
+
+/* ---------- time-lapse: the sheet takes the right column's place (mini-map, state box, Descriptions) while open ---------- */
+body.talking .pstage > :is(.pv-mini, .pv-state, .pv-desc) { display: none; }
+body:not(.talking) .pstage > .pv-talkwrap { display: none; }
+.pstage > .pv-talkwrap { left: calc(1927 * var(--e)); top: calc(229 * var(--e)); width: calc(451 * var(--e)); margin: 0; }
+/* the card = his Descriptions card (.pv-card.pv-desc), static inside the wrapper; Post = his state box under it */
+.pv-talkwrap .pv-talk { position: static; width: 100%; }
+.pv-talk h2 { display: flex; align-items: center; justify-content: space-between; }
+/* close = the chevron of his Layers / Examples buttons (explore.css .chev), pointing up */
+.pv-talk .close { display: grid; place-items: center; padding: 0; margin-right: calc(30 * var(--e)); border: 0; background: none; color: #fff; cursor: pointer; }
+.pv-talk .close:focus-visible, .pv-talk .example:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.pv-talk .chev { width: calc(30 * var(--e)); height: calc(30 * var(--e)); min-width: 16px; min-height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+/* thumbnail = his mini-map box (.pv-mini): 3 px white border, 14 px corners; the ring is styles.css .ring */
+.pv-talk .thumb { position: relative; width: calc(364 * var(--e)); height: calc(210 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(14 * var(--e)); overflow: hidden; background: #000; }
+.pv-talk .thumb canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.pv-talk .thumb .ring { left: 50%; top: 50%; --d: calc(46 * var(--e)); pointer-events: none; }
+/* tag rows = his Layers rows (.pv-row + .cbx), filled with the tag's colour (--c) */
+.pv-talk .tags { margin: calc(24 * var(--e)) 0 0; padding: 0; border: 0; }
+.pv-talk label.pv-row { display: flex; font-size: calc(32 * var(--e)); line-height: normal; }
+/* comment and nickname = his Coordinates field (.pv-desc .box); the comment taller */
+.pv-talk textarea.box { height: calc(110 * var(--e)); padding: calc(10 * var(--e)); resize: none; font-size: calc(20 * var(--e)); line-height: 1.4; }
+.pv-talk .box::placeholder { color: #9a9a9a; }
+.pv-talk .cf-turnstile { margin-top: calc(10 * var(--e)); }
+.pv-talk .err { color: var(--glitch); }
+.pv-talk [data-f=note]:empty { display: none; }
+/* SkyBoT's answer = his Examples menu rows (explore.css .examples .example), as buttons */
+.pv-talk .answers { margin-top: calc(16 * var(--e)); padding-right: calc(30 * var(--e)); }
+.pv-talk .example { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 9px 0; border: 0; background: none; font-size: 14.5px; color: #f2f2f2; text-align: left; cursor: pointer; }
+.pv-talk .example .ic { width: 16px; height: 16px; opacity: .55; transition: opacity .2s, transform .2s var(--ease); }
+.pv-talk .example:hover .ic { opacity: 1; transform: translateX(3px); }
+/* the known object's dot = his legend dot (#legend i), in the known colour */
+.pv-talk .kdot { display: inline-block; width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; background: var(--known); margin-right: calc(10 * var(--e)); }
+.pv-talkwrap .pv-post { position: static; width: 100%; margin-top: calc(24 * var(--e)); cursor: pointer; }
+.pv-post:disabled { opacity: .45; cursor: default; }
+.pv-post:disabled .go { transform: none; }
+/* Discovered: who reported it, under his "Found as" line */
+#vName .by { display: block; }
+
+@media (max-width: 900px) {
+  .pstage > .pv-talkwrap { left: auto; top: auto; width: auto; }
+  .pv-talk .thumb { width: min(100%, 320px); height: 170px; }
+  .pv-talk textarea.box { height: 74px; font-size: 13px; padding: 8px 10px; }
+  .pv-talk label.pv-row { font-size: 15px; }
+  .pv-talk .close { margin-right: 14px; }
+  .pv-talk .answers { padding-right: 14px; }
+  .pv-talkwrap .pv-post { margin-top: 18px; }
+}
+
+/* ---------- candidate page: Forums.png geometry (wide boxes x 135-1822, card column x 1920-2370, top 255) ---------- */
+html:has(.cpage), body.page:has(.cpage) { background: #000; }
+.cpage { --e: calc(min(100vw, 2462px) / 2462); display: grid; grid-template-columns: calc(1687 * var(--e)) calc(451 * var(--e)); column-gap: calc(98 * var(--e));
+  align-items: start; max-width: 2462px; margin: 0 auto; box-sizing: border-box; padding: calc(255 * var(--e)) 0 60px calc(135 * var(--e)); font-family: var(--panel-font); color: #fff; }
+.cpage .left { display: grid; gap: calc(60 * var(--e)); min-width: 0; }
+.cpage .right { display: grid; gap: calc(44 * var(--e)); }
+/* the boxes = his patch frame (.pv-frame): black, 3 px white border, 10 px corners */
+.cpage .pv-frame, .cpage .pv-state, .cpage .pv-card, .cpage .pv-desc { position: static; }
+.cpage .pv-frame { width: auto; height: auto; overflow: visible; padding: calc(30 * var(--e)) calc(40 * var(--e)); }
+.cpage .head { display: flex; align-items: baseline; gap: calc(30 * var(--e)); flex-wrap: wrap; }
+.cpage .head h1 { margin: 0; font: 400 calc(56 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; background: none; -webkit-text-fill-color: #fff; }
+.cpage .head .pv-info { margin: 0; }
+.cpage .head .byline { margin-left: auto; }
+/* frames: each in his mini-map box (.pv-mini), dated in his timeline's type (.tl-tick b) */
+.cpage .frames { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(28 * var(--e)); }
+.cpage .frames figure { margin: 0; display: grid; gap: calc(14 * var(--e)); justify-items: center; font: 300 calc(22 * var(--e)) / 1 var(--head-font); color: #e8e8e8; }
+.cpage .frames .pv-mini { position: relative; left: auto; top: auto; width: 100%; height: auto; aspect-ratio: 1; }
+.cpage .frames canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.cpage .frames .ring { left: 50%; top: 50%; --d: calc(60 * var(--e)); }
+.cpage .frames-note { margin: 0; }
+/* comments: one box each; name and time in his info type, the tag as his legend dot */
+.cpage .post { display: grid; gap: calc(12 * var(--e)); }
+.cpage .post .pv-info { margin: 0; }
+.cpage .post .body { margin: 0; font: 400 calc(26 * var(--e)) / 1.5 var(--panel-font); color: #f2f2f2; overflow-wrap: anywhere; white-space: pre-wrap; }
+.cpage .lg { display: inline-flex; align-items: center; gap: calc(10 * var(--e)); margin-left: calc(20 * var(--e)); }
+.cpage .lg i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; background: var(--c); }
+/* the comment form = his Descriptions field (.pv-desc .box), wide; Post = his state box */
+.cpage .compose { width: auto; padding: 0; }
+.cpage .compose .box { width: 100%; margin: 0; }
+.cpage .compose textarea.box { display: block; height: calc(130 * var(--e)); padding: calc(12 * var(--e)); resize: none; font-size: calc(22 * var(--e)); line-height: 1.4; }
+.cpage .compose .nick { margin-top: calc(16 * var(--e)); width: calc(451 * var(--e)); }
+.cpage .compose .box::placeholder { color: #9a9a9a; }
+.cpage .compose .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: calc(24 * var(--e)); }
+.cpage .compose .row .pv-info { margin: 0; }
+.cpage .compose .pv-state { width: calc(451 * var(--e)); cursor: pointer; }
+.cpage .pv-state:disabled { opacity: .45; cursor: default; }
+.cpage .err { color: var(--glitch); }
+.cpage .cf-turnstile { margin-top: calc(12 * var(--e)); }
+/* right column: his cards (.pv-card) and his state box (.pv-state) */
+.cpage .right .pv-state { width: auto; }
+.cpage .pv-card { padding-right: calc(30 * var(--e)); }
+.cpage .tags { margin: 0; padding: 0; border: 0; }
+.cpage .count { margin-left: auto; color: #cfd6e4; font-size: calc(26 * var(--e)); }
+.cpage .where { display: block; padding: calc(14 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(14 * var(--e)); }
+.cpage .where:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* phones: one column, cards after the boxes they talk about */
+@media (max-width: 900px) {
+  .cpage { --e: .5px; grid-template-columns: minmax(0, 1fr); row-gap: 22px; padding: 96px 16px 40px; }
+  .cpage .left { gap: 18px; }
+  .cpage .right { gap: 22px; }
+  .cpage .pv-frame { padding: 14px 16px; }
+  .cpage .head h1 { font-size: 26px; }
+  .cpage .head .byline { margin-left: 0; }
+  .cpage .frames { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .cpage .frames figure { font-size: 12px; gap: 6px; }
+  .cpage .frames .ring { --d: 26px; }
+  .cpage .post .body { font-size: 14px; }
+  .cpage .pv-info { font-size: 12px; }
+  .cpage .pv-state { height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
+  .cpage .compose .pv-state { width: 50%; min-width: 160px; }
+  .cpage .compose textarea.box { height: 90px; font-size: 14px; }
+  .cpage .compose .nick { width: min(100%, 320px); height: 34px; font-size: 14px; }
+  .cpage .pv-card { padding: 14px 0 0 18px; }
+  .cpage .pv-card h2 { font-size: 20px; margin-bottom: 12px; }
+  .cpage .pv-row { font-size: 15px; height: 32px; gap: 14px; }
+  .cpage .count { font-size: 15px; padding-right: 14px; }
+}

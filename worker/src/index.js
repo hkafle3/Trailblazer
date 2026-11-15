@@ -3,7 +3,7 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=
-//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   (D1)   See docs/api.md.
+//   GET /api/comets   GET /api/comets/:id   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 import { skyImagesJson, eclipticLat } from './sky_index.js';
@@ -263,13 +263,14 @@ const tallies = async (db) => {
 };
 const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, tail: c.tail, real: !!c.real, example: !c.real,
   ...(c.track ? { track: JSON.parse(c.track) } : {}),   // [[day, ra, dec], ...] every 10 days: where a known comet was
-  ...(c.kind === 'comet' ? { tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 } } : {}) });
+  ...(c.kind === 'comet' ? { tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 } } : {}),
+  ...(c.visit ? { candidate: true, det: c.det, visit: c.visit, author: c.author, created_at: c.created_at } : {}) });   // reported from a time-lapse
 
 // Comets people found plus known objects, for the map's markers
 async function comets(url, env) {
   // for the Comets list: the CO2 verdict of a measured comet and how many SPHEREx photos it is in (read inside D1, so the
   // Worker never parses the large detail column)
-  const [rows, tags] = await Promise.all([env.DB.prepare(`SELECT id, kind, ra, dec, day, tail, real, track,
+  const [rows, tags] = await Promise.all([env.DB.prepare(`SELECT id, kind, ra, dec, day, tail, real, track, det, visit, author, created_at,
     json_extract(detail, '$.co2_verdict') AS co2, COALESCE(json_extract(detail, '$.exposures'), json_array_length(detail, '$.spherex')) AS photos,
     json_extract(detail, '$.faint') AS faint
     FROM comets`).all(), tallies(env.DB)]);
@@ -294,7 +295,26 @@ async function posts(env) {
 }
 
 // Post a comment (a tag makes it a vote). Turnstile first, so bots cost nothing below it.
-const TAGS = ['comet', 'asteroid', 'glitch', 'unsure'];
+const TAGS = ['comet', 'asteroid', 'glitch', 'unsure'], AUTHOR = /^[A-Za-z0-9 _.-]{1,24}$/;
+// Turnstile: { claim, hash } for a token that passed, or { refused: response }. Callers claim the hash in the same
+// batch as their write, so one token pays for one write.
+async function human(b, request, env) {
+  if (typeof b.turnstile !== 'string' || !b.turnstile) return { refused: json({ error: 'turnstile token is required', field: 'turnstile' }, 400) };
+  const form = new FormData();
+  form.append('secret', env.TURNSTILE_SECRET ?? '');
+  form.append('response', b.turnstile);
+  const ip = request.headers.get('CF-Connecting-IP');
+  if (ip) form.append('remoteip', ip);
+  let check = {};
+  try { check = await (await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form })).json(); }
+  catch (e) { console.error(e); }
+  if (check.success !== true) return { refused: json({ error: 'human check failed, try again' }, 403) };
+  // Local dev: the test site key's widget hands out the same dummy token every time, so it is not claimed (the test
+  // secret accepts any token anyway). A real secret refuses the dummy token, so this opens nothing in production.
+  const claim = !(check.metadata?.result_with_testing_key && b.turnstile === 'XXXX.DUMMY.TOKEN.XXXX');
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(b.turnstile)))].map(x => x.toString(16).padStart(2, '0')).join('');
+  return { claim, hash };
+}
 async function post(request, env) {
   let b;
   try { b = await request.json(); } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }
@@ -304,26 +324,16 @@ async function post(request, env) {
   const tag = b.tag ?? null;
   if (tag !== null && !TAGS.includes(tag)) return bad('tag', 'tag must be comet, asteroid, glitch or unsure');
   const body = typeof b.body === 'string' ? b.body.trim() : '';
-  if (body.length < 1 || body.length > 1000) return bad('body', 'body must be 1 to 1000 characters');
+  // a tag alone is a vote (the candidate page's Tags card); without a tag there must be words
+  if (body.length < (tag ? 0 : 1) || body.length > 1000) return bad('body', 'body must be 1 to 1000 characters');
   const author = typeof b.author === 'string' ? b.author.trim() : '';
-  if (!/^[A-Za-z0-9 _.-]{1,24}$/.test(author)) return bad('author', 'author must be 1 to 24 letters, digits, spaces, _ . or -');
-  if (typeof b.turnstile !== 'string' || !b.turnstile) return bad('turnstile', 'turnstile token is required');
-  const form = new FormData();
-  form.append('secret', env.TURNSTILE_SECRET ?? '');
-  form.append('response', b.turnstile);
-  const ip = request.headers.get('CF-Connecting-IP');
-  if (ip) form.append('remoteip', ip);
-  let check = {};
-  try { check = await (await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form })).json(); }
-  catch (e) { console.error(e); }
-  if (check.success !== true) return json({ error: 'human check failed, try again' }, 403);
-  // Local dev: the test site key's widget hands out the same dummy token every time, so it is not claimed (the test
-  // secret accepts any token anyway). A real secret refuses the dummy token, so this opens nothing in production.
-  const claim = !(check.metadata?.result_with_testing_key && b.turnstile === 'XXXX.DUMMY.TOKEN.XXXX');
+  if (!AUTHOR.test(author)) return bad('author', 'author must be 1 to 24 letters, digits, spaces, _ . or -');
+  const h = await human(b, request, env);
+  if (h.refused) return h.refused;
+  const { claim, hash } = h;
   const db = env.DB;
   if (!await db.prepare('SELECT 1 FROM comets WHERE id = ?').bind(b.comet_id).first()) return json({ error: `no comet ${b.comet_id}` }, 404);
   const now = Date.now();
-  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(b.turnstile)))].map(x => x.toString(16).padStart(2, '0')).join('');
   // One batch is one transaction: the rate limit, the comment, the token claim and the tally read happen together.
   // A reused token breaks the UNIQUE key and rolls the comment back; a rate-limited post inserts nothing and keeps the token.
   // ponytail: per-author limit on a free-text nickname; per-IP or signed-in limits once real accounts exist
@@ -343,6 +353,118 @@ async function post(request, env) {
   const tags = { comet: 0, asteroid: 0, glitch: 0, unsure: 0 };
   for (const { tag: t, n } of res[2].results) tags[t] = n;
   return json({ comment: { comet_id: b.comet_id, author, tag, body, created_at: now }, tags }, 201);
+}
+
+// ---------- candidates: "Discuss this" on the time-lapse (docs/api.md) ----------
+// One moving dot in one visit is one candidate. A report within 1 arcmin of a candidate in the same visit joins that
+// thread instead: the check runs inside the insert, in one D1 batch (one transaction), so two posts at once make one row.
+const NEAR_DEG = 1 / 60, MJD0 = 60789;   // MJD0: day 0 of Explore's timeline (web/skymap.js)
+const DATE = /^\d{4}-\d{2}-\d{2}$/, ZERO = () => ({ comet: 0, asteroid: 0, glitch: 0, unsure: 0 });
+// candidates within NEAR_DEG of (?1 ra, ?2 dec), in visit ?3 (NULL: any visit). ?4 is cos(dec): flat sky is exact
+// enough at 1 arcmin; RA wraps at 0/360. ?5 is NEAR_DEG.
+const NEAR_SQL = `visit IS NOT NULL AND (?3 IS NULL OR visit = ?3) AND abs(dec - ?2) <= ?5 AND
+  (min(abs(ra - ?1), 360 - abs(ra - ?1)) * ?4) * (min(abs(ra - ?1), 360 - abs(ra - ?1)) * ?4) + (dec - ?2) * (dec - ?2) <= ?5 * ?5`;
+const nearArgs = (ra, dec, visit) => [ra, dec, visit, Math.cos(dec * RAD), NEAR_DEG];
+const CAND_COLS = 'id, ra, dec, det, visit, author, created_at';
+
+// the visit as the time-lapse knows it (live/pipeline.js frames): first and last day, mean time, exposures, wavelength
+function readVisit(v) {
+  if (!v || typeof v !== 'object') return null;
+  const { start, end, mjd, exposures, lam, epochs } = v;
+  if (typeof start !== 'string' || !DATE.test(start) || !Number.isFinite(Date.parse(start))) return null;
+  if (typeof end !== 'string' || !DATE.test(end) || !Number.isFinite(Date.parse(end)) || end < start) return null;
+  if (typeof mjd !== 'number' || !(mjd >= MJD0 - 30 && mjd <= MJD0 + 3000)) return null;
+  if (!Number.isInteger(exposures) || exposures < 1 || exposures > 1000) return null;
+  if (typeof lam !== 'number' || !(lam >= 0.7 && lam <= 5.1)) return null;
+  if (epochs !== undefined && !(Array.isArray(epochs) && epochs.length <= 100 && epochs.every(t => typeof t === 'number' && Math.abs(t - mjd) <= 30))) return null;
+  return { start, end, mjd: +mjd.toFixed(5), exposures, lam: +lam.toFixed(4), ...(epochs ? { epochs: epochs.map(t => +t.toFixed(5)) } : {}) };
+}
+// where and when, and who: the fields a candidate and a sighting share. { spot } or { refused }
+function readSpot(b) {
+  const bad = (field, error) => ({ refused: json({ error, field }, 400) });
+  if (typeof b.ra !== 'number' || !(b.ra >= 0 && b.ra < 360)) return bad('ra', 'ra must be 0 to 360');
+  if (typeof b.dec !== 'number' || !(b.dec >= -90 && b.dec <= 90)) return bad('dec', 'dec must be -90 to 90');
+  if (typeof b.det !== 'string' || !/^D[1-6]$/.test(b.det)) return bad('det', 'det must be D1 to D6');
+  const visit = readVisit(b.visit);
+  if (!visit) return bad('visit', 'visit must be {start, end, mjd, exposures, lam} from a SPHEREx visit');
+  const author = typeof b.author === 'string' ? b.author.trim() : '';
+  if (!AUTHOR.test(author)) return bad('author', 'author must be 1 to 24 letters, digits, spaces, _ . or -');
+  return { spot: { ra: +b.ra.toFixed(6), dec: +b.dec.toFixed(6), det: b.det, visit, author } };
+}
+// Cloudflare's rate limit (wrangler.toml CANDIDATES_LIMIT), per IP and per route, before the body is read
+async function limited(request, env, route) {
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+  if (!env.CANDIDATES_LIMIT || (await env.CANDIDATES_LIMIT.limit({ key: `${route}:${ip}` })).success) return null;
+  return json({ error: 'too many reports, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
+}
+
+// POST /api/candidates: a new candidate (201) or, within 1 arcmin in the same visit, the existing one (200, merged).
+// Either way the tag (and comment) goes into that thread as the poster's vote.
+async function createCandidate(request, env) {
+  const slow = await limited(request, env, 'new');
+  if (slow) return slow;
+  const read = await readJson(request, 8192);
+  if (read.refused) return read.refused;
+  const b = read.body, r = readSpot(b);
+  if (r.refused) return r.refused;
+  const s = r.spot;
+  if (!TAGS.includes(b.tag)) return json({ error: 'tag must be comet, asteroid, glitch or unsure', field: 'tag' }, 400);
+  if (b.body !== undefined && typeof b.body !== 'string') return json({ error: 'body must be text', field: 'body' }, 400);
+  const body = (b.body ?? '').trim();
+  if (body.length > 1000) return json({ error: 'body must be at most 1000 characters', field: 'body' }, 400);
+  const h = await human(b, request, env);
+  if (h.refused) return h.refused;
+  const db = env.DB, now = Date.now(), near = nearArgs(s.ra, s.dec, s.visit.start);
+  const detail = JSON.stringify({ candidate: { visit: s.visit } });
+  let res;
+  try {
+    res = await db.batch([
+      // the next free id, C-0175 and up; nothing when a candidate is already within 1 arcmin in this visit
+      db.prepare(`INSERT INTO comets (id, kind, ra, dec, day, tail, real, detail, det, visit, author, created_at)
+        SELECT (SELECT printf('C-%04d', coalesce(max(CAST(substr(id, 3) AS INTEGER)), 174) + 1) FROM comets WHERE id GLOB 'C-[0-9][0-9][0-9][0-9]'),
+          'comet', ?1, ?2, ?6, -150, 1, ?7, ?8, ?3, ?9, ?10
+        WHERE NOT EXISTS (SELECT 1 FROM comets WHERE ${NEAR_SQL})`).bind(...near, Math.max(0, Math.floor(s.visit.mjd - MJD0)), detail, s.det, s.author, now),
+      db.prepare(`INSERT INTO comments (comet_id, author, tag, body, created_at)
+        SELECT id, ?6, ?7, ?8, ?9 FROM comets WHERE ${NEAR_SQL} ORDER BY created_at, id LIMIT 1`).bind(...near, s.author, b.tag, body, now),
+      db.prepare('INSERT INTO turnstile_tokens (hash, created_at) SELECT ?, ? WHERE ? AND changes() = 1').bind(h.hash, now, h.claim ? 1 : 0),
+      db.prepare(`SELECT ${CAND_COLS} FROM comets WHERE ${NEAR_SQL} ORDER BY created_at, id LIMIT 1`).bind(...near),
+    ]);
+  } catch (e) {
+    if (/UNIQUE/i.test(String(e?.message) + String(e?.cause?.message))) return json({ error: 'human check already used, try again' }, 403);
+    throw e;
+  }
+  const c = res[3].results[0], created = res[0].meta.changes === 1;
+  return json({ id: c.id, ...(created ? { created: true } : { merged: true }), candidate: c }, created ? 201 : 200);
+}
+
+// GET /api/candidates/near?ra=&dec=[&visit=YYYY-MM-DD]: candidates within 1 arcmin, oldest first, with their tallies
+async function nearCandidates(url, env) {
+  const p = position(url);
+  if (p.error) return json(p, 400);
+  const visit = url.searchParams.get('visit');
+  if (visit !== null && !DATE.test(visit)) return json({ error: 'visit must be YYYY-MM-DD' }, 400);
+  const [rows, tags] = await Promise.all([
+    env.DB.prepare(`SELECT ${CAND_COLS} FROM comets WHERE ${NEAR_SQL} ORDER BY created_at, id LIMIT 50`).bind(...nearArgs(p.ra, p.dec, visit)).all(),
+    tallies(env.DB)]);
+  return json({ candidates: rows.results.map(c => ({ ...c, tags: tags[c.id] ?? ZERO(), sep: +(sep(p.ra, p.dec, c.ra, c.dec) * 3600).toFixed(1) })) },
+    200, { 'Cache-Control': 'no-store' });
+}
+
+// POST /api/sightings: "It's <name>", a dot matched to a known object. Stored and nothing else (no candidate, no page).
+const KNOWN_NAME = /^[A-Za-z0-9 ()\/'._+-]{1,40}$/;
+async function sighting(request, env) {
+  const slow = await limited(request, env, 'seen');
+  if (slow) return slow;
+  const read = await readJson(request, 4096);
+  if (read.refused) return read.refused;
+  const b = read.body, r = readSpot(b);
+  if (r.refused) return r.refused;
+  const name = typeof b.name === 'string' ? b.name.trim() : '';
+  if (!KNOWN_NAME.test(name)) return json({ error: 'name must be a catalog name, 1 to 40 characters', field: 'name' }, 400);
+  const s = r.spot, now = Date.now();
+  const row = await env.DB.prepare('INSERT INTO sightings (name, ra, dec, det, visit, author, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id')
+    .bind(name, s.ra, s.dec, s.det, s.visit.start, s.author, now).first();
+  return json({ sighting: { id: row.id, name, ra: s.ra, dec: s.dec, det: s.det, visit: s.visit.start, author: s.author, created_at: now } }, 201);
 }
 
 // The heat map's grid: 51 bands of Dec from the north pole, each cut into about 3.5 degree steps of RA (one SPHEREx
@@ -391,12 +513,11 @@ async function explored(env) {
 // Cloudflare's rate limit (wrangler.toml) runs first, before the body is read, so every request counts, malformed ones too.
 // It is per location and approximate; a script spread over many IPs can still light up cells, which only changes the map.
 const MAX_CHECK_BODY = 1024;
-async function check(request, env) {
-  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
-  if (env.CHECKS_LIMIT && !(await env.CHECKS_LIMIT.limit({ key: ip })).success) return json({ error: 'too many checks, wait a minute' }, 429);
-  const tooBig = () => json({ error: 'body too large', field: 'body' }, 413);
-  if (Number(request.headers.get('Content-Length')) > MAX_CHECK_BODY) return tooBig();
-  // read at most MAX_CHECK_BODY bytes whatever Content-Length says (it can be absent or wrong with chunked bodies)
+// A JSON object body of at most max bytes: { body } or { refused: response }
+async function readJson(request, max) {
+  const tooBig = { refused: json({ error: 'body too large', field: 'body' }, 413) }, notJson = { refused: json({ error: 'body must be JSON', field: 'body' }, 400) };
+  if (Number(request.headers.get('Content-Length')) > max) return tooBig;
+  // read at most max bytes whatever Content-Length says (it can be absent or wrong with chunked bodies)
   const chunks = [];
   let size = 0;
   if (request.body) {
@@ -404,17 +525,24 @@ async function check(request, env) {
     try {
       for (let r; !(r = await reader.read()).done;) {
         size += r.value.byteLength;
-        if (size > MAX_CHECK_BODY) { reader.cancel().catch(() => {}); return tooBig(); }
+        if (size > max) { reader.cancel().catch(() => {}); return tooBig; }
         chunks.push(r.value);
       }
-    } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }   // a broken upload is the client's fault, not the database's
+    } catch { return notJson; }   // a broken upload is the client's fault, not the database's
   }
   const bytes = new Uint8Array(size);
   let at = 0;
   for (const c of chunks) { bytes.set(c, at); at += c.byteLength; }
   let b;
-  try { b = JSON.parse(new TextDecoder().decode(bytes)); } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }
-  if (!b || typeof b !== 'object') return json({ error: 'body must be JSON', field: 'body' }, 400);
+  try { b = JSON.parse(new TextDecoder().decode(bytes)); } catch { return notJson; }
+  return b && typeof b === 'object' && !Array.isArray(b) ? { body: b } : notJson;
+}
+async function check(request, env) {
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+  if (env.CHECKS_LIMIT && !(await env.CHECKS_LIMIT.limit({ key: ip })).success) return json({ error: 'too many checks, wait a minute' }, 429);
+  const read = await readJson(request, MAX_CHECK_BODY);
+  if (read.refused) return read.refused;
+  const b = read.body;
   if (typeof b.ra !== 'number' || !(b.ra >= 0 && b.ra <= 360)) return json({ error: 'ra must be 0 to 360', field: 'ra' }, 400);
   if (typeof b.dec !== 'number' || !(b.dec >= -90 && b.dec <= 90)) return json({ error: 'dec must be -90 to 90', field: 'dec' }, 400);
   const cell = cellAt(b.ra % 360, b.dec);
@@ -434,6 +562,16 @@ export default {
     if (url.pathname === '/api/checks') {
       if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
       try { return await check(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    const write = { '/api/candidates': createCandidate, '/api/sightings': sighting }[url.pathname];
+    if (write) {
+      if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
+      try { return await write(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/candidates/near') {
+      try { return await nearCandidates(url, env); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     if (url.pathname === '/api/posts') {
