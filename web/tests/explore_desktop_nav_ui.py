@@ -212,9 +212,9 @@ async def main():
         await pg.click("#zoom-in"); await settle(pg)
         await pg.set_viewport_size({"width": 390, "height": 844}); await settle(pg, 300)
         await pg.set_viewport_size({"width": 1440, "height": 900}); await settle(pg, 300)
-        st = await pg.evaluate("[document.querySelector('.map-wrap').style.width, document.body.classList.contains('zoomed')]")
-        assert st == ["", False], f"back from a phone width the map kept {st}"
-        print("PASS resize: the zoom is kept across a resize; a phone width and back returns the whole oval")
+        st = await pg.evaluate("[document.querySelector('.map-wrap').style.width, document.body.classList.contains('zoomed'), ...['zoom-in', 'zoom-out', 'zoom-whole'].map(i => document.getElementById(i).disabled)]")
+        assert st == ["", False, False, True, True], f"back from a phone width the map and buttons kept {st}"
+        print("PASS resize: the zoom is kept across a resize; a phone width and back returns the whole oval and resets the buttons")
 
         # ---- less motion: no glides, a double click lands at once ----
         rm = await b.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
