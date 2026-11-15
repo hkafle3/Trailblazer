@@ -62,13 +62,23 @@ addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; })
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
 // Known comets move: their marker follows the JPL path in `track` ([[day, ra, dec, magnitude], ...] every 10 days)
 // and shows only while the comet is bright enough to see (magnitude 16 or brighter).
+// The name of the comet opened with "Find on map" goes on the side where it fits: right of the dot, or left when
+// that would run past the map or the window (measured, since names differ in length).
+function nameSide(el) {
+  const b = el.querySelector('b'), map = $('map').getBoundingClientRect();
+  if (!b) return;
+  el.classList.remove('left');
+  if (b.getBoundingClientRect().right <= Math.min(map.right, innerWidth)) return;
+  el.classList.add('left');
+  if (b.getBoundingClientRect().left < Math.max(map.left, 0)) el.classList.remove('left');   // fits on neither side: keep it on the right
+}
 const movers = [], links = [];   // links: every link to a comet's page (markers and the featured card)
 function followTracks(day) {
   for (const { el, id } of links) el.href = `comet.html?id=${encodeURIComponent(id)}&day=${day}`;   // its page opens on the same date
   for (const { el, track } of movers) {
     const [ra, dec, mag] = trackAt(track, day), bright = mag != null && mag <= 16;
-    const u = place(el, ra, dec);
-    if (el.classList.contains('focus')) el.classList.toggle('left', u > 0.88);   // its name stays on the map
+    place(el, ra, dec);
+    if (el.classList.contains('focus')) nameSide(el);
     // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see (so does a comet
     // opened with "Find on map"); the rest hide
     if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
@@ -104,7 +114,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   }
   if (featured) links.push({ el: card, id: featured.id });
   followTracks(+$('time').value);
-  if (focus) marks.append(...marks.querySelectorAll('.focus'));   // on top of its neighbours
+  if (focus) { marks.append(...marks.querySelectorAll('.focus')); marks.querySelectorAll('.focus').forEach(nameSide); }   // on top of its neighbours, its name on the map
   if (featured) {
     const n = votes(featured), t = featured.tags;
     card.dataset.day = featured.day;
@@ -136,6 +146,8 @@ $('marks').addEventListener('click', e => {
   stage.style.transformOrigin = `${a.style.left} ${a.style.top}`;
   stage.animate({ transform: ['none', 'scale(1.3)'] }, { duration: 200, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' }).finished.then(go, go);
 });
+
+addEventListener('resize', () => document.querySelectorAll('.mk.focus').forEach(nameSide));
 
 // Back from a time-lapse: the browser may restore this page from memory, with the heat map from before; reload it
 addEventListener('pageshow', e => { if (e.persisted) location.reload(); });

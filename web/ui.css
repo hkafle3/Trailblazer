@@ -353,7 +353,10 @@ body:has(#ly-paths:not(:checked)) .mk .trail { display: none; }
 .wherecard .btn { margin-top: 20px; }
 .skymini svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .skymini path { fill: none; stroke: var(--comet); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1 6; vector-effect: non-scaling-stroke; opacity: .8; }   /* the dotted comet trail of the big map (.mk .trail), at this size */
-@media (max-width: 640px) { .col > .wherecard { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 22px 16px; text-align: center; } }
+/* a narrow column (a smaller window, or a phone) has no room for the text beside the map: the map goes on top */
+.col { container-type: inline-size; }
+@container (max-width: 760px) { .col > .wherecard { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 18px; text-align: center; } .wherecard .skymini { max-width: 440px; } }
+@media (max-width: 640px) { .col > .wherecard { padding: 22px 16px; } }
 /* Opened from Explore, the big map glides into this one (same view-transition-name as body.explore .map) */
 @media (prefers-reduced-motion: no-preference) {
   .skymini { view-transition-name: sky; }

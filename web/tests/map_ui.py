@@ -191,6 +191,60 @@ async def main():
         await ex.unroute("**/api/comets")
         print("PASS odd paths: an empty path keeps the fixed place and the page still loads, a one-point path is that point, Explore carries on")
 
+        # the "Where it is" card at narrower windows: its text stays inside the card and out of the discussion column
+        INSIDE = """() => { const r = e => e.getBoundingClientRect(), card = r(document.getElementById('c-map')), talk = r(document.querySelector('.talk')), bad = [];
+            for (const id of ['c-mini', 'c-when', 'c-where', 'c-find']) { const b = r(document.getElementById(id));
+              if (b.left < card.left - .5 || b.right > card.right + .5 || b.top < card.top || b.bottom > card.bottom) bad.push(id + ' leaves the card');
+              if (talk.left > card.left && b.right > talk.left) bad.push(id + ' runs into the discussion'); }
+            const m = r(document.getElementById('c-mini')), t = r(document.getElementById('c-find'));
+            return [bad, m.bottom <= t.top ? 'stacked' : 'side by side', Math.round(card.width)]; }"""
+        shapes = []
+        for w in (1024, 1100, 1280, 1440, 390):
+            await pg.set_viewport_size({"width": w, "height": 900})
+            for cid in ("3I/ATLAS", "C/2023 A3 (Tsuchinshan-ATLAS)"):
+                await pg.goto(BASE + "/comet.html?id=" + urllib.parse.quote(cid, safe="")); await pg.wait_for_selector("#c-find:not([hidden])")
+                bad, shape, width = await pg.evaluate(INSIDE)
+                assert not bad, f"Where it is card, window {w} px, {cid}: {bad}"
+            shapes.append(f"{w} px {shape} ({width} px card)")
+        await pg.set_viewport_size({"width": 1440, "height": 900})
+        print("PASS card: the map, date, coordinates and Find on map stay inside the card at " + ", ".join(shapes))
+
+        # a found comet's name stays on the map and in the window, near either edge, on load and after the timeline moves
+        LONG = "C/2023 A3 (Tsuchinshan-ATLAS)"
+        lo, hi = await pg.evaluate("""async id => { const m = await import('/skymap.js'), c = await (await fetch('/api/comets/' + encodeURIComponent(id))).json();
+            const us = Array.from({ length: 530 }, (_, d) => { const [ra, dec] = m.trackAt(c.track, d); return m.fwd(ra, dec)[0]; });
+            return [us.indexOf(Math.min(...us)), us.indexOf(Math.max(...us))]; }""", LONG)
+        NAME = """() => { const r = e => e.getBoundingClientRect(), b = r(document.querySelector('.mk.focus b')), map = r(document.getElementById('map')), i = r(document.querySelector('.mk.focus i'));
+            return { ok: b.left >= Math.max(0, map.left) - .5 && b.right <= Math.min(innerWidth, map.right) + .5 && b.width > 0, u: (i.left + i.width / 2 - map.left) / map.width, left: b.right < i.left }; }"""
+        sides = set()
+        for w in (641, 900, 1440):
+            await pg.set_viewport_size({"width": w, "height": 900})
+            for day in (lo, hi, DEFAULT):
+                await explore(pg, f"/explore.html?day={day}&focus=" + urllib.parse.quote(LONG, safe="")); await pg.wait_for_selector(".mk.focus b")
+                got = await pg.evaluate(NAME); sides.add(got["left"])
+                assert got["ok"], f"window {w} px, day {day}: the name of {LONG} runs off the map (dot at {got['u']:.2f} of its width)"
+            await pg.focus("#play"); await pg.keyboard.press("Home"); await pg.wait_for_timeout(150)   # the timeline moves it: day 0, then its far-right day
+            assert (await pg.evaluate(NAME))["ok"], f"window {w} px: the name runs off the map after the timeline moved to day 0"
+            for key, n in (("PageUp", hi // 30), ("ArrowRight", hi % 30)):
+                for _ in range(n): await pg.keyboard.press(key)
+            await pg.wait_for_timeout(150)
+            assert int(await pg.eval_on_selector("#time", "e => e.value")) == hi and (await pg.evaluate(NAME))["ok"], f"window {w} px: the name runs off the map after the timeline moved to day {hi}"
+        assert sides == {True, False}, "the name never changed side, so the edges were not tested"
+        await pg.set_viewport_size({"width": 1440, "height": 900})
+        print(f"PASS name: {LONG} keeps its name on the map at 641, 900 and 1440 px, near the left edge (day {lo}) and the right edge (day {hi}), on load and after the timeline moves")
+
+        # a new tab: Cmd/Ctrl click and middle click are left to the browser, and Explore stays as it was
+        await explore(ex, "/explore.html?day=300")
+        mk = ex.locator(".mk.known:not([hidden])").first; href = await mk.get_attribute("href")
+        for how in ({"modifiers": ["ControlOrMeta"]}, {"button": "middle"}):
+            async with ctx.expect_page() as opened: await mk.locator("i").click(**how)
+            tab = await opened.value; await tab.wait_for_selector("#c-mini-dot:not([hidden])", state="attached")
+            assert tab.url.endswith(href.split("?")[1]), f"{how}: the new tab opened {tab.url}"
+            await tab.close(); await ex.wait_for_timeout(400)
+            zoomed = await ex.evaluate("document.querySelector('.map-wrap').getAnimations().some(a => !(a instanceof CSSAnimation))")
+            assert "/explore" in ex.url and not zoomed, f"{how}: Explore zoomed or left the page"
+        print("PASS new tab: Cmd/Ctrl click and middle click open the comet in a new tab and leave Explore alone")
+
         # the page-to-page transition: the map glides into the mini map, and not at all for people who ask for less motion
         seen = {}
         for motion in ("no-preference", "reduce"):
