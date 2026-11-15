@@ -67,7 +67,7 @@ Content-Type: application/json
 
 - `comet_id`: an existing comet id, as stored (no URL encoding in the body).
 - `tag`: optional, one of `comet`, `asteroid`, `glitch`, `unsure`.
-- `body`: 1 to 1000 characters after trimming.
+- `body`: 1 to 1000 characters after trimming, or empty when there is a tag (a vote alone).
 - `author`: 1 to 24 letters, digits, spaces, `_`, `.` or `-`. The page takes it from the sign-in (`window.CH_USER.name` or localStorage `ch.user`), else asks for a nickname.
 - `turnstile`: the Cloudflare Turnstile token, checked with siteverify before anything touches the database.
 
@@ -98,6 +98,86 @@ Refusals (JSON, CORS headers as above):
 - To test the real widget locally, put the real secret in `worker/.dev.vars` and remove the localhost swap in `web/comet.html` for that session.
 
 Each accepted token is stored as a SHA-256 hash (`turnstile_tokens`, migration 0007) in the same transaction as the comment, so a token pays for one comment only. The rate limit is checked inside that same insert, so posts sent at the same moment cannot get past it.
+
+## "Discuss this": candidates (D1, migration 0013)
+
+A visitor who finds a moving dot on a time-lapse turns it into a candidate others can see and tag. A candidate is a `comets`
+row (kind `comet`, real, ids `C-0175` and up), so `GET /api/comets`, `GET /api/comets/:id`, `POST /api/comments`, the
+Forums and the Explore markers all work on it. Those rows carry `candidate: true` and the fields below. One dot in one
+visit is one candidate: "the same dot" means within 1 arcmin, and "the same visit" means the same first day (`visit.start`).
+
+### POST /api/candidates
+
+```http
+POST /api/candidates
+Content-Type: application/json
+
+{ "ra": 269.4651, "dec": 4.7473, "det": "D1",
+  "visit": { "start": "2026-08-23", "end": "2026-08-24", "mjd": 61275.71, "exposures": 3, "lam": 0.7654, "epochs": [61275.1, 61276.3] },
+  "tag": "comet", "body": "Moves between visits.", "author": "mira_v", "turnstile": "<token from the widget>" }
+```
+
+- `ra` 0 to 360 (not 360), `dec` -90 to 90, numbers. The time-lapse sends the centre of the patch, where the click put the dot.
+- `det`: `D1` to `D6`.
+- `visit`: the frame on screen (`live/pipeline.js`): `start` and `end` as `YYYY-MM-DD`, `mjd` within SPHEREx's mission, `exposures` 1 to 1000, `lam` 0.7 to 5.1 µm, `epochs` optional (at most 100 times, each within 30 days of `mjd`). Stored whole in `detail.candidate.visit`.
+- `tag`: required, one of `comet`, `asteroid`, `glitch`, `unsure`. It is the poster's first vote.
+- `body`: optional, at most 1000 characters after trimming.
+- `author`: as for comments. `turnstile`: as for comments (one token, one write).
+
+`201`: a new candidate, the next free id. `200`: a candidate was already within 1 arcmin in the same visit, so the post
+joined it (its tag and comment went into that thread). The check runs inside the insert, in one D1 transaction, so two
+posts at once still make one row.
+
+```json
+{ "id": "C-0182", "created": true,
+  "candidate": { "id": "C-0182", "ra": 269.4651, "dec": 4.7473, "det": "D1", "visit": "2026-08-23", "author": "mira_v", "created_at": 1763200000000 } }
+{ "id": "C-0182", "merged": true, "candidate": { "id": "C-0182", "...": "the first report's fields" } }
+```
+
+Refusals:
+
+| Status | Body | When |
+|---|---|---|
+| 400 | `{"error":"det must be D1 to D6","field":"det"}` | bad input; `field` is `ra`, `dec`, `det`, `visit`, `tag`, `body`, `author` or `turnstile` (or `body` when it is not JSON) |
+| 403 | `{"error":"human check failed, try again"}` | Turnstile refused the token |
+| 403 | `{"error":"human check already used, try again"}` | the token already paid for a write |
+| 405 | `{"error":"use POST"}` | any other method |
+| 413 | `{"error":"body too large","field":"body"}` | over 8 KB |
+| 429 | `{"error":"too many reports, wait a minute","retry_after":60}` | over 5 a minute from one IP (`CANDIDATES_LIMIT` in `wrangler.toml`, checked before the body is read) |
+| 503 | `{"error":"database is not answering, try again"}` | D1 error |
+
+### GET /api/candidates/near?ra=&dec=[&visit=YYYY-MM-DD]
+
+Candidates within 1 arcmin, oldest first, with their tallies and distance (`sep`, arcsec). Without `visit`, any visit (the
+time-lapse asks once per spot and picks the visit on screen). Never cached. `ra`/`dec` refusals as for `/api/images`;
+a bad `visit` is `400 {"error":"visit must be YYYY-MM-DD"}`.
+
+```json
+{ "candidates": [ { "id": "C-0182", "ra": 269.4651, "dec": 4.7473, "det": "D1", "visit": "2026-08-23", "author": "mira_v",
+  "created_at": 1763200000000, "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 }, "sep": 0 } ] }
+```
+
+### POST /api/sightings
+
+"It's <name>": the dot is a known object SkyBoT predicted within 1 arcmin in that visit. Stored in `sightings` and nothing
+else: no candidate, no page, no marker. No Turnstile (one click, and nothing anyone else sees); the same rate limit as
+candidates, counted separately.
+
+```http
+POST /api/sightings
+Content-Type: application/json
+
+{ "name": "2001 FM127", "ra": 269.4651, "dec": 4.7473, "det": "D1", "visit": { "start": "2025-08-27", "...": "as above" }, "author": "mira_v" }
+```
+
+`201` returns `{ "sighting": { "id": 3, "name": "2001 FM127", "ra": 269.4651, "dec": 4.7473, "det": "D1", "visit": "2025-08-27", "author": "mira_v", "created_at": 1763200000000 } }`.
+Refusals: `400` with `field` `name` (1 to 40 letters, digits, spaces and `( ) / ' . _ + -`), `ra`, `dec`, `det`, `visit` or `author`; `405`, `413` (over 4 KB), `429` and `503` as above.
+
+### On the other routes
+
+- `GET /api/comets` and `/api/comets/:id`: a candidate has `candidate: true`, `det`, `visit` (first day), `author`, `created_at`; `/api/comets/:id` adds `detail.candidate.visit`.
+- `POST /api/comments`: a tag alone, with an empty `body`, is now accepted (the candidate page's Tags card). Without a tag the body still needs 1 to 1000 characters.
+- Explore keeps a candidate's marker hollow and labelled candidate until it has at least 5 tags and 60% say comet.
 
 ## GET /api/known?ra=&dec=&t=
 

@@ -140,6 +140,7 @@ case "$BASE" in
     post "blank body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"   \",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
     long=$(python3 -c 'print("a" * 1001)')
     post "too-long body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"$long\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
+    post "a tag alone is a vote" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"unsure\",\"body\":\"\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"tag":"unsure","body":""'
     post "bad tag" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"star\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"tag"'
     post "bad author name" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"<b>x</b>\",\"turnstile\":\"$(tok)\"}" 400 '"field":"author"'
     post "missing turnstile token" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"$who\"}" 400 '"field":"turnstile"'
@@ -192,6 +193,73 @@ assert cell[0]["checks"] == counts[-1], f"a refused check was written: {cell[0][
 PY
     then echo "PASS opening a spot adds one check to its cell, shown on the map; grid edges land in real cells; 11th check a minute refused"
     else echo "FAIL heat map checks"; fails=$((fails + 1)); fi
+    # "Discuss this" (docs/api.md): candidates, the near check and sightings. Each run uses its own spot and visitor IPs.
+    if python3 - "$BASE" <<'PY'
+import json, os, random, re, sys, threading, urllib.error, urllib.request
+base, pid = sys.argv[1], os.getpid()
+def call(path, body=None, ip="cand-%d" % pid, raw=None):
+    data = raw if raw is not None else (None if body is None else json.dumps(body).encode())
+    req = urllib.request.Request(base + path, data=data, headers={"Content-Type": "application/json", "CF-Connecting-IP": ip}, method="GET" if data is None else "POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r: return r.status, json.load(r)
+    except urllib.error.HTTPError as e: return e.code, json.load(e)
+tok = lambda: "XXXX.DUMMY.TOKEN.XXXX.%x" % random.getrandbits(48)
+ra, dec = round(random.uniform(10, 350), 4), round(random.uniform(-60, 60), 4)   # a fresh spot each run
+visit = {"start": "2025-08-28", "end": "2025-08-30", "mjd": 60917.1087, "exposures": 3, "lam": 0.8426, "epochs": [60917.0, 60918.2]}
+post = lambda ip, **kw: call("/api/candidates", {"ra": ra, "dec": dec, "det": "D3", "visit": visit, "tag": "comet", "body": "moves", "author": "tester", "turnstile": tok(), **kw}, ip)
+count = lambda: len(call("/api/comets")[1]["comets"])
+before = count()
+# create: C-\d{4}, with what was sent stored
+code, c = post("cand-a-%d" % pid)
+assert code == 201 and c.get("created") and re.fullmatch(r"C-\d{4}", c["id"]), (code, c)
+cid = c["id"]
+_, g = call("/api/comets/" + cid)
+assert g["candidate"] and g["kind"] == "comet" and abs(g["ra"] - ra) < 1e-4 and abs(g["dec"] - dec) < 1e-4 and g["det"] == "D3" and g["visit"] == "2025-08-28", g
+assert g["detail"]["candidate"]["visit"]["exposures"] == 3 and g["detail"]["candidate"]["visit"]["epochs"] == [60917.0, 60918.2], g["detail"]
+assert g["tags"] == {"comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0} and g["author"] == "tester", g
+# a second post 30 arcsec away in the same visit joins it: the same id, no new row, its tag added
+code, m = post("cand-b-%d" % pid, dec=round(dec + 30 / 3600, 6), tag="asteroid", author="second")
+assert code == 200 and m.get("merged") and m["id"] == cid, (code, m)
+assert count() == before + 1, "a merged post made a row"
+assert call("/api/comets/" + cid)[1]["tags"]["asteroid"] == 1
+# the near check finds it in that visit, and not in another
+_, n = call("/api/candidates/near?ra=%s&dec=%s&visit=2025-08-28" % (ra, dec + 20 / 3600))
+assert [x["id"] for x in n["candidates"]] == [cid] and n["candidates"][0]["tags"]["comet"] == 1, n
+assert call("/api/candidates/near?ra=%s&dec=%s&visit=2026-03-11" % (ra, dec))[1]["candidates"] == []
+assert call("/api/candidates/near?ra=%s&dec=%s&visit=nope" % (ra, dec))[0] == 400
+# 1.5 arcmin away, or the same spot in another visit, is a new candidate
+code, far = post("cand-c-%d" % pid, dec=round(dec + 90 / 3600, 6))
+assert code == 201 and far["id"] != cid, (code, far)
+code, other = post("cand-c-%d" % pid, visit={**visit, "start": "2026-03-11", "end": "2026-03-11", "mjd": 61110.436, "epochs": [61110.4]})
+assert code == 201 and other["id"] not in (cid, far["id"]), (code, other)
+# two posts at once at a fresh spot: one row, both get its id
+ra2, out = round((ra + 7) % 360, 4), []
+ts = [threading.Thread(target=lambda i=i: out.append(call("/api/candidates", {"ra": ra2, "dec": dec, "det": "D1", "visit": visit, "tag": "comet", "author": "racer%d" % i, "turnstile": tok()}, "cand-race%d-%d" % (i, pid)))) for i in range(2)]
+[t.start() for t in ts]; [t.join() for t in ts]
+assert sorted(c for c, _ in out) == [200, 201] and out[0][1]["id"] == out[1][1]["id"], out
+assert len(call("/api/candidates/near?ra=%s&dec=%s" % (ra2, dec))[1]["candidates"]) == 1
+# refusals: 400 with the field named, nothing written
+rows = count()
+for field, change in [("ra", {"ra": 400}), ("ra", {"ra": "12"}), ("dec", {"dec": -95}), ("det", {"det": "D9"}), ("tag", {"tag": "star"}), ("tag", {"tag": None}),
+                      ("visit", {"visit": {"start": "2025-8-28"}}), ("visit", {"visit": {**visit, "exposures": 0}}), ("visit", {"visit": {**visit, "mjd": 1}}),
+                      ("author", {"author": "<b>x</b>"}), ("body", {"body": "a" * 1001}), ("body", {"body": 5}), ("turnstile", {"turnstile": ""})]:
+    code, e = post("cand-bad-%s-%d" % (field, pid), **change)
+    assert code == 400 and e.get("field") == field, (field, change, code, e)
+assert call("/api/candidates", raw=b"nope", ip="cand-raw-%d" % pid)[0] == 400
+assert count() == rows, "a refused post was stored"
+assert call("/api/candidates")[0] == 405
+# the rate limit: 5 a minute per IP, then 429 before anything is read
+codes = [call("/api/candidates", {"tag": "nope"}, "cand-limit-%d" % pid)[0] for _ in range(6)]
+assert codes == [400] * 5 + [429], codes
+# a sighting is stored without a candidate
+rows = count()
+code, s = call("/api/sightings", {"name": "2001 FM127", "ra": ra, "dec": dec, "det": "D1", "visit": visit, "author": "tester"}, "seen-%d" % pid)
+assert code == 201 and s["sighting"]["name"] == "2001 FM127" and s["sighting"]["visit"] == "2025-08-28" and s["sighting"]["id"] > 0, (code, s)
+assert count() == rows, "a sighting made a candidate"
+assert call("/api/sightings", {"name": "<script>", "ra": ra, "dec": dec, "det": "D1", "visit": visit, "author": "tester"}, "seen-%d" % pid)[1].get("field") == "name"
+PY
+    then echo "PASS candidates: create C-NNNN with its fields, same-visit 1-arcmin repost joins it, other visit or 1.5' away is new, two at once make one, refusals 400, 6th a minute 429, sighting stored alone"
+    else echo "FAIL candidates"; fails=$((fails + 1)); fi
     # the checks refusals use their own visitor IP per run (the rate limit counts every request, refused ones too)
     post "check: not JSON" "nope" 400 'body must be JSON' /api/checks "CF-Connecting-IP: contract-sh-$$"
     post "check: ra out of range" '{"ra":400,"dec":4}' 400 '"field":"ra"' /api/checks "CF-Connecting-IP: contract-sh-$$"
