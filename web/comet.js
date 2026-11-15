@@ -50,6 +50,8 @@ function talk(c) {
 
 function photos(d) {
   const box = $('c-photos');
+  // the year too when the photos span more than one, so 27 Oct, 2 Jan and 9 Sep read in order
+  const yr = new Set(d.photos.map(p => date(p.mjd, { year: 'numeric' }))).size > 1 ? { year: 'numeric' } : {};
   d.photos.forEach((p, i) => {
     const f = el('figure', i === d.photos.length - 1 ? 'now' : '');
     const plate = el('div', 'plate');
@@ -57,7 +59,7 @@ function photos(d) {
     const ring = el('span', i === d.photos.length - 1 ? 'ring' : 'ring earlier'); ring.style.left = '50%'; ring.style.top = '50%';
     plate.append(img, ring);
     f.title = `${p.lam.toFixed(2)} µm`;
-    f.append(plate, date(p.mjd, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', ''));
+    f.append(plate, date(p.mjd, { day: 'numeric', month: 'short', ...yr, hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', ''));
     box.append(f);
   });
   $('c-photos-panel').hidden = false;
@@ -253,4 +255,13 @@ else fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() :
   else { where(c); $('c-empty').hidden = false; }
   talk(c);
   composer(c);
-}).catch(err => { $('c-id').textContent = 'Comet not found'; console.warn(err); });
+}).catch(err => {   // a 404 is a wrong name; anything else is the network or the database
+  console.warn(err);
+  $('c-id').textContent = err === 404 ? 'Comet not found' : 'Could not load this comet';
+  $('c-cat').hidden = true;
+  document.querySelector('.comet-grid').hidden = true;   // no empty tallies or comment form for a comet that is not there
+  const p = el('p', 'faint'), a = el('a', null, 'See all comets');
+  a.href = 'comet.html';
+  p.append(err === 404 ? 'There is no comet by that name. ' : 'Try again in a moment. ', a);
+  document.querySelector('.comet-head').after(p);
+});
