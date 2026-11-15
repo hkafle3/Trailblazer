@@ -62,15 +62,20 @@ addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; })
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
 // Known comets move: their marker follows the JPL path in `track` ([[day, ra, dec, magnitude], ...] every 10 days)
 // and shows only while the comet is bright enough to see (magnitude 16 or brighter).
-// The name of the comet opened with "Find on map" goes on the side where it fits: right of the dot, or left when
-// that would run past the map or the window (measured, since names differ in length).
+// The name of the comet opened with "Find on map" goes where it fits (measured, since names differ in length):
+// right of the dot, or left when that would run past the map or the window, or, on a screen too narrow for
+// either, under the dot and moved sideways until it is all in view.
 function nameSide(el) {
   const b = el.querySelector('b'), map = $('map').getBoundingClientRect();
   if (!b) return;
-  el.classList.remove('left');
-  if (b.getBoundingClientRect().right <= Math.min(map.right, innerWidth)) return;
+  const lo = Math.max(map.left, 0), hi = Math.min(map.right, innerWidth);
+  el.classList.remove('left', 'under'); b.style.transform = '';
+  if (b.getBoundingClientRect().right <= hi) return;
   el.classList.add('left');
-  if (b.getBoundingClientRect().left < Math.max(map.left, 0)) el.classList.remove('left');   // fits on neither side: keep it on the right
+  if (b.getBoundingClientRect().left >= lo) return;
+  el.classList.replace('left', 'under');
+  const r = b.getBoundingClientRect();
+  b.style.transform = `translateX(${Math.max(lo - r.left, Math.min(0, hi - r.right))}px)`;
 }
 const movers = [], links = [];   // links: every link to a comet's page (markers and the featured card)
 function followTracks(day) {
@@ -147,7 +152,9 @@ $('marks').addEventListener('click', e => {
   stage.animate({ transform: ['none', 'scale(1.3)'] }, { duration: 200, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' }).finished.then(go, go);
 });
 
-addEventListener('resize', () => document.querySelectorAll('.mk.focus').forEach(nameSide));
+// measured again when the window changes size, and once the map has finished scaling in (its size is off until then)
+for (const [target, event] of [[window, 'resize'], [document.querySelector('.map-wrap'), 'animationend']])
+  target.addEventListener(event, () => document.querySelectorAll('.mk.focus').forEach(nameSide));
 
 // Back from a time-lapse: the browser may restore this page from memory, with the heat map from before; reload it
 addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
@@ -183,7 +190,7 @@ Promise.all([cometsLoaded, exploredLoaded]).then(() => {
   const marks = [...document.querySelectorAll('.mk')], dots = marks.map(m => box(m.querySelector('i'))), kept = [];
   for (const m of marks) {
     const b = m.querySelector('b');
-    if (!b || !b.offsetWidth) continue;
+    if (!b || !b.offsetWidth || m.classList.contains('focus')) continue;   // nameSide() places that one
     const bad = () => { const r = box(b); return r.left < 4 || r.right > innerWidth - 4 || kept.some(k => hit(r, k)) || dots.some((d, i) => marks[i] !== m && hit(r, d)); };
     if (bad()) { m.classList.toggle('left'); if (bad()) m.classList.toggle('left'); }
     kept.push(box(b));

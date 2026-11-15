@@ -369,3 +369,4 @@ body:has(#ly-paths:not(:checked)) .mk .trail { display: none; }
 .mk.focus.faint i { opacity: .35; }
 #marks .mk.focus b { display: block; left: 20px; }
 #marks .mk.focus.left b { left: auto; right: 20px; }
+#marks .mk.focus.under b { top: 24px; }   /* no room beside the dot: under its ring (explore.js nameSide) */

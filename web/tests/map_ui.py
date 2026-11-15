@@ -215,13 +215,16 @@ async def main():
             const us = Array.from({ length: 530 }, (_, d) => { const [ra, dec] = m.trackAt(c.track, d); return m.fwd(ra, dec)[0]; });
             return [us.indexOf(Math.min(...us)), us.indexOf(Math.max(...us))]; }""", LONG)
         NAME = """() => { const r = e => e.getBoundingClientRect(), b = r(document.querySelector('.mk.focus b')), map = r(document.getElementById('map')), i = r(document.querySelector('.mk.focus i'));
-            return { ok: b.left >= Math.max(0, map.left) - .5 && b.right <= Math.min(innerWidth, map.right) + .5 && b.width > 0, u: (i.left + i.width / 2 - map.left) / map.width, left: b.right < i.left }; }"""
-        sides = set()
-        for w in (641, 900, 1440):
+            const clear = b.right <= i.left || b.left >= i.right || b.bottom <= i.top || b.top >= i.bottom;   // the name does not cover the dot
+            return { ok: clear && b.left >= Math.max(0, map.left) - .5 && b.right <= Math.min(innerWidth, map.right) + .5 && b.width > 0, u: (i.left + i.width / 2 - map.left) / map.width,
+                     left: b.right < i.left, under: b.top >= i.bottom }; }"""
+        SETTLED = "document.querySelector('.map-wrap').getAnimations().every(a => a.playState === 'finished')"   # the map has scaled in
+        sides, under = set(), 0
+        for w in (320, 641, 900, 1440):
             await pg.set_viewport_size({"width": w, "height": 900})
             for day in (lo, hi, DEFAULT):
-                await explore(pg, f"/explore.html?day={day}&focus=" + urllib.parse.quote(LONG, safe="")); await pg.wait_for_selector(".mk.focus b")
-                got = await pg.evaluate(NAME); sides.add(got["left"])
+                await explore(pg, f"/explore.html?day={day}&focus=" + urllib.parse.quote(LONG, safe="")); await pg.wait_for_selector(".mk.focus b"); await pg.wait_for_function(SETTLED)
+                got = await pg.evaluate(NAME); sides.add(got["left"]); under += got["under"] and w == 320
                 assert got["ok"], f"window {w} px, day {day}: the name of {LONG} runs off the map (dot at {got['u']:.2f} of its width)"
             await pg.focus("#play"); await pg.keyboard.press("Home"); await pg.wait_for_timeout(150)   # the timeline moves it: day 0, then its far-right day
             assert (await pg.evaluate(NAME))["ok"], f"window {w} px: the name runs off the map after the timeline moved to day 0"
@@ -229,9 +232,15 @@ async def main():
                 for _ in range(n): await pg.keyboard.press(key)
             await pg.wait_for_timeout(150)
             assert int(await pg.eval_on_selector("#time", "e => e.value")) == hi and (await pg.evaluate(NAME))["ok"], f"window {w} px: the name runs off the map after the timeline moved to day {hi}"
+        assert under, "320 px: the name was never too wide for both sides, so that case was not tested"
+        await pg.set_viewport_size({"width": 900, "height": 900})   # a window made narrower, then wider again
+        await explore(pg, "/explore.html?day=0&focus=" + urllib.parse.quote(LONG, safe="")); await pg.wait_for_selector(".mk.focus b"); await pg.wait_for_function(SETTLED)
+        for w in (320, 900):
+            await pg.set_viewport_size({"width": w, "height": 900}); await pg.wait_for_timeout(200)
+            assert (await pg.evaluate(NAME))["ok"], f"the name runs off the map after the window was resized to {w} px"
         assert sides == {True, False}, "the name never changed side, so the edges were not tested"
         await pg.set_viewport_size({"width": 1440, "height": 900})
-        print(f"PASS name: {LONG} keeps its name on the map at 641, 900 and 1440 px, near the left edge (day {lo}) and the right edge (day {hi}), on load and after the timeline moves")
+        print(f"PASS name: {LONG} keeps its name on the map and clear of its dot at 320, 641, 900 and 1440 px, near the left edge (day {lo}) and the right edge (day {hi}), on load, after the timeline moves and after a resize")
 
         # a new tab: Cmd/Ctrl click and middle click are left to the browser, and Explore stays as it was
         await explore(ex, "/explore.html?day=300")
