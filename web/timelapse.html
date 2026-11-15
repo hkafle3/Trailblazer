@@ -295,13 +295,13 @@ function knownList(f) {
   const rows = [...k.bodies].sort((a, b) => (a[1].kind === 'comet' ? 0 : 1) - (b[1].kind === 'comet' ? 0 : 1));
   if (!rows.length) return void (el.textContent = k.left ? `Checking ${n - k.left} of ${n} exposure times…`
     : k.failed ? `None found at ${n - k.failed} of ${n} exposure times; ${k.failed} could not be checked` : 'None passed through during this visit');
-  el.replaceChildren(...rows.slice(0, 4).map(([name, b]) => {
+  el.replaceChildren(...rows.map(([name, b]) => {   // every one, as text (at most 8 asteroids plus the comets)
     const line = document.createElement('span'), dot = document.createElement('i');
     line.className = 'known-row'; dot.style.background = b.kind === 'comet' ? 'var(--comet)' : 'var(--known)';
     line.append(dot, `${name} · ${b.kind}${b.kind === 'asteroid' && b.mag != null ? ` mag ${b.mag}` : ''} · ${[...new Set(b.pts.map(p => dayMonth(p[0])))].join(', ')}`);
     return line;
   }));
-  const more = rows.length - 4, note = [more > 0 ? `and ${more} more` : '', k.left ? `checking ${k.left} more times…` : '', k.failed ? `${k.failed} of ${n} times not checked` : ''].filter(Boolean);
+  const note = [k.left ? `checking ${k.left} more times…` : '', k.failed ? `${k.failed} of ${n} times not checked` : ''].filter(Boolean);
   if (note.length) el.append(Object.assign(document.createElement('span'), { className: 'known-row faint', textContent: note.join(' · ') }));
 }
 async function select(key, opts) {

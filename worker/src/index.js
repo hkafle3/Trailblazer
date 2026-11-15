@@ -183,7 +183,7 @@ function sexagesimal(text, hours) {
 function skybotRows(rows) {
   const comets = [], bright = [];
   for (const r of rows) {
-    if (!r || typeof r !== 'object' || typeof r.Class !== 'string') return null;
+    if (!r || typeof r !== 'object' || typeof r.Class !== 'string' || !r.Class.trim()) return null;
     const hms = /^\s*(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['RA (hms)'] ?? ''), dms = /^\s*[+-]?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['DEC (dms)'] ?? '');
     if (!hms || !dms || +hms[2] >= 60 || +hms[3] >= 60 || +dms[2] >= 60 || +dms[3] >= 60) return null;
     const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);

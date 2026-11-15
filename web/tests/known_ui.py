@@ -19,7 +19,7 @@ async def main():
         n = await pg.evaluate("[...document.querySelectorAll('.tick')].findIndex(t => /Sep 2026/.test(t.getAttribute('aria-label') || ''))")
         assert n >= 0, "no Sep 2026 visit"
         await pg.locator(".tick").nth(n).click()
-        await pg.wait_for_function("(t => t && !/Checking/.test(t))(document.getElementById('vKnown').textContent)", timeout=180000)
+        await pg.wait_for_function("(t => /C\\/2025 R2/.test(t) || (t && !/checking/i.test(t)))(document.getElementById('vKnown').textContent)", timeout=180000)   # the comet, or every time answered
         text = await pg.evaluate("document.getElementById('vKnown').textContent")
         assert "C/2025 R2 · comet · 2 Sep" in text, f"panel says: {text}"
         await b.close()

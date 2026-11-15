@@ -60,7 +60,7 @@ const sky = skybotRows([swan, row('bright', '05 09 10', '+27 22 0', 18.8), row('
 const okSky = sky && sky.comets[0]?.name === 'C/2025 R2' && Math.abs(sky.comets[0].ra - 77.31029) < 1e-4 && sky.asteroids.map(a => a.name).join() === 'bright';
 const noClass = { ...row('z', '05 09 10', '+27 22 0', 18) }; delete noClass.Class;
 const bad = [[swan, row('x', 'garbage 12', '+27 22 0', 18)], [null], [swan, row('y', '25 00 00', '+27 22 0', 18)],
-  [row('m', '05 99 10', '+27 22 0', 18)], [row('g', '05 09 10', '+27 22 0', 'unreadable')], [noClass]].every(r => skybotRows(r) === null);
+  [row('m', '05 99 10', '+27 22 0', 18)], [row('g', '05 09 10', '+27 22 0', 'unreadable')], [noClass], [row('b', '05 09 10', '+27 22 0', 18, '  ')]].every(r => skybotRows(r) === null);
 const noMag = skybotRows([row('C/1', '05 09 10', '+27 22 0', null, 'Comet')]);
 const okNoMag = noMag && noMag.comets[0].mag === null;
 console.log(`${okSky && bad && okNoMag ? 'PASS' : 'FAIL'} SkyBoT rows: comet kept (with or without a magnitude), V 21.04 cut, an unreadable, impossible or unclassed row makes the answer unavailable`); fail += !(okSky && bad && okNoMag);
