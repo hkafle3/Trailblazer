@@ -479,6 +479,7 @@ async function select(key, opts) {
   job?.terminate(); job = null; setStatus(opts?.note || '');
   const m = await load(key);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;   // the box always names the spot on screen
+  document.getElementById('det').value = m.detector;   // and the band is the one the target was baked in (D5 for Epsilon Indi B)
   show(m, `?target=${key}`, opts);
 }
 
