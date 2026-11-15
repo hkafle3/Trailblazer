@@ -39,6 +39,7 @@ function start() {
 function stop() {   // back to a desktop width: hand everything back to the desktop CSS
   for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
   wrap.classList.remove('deep-zoom');
+  pts.clear();   // a pinch still on the screen must not move the desktop's map
   closePeek();
   document.querySelectorAll('.mk.nm-off').forEach(m => m.classList.remove('nm-off'));
 }
