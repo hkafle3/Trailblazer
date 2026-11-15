@@ -12,6 +12,9 @@
 <link rel="stylesheet" href="discuss.css">  <!-- the candidate page's layout (.cpage), shared by a comet's page -->
 <link rel="stylesheet" href="comet.css">    <!-- what only a comet's page has: photos, measurements, spectrum, visits -->
 <!-- also in header.css; Chrome only honours it reliably when it is in the page itself, so the Explore map can glide into the mini map -->
+<!-- the mini map sits in the right column, after the long left one: hold the first paint until it is parsed, so the
+     Explore map can glide into it (a page transition captures the new page at its first paint) -->
+<link rel="expect" href="#c-mini" blocking="render">
 <style>
 @view-transition { navigation: auto; }
 @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }

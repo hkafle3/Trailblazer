@@ -80,3 +80,4 @@
   .cpage .frames figure { font-size: 11px; }
   .cpage .spectrum .legend, .cpage .spec-head .pv-info { font-size: 12px; }
 }
+@media (min-width: 901px) { .cpage #c-photos { grid-template-columns: repeat(6, minmax(0, 1fr)); } }   /* six a row, as before: 3I/ATLAS's six photos on one line */
