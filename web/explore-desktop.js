@@ -119,4 +119,9 @@ addEventListener('keydown', e => {
 });
 
 // a zoomed view kept in this history entry (explore-dive.js) is put back as the page opens
-if (desk() && history.state?.view?.zoom > 1.001) { begin(); restore(); }
+if (desk() && history.state?.view?.zoom > 1.001) {
+  begin(); restore();
+  // the timeline is still rising into place (its top edge is the map area's bottom): once it has, measure and place again
+  const was = [W, X, Y];
+  $('tl').addEventListener('animationend', () => { if (on && desk() && W === was[0] && X === was[1] && Y === was[2]) { measure(area()); restore(); } }, { once: true });
+}

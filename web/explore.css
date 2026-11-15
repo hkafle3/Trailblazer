@@ -249,9 +249,9 @@ body.diving .map-wrap { transition: none; will-change: transform, opacity; }
 body.diving .aim { visibility: hidden; }
 .dive { position: fixed; z-index: 22; left: 0; top: 0; overflow: hidden; border-radius: 4px; box-shadow: 0 0 0 1.5px #fff, 0 0 60px rgba(127, 184, 255, .2); pointer-events: none; will-change: transform, width, height; }
 .dive canvas { display: block; width: 100%; height: 100%; }
-/* loading ahead of a dive it is not rendered at all (visibility), so the wheel and touches still reach the map under it */
-.dive-frame { position: fixed; z-index: 21; left: 0; top: 0; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; visibility: hidden; pointer-events: none; color-scheme: dark; }
-body.diving .dive-frame { visibility: visible; }
+/* loading ahead of a dive it is already drawn, at an opacity nobody can see (0.001, not 0: Chrome skips drawing a fully
+   clear frame, and the first real draw of the whole page then stalls the flight for a third of a second) */
+.dive-frame { position: fixed; z-index: 21; left: 0; top: 0; width: 100%; height: 100%; border: 0; background: #000; opacity: .001; pointer-events: none; color-scheme: dark; will-change: opacity; }
 .dive-frame.on { pointer-events: auto; }
 body.flying::after { content: ""; position: fixed; inset: 0; z-index: 30; }   /* in flight nothing can be pressed */
 body.explore:has(.dive-frame.on) { touch-action: auto; }   /* phones: the time-lapse in the frame scrolls */

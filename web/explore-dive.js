@@ -33,11 +33,14 @@ const skyImg = document.querySelector('#map .sky'), cover = $('cover');
 
 const DET = 'D1';            // the detector every other patch link on Explore opens (the six cover a spot about equally)
 const AIM_W = 66;            // the aim's width in px; its shape is the photo's (1146 x 902)
-const IN_MS = 1900, OUT_MS = 1300;
+const IN_MS = 2200, OUT_MS = 1500;
 const PUSH = Math.log(2.2);  // how much further "zoom" a scroll must ask for at the deepest level: about 4 wheel notches
 const PINCH = Math.log(1.6); // and a pinch: fingers 1.6x further apart
 const GAP = 180;             // ms without wheel events that ends one scroll
-const SKY_FOV = 2.4, SKY_N = 640;   // the HiPS cutout: degrees across and pixels (order 5 tiles are 12.9 arcsec a pixel)
+// SPHEREx sky tiles (HiPS) between the map picture and the photo, as two cutouts round the spot: a wide one from
+// order 3 tiles (51 arcsec a pixel) and a close one from order 5 (12.9 arcsec, the sharpest there is). Each step in the
+// chain map > wide > close > photo is 4 to 12 times sharper than the one before, so the sky stays crisp all the way in.
+const SKIES = [{ order: 3, fov: 11, n: 560 }, { order: 5, fov: 3, n: 800 }];
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const smooth = x => { x = clamp01(x); return x * x * x * (x * (6 * x - 15) + 10); };
@@ -64,15 +67,16 @@ export function restore() {
 
 // ---------- SPHEREx sky tiles around a spot, as one north-up picture (east to the left, like the photo) ----------
 const tiles = new Map();   // HEALPix tile number -> Promise of its pixels, or null when it would not load
-function tile(k) {
-  if (!tiles.has(k)) tiles.set(k, new Promise(done => {
+function tile(order, k) {
+  const id = order + '/' + k;
+  if (!tiles.has(id)) tiles.set(id, new Promise(done => {
     const im = new Image();
     im.crossOrigin = 'anonymous';
     im.onload = () => { const c = new OffscreenCanvas(512, 512).getContext('2d', { willReadFrequently: true }); c.drawImage(im, 0, 0); done(c.getImageData(0, 0, 512, 512).data); };
-    im.onerror = () => { tiles.delete(k); done(null); };
-    im.src = tileUrl(5, k);
+    im.onerror = () => { tiles.delete(id); done(null); };
+    im.src = tileUrl(order, k);
   }));
-  return tiles.get(k);
+  return tiles.get(id);
 }
 // the sky position `east`, `north` degrees from (ra0, dec0) on the photo's flat (tangent plane) grid, in radians
 function tanSky(ra0, dec0, east, north) {
@@ -81,18 +85,18 @@ function tanSky(ra0, dec0, east, north) {
   const c = Math.atan(rho), s = Math.sin(c), co = Math.cos(c);
   return [ra0 * RAD + Math.atan2(x * s, rho * Math.cos(d0) * co - y * Math.sin(d0) * s), Math.asin(co * Math.sin(d0) + y * s * Math.cos(d0) / rho)];
 }
-const cutAt = (ra, dec, i, j) => radec2tile(5, ...tanSky(ra, dec, -(i + .5 - SKY_N / 2) * SKY_FOV / SKY_N, -(j + .5 - SKY_N / 2) * SKY_FOV / SKY_N));
-function cutTiles(ra, dec) {   // the tiles the cutout touches (sampled every 32 px), loading
-  const need = new Set();
-  for (let j = 0; j <= SKY_N; j += 32) for (let i = 0; i <= SKY_N; i += 32) need.add(cutAt(ra, dec, Math.min(i, SKY_N - 1), Math.min(j, SKY_N - 1)).k);
-  return Promise.all([...need].map(async k => [k, await tile(k)]));
+const cutAt = (ra, dec, { order, fov, n }, i, j) => radec2tile(order, ...tanSky(ra, dec, -(i + .5 - n / 2) * fov / n, -(j + .5 - n / 2) * fov / n));
+function cutTiles(ra, dec, sky) {   // the tiles a cutout touches (sampled every 16 px), loading
+  const need = new Set(), n = sky.n;
+  for (let j = 0; j <= n; j += 16) for (let i = 0; i <= n; i += 16) need.add(cutAt(ra, dec, sky, Math.min(i, n - 1), Math.min(j, n - 1)).k);
+  return Promise.all([...need].map(async k => [k, await tile(sky.order, k)]));
 }
-async function cutout(ra, dec) {
-  const got = new Map(await cutTiles(ra, dec));
-  if (![...got.values()].some(Boolean)) return null;   // the tile server is away: the dive goes from the map straight to the photo
+async function cutout(ra, dec, sky) {
+  const got = new Map(await cutTiles(ra, dec, sky)), SKY_N = sky.n;
+  if (![...got.values()].some(Boolean)) return null;   // the tile server is away: the dive goes on without this layer
   const out = new ImageData(SKY_N, SKY_N), o = out.data;
   for (let j = 0; j < SKY_N; j++) for (let i = 0; i < SKY_N; i++) {
-    const { k, u, v } = cutAt(ra, dec, i, j), t = got.get(k);
+    const { k, u, v } = cutAt(ra, dec, sky, i, j), t = got.get(k);
     if (!t) continue;
     const [c, r] = tileUV(u, v), q = 4 * (Math.min(511, Math.floor(r * 512)) * 512 + Math.min(511, Math.floor(c * 512))), p = 4 * (j * SKY_N + i);
     o[p] = t[q]; o[p + 1] = t[q + 1]; o[p + 2] = t[q + 2];
@@ -133,29 +137,33 @@ function setPush(p) {
 function pushBy(d) {
   clearTimeout(pushT);
   setPush(push + d);
-  prepare();   // a dive is likely: the time-lapse starts loading
+  target();   // a dive is likely: the time-lapse of this spot starts building
   if (push >= 1) start(); else pushT = setTimeout(() => setPush(0), 600);
 }
 function aimAt() {
   const c = here();
-  if (dive?.phase === 'ready' && (!c || round4(c[0]) !== dive.ra || round4(c[1]) !== dive.dec)) drop();   // the view moved: that spot is off
+  if (dive?.phase === 'ready' && dive.ra != null && (!c || round4(c[0]) !== dive.ra || round4(c[1]) !== dive.dec)) drop();   // the view moved: that spot is off
   if (dive && dive.phase !== 'ready') return;
   const on = !!c && view.atMax();
   if (aim.hidden === on) { aim.hidden = !on; if (!on) { clearTimeout(pushT); setPush(0); } }
-  if (!on) return;
+  if (!on) { clearTimeout(warmQ); if (dive) drop(); return; }   // away from the deepest zoom the loaded page is let go
   const [x, y] = mid();
   aim.style.left = x + 'px'; aim.style.top = y + 'px';
-  clearTimeout(warmQ); warmQ = setTimeout(() => { const s = here(); if (s) cutTiles(round4(s[0]), round4(s[1])); }, 250);   // sky tiles for this spot, ahead of a dive
+  // settled at the deepest zoom: the sky tiles for this spot and the time-lapse page (no spot yet, so it builds nothing) load ahead of a dive
+  clearTimeout(warmQ); warmQ = setTimeout(() => { const s = here(); if (!s || !view.atMax()) return; for (const sky of SKIES) cutTiles(round4(s[0]), round4(s[1]), sky); prepare(); }, 250);
 }
 view.onView(() => { aimAt(); clearTimeout(saveQ); saveQ = setTimeout(save, 300); });
 addEventListener('resize', () => setTimeout(aimAt));   // after the map files have re-measured
 
 // the wheel: only a scroll that starts at the deepest zoom adds up (capture, so this runs before the map zooms)
-let lastWheel = -1e9, wheelOk = false;
+// A scroll ends when a timer set at its last wheel event runs out, not by comparing event times: when the page is busy
+// Chrome holds wheel events back and delivers them before any timer, so a stall in the middle of one scroll cannot
+// pass for a pause.
+let resting = true, restT = 0, wheelOk = false;
 stageEl.addEventListener('wheel', e => {
   if (!view.A || e.target.closest('.tl') || (dive && dive.phase !== 'ready')) return;
-  if (e.timeStamp - lastWheel > GAP) wheelOk = view.atMax() && !!here();
-  lastWheel = e.timeStamp;
+  if (resting) wheelOk = view.atMax() && !!here();
+  resting = false; clearTimeout(restT); restT = setTimeout(() => { resting = true; }, GAP);
   const dy = Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1)));
   if (dy >= 0 || !wheelOk || !view.atMax()) { if (dy > 0) wheelOk = false; if (push) { clearTimeout(pushT); setPush(0); } return; }
   pushBy(-dy * (e.ctrlKey ? .01 : .002) / PUSH);
@@ -177,7 +185,7 @@ addEventListener('pointermove', e => {
   if (!view.atMax()) { pinch = null; return setPush(0); }
   const p = Math.log(spread() / pinch.d0) / PINCH;
   setPush(p);
-  if (p > .15) prepare();
+  if (p > .15) target();
   if (p >= 1) { pinch = null; start(); }
 });
 const lift = e => { if (!fingers.delete(e.pointerId)) return; if (pinch) { pinch = null; setPush(0); } };
@@ -186,27 +194,34 @@ addEventListener('pointercancel', lift);
 
 // the button: the time-lapse starts loading as soon as the pointer or the keyboard reaches it
 let hoverQ = 0;   // a pointer that only passes over it loads nothing
-go.addEventListener('pointerenter', () => { hoverQ = setTimeout(prepare, 150); });
+go.addEventListener('pointerenter', () => { hoverQ = setTimeout(target, 150); });
 go.addEventListener('pointerleave', () => clearTimeout(hoverQ));
-go.addEventListener('pointerdown', () => prepare());
+go.addEventListener('pointerdown', () => target());
 go.addEventListener('click', () => { setPush(1); start(); });
 
 // ---------- a dive ----------
-// phase: 'ready' (the time-lapse is loading in its hidden frame, the map is still in use), 'in' (flying in),
+// phase: 'ready' (the time-lapse page is loaded in its hidden frame, the map is still in use), 'in' (flying in),
 // 'open' (the time-lapse has the screen), 'out' (flying back). t runs from 0 (the map) to 1 (the time-lapse).
-function prepare(spot = here()) {
-  if (dive || !spot) return dive;
-  const ra = round4(spot[0]), dec = round4(spot[1]), f = document.createElement('iframe');
+// Two steps, so neither is felt: prepare() loads the page with no spot once the view rests at the deepest zoom (it
+// builds nothing and asks no server for images); target() gives it the spot when a dive is likely, and the build starts.
+function prepare() {
+  if (dive) return dive;
+  const f = document.createElement('iframe');
   let ok; const ready = new Promise(r => { ok = r; });
   f.className = 'dive-frame'; f.title = 'Time-lapse of this spot'; f.tabIndex = -1;
-  f.addEventListener('load', ok, { once: true });
-  // a new frame each time: its first page load adds no history entry, so back always belongs to the map
-  f.src = `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${DET}&day=${+$('time').value}&embed=1`;
+  // a new frame for each dive: its first page load adds no history entry, so back always belongs to the map
+  f.src = 'timelapse.html?embed=1';
   document.body.append(f);
-  dive = { ra, dec, f, ready, ok, phase: 'ready', t: 0, raf: 0, sky: null, shot: null, fov: 6 / 60 };
-  const d = dive;
-  cutout(ra, dec).then(c => { d.sky = c; }, () => {});
+  dive = { ra: null, dec: null, f, ready, ok, phase: 'ready', t: 0, raf: 0, skies: SKIES.map(() => null), shot: null, fov: 6 / 60 };
   return dive;
+}
+function target(spot = here()) {
+  const d = prepare();
+  if (!spot || d.ra != null) return d;
+  const ra = d.ra = round4(spot[0]), dec = d.dec = round4(spot[1]), day = +$('time').value;
+  d.ready.then(() => { if (dive === d) d.f.contentWindow.postMessage({ type: 'dive-go', ra, dec, det: DET, day }, location.origin); });
+  SKIES.forEach((sky, i) => cutout(ra, dec, sky).then(c => { d.skies[i] = c; }, () => {}));
+  return d;
 }
 function drop() { dive.f.remove(); dive = null; }
 const lapseUrl = d => `timelapse.html?ra=${d.ra.toFixed(4)}&dec=${d.dec.toFixed(4)}&det=${DET}`;
@@ -226,9 +241,9 @@ function mapScale(ra, dec) {
   return [ws * (w[0] - o[0]) / h, s * (n[0] - o[0]) / h, ws * (w[1] - o[1]) / h, s * (n[1] - o[1]) / h];
 }
 
-async function start(pushEntry = true) {
-  const d = prepare();
-  if (!d || d.phase !== 'ready') return;
+async function start(pushEntry = true, spot = here()) {
+  const d = target(spot);
+  if (d.ra == null || d.phase !== 'ready') return;
   d.phase = 'in';
   clearTimeout(pushT); clearTimeout(saveQ);
   // the map lets go of any finger or button still held, so it cannot move underneath
@@ -252,9 +267,12 @@ async function start(pushEntry = true) {
   cv.width = Math.round(r.w * dpr); cv.height = Math.round(r.h * dpr);
   fly(1);
 }
+// in flight the time-lapse keeps its own photo hidden (patch.css): the flying frame is the photo until it lands
+const flying = (d, on) => { try { d.f.contentDocument.documentElement.classList.toggle('flying', on); } catch { /* not loaded */ } };
 function fly(to) {
   const d = dive;
   cancelAnimationFrame(d.raf);
+  flying(d, true);
   d.phase = to ? 'in' : 'out';
   document.body.classList.add('flying');
   box.hidden = false;
@@ -271,22 +289,24 @@ function fly(to) {
 function paint(d) {
   const e = smooth(d.t), r1 = d.r1 = photoRect(d) ?? d.r1, [cx, cy] = d.c;
   const s = d.s0 ** (1 - e) * (r1.w / d.fov) ** e;   // px per degree of sky inside the frame: the zoom is even on a log scale
-  const w = AIM_W ** (1 - e) * r1.w ** e, h = w * r1.h / r1.w;
-  const x = cx + (r1.x + r1.w / 2 - cx) * e - w / 2, y = cy + (r1.y + r1.h / 2 - cy) * e - h / 2;
+  // the frame is in place by 60% of the flight; the sky inside it keeps zooming all the way
+  const f = smooth(d.t / .6), w = AIM_W ** (1 - f) * r1.w ** f, h = w * r1.h / r1.w;
+  const x = cx + (r1.x + r1.w / 2 - cx) * f - w / 2, y = cy + (r1.y + r1.h / 2 - cy) * f - h / 2;
   box.style.width = w + 'px'; box.style.height = h + 'px'; box.style.transform = `translate(${x}px, ${y}px)`;
   // outside the frame: the map grows a little and goes dark, and the time-lapse page comes up around the frame
   wrapEl.style.transformOrigin = d.o;
-  wrapEl.style.transform = `scale(${Math.min(s / d.s0, 5)})`;
-  wrapEl.style.opacity = 1 - smooth((e - .15) / .3);
-  d.f.style.opacity = smooth((e - .45) / .45);
+  wrapEl.style.transform = `scale(${Math.min(s / d.s0, 6)})`;
+  wrapEl.style.opacity = 1 - smooth((d.t - .2) / .3);
+  d.f.style.opacity = Math.max(.001, smooth((d.t - .28) / .37));
 
   // inside it: the sky, in degrees from the spot, through M (north swings up as a goes to 1)
   const a = smooth((e - .05) / .45), M = d.M0.map((m, i) => s * ((1 - a) * m / d.s0 + (i === 0 || i === 3 ? a : 0)));
   const k = cv.width / w, ox = cv.width / 2, oy = cv.height / 2;
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.fillStyle = '#04060c'; g.fillRect(0, 0, cv.width, cv.height);
-  const skyOn = d.sky ? smooth((SKY_FOV * s / w - .9) / .9) : 0, shot = d.shot, shotOn = shot ? smooth((shot.deg * s / w - .3) / .6) : 0;
-  // the map picture (and its veil of sky not photographed yet), until the tiles cover the frame; with no tiles it fades to dark
-  const mapOn = Math.min(1 - skyOn, 1 - shotOn, d.sky ? 1 : 1 - smooth((Math.log(s / d.s0) - 2.5) / 2));
+  // each layer fades in as it grows to cover the frame, over the one before
+  const skyOn = SKIES.map((sky, i) => (d.skies[i] ? smooth((sky.fov * s / w - .9) / .9) : 0)), shot = d.shot, shotOn = shot ? smooth((shot.deg * s / w - .8) / .8) : 0;
+  // the map picture (and its veil of sky not photographed yet) underneath; with no tiles at all it fades to dark
+  const mapOn = Math.min(1 - Math.max(...skyOn), 1 - shotOn, d.skies.some(Boolean) ? 1 : 1 - smooth((Math.log(s / d.s0) - 2.5) / 2));
   if (mapOn > .01) {
     const det = d.M0[0] * d.M0[3] - d.M0[1] * d.M0[2], I = [d.M0[3] / det, -d.M0[1] / det, -d.M0[2] / det, d.M0[0] / det];
     const T = [M[0] * I[0] + M[1] * I[2], M[0] * I[1] + M[1] * I[3], M[2] * I[0] + M[3] * I[2], M[2] * I[1] + M[3] * I[3]];   // map px -> frame px
@@ -302,13 +322,15 @@ function paint(d) {
     }
   }
   g.setTransform(M[0] * k, M[2] * k, M[1] * k, M[3] * k, ox, oy);
-  if (skyOn > .01) { g.globalAlpha = skyOn; g.imageSmoothingEnabled = true; g.drawImage(d.sky, -SKY_FOV / 2, -SKY_FOV / 2, SKY_FOV, SKY_FOV); }
+  g.imageSmoothingEnabled = true;
+  SKIES.forEach(({ fov }, i) => { if (skyOn[i] > .01) { g.globalAlpha = skyOn[i]; g.drawImage(d.skies[i], -fov / 2, -fov / 2, fov, fov); } });
   if (shotOn > .01) { g.globalAlpha = shotOn; g.imageSmoothingEnabled = false; g.drawImage(shot.cv, -shot.deg / 2, -shot.degH / 2, shot.deg, shot.degH); }
 }
 const others = () => [...document.body.children].filter(el => el !== dive?.f && el !== box && el.tagName !== 'SCRIPT');
 let title = document.title;
 function landed(d) {
   d.phase = 'open';
+  flying(d, false);
   d.f.dataset.open = '1';   // the time-lapse counts a patch as looked at only once it is on screen
   try { d.f.contentWindow.__dive.hold(cv); } catch { /* its script is still loading: its own loading line shows */ }
   box.hidden = true;
@@ -362,11 +384,11 @@ addEventListener('popstate', e => {
   const to = e.state?.dive;
   if (!to) return close();
   if (dive?.phase === 'out') { dive.phase = 'in'; return fly(1); }
-  if (dive || !view.A) return;
+  if ((dive && dive.phase !== 'ready') || !view.A) return;
   const [u, v] = fwd(to.ra, to.dec), [mx, my] = mid();
   view.set(view.MAXW, mx - u * view.MAXW, my - v * view.MAXW / 2);
   if (dive) drop();
-  prepare([to.ra, to.dec]); start(false);
+  start(false, [to.ra, to.dec]);
 });
 // in flight nothing else on the page takes keys; Escape turns back
 addEventListener('keydown', e => {
@@ -375,5 +397,5 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && dive.phase === 'in' && history.state?.dive) history.back();
 }, true);
 
-window.__diveState = () => (dive ? { phase: dive.phase, t: dive.t, ra: dive.ra, dec: dive.dec, sky: !!dive.sky, shot: !!dive.shot } : null);   // for tests/zoom_into_ui.py
+window.__diveState = () => (dive && dive.ra != null ? { phase: dive.phase, t: dive.t, ra: dive.ra, dec: dive.dec, sky: dive.skies.every(Boolean), shot: !!dive.shot } : null);   // for tests/zoom_into_ui.py
 aimAt();

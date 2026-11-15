@@ -1014,14 +1014,14 @@ fov.oninput = () => { setFov(); draw(); };
 // shrinks a little as the scroll adds up, and springs back if it stops short.
 {
   const frameEl = document.querySelector('.pv-frame'), OUT = Math.log(1.8);
-  let acc = 0, last = -1e9, armed = false, push = 0, spring = 0;
+  let acc = 0, resting = true, restT = 0, armed = false, push = 0, spring = 0;
   const lean = p => { push = p; frameEl.style.transform = p ? `scale(${(1 - .07 * Math.min(1, p / OUT)).toFixed(4)})` : ''; };
   patch.addEventListener('wheel', e => {
     if (!state.m || state.mode === 'sky' || matchMedia('(max-width: 900px)').matches) return;
     e.preventDefault();
     const dy = Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1)));
-    if (e.timeStamp - last > 180) { armed = +fov.value <= +fov.min; acc = 0; }
-    last = e.timeStamp;
+    if (resting) { armed = +fov.value <= +fov.min; acc = 0; }
+    resting = false; clearTimeout(restT); restT = setTimeout(() => { resting = true; }, 180);   // a timer, so a busy page's held-back events are not a pause
     if (dy > 0 && armed) {
       clearTimeout(spring); spring = setTimeout(() => lean(0), 500);
       lean(push + dy * (e.ctrlKey ? .01 : .002));
@@ -1184,7 +1184,16 @@ if (P.has('ra') && P.has('dec')) {
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
   search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 } else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1' });
-else setMode('sky');   // the whiteboard flow starts at the whole sky
+else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends it when a dive is likely ('dive-go')
+  setMode('lapse');
+  addEventListener('message', e => {
+    const m = e.data;
+    if (e.origin !== location.origin || e.source !== parent || m?.type !== 'dive-go' || state.m || job) return;
+    document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`; document.getElementById('det').value = m.det;
+    search(m.ra, m.dec, m.det, { day: m.day });
+  });
+} else setMode('sky');   // the whiteboard flow starts at the whole sky
+tellMap({ type: 'dive-ready' });
 </script>
 <script src="ui.js"></script>
 </body>
