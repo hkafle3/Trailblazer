@@ -98,3 +98,8 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 body.busy #patch { animation: breathe 1.6s ease-in-out infinite; }
 
 /* the search's go button: an arrow, so it reads as "go to this spot", not as a second play button */
+
+/* the panel's known comets and asteroids (timelapse.html knownList): one per line, a dot in the map's colours */
+.known-row { display: flex; align-items: center; gap: 8px; }
+.known-row i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.known-row.faint { color: var(--ink-3); }

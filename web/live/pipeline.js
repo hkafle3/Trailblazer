@@ -101,6 +101,13 @@ function centroid(a, guess, r = 3) {
 
 const year = mjd => 2000 + (mjd - 51544.5) / 365.25;
 const date = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
+// the distinct moments in a visit: exposures less than 0.05 day (1.2 h) apart count as one, for the catalog check
+// (a visit spans days, and a known asteroid crosses the patch in hours, so one time per visit would miss it)
+const epochs = ts => {
+  const g = [];
+  for (const t of [...ts].sort((a, b) => a - b)) (g.length && t - g.at(-1).at(-1) < 0.05) ? g.at(-1).push(t) : g.push([t]);
+  return g.map(x => +(x.reduce((a, b) => a + b, 0) / x.length).toFixed(4));
+};
 
 self.onmessage = async ({ data: { ra, dec, det, api } }) => {
   try {
@@ -135,7 +142,7 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
       const arrs = (await pool(v, 3, e => reproject(e, ra, dec))).filter(Boolean);
       const stack = new Float32Array(GRID * GRID).map((_, k) => median(arrs.map(a => a[k])));
       const ts = v.map(e => e.t), mjd = ts.reduce((a, b) => a + b, 0) / ts.length;
-      frames.push({ px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, year: year(mjd), exposures: arrs.length,
+      frames.push({ px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, epochs: epochs(ts), year: year(mjd), exposures: arrs.length,
         lam: v.reduce((s, e) => s + e.lam, 0) / v.length, lam_spread: Math.max(...v.map(e => Math.abs(e.lam - lam0))),
         matched: Math.max(...v.map(e => Math.abs(e.lam - lam0))) <= tol, bw: v.reduce((s, e) => s + e.bw, 0) / v.length });
       post({ type: 'frame', n, of: picked.length, ms: performance.now() - t0 });
