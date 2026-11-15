@@ -9,6 +9,13 @@
 <link rel="stylesheet" href="patch.css">
 <link rel="stylesheet" href="header.css">
 <link rel="stylesheet" href="discuss.css">
+<link rel="icon" href="data:,">   <!-- no favicon yet: without this, phones ask for /favicon.ico and log a 404 -->
+<!-- also in header.css; Chrome only honours it reliably when it is in the page itself (as explore.html and comet.html do).
+     Without it a page change into this page logs "Transition was aborted because of invalid state" on phones. -->
+<style>
+@view-transition { navigation: auto; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+</style>
 </head>
 <body class="lapse nostars">
 <canvas id="gl"></canvas>
