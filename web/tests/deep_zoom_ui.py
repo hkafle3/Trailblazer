@@ -1,6 +1,7 @@
 """Explore's deep zoom (web/explore-deep.js): sharp SPHEREx sky tiles past about 2,500 px of map width.
 Widths are CSS px; the deepest is 90600 / devicePixelRatio and every check prints the width it reached.
 Checks (numbers from the plan's evaluator):
+  3 roundness   at the deepest zoom Alkaid's halo, which the plain map shears 3.5 to 1, is at most 1.3 times as long as wide
   2 alignment   around four stars at four map widths, every tile in the window: the drawn picture is within 1 device px of
                 where that tile's own picture belongs (worked out apart from the page's code), and a marker sits on the
                 same place; catalogue stars within 2.5 device px, Barnard's Star within 6
@@ -13,8 +14,8 @@ Checks (numbers from the plan's evaluator):
   F handoff     switching to the phone width and back (with replies held, in a glide, in a pinch, with a sheet open)
                 hides the layer, keeps nothing, and leaves the whole oval
   7 regression  the whole sky is pixel-identical to the same page without deep zoom (the files it changed as they were
-                before it, DZ_BASE_REF, and no tile layer), on load and after a trip to the deepest zoom and back; at the deepest zoom a marker keeps its size and place, a drag moves it by the
-                drag, the wheel keeps the sky under the pointer
+                before it, DZ_BASE_REF, and no tile layer), on load and after a trip to the deepest zoom and back; at the deepest zoom a marker keeps its size and place, a drag keeps the sky
+                under the pointer under it, and so does the wheel
   8 pin         a click on a star at the deepest zoom drops the pin within 2 px of the star in the picture
 Sharpness, smoothness and the data budgets (checks 1, 4, 5) are in deep_zoom_measure.py.
 Run: uv run -q --with playwright --with pillow --with numpy python web/tests/deep_zoom_ui.py [base url] [check ...]   (default http://127.0.0.1:8787)"""
@@ -41,9 +42,9 @@ window.__wide = () => !matchMedia('(max-width: 640px)').matches;"""
 GO = """async ([ra, dec, w, fx, fy]) => { const { v, k, s } = await __dz();
   if (__wide()) k.flyTo(ra, dec, 1);
   v.cancel(); const W = Math.min(v.MAXW, w), [u, vv] = s.fwd(ra, dec);
-  v.set(W, innerWidth * fx - u * W, innerHeight * fy - vv * W / 2);
-  return { W: v.W, X: v.X, Y: v.Y, MAXW: v.MAXW }; }"""
-VIEW = "__dz().then(({ v }) => ({ W: v.W, X: v.X, Y: v.Y }))"
+  v.set(W, ...v.place(u, vv, innerWidth * fx, innerHeight * fy, W));
+  return { W: v.W, X: v.X, Y: v.Y, MAXW: v.MAXW, M: v.M, C: [v.A.w / 2, (v.A.t + v.A.b) / 2] }; }"""
+VIEW = "__dz().then(({ v }) => ({ W: v.W, X: v.X, Y: v.Y, M: v.M }))"
 STATE = "__dz().then(({ d }) => ({ ...d.state(), ...d.stats }))"
 SETTLED = """async ms => { const { d } = await __dz(), t0 = performance.now();
   for (;;) { const s = d.state(), out = { ms: Math.round(performance.now() - t0), ...s, ...d.stats };
@@ -136,6 +137,12 @@ def differ(a, b): return sum(abs(x - y) for x, y in zip(a, b)) / len(a)
 HIPS = "https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube"
 MARK_UV = """([u, v]) => { const m = document.createElement('a'); m.className = 'mk'; m.style.left = u * 100 + '%'; m.style.top = v * 100 + '%';
   document.getElementById('marks').append(m); const r = m.getBoundingClientRect(); m.remove(); return [r.left, r.top]; }"""
+def to_layout(view, x, y):   # undo the engine's straightening: window point -> layout point
+    (a, b, c, d), (cx, cy) = view["M"], view["C"]; det = a * d - b * c; x = x - cx; y = y - cy
+    return cx + (d * x - b * y) / det, cy + (a * y - c * x) / det
+def to_window(view, x, y):
+    (a, b, c, d), (cx, cy) = view["M"], view["C"]; x -= cx; y -= cy
+    return cx + a * x + b * y, cy + c * x + d * y
 _tiles = {}
 async def tile_picture(pg, o, k):
     if (o, k) not in _tiles:
@@ -148,7 +155,8 @@ async def misfit(pg, o, k, view, dpr, cx, cy, r=16):
     got = np.array(await pg.evaluate(GL, [cx, cy, r]), dtype=float).reshape(2 * r + 1, 2 * r + 1); tile = await tile_picture(pg, o, k)
     ys, xs = np.mgrid[-r:r + 1, -r:r + 1]; xs = xs + cx + .5; ys = ys + cy + .5   # pixel middles
     def score(dx, dy):
-        val, ok = tile_at(np, tile, o, k, ((xs + dx) / dpr - view["X"]) / view["W"], ((ys + dy) / dpr - view["Y"]) / (view["W"] / 2))
+        lx, ly = to_layout(view, (xs + dx) / dpr, (ys + dy) / dpr)
+        val, ok = tile_at(np, tile, o, k, (lx - view["X"]) / view["W"], (ly - view["Y"]) / (view["W"] / 2))
         if ok.sum() < ok.size * .6 or val[ok].std() < 12: return None
         a = got[ok] - got[ok].mean(); e = val[ok] - val[ok].mean(); return float((a * e).sum() / (math.sqrt((a * a).sum() * (e * e).sum()) + 1e-9))
     if score(0, 0) is None: return None
@@ -166,7 +174,7 @@ async def alignment(b):
                   for col, row in ((256, 256), (128, 128), (384, 128), (128, 384), (384, 384)):
                     u, vv = tile_spot_to_map(o, k, col, row); mx, my = await pg.evaluate(MARK_UV, [u, vv])
                     if not (20 < mx < vp["width"] - 20 and 20 < my < vp["height"] - 20): continue
-                    anchor = max(anchor, math.hypot(mx - (v["X"] + u * v["W"]), my - (v["Y"] + vv * v["W"] / 2)) * dpr)
+                    ex, ey = to_window(v, v["X"] + u * v["W"], v["Y"] + vv * v["W"] / 2); anchor = max(anchor, math.hypot(mx - ex, my - ey) * dpr)
                     m = await misfit(pg, o, k, v, dpr, round(mx * dpr), round(my * dpr))
                     if m: rows.append((m[0], star, round(v["W"]), f"{o}/{k}", round(mx / vp["width"], 2), round(my / vp["height"], 2), round(m[1], 2)))
                 mx, my = await pg.evaluate(MARK, list(STARS[star])); r = 8
@@ -176,6 +184,12 @@ async def alignment(b):
         check(len(rows) > 60 and not bad and anchor <= .1, f"alignment at DPR {dpr}", f"{len(rows)} tile squares at widths {sorted({r[2] for r in rows})} CSS px, from {spread[0]:.0%} to {spread[1]:.0%} across and {spread[2]:.0%} to {spread[3]:.0%} down the window: worst shift {worst[0]:.2f} device px ({worst[1:]}), "
               f"{sum(r[0] == 0 for r in rows)} with none; markers within {anchor:.3f} device px of the engine's places" + (f"; {len(bad)} over 1 px: {bad[:6]}" if bad else ""))
         check(max(cat)[0] <= 2.5, f"catalogue stars at DPR {dpr}", f"Alkaid, Denebola, gamma Crv and the M31 core sit within {max(cat)[0]:.2f} device px of their catalogue places (worst {max(cat)[1:]}; 2.5 allowed, the data's own limit)")
+        v = await go(pg, "Alkaid"); await settled(pg); mx, my = await pg.evaluate(MARK, list(STARS["Alkaid"])); r = 40
+        px = await pg.evaluate(GL, [mx * dpr, my * dpr, r]); n = 2 * r + 1; cut = (sorted(px)[len(px) // 5] + max(px)) / 2
+        pts = [(i - r, j - r) for j in range(n) for i in range(n) if px[j * n + i] > cut]; ax = sum(p[0] for p in pts) / len(pts); ay = sum(p[1] for p in pts) / len(pts)
+        sxx = sum((p[0] - ax) ** 2 for p in pts); syy = sum((p[1] - ay) ** 2 for p in pts); sxy = sum((p[0] - ax) * (p[1] - ay) for p in pts); h = math.hypot((sxx - syy) / 2, sxy)
+        ratio = math.sqrt(((sxx + syy) / 2 + h) / ((sxx + syy) / 2 - h))
+        check(ratio <= 1.3 and v["M"] != [1, 0, 0, 1], f"round stars at DPR {dpr}", f"Alkaid's halo at {round(v['W'])} CSS px is {ratio:.2f} times as long as wide (1.3 allowed; the plain map shows it 3.5 times)")
         v = await go(pg, "Barnard"); await settled(pg); mx, my = await pg.evaluate(MARK, list(STARS["Barnard"]))
         cx, cy, *_ = centroid(await pg.evaluate(GL, [mx * dpr, my * dpr, 12]), 12)
         check(math.hypot(cx, cy) <= 6, f"Barnard's Star at DPR {dpr}", f"{math.hypot(cx, cy):.2f} device px from its 2025.7 place at {round(v['W'])} CSS px")
@@ -313,7 +327,8 @@ async def without_deep_zoom(route):   # the page as it is now, minus deep zoom: 
     if name == "explore-deep.js": return await route.fulfill(body="", content_type="text/javascript")
     if name not in MINE: return await route.continue_()
     out = subprocess.run(["git", "-C", REPO, "show", f"{REF}:web/{name}"], capture_output=True, check=True)
-    await route.fulfill(body=out.stdout, content_type="text/css" if name.endswith(".css") else "text/javascript")
+    body = out.stdout + (b"\nexport const straight = () => false;\n" if name == "explore-view.js" else b"")   # today's explore.js asks the engine for it
+    await route.fulfill(body=body, content_type="text/css" if name.endswith(".css") else "text/javascript")
 async def shot(pg): return await pg.screenshot(animations="disabled", caret="hide")
 def same(a, b):
     if a == b: return 0, None
@@ -344,12 +359,14 @@ DOT = """() => { const m = document.querySelector('#marks .mk.sel'), r = m.query
 async def overlays(b):
     pg = await open_page(b); d0 = await pg.evaluate(DOT)
     await go(pg, "Barnard", 3000)
-    v = await pg.evaluate("([u, vv]) => __dz().then(({ v }) => { v.set(v.MAXW, 700 - u * v.MAXW, 500 - vv * v.MAXW / 2); return { W: v.W }; })", [d0["u"], d0["v"]])
+    v = await pg.evaluate("([u, vv]) => __dz().then(({ v }) => { v.set(v.MAXW, ...v.place(u, vv, 700, 500, v.MAXW)); return { W: v.W }; })", [d0["u"], d0["v"]])
     d1 = await pg.evaluate(DOT)
     check(abs(d1["x"] - 700) <= 1 and abs(d1["y"] - 500) <= 1 and abs(d1["w"] - d0["w"]) < .01, "marker at the deepest zoom", f"at {round(v['W'])} CSS px the featured comet's dot is {abs(d1['x'] - 700):.2f}, {abs(d1['y'] - 500):.2f} px from its place and still {d1['w']:.0f} px wide")
+    held = await pg.evaluate("__dz().then(({ v }) => v.skyAt(400, 300))")
     await pg.mouse.move(400, 300); await pg.mouse.down(); await pg.mouse.move(340, 270, steps=4); await pg.mouse.move(280, 240, steps=4); await pg.mouse.up()
-    d2 = await pg.evaluate(DOT)
-    check(abs(d2["x"] - d1["x"] + 120) <= 1 and abs(d2["y"] - d1["y"] + 60) <= 1, "drag at the deepest zoom", f"a drag of (-120, -60) moved the dot by ({d2['x'] - d1['x']:.1f}, {d2['y'] - d1['y']:.1f})")
+    at = await pg.evaluate("s => __dz().then(({ v }) => v.toScreen(...s))", held); d2 = await pg.evaluate(DOT)
+    check(abs(at[0] - 280) <= 1 and abs(at[1] - 240) <= 1 and abs(d2["x"] - d1["x"] + 120) <= 3 and abs(d2["y"] - d1["y"] + 60) <= 3, "drag at the deepest zoom",
+          f"after a drag of (-120, -60) the sky that was under the pointer is {abs(at[0] - 280):.2f}, {abs(at[1] - 240):.2f} px from it; the comet's dot, 360 px away, moved ({d2['x'] - d1['x']:.1f}, {d2['y'] - d1['y']:.1f}) (north stays up, so the view turns a little)")
     sky = await pg.evaluate("__dz().then(({ v }) => v.skyAt(900, 600))"); await pg.mouse.move(900, 600); await pg.mouse.wheel(0, 300); await pg.wait_for_timeout(100)
     at, w = await pg.evaluate("s => __dz().then(({ v }) => [v.toScreen(...s), v.W])", sky)
     check(abs(at[0] - 900) <= 1 and abs(at[1] - 600) <= 1 and w < v["W"], "wheel at the deepest zoom", f"zoomed out to {round(w)} px; the sky under the pointer moved {abs(at[0] - 900):.2f}, {abs(at[1] - 600):.2f} px")

@@ -3,7 +3,7 @@
 // is a drag that pans, and its release clicks nothing. The wheel and trackpad zoom around the pointer, a double click
 // zooms in 2x, and the +, - and whole-sky buttons (bottom right) or the + - 0 and arrow keys do the same.
 // The whole sky is the oval where the page's CSS puts it; nothing here writes to the page until the first pan or zoom.
-import { W, X, Y, A, measure, set, zoomAt, glide, glideZoom, cancel, onView, atMin, atMax } from './explore-view.js';
+import { W, X, Y, A, measure, set, zoomAt, move, place, uvAt, glide, glideZoom, cancel, onView, atMin, atMax } from './explore-view.js';
 import { restore } from './explore-dive.js';   // back from a time-lapse, or a reload: the map where it was
 import * as view from './explore-view.js';
 
@@ -67,7 +67,7 @@ addEventListener('pointermove', e => {
     press.drag = true; begin();
     stage.setPointerCapture(e.pointerId); document.body.classList.add('grabbing');
   }
-  set(W, X + e.clientX - press.lx, Y + e.clientY - press.ly);
+  move(1, press.lx, press.ly, e.clientX, e.clientY);   // the sky under the pointer follows it
   press.lx = e.clientX; press.ly = e.clientY;
 });
 addEventListener('pointerup', e => {
@@ -114,7 +114,7 @@ addEventListener('keydown', e => {
   else if (k.startsWith('Arrow')) {
     begin();
     const [dx, dy] = { ArrowLeft: [d, 0], ArrowRight: [-d, 0], ArrowUp: [0, d], ArrowDown: [0, -d] }[k];
-    glide(W, X + dx, Y + dy, 150);
+    const [cx, cy] = mid(); glide(W, ...place(...uvAt(cx - dx, cy - dy), cx, cy), 150);
   } else return;
   e.preventDefault();
 });

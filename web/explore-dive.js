@@ -139,8 +139,8 @@ function setPush(p) {
   if (push && !calm.matches) {   // the map leans in a little
     const [x, y] = mid();
     wrapEl.style.transformOrigin = `${x - view.X}px ${y - view.Y}px`;
-    wrapEl.style.transform = `scale(${1 + .05 * push})`;
-  } else wrapEl.style.transform = '';
+    wrapEl.style.scale = 1 + .05 * push;   // `scale`, not `transform`: that one holds the map's straightening (explore-view.js)
+  } else wrapEl.style.scale = '';
 }
 function pushBy(d) {
   clearTimeout(pushT);
@@ -266,7 +266,10 @@ async function start(pushEntry = true, spot = here()) {
     history.pushState({ dive: { ra: d.ra, dec: d.dec } }, '', lapseUrl(d));
   }
   document.body.classList.add('diving', 'flying');
-  d.c = view.toScreen(d.ra, d.dec); d.M0 = mapScale(d.ra, d.dec); d.s0 = Math.sqrt(Math.abs(d.M0[0] * d.M0[3] - d.M0[1] * d.M0[2]));
+  // J0: the map's own layout around the spot. M0: what the screen shows, the layout through the engine's straightening
+  d.c = view.toScreen(d.ra, d.dec); d.J0 = mapScale(d.ra, d.dec);
+  { const m = view.M, j = d.J0; d.M0 = [m[0] * j[0] + m[1] * j[2], m[0] * j[1] + m[1] * j[3], m[2] * j[0] + m[3] * j[2], m[2] * j[1] + m[3] * j[3]]; }
+  d.s0 = Math.sqrt(Math.abs(d.M0[0] * d.M0[3] - d.M0[1] * d.M0[2]));
   d.o = `${d.c[0] - view.X}px ${d.c[1] - view.Y}px`;
   d.tint = getComputedStyle(skyImg).filter;
   const loaded = await Promise.race([d.ready.then(() => true), new Promise(r => setTimeout(r, 5000))]);
@@ -305,7 +308,7 @@ function paint(d) {
   box.style.width = w + 'px'; box.style.height = h + 'px'; box.style.transform = `translate(${x}px, ${y}px)`;
   // outside the frame: the map grows a little and goes dark, and the time-lapse page comes up around the frame
   wrapEl.style.transformOrigin = d.o;
-  wrapEl.style.transform = `scale(${Math.min(s / d.s0, 6)})`;
+  wrapEl.style.scale = Math.min(s / d.s0, 6);
   wrapEl.style.opacity = 1 - smooth((d.t - .2) / .3);
   d.f.style.opacity = Math.max(.001, smooth((d.t - .28) / .37));
 
@@ -319,7 +322,7 @@ function paint(d) {
   // the map picture (and its veil of sky not photographed yet) underneath; with no tiles at all it fades to dark
   const mapOn = Math.min(1 - Math.max(...skyOn), 1 - shotOn, d.skies.some(Boolean) ? 1 : 1 - smooth((Math.log(s / d.s0) - 2.5) / 2));
   if (mapOn > .01) {
-    const det = d.M0[0] * d.M0[3] - d.M0[1] * d.M0[2], I = [d.M0[3] / det, -d.M0[1] / det, -d.M0[2] / det, d.M0[0] / det];
+    const det = d.J0[0] * d.J0[3] - d.J0[1] * d.J0[2], I = [d.J0[3] / det, -d.J0[1] / det, -d.J0[2] / det, d.J0[0] / det];
     const T = [M[0] * I[0] + M[1] * I[2], M[0] * I[1] + M[1] * I[3], M[2] * I[0] + M[3] * I[2], M[2] * I[1] + M[3] * I[3]];   // map px -> frame px
     g.setTransform(T[0] * k, T[2] * k, T[1] * k, T[3] * k, ox, oy);
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
@@ -374,7 +377,7 @@ function close() {
 function surfaced(d) {
   cancelAnimationFrame(d.raf);
   box.hidden = true;
-  wrapEl.style.transform = ''; wrapEl.style.opacity = '';
+  wrapEl.style.scale = ''; wrapEl.style.opacity = '';
   document.body.classList.remove('diving', 'flying');
   d.f.remove(); dive = null;
   dispatchEvent(new Event('dive-closed'));   // explore.js: the heat map may have a new patch looked at

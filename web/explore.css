@@ -259,6 +259,14 @@ body.explore:has(.dive-frame.on) { touch-action: auto; }   /* phones: the time-l
 
 /* deep zoom (explore-deep.js): sharp sky tiles on a canvas the size of the window, right above the sky picture */
 .map .hips { inset: auto; pointer-events: none; }
+/* straightened (explore-view.js): .map-wrap is sheared so the sky has true shapes; each marker, card and the pin undoes
+   the shear about its own sky position, so it keeps its size and shape. The cards hang off that position by their margins. */
+.map-wrap.straight .marks > * { transform: var(--un); }
+.map-wrap.straight .cover { opacity: var(--veil); }   /* coverage fades out as the sharp sky fades in */
+.map-wrap.straight #card-comet { transform-origin: -28px 30px; }
+.map-wrap.straight #card-comet.left { transform-origin: 278px 30px; }
+.map-wrap.straight #card-patch { transform-origin: -30px 30px; }
+.map-wrap.straight #card-patch.left { transform-origin: 280px 30px; }
 
 /* the map takes over from the homepage sky oval (same view-transition-name) */
 body.explore .map { view-transition-name: sky; }

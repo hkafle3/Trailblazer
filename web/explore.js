@@ -4,7 +4,7 @@
 import { RAD, wrap, fwdLon, fwd, inv, trackAt, dayParam, dayDate, LAST_DAY, MJD0 } from './skymap.js';
 import * as phoneUI from './explore-phone.js';   // phones: pan, pinch, names, sheets
 import './explore-desktop.js';   // desktops: drag, wheel, double click, zoom buttons and keys
-import { onView } from './explore-view.js';
+import { onView, straight, skyAt as viewSkyAt } from './explore-view.js';
 import './explore-deep.js';   // sharp sky tiles when zoomed far in
 import * as search from './search.js';   // the search box: names, RA and Dec, star catalogs
 for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]]) {   // projection round trip
@@ -53,7 +53,8 @@ function showPin(ra, dec, name = 'Patch of sky', href = patchUrl(ra, dec)) {
   pin.hidden = false;
   pin.querySelector('.pin-ring').style.animation = 'none'; void pin.offsetWidth; pin.querySelector('.pin-ring').style.animation = '';   // replay the drop
 }
-const skyAt = e => { const b = $('map').getBoundingClientRect(); return inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height); };
+// zoomed far in the map is straightened (explore-view.js), and only the engine can say what sky is under a point
+const skyAt = e => { if (straight()) return viewSkyAt(e.clientX, e.clientY); const b = $('map').getBoundingClientRect(); return inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height); };
 // a double click zooms in (explore-desktop.js): its first click dropped a pin, so the pin goes back to how it was
 const desktop = () => !matchMedia('(max-width: 640px)').matches;
 let shown = null, before = null;   // the pin's place now, and before the last single click
@@ -220,7 +221,7 @@ $('marks').addEventListener('click', e => {
   const a = e.target.closest('a[href^="comet.html"]');
   if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   if (leaving) return e.preventDefault();
-  if (!('CSSViewTransitionRule' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!('CSSViewTransitionRule' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches || straight()) return;   // a straightened map keeps its own transform
   e.preventDefault();
   leaving = true; stopReplay();
   const url = a.href, stage = document.querySelector('.map-wrap'), go = () => { location.href = url; };
