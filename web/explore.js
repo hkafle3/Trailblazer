@@ -18,7 +18,9 @@ const patchUrl = (ra, dec) => `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFi
 // a comet already found and named opens the same patch viewer, labelled Discovered (found=<its id>)
 const foundUrl = (id, ra, dec) => `${patchUrl(ra, dec)}&found=${encodeURIComponent(id)}`;
 const focus = new URLSearchParams(location.search).get('focus');   // ?focus=<comet>&day=<day>: "Find on map" on a comet's page
-$('time').value = dayParam();
+// a view kept in this history entry (explore-dive.js: back from a time-lapse, or a reload) opens on its own day, still
+const kept = history.state?.view;
+$('time').value = kept?.day ?? dayParam();
 const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(`${url}: HTTP ${r.status}`))));
 
 // ---- grid and ecliptic ----
@@ -228,9 +230,10 @@ onView(() => { clearTimeout(sideQ); sideQ = setTimeout(() => document.querySelec
 addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
 // ---- heat map from /api/explored: patch-sized cells people have checked (mint), the rest stay dark ----
-const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
+function paintHeat(cells) {
   const cv = $('heat'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
   const level = n => (n >= 20 ? 3 : n >= 5 ? 2 : 1);
+  g.clearRect(0, 0, W, H);
   for (const c of cells) {
     const lon0 = wrap(-c.ra_max), lon1 = lon0 + (c.ra_max - c.ra_min);   // keeps a cell whole where RA wraps at 180
     g.beginPath();
@@ -241,6 +244,11 @@ const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
     g.fillStyle = `rgba(95,224,173,${[0, .26, .5, .82][level(c.checks)]})`; g.fill();
     g.strokeStyle = 'rgba(4,6,11,.75)'; g.lineWidth = 1.5; g.stroke();
   }
+}
+// back on the map after a dive into a time-lapse (explore-dive.js): the patch just looked at shows on the heat map
+addEventListener('dive-closed', () => getJson('/api/explored').then(({ cells }) => paintHeat(cells)).catch(() => {}));
+const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
+  paintHeat(cells);
   const url = patchUrl(suggest.ra, suggest.dec), pin = document.createElement('a');
   pin.className = 'mk patch'; pin.href = url; pin.innerHTML = '<i></i><b>unexplored</b>';
   const right = place(pin, suggest.ra, suggest.dec) > 0.75;   // the suggestion can be anywhere: near the right edge, name and card go left
@@ -399,6 +407,6 @@ let showByDay = () => {};
   };
   // Ed: the replay plays every time Explore opens. A link to a day (?day=, Find on map) or a search (?q=) lands on that day instead,
   // and reduced motion starts still on the last day.
-  if (!['day', 'q'].some(k => new URLSearchParams(location.search).has(k)) && !matchMedia('(prefers-reduced-motion: reduce)').matches) { setDay(0); timeline.onPress(); }
+  if (!kept && !['day', 'q'].some(k => new URLSearchParams(location.search).has(k)) && !matchMedia('(prefers-reduced-motion: reduce)').matches) { setDay(0); timeline.onPress(); }
   document.body.dataset.ready = '1';
 })();

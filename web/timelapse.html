@@ -34,6 +34,7 @@
        Descriptions (with what the patch shows), then Options, Spectral, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
   <div class="pv-frame">
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
+    <canvas id="hold" aria-hidden="true"></canvas>   <!-- Explore's dive: the sky it showed last, until the first frame is drawn -->
     <!-- while a time-lapse builds: what it is doing and how far along (the status line in Descriptions says it to screen readers) -->
     <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
     <!-- Spectrum mode: while it is on, a click or tap on the photo picks that star for the Spectrum card instead of
@@ -168,6 +169,7 @@ import { recenterable, panToSky, heatCell } from './live/recenter.js';
 import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
 import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
 import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Undiscovered, and Discovered for reported dots
+import { MJD0 } from './skymap.js';
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -175,12 +177,57 @@ const TARGETS = [
 ];
 const P = new URLSearchParams(location.search);
 
+// ---------- opened by Explore's dive (explore-dive.js) ----------
+// Zooming in past the map's deepest level opens this page in a frame over the map (?embed=1). The map page keeps the
+// address bar and the history, so this page tells it every address change. Links open in the whole window, except the
+// ones to Explore: the map is right underneath, so they close the frame (as does zooming out past the widest view).
+// The same address opened on its own (a reload, a shared link) is this page as usual.
+const EMBED = P.has('embed') && parent !== self, fromDive = !!history.state?.dive;
+const tellMap = m => { if (EMBED) parent.postMessage(m, location.origin); };
+if (EMBED) {
+  document.head.append(Object.assign(document.createElement('base'), { target: '_top' }));
+  const replace = history.replaceState.bind(history);
+  history.replaceState = (state, title, url) => {
+    replace(state, title, url);
+    const q = new URLSearchParams(location.search); q.delete('embed'); q.delete('day');
+    tellMap({ type: 'dive-url', search: '?' + q });
+  };
+  addEventListener('click', e => {
+    if (!e.target.closest?.('a[href="explore.html"]') || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault(); tellMap({ type: 'dive-out' });
+  });
+}
+// back to the map where it was: the dive's frame closes; a page that came from Explore goes back; else Explore opens
+const fromMap = () => { try { return /\/explore(\.html)?$/.test(new URL(document.referrer).pathname) && new URL(document.referrer).origin === location.origin; } catch { return false; } };
+function toMap() {
+  if (EMBED) tellMap({ type: 'dive-out' });
+  else if ((fromDive || fromMap()) && history.length > 1) history.back();
+  else location.href = 'explore.html';
+}
+// The dive hands over the last picture it showed of this spot (the sharpest sky it had, or the first frame). It lies
+// over the photo until a real frame is drawn here, then fades, so the sky turns into the photo without a blank frame.
+// A patch counts as looked at (the heat map's check) only once the frame is on screen: Explore loads this page ahead of a
+// dive that may never happen, and marks the frame (data-open) when it lands.
+const holdEl = document.getElementById('hold');
+let photoShown = false, owedCheck = null;
+const onScreen = () => !EMBED || frameElement?.dataset.open === '1';
+function photo() { photoShown = true; holdEl.classList.remove('on'); }
+window.__dive = {
+  hold(src) {
+    if (owedCheck) { owedCheck(); owedCheck = null; }
+    holdEl.width = src.width; holdEl.height = src.height; holdEl.getContext('2d').drawImage(src, 0, 0);
+    holdEl.classList.add('on');
+    if (photoShown) requestAnimationFrame(() => requestAnimationFrame(() => holdEl.classList.remove('on')));   // already here: cross-fade to it
+  },
+};
+
 // ---------- 3D star field behind everything ----------
 const canvas = document.getElementById('gl');
 // The star field is decoration: when the browser has WebGL off (a GPU crash, or hardware acceleration disabled),
 // skip it so the 2D time-lapse below still works instead of the whole page stopping here.
 let renderer = null;
-try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); }
+try { if (EMBED) throw 0;   // over the map: no second 3D scene starting up while the dive animates
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); }
 catch { document.body.classList.add('nogl'); }
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, 1, 0.001, 5000);
@@ -649,6 +696,8 @@ const timeline = (() => {
 })();
 
 // opts.diff: open on the latest visit with Color Difference on (what a click on the sky asks for)
+// opts.day (Explore's dive): open on the visit nearest that day of Explore's timeline
+const nearestVisit = (m, day) => m.frames.reduce((best, f, n) => (Math.abs(f.mjd - MJD0 - day) < Math.abs(m.frames[best].mjd - MJD0 - day) ? n : best), 0);
 // opts.keep (a re-centre): stay on the visit and the layers that were on screen
 function show(m, query, opts = {}) {
   // a re-centre that lands while the photo is still being moved waits: the next move starts its own build. Any other
@@ -659,15 +708,16 @@ function show(m, query, opts = {}) {
   // counts once; keepalive so leaving the page at once does not cancel it
   if (m.key.startsWith('live') && heatCell(m.ra, m.dec) !== lastCell) {
     lastCell = heatCell(m.ra, m.dec);
-    fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra: m.ra, dec: m.dec }) }).catch(() => {});
+    const check = () => fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra: m.ra, dec: m.dec }) }).catch(() => {});
+    if (onScreen()) check(); else owedCheck = check;
   }
   shownFound = [found, foundAt];   // the discovery belongs to what is on screen: a failed search later restores it
-  Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.diff ? m.frames.length - 1 : opts.t != null ? Math.max(0, m.frames.findIndex(f => f.at_t)) : 0, diff: !!opts.diff });
+  Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.day != null ? nearestVisit(m, opts.day) : opts.diff ? m.frames.length - 1 : opts.t != null ? Math.max(0, m.frames.findIndex(f => f.at_t)) : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   document.getElementById('pv-name').textContent = m.key.startsWith('live') ? 'Sky spot' : m.name;   // the phone's title row
   document.getElementById('pv-radec').textContent = `RA ${m.ra.toFixed(2)} Dec ${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(2)}`;
-  panel(m); draw();
+  panel(m); draw(); photo();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
   knownFor(m);
   spSync();
@@ -811,6 +861,8 @@ function preview(px) {
   const tmp = new OffscreenCanvas(G, G); tmp.getContext('2d').putImageData(img, 0, 0);
   ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, patch.width, patch.height);
   ctx.drawImage(tmp, (G - cw) / 2, (G - ch) / 2, cw, ch, 0, 0, patch.width, patch.height);
+  if (!photoShown) tellMap({ type: 'dive-frame', px, fov: state.fov });   // the dive can show it while it is still zooming in
+  photo();
 }
 function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
@@ -833,6 +885,7 @@ function search(ra, dec, det, opts = {}) {
   const fail = (text, hint, full) => {
     job = 0;
     if (!state.m) ctx.clearRect(0, 0, patch.width, patch.height);   // no half-built preview left behind
+    photo();   // nor the dive's picture of the sky: there is no photo to stand in for
     const went = back();
     owed = !went && !!state.m && state.mode !== 'sky' && rc.moving();
     setStatus(text + (went || owed ? ' Back at the last spot.' : hint), true);
@@ -1182,8 +1235,24 @@ fov.oninput = () => { setFov(); draw(); };
 // the wheel, a pinch and +/- on the photo (live/recenter.js) move the same bar: k times the width, in the bar's 0.5
 // arcmin steps, about the middle. `want` keeps small trackpad steps adding up between bar steps. Zooming only crops
 // the frames already built (no fetch), so the photo redraws at once, once per screen refresh.
+// At the widest view, zooming out again goes back to the map (toMap). Only a zoom that starts at the widest view counts
+// (180 ms with no zoom step ends one, by a timer, so a busy page's held-back wheel events are not a pause): a long
+// scroll or pinch that just arrives there stays on this page. The photo shrinks a little as it adds up, and springs
+// back if it stops short.
 let want = state.fov, zoomDraw = 0;
+const frameEl = document.querySelector('.pv-frame'), OUT = Math.log(1.8);
+let zoomRest = true, zoomRestT = 0, outOk = false, outPush = 0, outSpring = 0;
+const lean = p => { outPush = p; frameEl.style.transform = p ? `scale(${(1 - .07 * Math.min(1, p / OUT)).toFixed(4)})` : ''; };
 function zoomBy(k) {
+  if (zoomRest) outOk = state.fov >= 12 && !!state.m;
+  zoomRest = false; clearTimeout(zoomRestT); zoomRestT = setTimeout(() => { zoomRest = true; }, 180);
+  if (k > 1 && outOk) {
+    clearTimeout(outSpring); outSpring = setTimeout(() => lean(0), 500);
+    lean(outPush + Math.log(k));
+    if (outPush >= OUT) { outOk = false; clearTimeout(outSpring); outSpring = setTimeout(() => lean(0), 1500); toMap(); }
+    return;
+  }
+  if (k < 1) { outOk = false; if (outPush) lean(0); }
   if (Math.abs(want - state.fov) >= .5) want = state.fov;   // the bar was dragged since
   want = Math.min(12, Math.max(1, want * k));
   fov.value = 13 - want;   // the bar snaps it to its step and range
@@ -1335,11 +1404,20 @@ spRestore();
 if (P.has('ra') && P.has('dec')) {
   const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
-  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}) });
+  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 } else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1' });
-else setMode('sky');   // the whiteboard flow starts at the whole sky
+else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends it when a dive is likely ('dive-go')
+  setMode('lapse');
+  addEventListener('message', e => {
+    const m = e.data;
+    if (e.origin !== location.origin || e.source !== parent || m?.type !== 'dive-go' || state.m || job) return;
+    document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`; document.getElementById('det').value = m.det;
+    search(m.ra, m.dec, m.det, { day: m.day });
+  });
+} else setMode('sky');   // the whiteboard flow starts at the whole sky
 // &spec=ra,dec: the Spectrum card opens on that spot (its 2026.0 place) as soon as the page shows a patch
 { const sp = (P.get('spec') || '').split(',').map(Number); if (sp.length === 2 && sp[0] >= 0 && sp[0] < 360 && Math.abs(sp[1]) <= 90) { specMode(true); openSpec(sp[0], sp[1], 2026); } }
+tellMap({ type: 'dive-ready' });
 </script>
 <script src="ui.js"></script>
 </body>

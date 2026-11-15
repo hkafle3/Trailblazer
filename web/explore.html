@@ -146,6 +146,17 @@
 
 <div class="readout" id="readout" hidden></div>
 
+<!-- The dive (explore-dive.js). At the deepest zoom a small frame marks the middle of the view. "Dive in", or zooming
+     in further, opens that spot's time-lapse over the map: the frame grows into the photo while the sky inside it zooms. -->
+<div class="aim" id="dive-aim" hidden>
+  <svg class="aim-box" viewBox="0 0 66 52" aria-hidden="true">
+    <path d="M1 13V4a3 3 0 0 1 3-3h9M53 1h9a3 3 0 0 1 3 3v9M65 39v9a3 3 0 0 1-3 3h-9M13 51H4a3 3 0 0 1-3-3v-9"/>
+    <rect id="aim-ring" x="1" y="1" width="64" height="50" rx="3" pathLength="1"/>
+  </svg>
+  <button class="aim-go" id="dive-go" type="button" title="Open the time-lapse of this spot. Zooming in further does the same.">Dive in<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v15M6 13l6 6 6-6"/></svg></button>
+</div>
+<div class="dive" id="dive" hidden><canvas id="dive-cv" width="2" height="2"></canvas></div>
+
 <script type="module" src="explore.js"></script>
 <script src="ui.js"></script>
 </body>
