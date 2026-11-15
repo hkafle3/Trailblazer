@@ -24,8 +24,9 @@ check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'
 # a malformed id must get our JSON error from the Worker; on the live site Cloudflare's edge refuses it first
 case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is not valid"' ;; *) bad_id='400 Bad Request' ;; esac
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
-check "explored cells" "/api/explored" 200 '"checks":'
-check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
+check "explored grid" "/api/explored" 200 '"total":3339'
+check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":'
+check "GET on the checks route" "/api/checks" 405 'use POST'
 check "home page served" "/" 200 'The sky moves'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "Comets list page served" "/comet.html" 200 'id="c-list"'
@@ -66,8 +67,8 @@ else echo "FAIL known comets"; fails=$((fails + 1)); fi
 # POST /api/comments writes to D1, so it runs against the local dev server only (Cloudflare's test secret accepts its dummy token
 # XXXX.DUMMY.TOKEN.XXXX and, measured 2026-11-14, any string; each post gets a unique one because a token is single use)
 tok() { echo "XXXX.DUMMY.TOKEN.XXXX.$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"; }
-post() {   # name, json body, expected status, expected text in the body
-  out=$(curl -s -m 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data "$2" "$BASE/api/comments")
+post() {   # name, json body, expected status, expected text in the body [, route]
+  out=$(curl -s -m 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' --data "$2" "$BASE${5:-/api/comments}")
   code=$(printf '%s' "$out" | tail -1); body=$(printf '%s' "$out" | sed '$d')
   if [ "$code" = "$3" ] && printf '%s' "$body" | grep -q -- "$4"; then echo "PASS $1 ($code)"
   else echo "FAIL $1: got $code, wanted $3 with '$4': $(printf '%s' "$body" | head -c 200)"; fails=$((fails + 1)); fi
@@ -104,7 +105,31 @@ case "$BASE" in
       curl -s -m 30 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "{\"comet_id\":\"3I/ATLAS\",\"body\":\"race $i\",\"author\":\"$race\",\"turnstile\":\"$(tok)\"}" "$BASE/api/comments" > "$dir/$i" &
     done; wait
     ok=$(cat "$dir"/* | grep -o 201 | wc -l | tr -d ' '); limited=$(cat "$dir"/* | grep -o 429 | wc -l | tr -d ' '); rm -r "$dir"
-    if [ "$ok" = 5 ] && [ "$limited" = 5 ]; then echo "PASS 10 parallel posts: 5 accepted, 5 limited"; else echo "FAIL 10 parallel posts: $ok accepted, $limited limited"; fails=$((fails + 1)); fi ;;
-  *) echo "SKIP POST /api/comments checks (not a local server)" ;;
+    if [ "$ok" = 5 ] && [ "$limited" = 5 ]; then echo "PASS 10 parallel posts: 5 accepted, 5 limited"; else echo "FAIL 10 parallel posts: $ok accepted, $limited limited"; fails=$((fails + 1)); fi
+    # the heat map: opening a spot adds one check to its cell, and the map shows that cell with the new count
+    if python3 - "$BASE" <<'PY'
+import json, sys, urllib.request
+base = sys.argv[1]
+def call(path, body=None):
+    req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
+    return json.load(urllib.request.urlopen(req, timeout=30))
+ra, dec = 269.4463, 4.7671
+inside = lambda c: c["ra_min"] <= ra < c["ra_max"] and c["dec_min"] <= dec < c["dec_max"]
+before = sum(c["checks"] for c in call("/api/explored")["cells"] if inside(c))
+got = call("/api/checks", {"ra": ra, "dec": dec})
+after = [c for c in call("/api/explored")["cells"] if inside(c)]
+assert len(after) == 1 and after[0]["checks"] == before + 1 == got["checks"], f"before {before}, after {after}, post {got}"
+for r, d in [(0, 90), (360, -90), (359.999, 0), (0, -90)]:   # grid edges land in a real cell
+    c = call("/api/checks", {"ra": r, "dec": d})["cell"]
+    assert 0 <= c < 3339, f"({r}, {d}) -> cell {c}"
+PY
+    then echo "PASS opening a spot adds one check to its cell, shown on the map; grid edges land in real cells"
+    else echo "FAIL heat map checks"; fails=$((fails + 1)); fi
+    post "check: not JSON" "nope" 400 'body must be JSON' /api/checks
+    post "check: ra out of range" '{"ra":400,"dec":4}' 400 '"field":"ra"' /api/checks
+    post "check: ra not a number" '{"ra":"12","dec":4}' 400 '"field":"ra"' /api/checks
+    post "check: dec missing" '{"ra":12}' 400 '"field":"dec"' /api/checks
+    post "check: dec out of range" '{"ra":12,"dec":-95}' 400 '"field":"dec"' /api/checks ;;
+  *) echo "SKIP POST /api/comments and /api/checks (not a local server)" ;;
 esac
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
