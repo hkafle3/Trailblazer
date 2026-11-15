@@ -567,3 +567,6 @@ body:has(#ly-photos:not(:checked)) .mk.deep { display: none; }
 .mk.peek b { display: none; }
 .mk.peek:is(:hover, :focus-visible) b { display: block; }
 @media (min-width: 641px) { .mk.known i::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; } }
+
+#c-spec-note { text-transform: none; letter-spacing: .02em; }   /* it carries units (mJy, µm), which uppercase turns into MJY */
+.comet-head + p.faint a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }   /* "See all comets" on the not-found page */
