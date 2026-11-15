@@ -84,12 +84,14 @@ body:has(#diff:checked) #legend .lg-key { display: flex; }   /* the colour key, 
 #legend i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; }
 body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 /* While a time-lapse builds, the frame says what is happening, with a thin line filling as the frames are made, on the
-   legend's dark backdrop. It fades in after a beat, so a re-centre that lands within a second shows none. */
-#loading { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: calc(18 * var(--e));
-  padding: calc(22 * var(--e)) calc(30 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); pointer-events: none;
-  font: 400 calc(24 * var(--e)) / 1 var(--panel-font); color: #fff; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
+   legend's dark backdrop. It fades in after a beat, so a re-centre that lands within a second shows none. It sits in the
+   top-right corner, across from the Spectrum button, so it never covers the target in the middle; known objects' names
+   keep clear of it while it shows (draw() in timelapse.html). */
+#loading { position: absolute; right: calc(18 * var(--e)); top: calc(16 * var(--e)); display: grid; justify-items: end; gap: calc(12 * var(--e));
+  padding: calc(12 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); pointer-events: none;
+  font: 400 calc(20 * var(--e)) / 1 var(--panel-font); color: #fff; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
 body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4s, visibility 0s .4s; }
-#ld-line { display: block; width: calc(320 * var(--e)); height: max(1.5px, calc(3 * var(--e)));
+#ld-line { display: block; width: 100%; min-width: calc(200 * var(--e)); height: max(1.5px, calc(3 * var(--e)));
   background: linear-gradient(#fff, #fff) 0 0 / var(--p, 0%) 100% no-repeat, rgba(255, 255, 255, .25); transition: background-size .4s; }
 @media (prefers-reduced-motion: reduce) { #loading, body.busy #loading, #ld-line { transition: none; } }
 
@@ -181,6 +183,48 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 #readout { position: fixed; z-index: 3; font: 500 11.5px var(--mono); color: #ffd2b0; padding: 5px 10px; border-radius: 999px; background: rgba(8, 11, 20, .8); pointer-events: none; transform: translate(14px, 14px); display: none; white-space: nowrap; }
 .tmark { position: fixed; z-index: 1; transform: translate(-11px, -50%); pointer-events: none; display: flex; align-items: center; gap: 10px; font: 500 12.5px var(--mono); color: #d8e8ff; text-shadow: 0 1px 8px #000; white-space: nowrap; }
 .tmark i { width: 22px; height: 22px; border: 1.5px solid var(--known); border-radius: 50%; flex: none; box-shadow: 0 0 14px rgba(127, 184, 255, .6); }
+
+/* ---------- Spectrum (timelapse.html "Spectrum card"): a toggle in the photo's corner, and the card ----------
+   The toggle is Ming's layer chip (.sp-chip) at a size the photo can carry; pressed, it fills white like a chip under the
+   pointer. The card is his Descriptions card (.pv-card: the straight white top rule), in the right column's place while
+   open, as Discuss is; a little wider than the column, so the chart has room. */
+.pv-specbtn { position: absolute; z-index: 1; left: calc(18 * var(--e)); top: calc(16 * var(--e)); display: flex; align-items: center; gap: calc(10 * var(--e)); height: calc(46 * var(--e)); min-height: 28px;
+  box-sizing: border-box; padding: 0 calc(20 * var(--e)) 0 calc(14 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 999px; background: rgba(0, 0, 0, .6); color: #fff;
+  font: 400 max(11px, calc(20 * var(--e))) / 1 var(--panel-font); white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
+.pv-specbtn svg { width: max(14px, calc(24 * var(--e))); height: max(14px, calc(24 * var(--e))); fill: none; stroke: currentColor; stroke-width: 2; }
+.pv-specbtn:hover { background: rgba(40, 40, 40, .8); }
+.pv-specbtn[aria-pressed=true] { background: #fff; color: #000; }
+.pv-specbtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+#patch.picking { cursor: crosshair; }
+@media (min-width: 641px) { body.speccing:not(.talking) .pstage > :is(.pv-mini, .pv-state, .pv-desc) { display: none; } }
+body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { display: none; }
+.pv-spec { left: calc(1880 * var(--e)); top: calc(229 * var(--e)); width: calc(500 * var(--e)); box-sizing: border-box; padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }
+.pv-spec h2 { display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(18 * var(--e)); }
+.pv-spec .pv-scroll { max-height: calc(830 * var(--e)); padding: 0 calc(20 * var(--e)) 0 calc(8 * var(--e)); }
+.pv-spec .close { display: grid; place-items: center; padding: 0; margin-right: calc(20 * var(--e)); border: 0; background: none; color: #fff; cursor: pointer; }
+.pv-spec .close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.pv-spec .chev { width: calc(30 * var(--e)); height: calc(30 * var(--e)); min-width: 16px; min-height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.pv-spec .pv-info:first-child { margin-top: 0; }
+.spec-line { display: block; height: max(1.5px, calc(3 * var(--e))); margin-top: calc(10 * var(--e)); background: linear-gradient(#fff, #fff) 0 0 / var(--p, 0%) 100% no-repeat, rgba(255, 255, 255, .25); transition: background-size .3s; }
+.spec-line[hidden] { display: none; }
+#spec-chart { display: block; width: 100%; height: auto; margin-top: calc(16 * var(--e)); overflow: visible; }
+#spec-chart text { font: 400 10px var(--panel-font); fill: #aeb6c6; }
+#spec-chart .lab { fill: #fff; }
+#spec-chart .grid { stroke: rgba(255, 255, 255, .12); }
+#spec-chart .axis { stroke: #c9c9c9; }
+#spec-chart .co2 { stroke: #fff; stroke-dasharray: 3 3; opacity: .6; }
+#spec-chart .gap { stroke: #8a8a8a; stroke-width: 2; }
+#spec-chart .err { stroke-width: 1; opacity: .5; }
+#spec-chart .pt.doubt { fill: #000; stroke-width: 1.4; }
+.spec-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: calc(10 * var(--e)); font: 400 max(10px, calc(17 * var(--e))) / 1.2 var(--panel-font); color: #cfd6e4; }
+.spec-key i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
+.spec-key i.hollow { box-sizing: border-box; border: 1.5px solid #fff; }
+.spec-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: calc(18 * var(--e)); }
+.spec-log { display: flex; align-items: center; gap: calc(14 * var(--e)); font-size: max(11px, calc(20 * var(--e))); color: #f2f2f2; cursor: pointer; }
+.spec-csv { height: calc(44 * var(--e)); min-height: 26px; padding: 0 calc(18 * var(--e)); border: max(1px, calc(2 * var(--e))) solid #fff; border-radius: 999px; background: #000; color: #fff;
+  font: 400 max(11px, calc(18 * var(--e))) / 1 var(--panel-font); white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
+.spec-csv:hover:not(:disabled), .spec-csv:focus-visible { background: #fff; color: #000; outline: 0; }
+.spec-csv:disabled { opacity: .4; cursor: default; }
 
 /* ---------- phones and narrow windows: one column, the page scrolls, in the markup's order (reading order) ---------- */
 @media (max-width: 900px) {
@@ -330,4 +374,22 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   body.lapse:not(.sky) .pv-talk textarea.box { height: 74px; }
   body.lapse:not(.sky) .pv-talk .example { min-height: 44px; }
   body.lapse:not(.sky) .pv-talkwrap .pv-post { margin-top: 10px; height: 56px; }
+
+  /* Spectrum: the card fills the Info tab while it is open (Descriptions comes back when it closes); its heading row
+     stays, for the close button. The toggle is a 44 px tap in the photo's corner. */
+  body.lapse.speccing:not(.sky) .pstage[data-tab=info] > .pv-desc { display: none; }
+  body.lapse.speccing:not(.sky):not(.talking) .pstage[data-tab=info] > .pv-spec { display: grid; }
+  /* the chart first, so a tap shows it; the close button floats at the top right, the title is for screen readers */
+  body.lapse:not(.sky) .pv-spec { grid-template-rows: minmax(0, 1fr); padding: 0 0 0 22px; }
+  body.lapse:not(.sky) .pv-spec h2 { display: block; position: absolute; z-index: 1; right: 0; top: 0; width: 44px; height: 44px; margin: 0; font-size: 0; }
+  body.lapse:not(.sky) .pv-spec .close { width: 44px; height: 44px; margin-right: 0; }
+  body.lapse:not(.sky) .pv-spec .pv-scroll { display: flex; flex-direction: column; min-height: 0; max-height: none !important; overflow-y: auto; padding: 4px 22px 12px 0; }
+  body.lapse:not(.sky) #spec-chart { order: -2; margin: 0 22px 0 0; width: calc(100% - 22px); }
+  body.lapse:not(.sky) .spec-key { order: -1; }
+  body.lapse:not(.sky) .pv-spec .pv-info { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: #e8e8e8; }
+  body.lapse:not(.sky) .spec-key { font-size: 11px; }
+  body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; margin-left: -11px; }
+  body.lapse:not(.sky) .spec-csv { height: 44px; padding: 0 16px; border-width: 1.5px; font-size: 12.5px; }
+  body.lapse:not(.sky) #loading { right: 6px; top: 6px; padding: 8px 10px; gap: 7px; font-size: 11px; }
+  body.lapse:not(.sky) .pv-specbtn { left: 6px; top: 6px; height: 44px; padding: 0 14px 0 10px; border-width: 1.5px; font-size: 12.5px; gap: 6px; }
 }

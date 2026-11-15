@@ -110,6 +110,9 @@ async def desktop(b):
     assert msg.startswith("Dec 95 is off the sky.") and "-90 to +90" in msg and not await pg.evaluate(ROWS), msg
     await search(pg, "08h55m10.8s")
     assert "That reads as RA 133.80°. Add the Dec." in await pg.text_content("#xs-msg")
+    await search(pg, "1H 0323+342")   # a catalog name that reads like numbers: the error, and the star catalogs one Enter away
+    assert "off the sky" in await pg.text_content("#xs-msg") or "over 59" in await pg.text_content("#xs-msg")
+    assert (await pg.evaluate(ROWS))[0].startswith('Look up "1H 0323+342"'), await pg.evaluate(ROWS)
     print("PASS out of range: 271 95 says Dec 95 is off the sky; one value asks for the Dec")
 
     # ---- names: a target, a comet ----
@@ -142,6 +145,13 @@ async def desktop(b):
     await pg.wait_for_function("!document.getElementById('pin').hidden && document.querySelector('#pin .eyebrow').textContent === 'Vega'", timeout=8000)
     got = await pg.evaluate(PIN)
     assert angle_ok(got, 279.2347, 38.7837, 0.1), got
+    # Escape while a lookup runs drops it; Cmd+K opens the list again even when the box kept the focus
+    await pg.click("#xs-q"); await search(pg, "Sirius"); await pg.keyboard.press("Enter"); await pg.keyboard.press("Escape")
+    await pg.wait_for_timeout(2500)
+    assert await pg.is_hidden("#xs-panel") and await pg.evaluate("document.querySelector('#pin .eyebrow').textContent") == "Vega", "a dropped lookup still acted"
+    await pg.keyboard.press("Meta+k")
+    assert await pg.is_visible("#xs-panel"), "Cmd+K did not reopen the list"
+    await pg.keyboard.press("Escape")
     print(f"PASS Sesame ({'mocked' if MOCK else 'live'}): Vega resolves to RA {got['ra']:.3f} Dec {got['dec']:.3f} and drops a pin named Vega")
     await pg.click("#xs-q"); await search(pg, "planet nine"); await pg.keyboard.press("Enter")
     await pg.wait_for_function("document.getElementById('xs-msg').textContent.startsWith('Nothing called \"planet nine\".')", timeout=9000)
@@ -195,6 +205,7 @@ async def phone(b):
     assert await pg.is_visible("#csheet") and await pg.text_content("#csheet [data-f=name]") == "3I/ATLAS", "3I/ATLAS did not open its sheet"
     assert await pg.evaluate("!document.body.classList.contains('xs-typing')") and await pg.is_hidden("#xs-panel"), "the result left the list open"
     assert await pg.is_visible("#xsearch") and await pg.input_value("#xs-q") == "3I/ATLAS", "the box should keep what was found at the top"
+    assert not await pg.evaluate("document.getElementById('play').classList.contains('on')"), "a result during the replay left it running"
     print("PASS phone: the button opens the box at the top; 3I/ATLAS closes the list and opens its sheet; box, back, clear, rows 44 px or more")
     await pg.tap("#xs-clear"); await pg.wait_for_timeout(100)
     assert await pg.is_hidden("#xsearch"), "clear did not bring back the plain map"
@@ -213,7 +224,7 @@ async def phone(b):
     assert not errors, errors
     await ctx.close()
 
-    for width in (360, 390):   # the four buttons in one row
+    for width in (320, 360, 390):   # the four buttons in one row
         ctx = await b.new_context(viewport={"width": width, "height": 740}, has_touch=True, is_mobile=True)
         await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
         pg = await ctx.new_page(); await load(pg)
@@ -222,7 +233,7 @@ async def phone(b):
         assert all(boxes[i][0] + boxes[i][2] <= boxes[i + 1][0] for i in range(3)), f"{width} px: buttons overlap {boxes}"
         assert max(bx[1] + bx[3] for bx in boxes) - min(bx[1] + bx[3] for bx in boxes) < 1, f"{width} px: not one row {boxes}"
         await ctx.close()
-    print("PASS phone: Examples, Layers, search and whole sky fit in one row at 360 and 390 px")
+    print("PASS phone: Examples, Layers, search and whole sky fit in one row at 320, 360 and 390 px")
 
 
 async def main():
