@@ -82,8 +82,9 @@ function nameSide(el) {
 const movers = [], links = [];   // links: every comet link (markers and the featured card), rewritten as the timeline moves
 function followTracks(day) {
   // a known comet's page opens on the same date; a found comet opens the patch where it is on that date, as Discovered
-  for (const { el, id, found, track, ra, dec } of links)
-    el.href = found ? foundUrl(id, ...(track?.length ? trackAt(track, day) : [ra, dec])) : `comet.html?id=${encodeURIComponent(id)}&day=${day}`;
+  // a candidate (a dot reported from a time-lapse) opens its own page, which has the time-lapse a click away
+  for (const { el, id, found, track, ra, dec, candidate } of links)
+    el.href = candidate ? `candidate.html?id=${encodeURIComponent(id)}` : found ? foundUrl(id, ...(track?.length ? trackAt(track, day) : [ra, dec])) : `comet.html?id=${encodeURIComponent(id)}&day=${day}`;
   for (const { el, track } of movers) {
     const [ra, dec, mag] = trackAt(track, day), bright = mag != null && mag <= 16;
     place(el, ra, dec);
@@ -97,19 +98,22 @@ let trailN = 0;
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
   const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
-  const featured = focus ? null : comets.filter(c => c.kind === 'comet').sort((a, b) => votes(b) - votes(a))[0];   // no card while a comet is being found
+  // no card while a comet is being found, except a candidate's ("Where it is" on its page), which says it is one
+  const featured = focus ? comets.find(c => c.id === focus && c.candidate) : comets.filter(c => c.kind === 'comet').sort((a, b) => votes(b) - votes(a))[0];
   for (const c of comets) {
     const a = document.createElement('a');
     a.className = `mk ${c.kind}`;
-    if (c.id === focus) a.classList.add('focus'); else a.dataset.day = c.day ?? 0;   // the comet being found shows on any date
+    if (c.id === focus && c !== featured) a.classList.add('focus'); else a.dataset.day = c.day ?? 0;   // a featured candidate's name is on its card   // the comet being found shows on any date
     a.innerHTML = '<i></i>';
     if (c.kind === 'comet') {
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
+      if (c.candidate && votes(c) < 5) a.classList.add('open');   // a reported dot also needs 5 tags before it reads as likely
+      if (c.candidate) a.setAttribute('aria-label', `${c.id} (${a.classList.contains('open') ? 'candidate' : 'likely comet'})`);
     } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
     // comets people found open the patch viewer as Discovered (Ming); known comets open their page (main, PR #30)
-    links.push({ el: a, id: c.id, found: c.kind === 'comet', track: c.track, ra: c.ra, dec: c.dec });   // followTracks() writes the link, with the timeline's day
+    links.push({ el: a, id: c.id, found: c.kind === 'comet', track: c.track, ra: c.ra, dec: c.dec, candidate: c.candidate });   // followTracks() writes the link, with the timeline's day
     if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (c.kind === 'known' && c.real && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
     if (c.track?.length) movers.push({ el: a, track: c.track });   // no path, or an empty one: it stays at its fixed place
@@ -122,7 +126,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
   }
-  if (featured) links.push({ el: card, id: featured.id, found: true, track: featured.track, ra: featured.ra, dec: featured.dec });
+  if (featured) links.push({ el: card, id: featured.id, found: true, track: featured.track, ra: featured.ra, dec: featured.dec, candidate: featured.candidate });
   followTracks(+$('time').value);
   if (focus) { marks.append(...marks.querySelectorAll('.focus')); marks.querySelectorAll('.focus').forEach(nameSide); }   // on top of its neighbours, its name on the map
   if (featured) {
@@ -130,6 +134,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     card.dataset.day = featured.day;
     card.querySelector('[data-f=id]').textContent = featured.id;
     card.querySelector('[data-f=count]').textContent = `${t.comet} of ${n} tags`;
+    if (featured.candidate && (n < 5 || t.comet / n < 0.6)) Object.assign(card.querySelector('.tag'), { className: 'tag', textContent: 'candidate' });
     card.querySelector('.t-comet').style.setProperty('--n', t.comet);
     card.querySelector('.t-asteroid').style.setProperty('--n', t.asteroid);
     card.querySelector('.t-unsure').style.setProperty('--n', t.unsure + t.glitch);

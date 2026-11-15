@@ -16,9 +16,13 @@ body:not(.talking) .pstage > .pv-talkwrap { display: none; }
 .pv-talk .thumb { position: relative; width: calc(364 * var(--e)); height: calc(210 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(14 * var(--e)); overflow: hidden; background: #000; }
 .pv-talk .thumb canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 .pv-talk .thumb .ring { left: 50%; top: 50%; --d: calc(46 * var(--e)); pointer-events: none; }
-/* tag rows = his Layers rows (.pv-row + .cbx), filled with the tag's colour (--c) */
-.pv-talk .tags { margin: calc(24 * var(--e)) 0 0; padding: 0; border: 0; }
-.pv-talk label.pv-row { display: flex; font-size: calc(32 * var(--e)); line-height: normal; }
+/* his Descriptions spacing: the title 21 in from the rule, the rest a further 28 in */
+.pv-talk > :not(h2) { margin-left: calc(28 * var(--e)); }
+/* tag rows = his Others rows (.cbx then a t32 label, 31 apart), filled with the tag's colour (--c). His rows are placed
+   one by one (.at); these are a list, so they flow, at the row pitch his Others card uses (52) */
+.pv-row { display: flex; align-items: center; gap: calc(31 * var(--e)); height: calc(42 * var(--e)); margin: 0 0 calc(10 * var(--e)); font-size: calc(32 * var(--e)); line-height: 1; color: #f2f2f2; white-space: nowrap; cursor: pointer; }
+.pv-talk .tags { margin-top: calc(24 * var(--e)); padding: 0; border: 0; }
+.pv-talk label.pv-row { display: flex; font-size: calc(32 * var(--e)); }
 /* comment and nickname = his Coordinates field (.pv-desc .box); the comment taller */
 .pv-talk textarea.box { height: calc(110 * var(--e)); padding: calc(10 * var(--e)); resize: none; font-size: calc(20 * var(--e)); line-height: 1.4; }
 .pv-talk .box::placeholder { color: #9a9a9a; }
@@ -42,10 +46,12 @@ body:not(.talking) .pstage > .pv-talkwrap { display: none; }
   .pstage > .pv-talkwrap { left: auto; top: auto; width: auto; }
   .pv-talk .thumb { width: min(100%, 320px); height: 170px; }
   .pv-talk textarea.box { height: 74px; font-size: 13px; padding: 8px 10px; }
-  .pv-talk label.pv-row { font-size: 15px; }
+  .pv-talk label.pv-row, .cpage .pv-row { font-size: 15px; height: 32px; gap: 14px; }
+  .pv-talk > :not(h2) { margin-left: 0; }
   .pv-talk .close { margin-right: 14px; }
   .pv-talk .answers { padding-right: 14px; }
   .pv-talkwrap .pv-post { margin-top: 18px; }
+  .pv-talkwrap .pv-talk { padding-bottom: 16px; }
 }
 
 /* ---------- candidate page: Forums.png geometry (wide boxes x 135-1822, card column x 1920-2370, top 255) ---------- */
@@ -56,7 +62,7 @@ html:has(.cpage), body.page:has(.cpage) { background: #000; }
 .cpage .right { display: grid; gap: calc(44 * var(--e)); }
 /* the boxes = his patch frame (.pv-frame): black, 3 px white border, 10 px corners */
 .cpage .pv-frame, .cpage .pv-state, .cpage .pv-card, .cpage .pv-desc { position: static; }
-.cpage .pv-frame { width: auto; height: auto; overflow: visible; padding: calc(30 * var(--e)) calc(40 * var(--e)); }
+.cpage .pv-frame { width: auto; height: auto; aspect-ratio: auto; overflow: visible; padding: calc(30 * var(--e)) calc(40 * var(--e)); }
 .cpage .head { display: flex; align-items: baseline; gap: calc(30 * var(--e)); flex-wrap: wrap; }
 .cpage .head h1 { margin: 0; font: 400 calc(56 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; background: none; -webkit-text-fill-color: #fff; }
 .cpage .head .pv-info { margin: 0; }
@@ -113,6 +119,5 @@ html:has(.cpage), body.page:has(.cpage) { background: #000; }
   .cpage .compose .nick { width: min(100%, 320px); height: 34px; font-size: 14px; }
   .cpage .pv-card { padding: 14px 0 0 18px; }
   .cpage .pv-card h2 { font-size: 20px; margin-bottom: 12px; }
-  .cpage .pv-row { font-size: 15px; height: 32px; gap: 14px; }
   .cpage .count { font-size: 15px; padding-right: 14px; }
 }

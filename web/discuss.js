@@ -50,6 +50,8 @@ export function discuss(page) {
     if (near.m === m) frame(true);
   }
   function showFound(m, f) {
+    // a found= link to a candidate (the address keeps the Discovered state) is that candidate's, so it follows the visit
+    if (page.found() && page.found() !== mine && near.list.some(x => x.id === page.found())) mine = page.found();
     const c = near.list.find(x => x.visit === f.start);
     if (c && (!page.found() || page.found() === mine)) {
       if (page.found() !== c.id) page.setFound(c.id, page.spot(m.ra, m.dec));
@@ -90,7 +92,7 @@ export function discuss(page) {
           <p class="pv-info"><span class="kdot" aria-hidden="true"></span><b data-f="kname"></b><br><span data-f="kwhat"></span></p>
           <div class="answers"><button class="example" type="button" data-f="its"><span></span>${ARROW}</button><button class="example" type="button" data-f="else"><span>Something else</span>${ARROW}</button></div>
         </div>
-        <div class="plain">
+        <div class="talk-form">
           <fieldset class="tags"><legend class="sr-only">Tag</legend>${TAGS.map(([k, t]) =>
             `<label class="pv-row" style="--c:var(--${k})"><input class="cbx" type="radio" name="tag" value="${k}"><span>${t}</span></label>`).join('')}</fieldset>
           <textarea class="box" maxlength="1000" aria-label="Comment" placeholder="Add a comment (optional)"></textarea>
@@ -110,7 +112,7 @@ export function discuss(page) {
     q('.close').onclick = close;
     form.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     form.addEventListener('input', sync); form.addEventListener('change', sync);
-    q('[data-f=else]').onclick = () => { q('.match').hidden = true; q('.plain').hidden = false; sync(); q('.cbx').focus(); };
+    q('[data-f=else]').onclick = () => { q('.match').hidden = true; q('.talk-form').hidden = false; sync(); q('.cbx').focus(); };
     q('[data-f=its]').onclick = logSighting;
     form.onsubmit = e => { e.preventDefault(); post(); };
     window.addEventListener('ch:user', sync);
@@ -119,7 +121,7 @@ export function discuss(page) {
   const q = s => sheet.querySelector(s);
   const author = () => userName() || q('.nick').value.trim();
   function sync() {
-    const name = userName(), plain = !q('.plain').hidden;
+    const name = userName(), plain = !q('.talk-form').hidden;
     q('[data-f=as]').hidden = !name; q('[data-f=as] b').textContent = name ?? '';
     q('.nick').hidden = !!name;
     q('.pv-post').hidden = !plain;
@@ -140,7 +142,7 @@ export function discuss(page) {
     where.replaceChildren(el('b', null, visitDate(f.start)), ` · ${m.detector} ${f.lam.toFixed(3)} µm`, el('br'),
       'RA ', el('b', null, m.ra.toFixed(4)), ' Dec ', el('b', null, `${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(4)}`));
     say('');
-    q('.match').hidden = true; q('.plain').hidden = false; sync();
+    q('.match').hidden = true; q('.talk-form').hidden = false; sync();
     q('.close').focus();
     // SkyBoT's answers for this visit come in after the frames (timelapse.html knownFor): wait for them, a little
     for (let t = 0; t < 40 && f.known?.left > 0 && openOn?.[1] === f; t++) await new Promise(r => setTimeout(r, 250));
@@ -151,7 +153,7 @@ export function discuss(page) {
     q('[data-f=kwhat]').textContent = `${k.kind === 'comet' ? 'Comet' : 'Asteroid'}${k.mag != null ? ` · mag ${k.mag}` : ''} · predicted here ${dayMonth(k.t)}`;
     q('[data-f=its] span').textContent = `It's ${k.name}`;
     q('[data-f=its]').dataset.name = k.name;
-    q('.match').hidden = false; q('.plain').hidden = true; sync();
+    q('.match').hidden = false; q('.talk-form').hidden = true; sync();
     q('[data-f=its]').focus();
   }
   function close() {
