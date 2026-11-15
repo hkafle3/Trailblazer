@@ -39,6 +39,7 @@
   <aside id="panel" class="glass" aria-label="What changed">
     <h2>What changed</h2>
     <div class="row"><div class="k" id="kMotion">Motion: measured vs Gaia</div><div class="v" id="vMotion">&nbsp;</div></div>
+    <div class="row"><div class="k">Known comets and asteroids</div><div class="v" id="vKnown" aria-live="polite">&nbsp;</div></div>
     <div class="row"><div class="k" id="kWave">Wavelength matched</div><div class="v" id="vWave">&nbsp;</div></div>
     <div class="row"><label class="k" for="fov" id="kFov">Field of view: 6 arcmin</label><input id="fov" class="range" style="--p:45.5%" type="range" min="1" max="12" step="0.5" value="6"></div>
     <div class="row"><label class="toggle"><input id="diff" type="checkbox"><span class="tg"></span>Show difference</label><div class="v" id="vDiff">Orange: brighter than the first visit. Blue: dimmer. A moving star leaves a blue and orange pair.</div></div>
@@ -54,6 +55,7 @@
   <span><i style="background:var(--comet)"></i>measured position, this visit</span>
   <span><i style="background:var(--known)"></i>measured position, earlier visits</span>
   <span><i style="border:2px solid #fff"></i>where Gaia (or a published motion) predicts it</span>
+  <span><i style="border:1.5px dashed var(--known)"></i>a known comet or asteroid passing (predicted)</span>
 </div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
@@ -166,6 +168,30 @@ function draw() {
       ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.arc(gx, gy, 15, 0, 7); ctx.stroke();
     }
   }
+  // known comets (orange) and asteroids (blue) during this visit: a dot where SkyBoT put each one at each exposure time,
+  // joined by a dashed path, and the name. A median of several exposures usually erases a fast mover, so a path can
+  // cross empty sky: it says a known object passed through, not that the dot under it is that object.
+  if (knownQueue.some(j => j[1] === f)) knownQueue.sort((a, b) => (b[1] === f) - (a[1] === f));   // the frame on screen goes next
+  if (f.known) {
+    ctx.font = `500 ${Math.round(W / 42)}px Geist, system-ui, sans-serif`; ctx.textBaseline = 'middle';
+    for (const [name, b] of f.known.bodies) {
+      const color = b.kind === 'comet' ? '#ff9a4d' : '#7fb8ff';
+      const px = b.pts.map(([, ra, dec]) => { const [e, n] = offset(m, ra, dec); return toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel); });
+      const inView = px.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= W);   // the path is drawn even when only it crosses the view
+      for (const [c, w] of [['rgba(0,0,0,.8)', 4], [color, 1.6]]) {
+        ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash([5, 5]);
+        if (px.length > 1) { ctx.beginPath(); px.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
+        ctx.setLineDash([]);
+        for (const [x, y] of px) { ctx.beginPath(); ctx.arc(x, y, px.length > 1 ? 4 : 11, 0, 7); ctx.stroke(); }
+      }
+      if (!inView.length) continue;   // a name only beside a position in view
+      const [lx, ly] = inView[0], left = lx > W * .7, tx = left ? lx - 16 : lx + 16;
+      ctx.textAlign = left ? 'right' : 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, tx, ly);
+      ctx.fillStyle = color; ctx.fillText(name, tx, ly);
+    }
+    ctx.textAlign = 'left';
+  }
+  knownList(f);
   document.querySelectorAll('.tick').forEach((t, n) => t.setAttribute('aria-current', n === state.i));
   document.getElementById('capsub').textContent =
     `${f.start} to ${f.end}: ${f.exposures} exposure${f.exposures > 1 ? 's' : ''} at ${f.lam.toFixed(3)} µm, combined, north up` +
@@ -213,6 +239,70 @@ function show(m, query, opts = {}) {
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   panel(m); draw();
   history.replaceState(null, '', query);
+  knownFor(m);
+}
+
+// Known comets and asteroids that passed through the patch during each visit (GET /api/known, IMCCE SkyBoT; idea and
+// route from kzkei). A visit spans days and a known asteroid crosses the patch in hours, so SkyBoT is asked at each
+// distinct exposure time of the visit (f.epochs; baked targets have only the visit's middle). Three at a time, the
+// frame on screen first, after the frames show: a slow SkyBoT never holds up the time-lapse.
+// One queue for the whole page, at most three requests at once. Showing another target replaces the waiting work with
+// that target's (requests already sent finish); each frame keeps its unchecked times, so coming back resumes them.
+let knownQueue = [], knownBusy = 0;
+function knownFor(m) {
+  for (const f of m.frames) f.known ??= { todo: [...(f.epochs ?? [f.mjd])], left: (f.epochs ?? [f.mjd]).length, failed: 0, bodies: new Map() };
+  knownQueue = [];
+  for (let k = 0; k < m.frames.length; k++) {
+    const f = m.frames[(state.i + k) % m.frames.length];
+    for (const t of f.known.todo) knownQueue.push([m, f, t]);
+  }
+  knownList(m.frames[state.i]);   // "Checking…" straight away, not a blank row until the first answer
+  while (knownBusy < 3 && knownQueue.length) knownNext();
+}
+async function knownNext() {
+  const job = knownQueue.shift();
+  if (!job) return;
+  const [m, f, t] = job, kn = f.known;
+  kn.todo = kn.todo.filter(x => x !== t);
+  knownBusy++;
+  try {
+    const r = await fetch(`${API}/api/known?ra=${(+m.ra.toFixed(4) % 360).toFixed(4)}&dec=${m.dec.toFixed(4)}&t=${t.toFixed(4)}`);
+    if (!r.ok) throw new Error(r.status);
+    const k = await r.json();
+    for (const [list, kind] of [[k.comets, 'comet'], [k.asteroids, 'asteroid']]) for (const o of list) {
+      const b = kn.bodies.get(o.name) ?? { kind, mag: o.mag, pts: [] };
+      b.pts.push([t, o.ra, o.dec]); b.pts.sort((x, y) => x[0] - y[0]); kn.bodies.set(o.name, b);
+    }
+  } catch { kn.failed++; }
+  kn.left--; knownBusy--;
+  if (state.m === m && m.frames[state.i] === f) draw();
+  knownNext();
+}
+// east/north offset in arcsec of (ra, dec) from the patch centre, through the frames' own TAN projection
+// (pipeline.js gridWorld, inverted): a flat approximation drifts by pixels near the celestial poles
+function offset(m, ra, dec) {
+  const d0 = m.dec * D2R, d = dec * D2R, da = (ra - m.ra) * D2R;
+  const cosc = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(da);
+  if (cosc <= 0) return [Infinity, Infinity];   // the far side of the sky: never in view
+  return [Math.cos(d) * Math.sin(da) / cosc / D2R * 3600, (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(da)) / cosc / D2R * 3600];
+}
+const dayMonth = mjd => { const d = new Date((mjd - 40587) * 864e5); return `${d.getUTCDate()} ${MONTH[d.getUTCMonth()]}`; };
+// the panel's list: what passed through during this visit, one per line, comets first (names are text, never HTML)
+function knownList(f) {
+  const el = document.getElementById('vKnown'), k = f.known, n = (f.epochs ?? [f.mjd]).length;
+  if (!k) return void (el.textContent = '');
+  if (k.failed === n) return void (el.textContent = 'Catalog check unavailable right now');
+  const rows = [...k.bodies].sort((a, b) => (a[1].kind === 'comet' ? 0 : 1) - (b[1].kind === 'comet' ? 0 : 1));
+  if (!rows.length) return void (el.textContent = k.left ? `Checking ${n - k.left} of ${n} exposure times…`
+    : k.failed ? `None found at ${n - k.failed} of ${n} exposure times; ${k.failed} could not be checked` : 'None passed through during this visit');
+  el.replaceChildren(...rows.map(([name, b]) => {   // every one, as text (at most 8 asteroids plus the comets)
+    const line = document.createElement('span'), dot = document.createElement('i');
+    line.className = 'known-row'; dot.style.background = b.kind === 'comet' ? 'var(--comet)' : 'var(--known)';
+    line.append(dot, `${name} · ${b.kind}${b.kind === 'asteroid' && b.mag != null ? ` mag ${b.mag}` : ''} · ${[...new Set(b.pts.map(p => dayMonth(p[0])))].join(', ')}`);
+    return line;
+  }));
+  const note = [k.left ? `checking ${k.left} more times…` : '', k.failed ? `${k.failed} of ${n} times not checked` : ''].filter(Boolean);
+  if (note.length) el.append(Object.assign(document.createElement('span'), { className: 'known-row faint', textContent: note.join(' · ') }));
 }
 async function select(key, opts) {
   job?.terminate(); job = null; setStatus(opts?.note || '');
@@ -261,6 +351,8 @@ function search(ra, dec, det, opts = {}) {
     else if (m.type === 'done') {
       w.terminate(); job = null;
       live.set(key, prep(m.manifest));
+      // one check for the Explore heat map (POST /api/checks); keepalive so leaving the page at once does not cancel it
+      fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra, dec }) }).catch(() => {});
       setStatus(`${m.manifest.frames.length} visits, built in ${((performance.now() - t0) / 1000).toFixed(1)} s from NASA's public SPHEREx copy`);
       show(live.get(key), query, opts);
     }

@@ -15,10 +15,10 @@ async def main():
         await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")   # no first-visit tour over the map
         pg = await ctx.new_page()
 
-        # the list: 35 rows, the measured CO2 results, every other comet unmeasured, links to each comet's own page
+        # the list: 72 rows, the measured CO2 results, every other comet unmeasured, links to each comet's own page
         await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector(".crow")
         rows = await pg.eval_on_selector_all(".crow", "rs => rs.map(r => [r.querySelector('b').textContent, r.querySelector('.co2').textContent, r.getAttribute('href')])")
-        assert len(rows) == 35, f"{len(rows)} rows, expected 35"
+        assert len(rows) == 72, f"{len(rows)} rows, expected 72"
         got = {n: c for n, c, _ in rows}
         assert {n: got.get(n) for n in EXPECT} == EXPECT, f"CO2 results {[(n, got.get(n)) for n in EXPECT]}"
         assert all(c == "Not measured yet" for n, c in got.items() if n not in EXPECT), "an unmeasured comet shows a result"
@@ -39,6 +39,6 @@ async def main():
         await pg.keyboard.press("Shift"); await mk.focus(); await pg.wait_for_timeout(200)   # focus after a key press counts as keyboard focus
         assert await mk.locator("b").is_visible(), "name hidden on keyboard focus"
         await b.close()
-    print("PASS Comets list: 35 rows, CO2 results, links open each comet; sky names show on hover")
+    print("PASS Comets list: 72 rows, CO2 results, links open each comet; sky names show on hover")
 
 asyncio.run(main())

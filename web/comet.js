@@ -167,6 +167,7 @@ function known(c) {
     list.append(a);
   }
   box.append(list, el('p', 'faint', 'Known comet from JPL. Its spectrum is not measured yet.'));
+  if (c.detail.faint) box.append(el('p', 'faint', `Predicted too faint to see clearly in SPHEREx photos (brightest magnitude ${c.detail.mag_in_photo ?? 'unknown'} while photographed).`));
   box.hidden = false;
 }
 
@@ -234,7 +235,8 @@ function list() {
     $('l-rows').replaceChildren(...known.map(c => {
       const a = el('a', 'crow'), [text, cls] = CO2[c.co2] ?? ['Not measured yet', 'none'];
       a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
-      a.append(el('b', null, c.id), el('span', `co2 ${cls}`, text), el('span', 'n', c.photos ? `${c.photos} photos` : ''));
+      a.append(el('b', null, c.id), el('span', `co2 ${cls}`, text), el('span', 'n', (c.photos ? `${c.photos} photos` : '') + (c.faint ? ' · likely too faint to see' : '')));
+      if (c.faint) a.title = 'Predicted too faint to see clearly in SPHEREx photos';
       return a;
     }));
   }).catch(err => { $('l-sub').textContent = 'Comets are unavailable right now.'; console.warn(err); });

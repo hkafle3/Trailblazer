@@ -127,6 +127,9 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   showByDay();
 }).catch(err => console.warn('comets unavailable', err));
 
+// Back from a time-lapse: the browser may restore this page from memory, with the heat map from before; reload it
+addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
+
 // ---- heat map from /api/explored: patch-sized cells people have checked (mint), the rest stay dark ----
 const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
   const cv = $('heat'), g = cv.getContext('2d'), W = cv.width, H = cv.height;

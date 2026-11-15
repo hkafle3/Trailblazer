@@ -2,10 +2,9 @@
 // IRSA's search (SIA) and ESA's Gaia archive send no CORS header and IRSA throws intermittent 502s, so this
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
-//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
-//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   (example data)   See docs/api.md.
+//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=
+//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   POST /api/checks   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
-import { SUGGEST, exploredCells } from './example-data.js';
 
 const SIA = 'https://irsa.ipac.caltech.edu/SIA';
 const WIDE = ['spherex_dr1', 'spherex_qr3'], DEEP = ['spherex_dr1_deep', 'spherex_qr3_deep'];
@@ -22,13 +21,13 @@ function position(url) {
 }
 
 // IRSA answers 502 now and then; a few quick retries with jitter get through (measured 2026-11-14)
-async function fetchRetry(url, tries = 5) {
+async function fetchRetry(url, tries = 5, ms = 20000, withStatus = false) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
       const text = await r.text();
-      if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return text;
+      if (r.ok && !text.startsWith('Server busy') && !text.includes('Proxy Error')) return withStatus ? [r.status, text] : text;
       last = `HTTP ${r.status}`;
     } catch (e) { last = String(e); }
     // short waits: one 502 is common, a run of them is rare; doubling from 400 ms cost 14 s on 2026-11-14
@@ -121,18 +120,110 @@ async function images(url) {
   return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
 }
 
+// Gaia DR3 stars in a 0.04 degree cone, with proper motions. Gaia positions are for 2016.0 and fast stars move far by
+// now; the browser propagates and matches. IRSA's copy of Gaia DR3 (its Gator catalog service, about 1.5 s) comes first:
+// ESA's own archive stopped answering on 2026-11-14 and every lookup then hung for a minute. ESA is the fallback.
 async function gaia(url) {
   const p = position(url);
   if (p.error) return json(p, 400);
-  // a 0.04 degree cone: Gaia positions are for 2016.0 and fast stars move far by now; the browser propagates and matches
-  const q = `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))`;
+  const irsa = `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?${new URLSearchParams({ catalog: 'gaia_dr3_source', spatial: 'cone',
+    objstr: `${p.ra} ${p.dec}`, radius: '144', radunits: 'arcsec', outfmt: '1', selcols: 'ra,dec,pmra,pmdec,phot_g_mean_mag',
+    constraints: 'pmra is not null and phot_g_mean_mag < 19' })}`;   // both sources: G < 19, fainter than SPHEREx measures; keeps crowded fields small
+  const esa = `https://gea.esac.esa.int/tap-server/tap/sync?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv',
+    QUERY: `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND phot_g_mean_mag < 19 AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))` })}`;
+  const ok = (source, stars) => json({ epoch: 2016.0, source, stars }, 200, { 'Cache-Control': 'public, max-age=86400' });
+  try { return ok('IRSA', ipacStars(await fetchRetry(irsa, 2, 10000))); } catch (e) { console.warn('IRSA Gaia', e); }
   try {
-    const text = await fetchRetry(`https://gea.esac.esa.int/tap-server/tap/sync?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv', QUERY: q })}`, 3);
-    const stars = parseCsv(text).map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v)])));
-    return json({ epoch: 2016.0, stars }, 200, { 'Cache-Control': 'public, max-age=86400' });
+    return ok('ESA', esaStars(await fetchRetry(esa, 1, 8000)));
   } catch {
     return json({ error: 'Gaia archive is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
   }
+}
+
+// ESA's CSV for the query above: five plain numbers a row (ra, dec, pmra, pmdec, g), read straight like ipacStars
+function esaStars(text) {
+  const lines = text.trim().split('\n');
+  if (lines[0]?.replace(/\s/g, '') !== 'ra,dec,pmra,pmdec,g') throw new Error('ESA sent no table');
+  const stars = [];
+  for (let i = 1; i < lines.length; i++) { const [ra, dec, pmra, pmdec, g] = lines[i].split(',').map(Number); stars.push({ ra, dec, pmra, pmdec, g }); }
+  return stars;
+}
+
+// IRSA's IPAC table: header lines start with \\ or |, the first | line names the columns, values are space separated
+// and "null" when empty. Stars without a proper motion are dropped, as the ESA query did. Values are read straight into
+// each star (no per-row temporary objects): a crowded field such as Baade's Window sends about 3,200 rows.
+function ipacStars(text) {
+  const lines = text.split('\n'), head = lines.find(l => l.startsWith('|'));
+  if (!head) throw new Error('IRSA sent no table');
+  const cols = head.split('|').map(c => c.trim()).filter(Boolean);
+  const [iRa, iDec, iPmra, iPmdec, iG] = ['ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag'].map(k => cols.indexOf(k));
+  if ([iRa, iDec, iPmra, iPmdec, iG].includes(-1)) throw new Error('IRSA table is missing a column');
+  const stars = [];
+  for (const l of lines) {
+    const c0 = l.charCodeAt(0);
+    if (!l || c0 === 92 || c0 === 124) continue;   // \ or |
+    const v = l.trim().split(/\s+/);
+    const pmra = +v[iPmra], pmdec = +v[iPmdec];   // "null" -> NaN
+    if (pmra === pmra && pmdec === pmdec) stars.push({ ra: +v[iRa], dec: +v[iDec], pmra, pmdec, g: +v[iG] });
+  }
+  return stars;
+}
+
+// hours "16 28 36.29" or degrees "-16 48 16.4" -> decimal degrees
+function sexagesimal(text, hours) {
+  const n = String(text).trim().match(/[+-]?\d+(?:\.\d+)?/g);
+  if (!n) return NaN;
+  const sign = /^\s*-/.test(text) ? -1 : 1;
+  const [a, b = 0, c = 0] = n.map(x => Math.abs(Number(x)));
+  return sign * (a + b / 60 + c / 3600) * (hours ? 15 : 1);
+}
+
+// SkyBoT rows -> { comets, asteroids, omitted }, or null when any row cannot be read (then the answer is unavailable,
+// never a cached partial or empty result). Comets always; asteroids V <= 21 on the exact magnitude, brightest 8.
+function skybotRows(rows) {
+  const comets = [], bright = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object' || typeof r.Class !== 'string' || !r.Class.trim() || !String(r.Name || r.Num || '').trim()) return null;   // no name: unrelated rows would merge into one path
+    const hms = /^\s*(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['RA (hms)'] ?? ''), dms = /^\s*[+-]?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['DEC (dms)'] ?? '');
+    if (!hms || !dms || +hms[2] >= 60 || +hms[3] >= 60 || +dms[2] >= 60 || +dms[3] >= 60) return null;
+    const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
+    if (!(ra >= 0 && ra < 360 && dec >= -90 && dec <= 90)) return null;
+    const vm = r['VMag (mag)'];   // a magnitude may be missing (null or empty), never garbled
+    if (vm != null && vm !== '' && !Number.isFinite(Number(vm))) return null;
+    const mag = Number(vm);
+    const body = { name: String(r.Name || r.Num), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? mag : null, err: Number(r['Err (arcsec)']) || 0 };
+    if (r.Class === 'Comet') comets.push(body);
+    else if (body.mag != null && body.mag <= 21) bright.push(body);
+  }
+  bright.sort((a, b) => a.mag - b.mag);
+  const out = b => ({ ...b, mag: b.mag == null ? null : +b.mag.toFixed(1) });   // round only for the answer
+  return { comets: comets.map(out), asteroids: bright.slice(0, 8).map(out), omitted: Math.max(0, bright.length - 8) };
+}
+
+// Known comets and asteroids in a time-lapse frame at its time, from IMCCE SkyBoT (planets left out). Geocentric.
+// Asteroids fainter than V = 21 are dropped and at most 8 kept; comets are kept even without a magnitude.
+// From kzkei's version (branch include-documentation-and-scope). Contract: docs/api.md.
+async function known(url) {
+  const p = position(url);
+  if (p.error) return json(p, 400);
+  const t = Number(url.searchParams.get('t'));
+  if (!url.searchParams.has('t') || !Number.isFinite(t) || t < 40000 || t > 80000) return json({ error: 't must be an MJD' }, 400);
+  const q = new URLSearchParams({
+    '-ep': String(t + 2400000.5), '-ra': String(p.ra), '-dec': String(p.dec), '-rd': '0.15',
+    '-mime': 'json', '-output': 'object', '-objFilter': '101', '-from': 'comet-hunt',
+  });
+  let rows;
+  try {
+    const [status, text] = await fetchRetry(`https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?${q}`, 2, 15000, true);
+    // SkyBoT says "nothing in the cone" with 204; a blank 200 is a broken answer, never a cached "nothing here"
+    rows = status === 204 ? [] : text.trim() ? JSON.parse(text) : null;
+  } catch {
+    return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  }
+  if (!Array.isArray(rows)) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  const read = skybotRows(rows);
+  if (!read) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  return json({ ra: p.ra, dec: p.dec, t, ...read }, 200, { 'Cache-Control': 'public, max-age=86400' });
 }
 
 // Tag tallies per comet: each person's latest tag is their vote (so nobody counts twice)
@@ -157,9 +248,10 @@ async function comets(url, env) {
   // for the Comets list: the CO2 verdict of a measured comet and how many SPHEREx photos it is in (read inside D1, so the
   // Worker never parses the large detail column)
   const [rows, tags] = await Promise.all([env.DB.prepare(`SELECT id, kind, ra, dec, day, tail, real, track,
-    json_extract(detail, '$.co2_verdict') AS co2, COALESCE(json_extract(detail, '$.exposures'), json_array_length(detail, '$.spherex')) AS photos
+    json_extract(detail, '$.co2_verdict') AS co2, COALESCE(json_extract(detail, '$.exposures'), json_array_length(detail, '$.spherex')) AS photos,
+    json_extract(detail, '$.faint') AS faint
     FROM comets`).all(), tallies(env.DB)]);
-  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos } : {}) })) });
+  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint } : {}) })) });
 }
 
 // One comet for its page: position, tags, the measured detail (photos, spectrum) and its discussion
@@ -224,10 +316,81 @@ async function post(request, env) {
   return json({ comment: { comet_id: b.comet_id, author, tag, body, created_at: now }, tags }, 201);
 }
 
-// Which patch-sized cells people have checked, and one nobody has, for the heat map and "Unexplored patch"
-function explored() {
-  const { total, cells } = exploredCells();
-  return json({ example: true, total, checked: cells.length, cells, suggest: SUGGEST }, 200, { 'Cache-Control': 'public, max-age=60' });
+// The heat map's grid: 51 bands of Dec from the north pole, each cut into about 3.5 degree steps of RA (one SPHEREx
+// patch). A cell's number is its position in the grid, band by band.
+const BANDS = 51, DEC_STEP = 180 / BANDS, RAD = Math.PI / 180;
+const GRID = [];   // per band: [first cell number, cells in the band]
+for (let i = 0, k = 0; i < BANDS; i++) {
+  const n = Math.max(1, Math.round(360 * Math.cos((90 - (i + .5) * DEC_STEP) * RAD) / 3.5));
+  GRID.push([k, n]); k += n;
+}
+const CELLS = GRID[BANDS - 1][0] + GRID[BANDS - 1][1];
+const cellAt = (ra, dec) => {
+  const i = Math.min(BANDS - 1, Math.floor((90 - dec) / DEC_STEP)), [k, n] = GRID[i];
+  return k + Math.min(n - 1, Math.floor(ra / 360 * n));
+};
+const cellBox = c => {
+  let i = 0; while (i + 1 < BANDS && GRID[i + 1][0] <= c) i++;
+  const [k, n] = GRID[i], j = c - k, r = x => +x.toFixed(3);
+  return { ra_min: r(360 * j / n), ra_max: r(360 * (j + 1) / n), dec_min: r(90 - (i + 1) * DEC_STEP), dec_max: r(90 - i * DEC_STEP) };
+};
+// A spot to suggest: RW Aurigae's patch while nobody has opened it, then the unopened cell nearest to it
+const SUGGEST = { ra: 77, dec: 30.4 };
+const sep = (ra1, d1, ra2, d2) =>
+  Math.acos(Math.min(1, Math.sin(d1 * RAD) * Math.sin(d2 * RAD) + Math.cos(d1 * RAD) * Math.cos(d2 * RAD) * Math.cos((ra1 - ra2) * RAD))) / RAD;
+// every cell, nearest to RW Aurigae first: worked out once when the Worker starts, so a request only walks the list
+// (scanning all 3,339 cells per request came close to the free plan's 10 ms CPU limit)
+const NEAR = Array.from({ length: CELLS }, (_, c) => {
+  const b = cellBox(c), ra = (b.ra_min + b.ra_max) / 2, dec = (b.dec_min + b.dec_max) / 2;
+  return { c, ra: +ra.toFixed(2), dec: +dec.toFixed(2), d: sep(ra, dec, SUGGEST.ra, SUGGEST.dec) };
+}).sort((x, y) => x.d - y.d);
+function suggest(seen) {
+  if (!seen.has(cellAt(SUGGEST.ra, SUGGEST.dec))) return SUGGEST;
+  const near = NEAR.find(x => !seen.has(x.c));
+  return near ? { ra: near.ra, dec: near.dec } : SUGGEST;   // ponytail: every cell checked keeps RW Aurigae; unreachable in practice
+}
+
+// Which patch-sized cells people have opened, and one nobody has, for the heat map and "Unexplored patch".
+// Never cached, so a spot shows on the map as soon as someone opens it.
+async function explored(env) {
+  const rows = (await env.DB.prepare('SELECT cell, n FROM checks WHERE n > 0 AND cell >= 0 AND cell < ?').bind(CELLS).all()).results;
+  const cells = rows.map(({ cell, n }) => ({ ...cellBox(cell), checks: n }));
+  return json({ total: CELLS, cells, suggest: suggest(new Set(rows.map(r => r.cell))) }, 200, { 'Cache-Control': 'no-store' });
+}
+
+// Someone opened a spot (the time-lapse calls this once a live time-lapse has built): one more check for its cell.
+// Cloudflare's rate limit (wrangler.toml) runs first, before the body is read, so every request counts, malformed ones too.
+// It is per location and approximate; a script spread over many IPs can still light up cells, which only changes the map.
+const MAX_CHECK_BODY = 1024;
+async function check(request, env) {
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+  if (env.CHECKS_LIMIT && !(await env.CHECKS_LIMIT.limit({ key: ip })).success) return json({ error: 'too many checks, wait a minute' }, 429);
+  const tooBig = () => json({ error: 'body too large', field: 'body' }, 413);
+  if (Number(request.headers.get('Content-Length')) > MAX_CHECK_BODY) return tooBig();
+  // read at most MAX_CHECK_BODY bytes whatever Content-Length says (it can be absent or wrong with chunked bodies)
+  const chunks = [];
+  let size = 0;
+  if (request.body) {
+    const reader = request.body.getReader();
+    try {
+      for (let r; !(r = await reader.read()).done;) {
+        size += r.value.byteLength;
+        if (size > MAX_CHECK_BODY) { reader.cancel().catch(() => {}); return tooBig(); }
+        chunks.push(r.value);
+      }
+    } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }   // a broken upload is the client's fault, not the database's
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) { bytes.set(c, at); at += c.byteLength; }
+  let b;
+  try { b = JSON.parse(new TextDecoder().decode(bytes)); } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }
+  if (!b || typeof b !== 'object') return json({ error: 'body must be JSON', field: 'body' }, 400);
+  if (typeof b.ra !== 'number' || !(b.ra >= 0 && b.ra <= 360)) return json({ error: 'ra must be 0 to 360', field: 'ra' }, 400);
+  if (typeof b.dec !== 'number' || !(b.dec >= -90 && b.dec <= 90)) return json({ error: 'dec must be -90 to 90', field: 'dec' }, 400);
+  const cell = cellAt(b.ra % 360, b.dec);
+  const row = await env.DB.prepare('INSERT INTO checks (cell, n) VALUES (?1, 1) ON CONFLICT(cell) DO UPDATE SET n = n + 1 RETURNING n').bind(cell).first();
+  return json({ cell, checks: row.n }, 201);
 }
 
 export default {
@@ -237,6 +400,15 @@ export default {
     if (url.pathname === '/api/comments') {
       if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
       try { return await post(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/checks') {
+      if (request.method !== 'POST') return json({ error: 'use POST' }, 405, { Allow: 'POST' });
+      try { return await check(request, env); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/explored') {
+      try { return await explored(env); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     // live data from D1: never cached here, so a new comment shows at once
@@ -249,7 +421,7 @@ export default {
       try { return await (id === null ? comets(url, env) : comet(id, env)); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
-    const route = { '/api/images': images, '/api/gaia': gaia, '/api/explored': explored }[url.pathname];
+    const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
     const key = new URL(url); key.searchParams.set('cache', 'v2');
