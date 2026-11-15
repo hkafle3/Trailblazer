@@ -7,7 +7,7 @@ Run: uv run -q --with playwright python web/tests/discuss_ui.py [base url] [WIDT
 1. A live spot near Barnard's Star, then a click on a random dot there (each run a new spot): Undiscovered opens the sheet in place of
    the right column, with no known object near.
 2. Post (Comet, a comment, Turnstile's test key) lands on the candidate page: the id, Candidate, the byline, the comment,
-   the tally and the frames.
+   the tally and the frames, rebuilt at the Spectral channel and detector the dot was reported at (channel 6 here).
 3. Explore shows it as a hollow comet marker, labelled candidate.
 4. Back on the same dot and visit: Discovered, "Found as <id>", and the arrow opens the same page.
 5. Another visit of that dot, with SkyBoT putting 2001 FM127 30 arcsec away: the sheet leads with "It's 2001 FM127",
@@ -20,6 +20,10 @@ W, H = map(int, (sys.argv[2] if len(sys.argv) > 2 else "1440x900").split("x"))
 SHOTS = sys.argv[3] if len(sys.argv) > 3 else None
 TAG = "%dx%d" % (W, H)
 known = {"near": False}   # what the SkyBoT stub answers
+CH = 6   # the Spectral channel the dot is reported at (D1, near Barnard's own wavelength): the candidate page must rebuild at it
+# every message a page sends its Web Workers (the time-lapse pipeline's build requests), for comparing what was built
+RECORD = """(() => { const W = window.Worker; window.__built = [];
+  window.Worker = class extends W { postMessage(m, ...r) { if (m && m.ra != null) window.__built.push(JSON.parse(JSON.stringify(m))); return super.postMessage(m, ...r); } }; })()"""
 
 
 async def stub_known(route):   # /api/known?ra=&dec=&t=: nothing, or one asteroid 30 arcsec north of the asked spot
@@ -43,13 +47,14 @@ async def main():
         ctx = await b.new_context(viewport={"width": W, "height": H})
         await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'tester', via: 'demo' })) } catch {}")
         await ctx.route("**/api/known?*", stub_known)
+        await ctx.add_init_script(RECORD)
         pg = await ctx.new_page()
         errors = []
         pg.on("pageerror", lambda e: "ViewTransition" in str(e) or errors.append(str(e)))   # a page change during a view transition is not ours
         label = lambda: pg.locator("#state-label").text_content()
 
         async def built():   # a live time-lapse has landed on screen
-            await pg.wait_for_function("/visits, built/.test(document.getElementById('status')?.textContent || '') && __lapse.state.m?.key?.startsWith('live')", timeout=240000)
+            await pg.wait_for_function("/built in/.test(document.getElementById('status')?.textContent || '') && __lapse.state.m?.key?.startsWith('live')", timeout=240000)
 
         async def visit(k):   # the k-th visit on screen, its known objects answered, its near check read
             knob = pg.locator("#play"); await knob.focus(); await knob.press("Home")
@@ -58,7 +63,7 @@ async def main():
             await pg.wait_for_timeout(600)   # GET /api/candidates/near
 
         # 1. a live spot within half a degree of Barnard's Star (each run its own), then a click on a dot: it re-centres there
-        await pg.goto(f"{BASE}/timelapse.html?ra={269.4463 + random.uniform(-.5, .5):.4f}&dec={4.7671 + random.uniform(-.5, .5):.4f}&det=D1")
+        await pg.goto(f"{BASE}/timelapse.html?ra={269.4463 + random.uniform(-.5, .5):.4f}&dec={4.7671 + random.uniform(-.5, .5):.4f}&det=D1&ch={CH}")
         await built()
         await pg.locator("#patch").scroll_into_view_if_needed()
         box = await pg.locator("#patch").bounding_box()
@@ -69,7 +74,9 @@ async def main():
             await visit(k)
             if await label() == "Undiscovered": break
         assert await label() == "Undiscovered", "no fresh spot found"
-        spot = await pg.evaluate("(({ m }) => ({ ra: m.ra, dec: m.dec, det: m.detector, n: m.frames.length }))(__lapse.state)")
+        spot = await pg.evaluate("(({ m }) => ({ ra: m.ra, dec: m.dec, det: m.detector, n: m.frames.length, channel: m.channel }))(__lapse.state)")
+        assert spot["channel"] == CH - 1, f"the time-lapse is not built at channel {CH}: {spot}"
+        lapse_band = await pg.evaluate("__built.filter(b => b.band).at(-1)")   # what the time-lapse on screen was built with
         # opened while the time-lapse plays: playback stops, so the next visit does not close the sheet
         await pg.evaluate("__lapse.state.playing = true; __lapse.state.last = performance.now(); document.getElementById('state').click()")
         await pg.wait_for_selector("#talk", state="visible")
@@ -100,7 +107,10 @@ async def main():
         assert await pg.locator("#c-talk .post .body").first.text_content() == "Moves between visits <b>not bold</b>", "comment not shown as text"
         assert await pg.locator("[data-t=comet]").text_content() == "1"
         lapse = await pg.locator("#c-lapse").get_attribute("href")
-        assert f"ra={spot['ra']:.4f}" in lapse and f"det={spot['det']}" in lapse, lapse
+        assert f"ra={spot['ra']:.4f}" in lapse and f"det={spot['det']}" in lapse and f"ch={CH}" in lapse, lapse
+        # the frames are rebuilt at the channel and detector it was reported at, as the time-lapse built them
+        page_band = await pg.evaluate("__built.at(-1)")
+        assert page_band["band"] == lapse_band["band"] and page_band["det"] == lapse_band["det"] == spot["det"], (page_band, lapse_band)
         await pg.wait_for_function(f"document.querySelectorAll('#c-frames figure').length === {spot['n']}", timeout=240000)
         assert await pg.locator("#c-frames .ring:not(.earlier)").count() == 1, "the reported visit is not the one ringed orange"
         await shot(pg, "2-candidate")
@@ -124,7 +134,7 @@ async def main():
 
         # 4. the same dot in the same visit: Discovered, and its arrow opens the same page
         known["near"] = True   # for step 5: SkyBoT now puts 2001 FM127 by the dot (asked once per visit, as the page loads)
-        await pg.goto(f"{BASE}/timelapse.html?ra={spot['ra']:.4f}&dec={spot['dec']:.4f}&det={spot['det']}")
+        await pg.goto(f"{BASE}/timelapse.html?ra={spot['ra']:.4f}&dec={spot['dec']:.4f}&det={spot['det']}&ch={CH}")
         await built()
         await visit(k)
         await pg.wait_for_function("document.getElementById('state-label').textContent === 'Discovered'", timeout=15000)
@@ -164,7 +174,7 @@ async def main():
         assert await pg.evaluate("document.documentElement.scrollWidth <= innerWidth"), "page scrolls sideways"
         assert not errors, errors
         await b.close()
-    print(f"PASS discuss ({TAG}): sheet in place of the right column, Post made {cid} and its page, hollow candidate marker on Explore, "
+    print(f"PASS discuss ({TAG}): sheet in place of the right column, Post made {cid} and its page (frames rebuilt at channel {CH}), hollow candidate marker on Explore, "
           "the same dot reads Discovered and opens it, a known asteroid offers It's 2001 FM127 and logs a sighting")
 
 asyncio.run(main())
