@@ -41,6 +41,18 @@ For a known comet from JPL's catalog, `detail` holds `spherex`: every SPHEREx D1
 
 Refusals: `404 {"error":"no comet C-9999"}`, `400 {"error":"comet id is not valid"}`, `503` if the database does not answer.
 
+## GET /api/threads (D1)
+
+The Forums page's threads: every comet with at least one written comment, newest activity first. Votes with no text are left out of `comments` (they are counted in `tags`).
+
+```json
+{ "threads": [ { "id": "C-0147", "kind": "comet", "ra": 77.3, "dec": 30.4, "day": 120, "real": false,
+    "tags": { "comet": 12, "asteroid": 1, "glitch": 0, "unsure": 1 }, "last": 1762994000000,
+    "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun in all six photos.", "created_at": 1762992800000 } ] } ] }
+```
+
+- `last`: the newest comment's `created_at` (unix ms). `comments` are oldest first.
+
 ## POST /api/comments (D1)
 
 Adds a comment to a comet. A tag makes it a vote: each author's latest tag is the one that counts.

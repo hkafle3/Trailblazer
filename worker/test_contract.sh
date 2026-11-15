@@ -21,6 +21,8 @@ check "tally counts each person once" "/api/comets/C-0147" 200 '"tags":{"comet":
 check "3I/ATLAS has real photos" "/api/comets/3I%2FATLAS" 200 '"photos":\[{"file"'
 check "3I/ATLAS has a spectrum" "/api/comets/3I%2FATLAS" 200 '"spectrum":{"2025-08":\[{"lam"'
 check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'
+check "forum threads" "/api/threads" 200 '"body":"The tail points away from the Sun in all six photos."'
+check "Forums search box" "/forums.html" 200 'id="q"'
 # a malformed id must get our JSON error from the Worker; on the live site Cloudflare's edge refuses it first
 case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is not valid"' ;; *) bad_id='400 Bad Request' ;; esac
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"

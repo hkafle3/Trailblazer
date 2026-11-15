@@ -3,7 +3,7 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=
-//   GET /api/comets   GET /api/comets/:id   POST /api/comments   (D1)        GET /api/explored   (example data)   See docs/api.md.
+//   GET /api/comets   GET /api/comets/:id   GET /api/threads   POST /api/comments   (D1)        GET /api/explored   (example data)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 import { SUGGEST, exploredCells } from './example-data.js';
 
@@ -172,6 +172,20 @@ async function comet(id, env) {
     detail: c.detail ? JSON.parse(c.detail) : null, comments: talk.results });
 }
 
+// Every comet with written comments is a thread, for the Forums page: the comet, its votes and its comments, oldest
+// first; threads with the newest comment first. Votes with no text stay out (they are counted in tags).
+async function threads(env) {
+  const [rows, talk, tags] = await Promise.all([
+    env.DB.prepare(`SELECT id, kind, ra, dec, day, real FROM comets WHERE id IN (SELECT comet_id FROM comments WHERE body != '')`).all(),
+    env.DB.prepare(`SELECT comet_id, author, tag, body, created_at FROM comments WHERE body != '' ORDER BY created_at, id`).all(),
+    tallies(env.DB)]);
+  const by = {};
+  for (const { comet_id, ...c } of talk.results) (by[comet_id] ??= []).push(c);
+  const list = rows.results.map(c => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, real: !!c.real,
+    tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 }, last: by[c.id].at(-1).created_at, comments: by[c.id] }));
+  return json({ threads: list.sort((a, b) => b.last - a.last) });
+}
+
 // Post a comment (a tag makes it a vote). Turnstile first, so bots cost nothing below it.
 const TAGS = ['comet', 'asteroid', 'glitch', 'unsure'];
 async function post(request, env) {
@@ -247,6 +261,10 @@ export default {
         catch { return json({ error: 'comet id is not valid' }, 400); }
       }
       try { return await (id === null ? comets(url, env) : comet(id, env)); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/threads') {
+      try { return await threads(env); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/explored': explored }[url.pathname];

@@ -7,25 +7,51 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
-<style>
-  /* Placeholder until the Forums screen (design/frontend-refactor/Forums.png) is built. */
-  .soon { min-height: 100vh; display: grid; place-content: center; gap: 14px; text-align: center; padding: var(--head-h) 24px 40px; box-sizing: border-box; font-family: var(--head-font); }
-  .soon h1 { font: 300 clamp(28px, 3vw, 44px) / 1.1 var(--head-font); letter-spacing: 0; color: #fff; }
-  .soon p { color: var(--ink-2); }
-</style>
+<link rel="stylesheet" href="forums.css">
 </head>
-<body class="page">
+<body class="page forums">
 
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
   <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a class="on" href="forums.html">Forums</a></nav>
 </header>
 
-<main class="soon">
-  <h1>Forums are on the way</h1>
-  <p>Until then, each comet has its own discussion on its <a href="comet.html" style="text-decoration:underline">comet page</a>.</p>
+<!-- Laid out from design/frontend-refactor/Forums.png (forums.css). Left: the search box, then the threads under it.
+     Right: Filters. A thread is a comet's discussion; forums.js fills the list from /api/threads. -->
+<main class="fstage">
+  <form class="f-search" id="search" role="search" onsubmit="return false">
+    <label class="sr-only" for="q">Search threads and comments</label>
+    <svg class="f-search-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+    <input id="q" type="search" placeholder="Search threads and comments" autocomplete="off" spellcheck="false" enterkeyhint="search">
+  </form>
+
+  <p class="f-count" id="count" role="status" aria-live="polite"></p>
+  <section class="f-threads" id="threads" aria-label="Threads"></section>
+
+  <aside class="f-filters" aria-label="Filters">
+    <h2>Filters</h2>
+    <label class="f-row" for="region">Regions
+      <select class="f-box" id="region">
+        <option value="">All sky</option>
+        <option value="north">Northern sky</option>
+        <option value="south">Southern sky</option>
+        <option value="ecliptic">Near the ecliptic</option>
+        <option value="galaxy">Along the Milky Way</option>
+      </select>
+    </label>
+    <label class="f-row" for="date">Date
+      <select class="f-box" id="date">
+        <option value="">Any time</option>
+        <option value="7">Past week</option>
+        <option value="30">Past month</option>
+        <option value="365">Past year</option>
+      </select>
+    </label>
+    <label class="f-row f-check"><input class="cbx" type="checkbox" id="known"><span>Known</span></label>
+  </aside>
 </main>
 
+<script src="forums.js"></script>
 <script src="ui.js"></script>
 </body>
 </html>
