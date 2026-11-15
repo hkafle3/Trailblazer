@@ -22,9 +22,31 @@ export function dayParam() {
   return s && d >= 0 && d <= LAST_DAY ? d : LAST_DAY;
 }
 
-// A known comet's place on a day: [ra, dec, magnitude] along its JPL path, `track` = [[day, ra, dec, magnitude], ...] every 10 days
+// A known comet's place on a day: [ra, dec, magnitude] along its JPL path, `track` = [[day, ra, dec, magnitude], ...] every 10 days.
+// No path (missing or empty) gives null: the caller keeps the comet's fixed place. A single point is that point on every day.
 export function trackAt(track, day) {
+  if (!track?.length) return null;
+  if (track.length === 1) return track[0].slice(1);
   const i = Math.min(track.length - 2, Math.max(0, Math.floor(day / 10))), [d0, r0, c0, m0] = track[i], [d1, r1, c1, m1] = track[i + 1];
   const f = Math.min(1, Math.max(0, (day - d0) / (d1 - d0))), dr = ((r1 - r0 + 540) % 360) - 180;   // shortest way round in RA
   return [(r0 + f * dr + 360) % 360, c0 + f * (c1 - c0), m0 == null ? m1 : m1 == null ? m0 : m0 + f * (m1 - m0)];
+}
+
+// The whole path as an SVG path on a 2000 x 1000 map: one point per day from trackAt(), so the comet's dot is always on it.
+// Where the comet leaves one side of the map and comes back on the other (longitude passes 180), the line runs to the
+// edge, lifts, and starts again on the far edge. The crossing is found in longitude, before projecting: near the poles
+// the two edges are close together on the map, so the size of the jump there says nothing.
+export function trackPath(track) {
+  if (!track?.length) return '';
+  const P = (lon, dec) => { const [u, v] = fwdLon(lon, dec); return (u * 2000).toFixed(1) + ' ' + (v * 1000).toFixed(1); };
+  let d = '', prev = null;
+  for (let day = track[0][0], end = track[track.length - 1][0]; day <= end; day++) {
+    const [ra, dec] = trackAt(track, day), lon = wrap(-ra);
+    if (prev && Math.abs(lon - prev[0]) > 180) {
+      const edge = prev[0] > 0 ? 180 : -180, f = (edge - prev[0]) / (lon + 2 * edge - prev[0]), at = prev[1] + f * (dec - prev[1]);
+      d += 'L' + P(edge, at) + 'M' + P(-edge, at) + 'L' + P(lon, dec);
+    } else d += (prev ? 'L' : 'M') + P(lon, dec);
+    prev = [lon, dec];
+  }
+  return d;
 }

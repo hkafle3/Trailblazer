@@ -62,13 +62,13 @@ addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; })
 // ---- markers from /api/comets: comets people found (orange) and known objects (blue) ----
 // Known comets move: their marker follows the JPL path in `track` ([[day, ra, dec, magnitude], ...] every 10 days)
 // and shows only while the comet is bright enough to see (magnitude 16 or brighter).
-const movers = [];
+const movers = [], links = [];   // links: every link to a comet's page (markers and the featured card)
 function followTracks(day) {
-  for (const { el, id, track } of movers) {
+  for (const { el, id } of links) el.href = `comet.html?id=${encodeURIComponent(id)}&day=${day}`;   // its page opens on the same date
+  for (const { el, track } of movers) {
     const [ra, dec, mag] = trackAt(track, day), bright = mag != null && mag <= 16;
     const u = place(el, ra, dec);
     if (el.classList.contains('focus')) el.classList.toggle('left', u > 0.88);   // its name stays on the map
-    el.href = `comet.html?id=${encodeURIComponent(id)}&day=${day}`;   // its page shows the same date
     // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see (so does a comet
     // opened with "Find on map"); the rest hide
     if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
@@ -85,15 +85,15 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     if (c.id === focus) a.classList.add('focus'); else a.dataset.day = c.day ?? 0;   // the comet being found shows on any date
     a.innerHTML = '<i></i>';
     if (c.kind === 'comet') {
-      a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
     } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
-    if (c.kind === 'known') a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
+    links.push({ el: a, id: c.id });   // followTracks() writes the link, with the timeline's day
     if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (c.kind === 'known' && c.real && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
-    if (c.track) { movers.push({ el: a, id: c.id, track: c.track }); if (c.detail?.photos || c.id === '3I/ATLAS' || c.id === focus) a.dataset.always = '1'; }
+    if (c.track?.length) movers.push({ el: a, track: c.track });   // no path, or an empty one: it stays at its fixed place
+    if (c.track?.length && (c.detail?.photos || c.id === '3I/ATLAS' || c.id === focus)) a.dataset.always = '1';
     if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
       const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
@@ -102,11 +102,11 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     if (place(a, c.ra, c.dec) > 0.88) a.classList.add('left');   // label on the left only near the map's right edge
     marks.prepend(a);
   }
+  if (featured) links.push({ el: card, id: featured.id });
   followTracks(+$('time').value);
   if (focus) marks.append(...marks.querySelectorAll('.focus'));   // on top of its neighbours
   if (featured) {
     const n = votes(featured), t = featured.tags;
-    card.href = `comet.html?id=${encodeURIComponent(featured.id)}`;
     card.dataset.day = featured.day;
     card.querySelector('[data-f=id]').textContent = featured.id;
     card.querySelector('[data-f=count]').textContent = `${t.comet} of ${n} tags`;
@@ -122,15 +122,19 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
 // A click on a comet: the map zooms toward it, then the page changes and the map becomes that page's mini map
 // (the shared view-transition-name "sky"). Browsers without page-to-page view transitions, and people who
 // asked for less motion, follow the link as usual.
+// The link is read at the click: the replay is paused and later clicks wait, so the page that opens is the one clicked.
+// Clicks with a modifier key and middle clicks are left to the browser (new tab or window).
+let leaving = false, stopReplay = () => {};
 $('marks').addEventListener('click', e => {
   const a = e.target.closest('a[href^="comet.html"]');
   if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  if (leaving) return e.preventDefault();
   if (!('CSSViewTransitionRule' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   e.preventDefault();
-  const stage = document.querySelector('.map-wrap');
+  leaving = true; stopReplay();
+  const url = a.href, stage = document.querySelector('.map-wrap'), go = () => { location.href = url; };
   stage.style.transformOrigin = `${a.style.left} ${a.style.top}`;
-  stage.animate({ transform: ['none', 'scale(1.3)'] }, { duration: 200, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' })
-    .finished.then(() => { location.href = a.href; });
+  stage.animate({ transform: ['none', 'scale(1.3)'] }, { duration: 200, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' }).finished.then(go, go);
 });
 
 // Back from a time-lapse: the browser may restore this page from memory, with the heat map from before; reload it
@@ -305,6 +309,7 @@ let showByDay = () => {};
   let timer = 0;
   const play = $('play');
   const stop = () => { clearInterval(timer); timer = 0; play.classList.remove('on'); };
+  stopReplay = stop;
   timeline.onScrub = () => { stop(); setDay(timeline.value); };
   timeline.onPress = () => {
     if (timer) return stop();

@@ -8,7 +8,10 @@
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
 <!-- also in header.css; Chrome only honours it reliably when it is in the page itself, so the Explore map can glide into the mini map -->
-<style>@view-transition { navigation: auto; }</style>
+<style>
+@view-transition { navigation: auto; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+</style>
 </head>
 <body class="page">
 

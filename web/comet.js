@@ -1,6 +1,6 @@
 // Comet page: one comet from /api/comets/:id (D1). Real comets carry measured photos and a SPHEREx spectrum
 // in `detail` (bake/comet_spectrum.py); example comets have only their discussion.
-import { fwd, trackAt, dayParam, dayDate, MJD0 } from './skymap.js';
+import { fwd, trackAt, trackPath, dayParam, dayDate, MJD0 } from './skymap.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');   // no id: the list of known comets
 const MJD_UNIX = 40587, day = dayParam();   // ?day=: the date on Explore's timeline when this page was opened from the map
@@ -146,14 +146,12 @@ function spectrum(d) {
 // JPL path shows the path, its place on `day` and that date; one without (example comets) keeps its fixed place.
 // "Find on map" opens Explore on the same day with this comet picked out.
 function where(c) {
-  const [ra, dec] = c.track ? trackAt(c.track, day) : [c.ra, c.dec], [u, v] = fwd(ra, dec), dot = $('c-mini-dot');
+  const at = trackAt(c.track, day), [ra, dec] = at ?? [c.ra, c.dec], [u, v] = fwd(ra, dec), dot = $('c-mini-dot');
   dot.style.left = u * 100 + '%'; dot.style.top = v * 100 + '%'; dot.hidden = false;
   $('c-where').textContent = `RA ${ra.toFixed(1)}\u00b0   Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(1)}\u00b0`;
-  if (c.track) {
+  if (at) {
     $('c-when').textContent = dayDate(day, { month: 'short', day: 'numeric', year: 'numeric' });
-    let d = '', last = null;   // lift the pen where the path leaves one edge of the map and comes back on the other
-    for (const [, r, dc] of c.track) { const [x, y] = fwd(r, dc); d += (last == null || Math.abs(x - last) > .5 ? 'M' : 'L') + (x * 2000).toFixed(1) + ' ' + (y * 1000).toFixed(1); last = x; }
-    $('c-mini-path').setAttribute('d', d);
+    $('c-mini-path').setAttribute('d', trackPath(c.track));
   }
   const find = $('c-find');
   find.href = `explore.html?day=${day}&focus=${encodeURIComponent(c.id)}`;
