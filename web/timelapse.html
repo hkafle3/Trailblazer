@@ -55,6 +55,7 @@
   <span><i style="background:var(--comet)"></i>measured position, this visit</span>
   <span><i style="background:var(--known)"></i>measured position, earlier visits</span>
   <span><i style="border:2px solid #fff"></i>where Gaia (or a published motion) predicts it</span>
+  <span><i style="border:1.5px dashed var(--known)"></i>a known comet or asteroid passing (predicted)</span>
 </div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
@@ -170,19 +171,20 @@ function draw() {
   // known comets (orange) and asteroids (blue) during this visit: a dot where SkyBoT put each one at each exposure time,
   // joined by a dashed path, and the name. A median of several exposures usually erases a fast mover, so a path can
   // cross empty sky: it says a known object passed through, not that the dot under it is that object.
+  if (knownQueue.some(j => j[1] === f)) knownQueue.sort((a, b) => (b[1] === f) - (a[1] === f));   // the frame on screen goes next
   if (f.known) {
     ctx.font = `500 ${Math.round(W / 42)}px Geist, system-ui, sans-serif`; ctx.textBaseline = 'middle';
     for (const [name, b] of f.known.bodies) {
       const color = b.kind === 'comet' ? '#ff9a4d' : '#7fb8ff';
       const px = b.pts.map(([, ra, dec]) => { const [e, n] = offset(m, ra, dec); return toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel); });
-      const inView = px.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= W);
-      if (!inView.length) continue;
+      const inView = px.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= W);   // the path is drawn even when only it crosses the view
       for (const [c, w] of [['rgba(0,0,0,.8)', 4], [color, 1.6]]) {
         ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash([5, 5]);
         if (px.length > 1) { ctx.beginPath(); px.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
         ctx.setLineDash([]);
         for (const [x, y] of px) { ctx.beginPath(); ctx.arc(x, y, px.length > 1 ? 4 : 11, 0, 7); ctx.stroke(); }
       }
+      if (!inView.length) continue;   // a name only beside a position in view
       const [lx, ly] = inView[0], left = lx > W * .7, tx = left ? lx - 16 : lx + 16;
       ctx.textAlign = left ? 'right' : 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, tx, ly);
       ctx.fillStyle = color; ctx.fillText(name, tx, ly);
@@ -254,6 +256,7 @@ function knownFor(m) {
     const f = m.frames[(state.i + k) % m.frames.length];
     for (const t of f.known.todo) knownQueue.push([m, f, t]);
   }
+  knownList(m.frames[state.i]);   // "Checking…" straight away, not a blank row until the first answer
   while (knownBusy < 3 && knownQueue.length) knownNext();
 }
 async function knownNext() {

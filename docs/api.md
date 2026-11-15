@@ -91,7 +91,7 @@ Each accepted token is stored as a SHA-256 hash (`turnstile_tokens`, migration 0
 Known comets and asteroids in a time-lapse frame, from IMCCE SkyBoT (a public service that works out where every known small body is at a given moment). Planets are left out. Built from kzkei's version on the include-documentation-and-scope branch. A time-lapse frame is one visit, several exposures over a few days, and a known asteroid crosses the patch in hours, so the time-lapse asks at each distinct exposure time of the visit (exposures less than 1.2 hours apart count as one; baked targets have only the visit's middle). It asks three at a time, the frame on screen first, after the frames show. It draws where SkyBoT put each object at each time, joined by a dashed path, and lists them in the panel with their dates.
 
 - `t` is the frame's time as an MJD. The cone is 0.15 degrees, which covers the widest 12 arcmin view.
-- Comets are always kept (`mag` is null when SkyBoT sends none). Asteroids are kept at V magnitude 21 or brighter, at most 8, brightest first. `omitted` counts the asteroids left out.
+- Comets are always kept (`mag` is null when SkyBoT sends none). SkyBoT itself leaves out objects whose predicted position is uncertain by more than 2 arcmin (its default), which keeps badly known objects off the picture. Asteroids are kept at V magnitude 21 or brighter, at most 8, brightest first. `omitted` counts the asteroids left out.
 - Cached for a day: a past frame's answer never changes.
 
 ```

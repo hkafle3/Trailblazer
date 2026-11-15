@@ -183,10 +183,14 @@ function sexagesimal(text, hours) {
 function skybotRows(rows) {
   const comets = [], bright = [];
   for (const r of rows) {
-    if (!r || typeof r !== 'object' || !/^\s*\d{1,2}\s+\d{1,2}\s+[\d.]+\s*$/.test(r['RA (hms)'] ?? '') || !/^\s*[+-]?\d{1,2}\s+\d{1,2}\s+[\d.]+\s*$/.test(r['DEC (dms)'] ?? '')) return null;
+    if (!r || typeof r !== 'object' || typeof r.Class !== 'string') return null;
+    const hms = /^\s*(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['RA (hms)'] ?? ''), dms = /^\s*[+-]?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['DEC (dms)'] ?? '');
+    if (!hms || !dms || +hms[2] >= 60 || +hms[3] >= 60 || +dms[2] >= 60 || +dms[3] >= 60) return null;
     const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
     if (!(ra >= 0 && ra < 360 && dec >= -90 && dec <= 90)) return null;
-    const mag = Number(r['VMag (mag)']);
+    const vm = r['VMag (mag)'];   // a magnitude may be missing (null or empty), never garbled
+    if (vm != null && vm !== '' && !Number.isFinite(Number(vm))) return null;
+    const mag = Number(vm);
     const body = { name: String(r.Name || r.Num || 'object'), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? mag : null, err: Number(r['Err (arcsec)']) || 0 };
     if (r.Class === 'Comet') comets.push(body);
     else if (body.mag != null && body.mag <= 21) bright.push(body);
