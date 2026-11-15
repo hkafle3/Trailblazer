@@ -128,17 +128,25 @@ async function gaia(url) {
   if (p.error) return json(p, 400);
   const irsa = `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?${new URLSearchParams({ catalog: 'gaia_dr3_source', spatial: 'cone',
     objstr: `${p.ra} ${p.dec}`, radius: '144', radunits: 'arcsec', outfmt: '1', selcols: 'ra,dec,pmra,pmdec,phot_g_mean_mag',
-    constraints: 'pmra is not null and phot_g_mean_mag < 19' })}`;   // fainter stars are below what SPHEREx measures; keeps crowded fields small
+    constraints: 'pmra is not null and phot_g_mean_mag < 19' })}`;   // both sources: G < 19, fainter than SPHEREx measures; keeps crowded fields small
   const esa = `https://gea.esac.esa.int/tap-server/tap/sync?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv',
-    QUERY: `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))` })}`;
+    QUERY: `SELECT ra, dec, pmra, pmdec, phot_g_mean_mag AS g FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL AND phot_g_mean_mag < 19 AND 1=CONTAINS(POINT(ra, dec), CIRCLE(${p.ra}, ${p.dec}, 0.04))` })}`;
   const ok = (source, stars) => json({ epoch: 2016.0, source, stars }, 200, { 'Cache-Control': 'public, max-age=86400' });
   try { return ok('IRSA', ipacStars(await fetchRetry(irsa, 2, 10000))); } catch (e) { console.warn('IRSA Gaia', e); }
   try {
-    const rows = parseCsv(await fetchRetry(esa, 1, 8000));
-    return ok('ESA', rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v)]))));
+    return ok('ESA', esaStars(await fetchRetry(esa, 1, 8000)));
   } catch {
     return json({ error: 'Gaia archive is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
   }
+}
+
+// ESA's CSV for the query above: five plain numbers a row (ra, dec, pmra, pmdec, g), read straight like ipacStars
+function esaStars(text) {
+  const lines = text.trim().split('\n');
+  if (lines[0]?.replace(/\s/g, '') !== 'ra,dec,pmra,pmdec,g') throw new Error('ESA sent no table');
+  const stars = [];
+  for (let i = 1; i < lines.length; i++) { const [ra, dec, pmra, pmdec, g] = lines[i].split(',').map(Number); stars.push({ ra, dec, pmra, pmdec, g }); }
+  return stars;
 }
 
 // IRSA's IPAC table: header lines start with \\ or |, the first | line names the columns, values are space separated

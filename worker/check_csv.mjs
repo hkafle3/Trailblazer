@@ -46,4 +46,9 @@ const got = ipacStars(ipac), okIpac = isDeepStrictEqual(got, [{ ra: 269.4485, de
 console.log(`${okIpac ? 'PASS' : 'FAIL'} IRSA Gaia table: columns by name, no-motion stars dropped`); fail += !okIpac;
 let threw = false; try { ipacStars('<html>IRSA error</html>'); } catch { threw = true; }
 console.log(`${threw ? 'PASS' : 'FAIL'} IRSA Gaia table: an error page is refused, not read as no stars`); fail += !threw;
+// ESA's fallback answer: the same stars from plain CSV, and an error page refused
+const esaStars = new Function(src.match(/function esaStars[\s\S]*?\n}\n/)[0] + 'return esaStars;')();
+const okEsa = isDeepStrictEqual(esaStars('ra,dec,pmra,pmdec,g\r\n269.4485,4.73942,-801.551,10362.394,8.193974\r\n'), [{ ra: 269.4485, dec: 4.73942, pmra: -801.551, pmdec: 10362.394, g: 8.193974 }]);
+let esaThrew = false; try { esaStars('<html>ESA error</html>'); } catch { esaThrew = true; }
+console.log(`${okEsa && esaThrew ? 'PASS' : 'FAIL'} ESA Gaia CSV: stars read, an error page refused`); fail += !(okEsa && esaThrew);
 process.exit(fail ? 1 : 0);

@@ -135,7 +135,7 @@ Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 
 
 ## GET /api/gaia?ra=&dec=
 
-Gaia DR3 stars within 0.04 degrees, with proper motions, for checking measured star motion. Read from IRSA's copy of Gaia DR3 (its Gator catalog service, about 1.5 s); ESA's own archive is the fallback, tried once for up to 8 s. `source` says which answered (`"IRSA"` or `"ESA"`). `503` when both are down. The time-lapse waits at most 8 s for this and otherwise shows its frames without the Gaia comparison.
+Gaia DR3 stars within 0.04 degrees, with proper motions and Gaia G brighter than 19 (fainter stars are below what SPHEREx measures, and the cut keeps crowded fields such as Baade's Window to about 3,200 stars), for checking measured star motion. Read from IRSA's copy of Gaia DR3 (its Gator catalog service, about 1.5 s); ESA's own archive is the fallback, tried once for up to 8 s. `source` says which answered (`"IRSA"` or `"ESA"`). `503` when both are down. The time-lapse waits at most 8 s for this and otherwise shows its frames without the Gaia comparison.
 
 ## Planned (not built)
 
