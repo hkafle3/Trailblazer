@@ -5,7 +5,8 @@ double click, the + button or a scroll that stops short (the aim's outline fills
 threshold dives; the address is the time-lapse's, at the middle of the view within 0.1 degree; the time-lapse fills the
 window; back shows the map exactly where it was, forward dives again; "Dive in" does the same; scrolling out past the
 widest view in the time-lapse comes back to the map; a time-lapse loaded ahead of a dive counts no heat-map check
-until it is on screen; the sky tiles the flying frame shows line up with the first real frame; a reload of the time-lapse's address is the page on its own, and back from it opens Explore
+until it is on screen; the sky tiles the flying frame shows line up with the first real frame; a time-lapse opened by a link stops at its widest view
+and stays; a reload of the time-lapse's address is the page on its own, and back from it opens Explore
 on the same view with no replay.
 Reduced motion: no flight (the dive is never part-way), the time-lapse takes the map's place, back swaps it back.
 Phone: a one-finger pan and a pinch that only arrives at the deepest zoom do not dive; a pinch that starts there does;
@@ -181,6 +182,15 @@ async def desktop(browser):
     await pg.reload()
     await pg.wait_for_selector("#patch")
     check("a reload of the address is the time-lapse page itself", await pg.evaluate("self === top && !!document.getElementById('patch') && !document.querySelector('.xstage')"))
+    # a time-lapse opened by a link, not a dive: scrolling out stops at the widest view and stays on the page
+    direct = await ctx.new_page(); direct.cdp = await ctx.new_cdp_session(direct)
+    await direct.goto(f"{BASE}/timelapse.html?target=barnard")
+    await direct.wait_for_function("window.__lapse?.state.m")
+    p = await direct.locator("#patch").bounding_box()
+    await point(direct, p["x"] + p["width"] / 2, p["y"] + p["height"] / 2)
+    await scroll(direct, 30, 100); await asyncio.sleep(0.4); await scroll(direct, 12, 100); await asyncio.sleep(0.8)
+    check("a time-lapse opened directly stops at its widest view and stays", "timelapse" in direct.url and await direct.evaluate("!!window.__lapse && document.getElementById('fov').value === '1' && !document.querySelector('.pv-frame').style.transform"), direct.url)
+    await direct.close()
     await pg.go_back()
     await pg.wait_for_function("document.body.dataset.ready === '1'")
     await asyncio.sleep(0.4)
