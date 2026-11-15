@@ -142,7 +142,10 @@ async def main():
         await click("#play", 7000)
         # 3. Barnard's Star
         await cap("Barnard's Star moves 10″ a year, measured from the photos")
-        await click('#targets button:has-text("Barnard")', 1500)
+        await goto(BASE + "/explore.html", 2500)
+        await click("#examples > summary", 900)
+        await click('#examples a:has-text("Barnard")', 0)
+        await pg.wait_for_url("**/timelapse.html?target=barnard*"); await pg.wait_for_load_state("load"); await pg.wait_for_timeout(1500)
         await click("#play", 6500)
         await click("#play", 600)
         await cap("Difference view: orange got brighter, blue dimmer")

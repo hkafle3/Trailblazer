@@ -28,7 +28,7 @@
     </select>
     <div id="status" role="status" aria-live="polite"></div>
   </form>
-  <div id="targets" role="group" aria-label="Challenge targets"><button id="back" type="button">&larr; Sky map</button></div>
+  <div id="targets" role="group" aria-label="Navigation"><button id="back" type="button">&larr; Sky map</button></div>
   <div id="center">
     <canvas id="patch" width="720" height="720" role="img" aria-label="SPHEREx image of the target"></canvas>
     <div id="timeline" class="glass">
@@ -257,7 +257,7 @@ function search(ra, dec, det, opts = {}) {
     if (m.type === 'progress') setStatus(m.text + '...');
     else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
     else if (m.type === 'empty') { setStatus(`No SPHEREx images of this spot on ${det} yet. Try another detector.`, true); w.terminate(); }
-    else if (m.type === 'error') { setStatus(`${m.error}. The five targets above always work.`, true); w.terminate(); }
+    else if (m.type === 'error') { setStatus(`${m.error}. The examples on the Explore page always work.`, true); w.terminate(); }
     else if (m.type === 'done') {
       w.terminate(); job = null;
       live.set(key, prep(m.manifest));
@@ -275,9 +275,8 @@ document.getElementById('search').onsubmit = e => {
 };
 // a new detector reloads the spot on screen straight away (Enter in the box loads a typed position)
 document.getElementById('det').onchange = () => { if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit(); };
-const tb = document.getElementById('targets');
 document.getElementById('back').onclick = () => { location.href = 'explore.html'; };   // back to the Explore sky map
-TARGETS.forEach(t => { const b = document.createElement('button'); b.textContent = t.name; b.dataset.key = t.key; b.setAttribute('aria-pressed', 'false'); b.onclick = () => select(t.key); tb.appendChild(b); });
+// the target buttons live in the Explore page's Examples menu now (explore.html links here with ?target=)
 
 const playBtn = document.getElementById('play'), icon = document.getElementById('playicon');
 function stop() { state.playing = false; icon.setAttribute('d', 'M3 2l17 10L3 22z'); playBtn.setAttribute('aria-label', 'Play time-lapse'); }
