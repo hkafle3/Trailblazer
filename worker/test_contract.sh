@@ -19,6 +19,8 @@ check "comets list from D1" "/api/comets" 200 '"id":"3I/ATLAS"'
 # every row is a real object with real data: the seeded example comets were removed (migration 0014)
 if curl -s -m 120 "$BASE/api/comets" | python3 -c 'import json, sys; c = json.load(sys.stdin)["comets"]; sys.exit(not c or any(x["real"] is not True or "example" in x for x in c))'
 then echo "PASS /api/comets has only real rows"; else echo "FAIL /api/comets has rows that are not real (or none)"; fails=$((fails + 1)); fi
+# a known comet without measured photos gets its clearest SPHEREx photo, baked by bake/known_thumbs.py
+check "a baked comet photo" "/api/comets" 200 '"thumb":"data/comets/thumbs/'
 check "3I/ATLAS has real photos" "/api/comets/3I%2FATLAS" 200 '"photos":\[{"file"'
 check "3I/ATLAS has a spectrum" "/api/comets/3I%2FATLAS" 200 '"spectrum":{"2025-08":\[{"lam"'
 check "unknown comet" "/api/comets/C-9999" 404 'no comet C-9999'

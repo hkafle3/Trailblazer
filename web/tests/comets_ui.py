@@ -1,6 +1,8 @@
-"""Browser check for the Comets tab (shelves), the sky's hover names, page titles and the comet page's width, in headless
-Chrome. Needs the app up (npm run dev). Expected values come from GET /api/comets and skymap.js, never from the page.
-Also, in WebKit (iPhone, 390x844, light and dark): the page is dark behind the header and under the search box.
+"""Browser check for the Comets tab (compact rows on a wide screen, photo tiles on a phone), the sky's hover names, page
+titles and the comet page's width, in headless Chrome. Needs the app up (npm run dev). Expected values come from
+GET /api/comets, web/data/comets/thumbs/index.json and skymap.js, never from the page.
+Also, in WebKit (iPhone, 390x844): the tiles fill the first screen with real photos, and in light and dark the page is
+dark behind the header and under the search box.
 Run: uv run -q --with playwright python web/tests/comets_ui.py [base url]   (default http://127.0.0.1:8787)
      (WebKit once: uv run -q --with playwright python -m playwright install webkit)"""
 import asyncio, sys, urllib.parse
@@ -12,14 +14,24 @@ EXPECT = {"3I/ATLAS": "detected", "C/2025 R2 (SWAN)": "detected", "C/2026 A2 (Bo
           "C/2024 T5 (ATLAS)": "unclear", "210P/Christensen": "unclear", "P/2021 N1 (ZTF)": "unclear",
           "C/2024 G3 (ATLAS)": "unclear", "C/2023 A3 (Tsuchinshan-ATLAS)": "unclear",
           "C/2023 R1 (PANSTARRS)": "unclear", "C/2025 K1 (ATLAS)": "unclear"}   # migration 0012
-LABEL = {"detected": "CO2 glow", "unclear": "No clear signal", "quiet": "No gas glow"}
+GROUPS = [("c", "CO2 glow"), ("u", "No clear signal"), ("o", "Could be measured"), ("f", "Too faint")]   # the order on the page
+BADGE = {"c": "CO2", "u": "no signal", "o": "not measured", "f": "too faint"}
 PAGES = ["/", "/explore", "/comet", "/comet?id=3I%2FATLAS", "/forums", "/timelapse", "/guide"]
-shelf = lambda c: "m" if c.get("co2") else "f" if c.get("faint") else "o"
+shelf = lambda c: "c" if c.get("co2") == "detected" else "u" if c.get("co2") else "f" if c.get("faint") else "o"
+KS = "cuof"
 
-# what the page shows: every shelf's ids in order, its count, and whether the shelf is shown
-READ = """() => Object.fromEntries(['m', 'o', 'f'].map(k => { const s = document.getElementById('s-' + k);
+# what the page shows: every group's ids in order, its count, and whether the group is shown
+READ = """() => Object.fromEntries([...'cuof'].map(k => { const s = document.getElementById('s-' + k);
   return [k, { n: +s.querySelector('.n').textContent, shown: !s.hidden,
     ids: [...s.querySelectorAll('[data-id]')].map(e => e.dataset.id) }]; }))"""
+# every comet element: where it is, whether it is drawn, its photo (and whether that loaded), its badge
+ITEMS = """() => [...document.querySelectorAll('#c-list .it')].map(a => { const r = a.getBoundingClientRect(), i = a.querySelector('img'), p = a.querySelector('.ph').getBoundingClientRect();
+  return { id: a.dataset.id, href: a.getAttribute('href'), x: r.left, top: r.top, bottom: r.bottom, w: r.width, h: r.height, visible: !!r.height,
+    ph: [p.width, p.height], src: i?.getAttribute('src') ?? null, loaded: !!i && i.complete && i.naturalWidth > 0,
+    badge: getComputedStyle(a.querySelector('.badge')).display !== 'none' ? a.querySelector('.badge').textContent : null }; })"""
+# the group headings in page order, as drawn: name and count
+HEADS = """() => [...document.querySelectorAll('#c-list .sec')].filter(h => h.getBoundingClientRect().height)
+  .map(h => [h.firstChild.nextSibling.textContent.trim(), +h.querySelector('.n').textContent])"""
 # where skymap.js puts each comet on a day, and which region filters keep it (computed here, not read from the page)
 PLACES = """async ([day]) => { const m = await import('/skymap.js'), { comets } = await (await fetch('/api/comets')).json(), R = Math.PI / 180;
   return Object.fromEntries(comets.filter(c => c.kind === 'known' && c.real).map(c => {
@@ -41,6 +53,44 @@ UNDER = """([x, y]) => { const rgba = e => (getComputedStyle(e).backgroundColor.
   const l = v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
   return .2126 * l(c[0]) + .7152 * l(c[1]) + .0722 * l(c[2]); }"""
 DARK_PAGES = ["/comet", "/", "/explore", "/timelapse", "/comet?id=3I%2FATLAS", "/candidate?id=none", "/forums"]
+
+
+async def phone_grid(p):
+    """WebKit as an iPhone at 390x844 (the direction B mockup): the comets with a photo are square tiles in two columns,
+    at least 4 wholly on the first screen, every one with its photo loaded and its corner badge; the comets without a
+    photo are rows after the last tile (never an empty square); Too faint is folded behind a 44 px tap target."""
+    b = await p.webkit.launch()
+    ctx = await b.new_context(**{**p.devices["iPhone 14"], "viewport": {"width": 390, "height": 844}})
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+    pg = await ctx.new_page()
+    api = (await (await ctx.request.get(BASE + "/api/comets")).json())["comets"]
+    by = {c["id"]: c for c in api if c["kind"] == "known" and c["real"]}
+    await pg.goto(BASE + "/comet"); await pg.wait_for_selector("#s-c .it")
+    await pg.wait_for_function("[...document.querySelectorAll('#c-list .lanes img')].every(i => i.complete)", timeout=20000)
+    items = [i for i in await pg.evaluate(ITEMS) if shelf(by[i["id"]]) != "f"]
+    tiles = [i for i in items if i["ph"][0] > 100]
+    rows = [i for i in items if i["ph"][0] <= 100]
+    assert {i["id"] for i in tiles} == {i for i in by if shelf(by[i]) != "f" and by[i].get("thumb")}, "tiles are not exactly the comets with a photo"
+    for t in tiles:
+        assert abs(t["ph"][0] - t["ph"][1]) < 1, f"{t['id']}: photo is not square ({t['ph']})"
+        assert t["loaded"], f"{t['id']}: empty or broken photo"
+        assert t["badge"] == BADGE[shelf(by[t["id"]])], f"{t['id']}: badge {t['badge']!r}"
+    xs = sorted({round(t["x"]) for t in tiles})
+    assert len(xs) == 2, f"tiles in {len(xs)} columns"
+    full = [t for t in tiles if t["top"] >= 0 and t["bottom"] <= 844]
+    assert len(full) >= 4, f"only {len(full)} tiles wholly on the first screen"
+    last = max(t["bottom"] for t in tiles)
+    for r in rows:
+        assert not r["src"] and r["h"] <= 62 and r["top"] >= last, f"{r['id']}: no photo, but not a row after the tiles"
+    assert await pg.text_content("#s-all") == f"Measured and could be{len(items)}", "phone heading or its count"
+    small = await pg.evaluate("""() => [...document.querySelectorAll('#c-list .f-search, #c-list .sel, #s-f summary, #c-list .lanes .it')]
+      .filter(e => e.getBoundingClientRect().height < 44).map(e => e.dataset.id || e.className)""")
+    assert not small, f"tap targets under 44 px: {small[:5]}"
+    assert not await pg.is_visible("#s-f .rows"), "Too faint is open before it is asked"
+    await pg.tap("#s-f summary")
+    assert await pg.is_visible("#s-f .it >> nth=0"), "Too faint did not open"
+    await ctx.close(); await b.close()
+    return f"{len(tiles)} tiles ({len(full)} wholly on the first screen), {len(rows)} rows without a photo after them"
 
 
 async def dark_on_iphone(p):
@@ -74,109 +124,125 @@ async def main():
         api = (await (await ctx.request.get(BASE + "/api/comets")).json())["comets"]
         known = [c for c in api if c["kind"] == "known" and c["real"]]
         by = {c["id"]: c for c in known}
-        want = {k: {c["id"] for c in known if shelf(c) == k} for k in "mof"}
+        want = {k: {c["id"] for c in known if shelf(c) == k} for k in KS}
+        baked = (await (await ctx.request.get(BASE + "/data/comets/thumbs/index.json")).json())
 
-        # every known comet on exactly one shelf, the right one; counts from the data
-        await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-m .card")
-        # the thumbnails load after the API answers: wait until each has finished (loaded or failed), and for the fonts,
-        # before reading pixels or measuring the cards
-        await pg.wait_for_function("[...document.querySelectorAll('#s-m .card img')].every(i => i.complete)", timeout=20000)
+        # every known comet in exactly one group, the right one; counts from the data
+        await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-c .it")
+        # the photos load after the API answers: wait until each has finished (loaded or failed), and for the fonts,
+        # before reading pixels or measuring the rows
+        await pg.wait_for_function("[...document.querySelectorAll('#c-list .lanes img')].every(i => i.complete)", timeout=20000)
         await pg.evaluate("document.fonts.ready.then(() => true)")
         got = await pg.evaluate(READ)
         h1 = await pg.evaluate("[...document.querySelectorAll('h1')].filter(h => !h.closest('[hidden]')).map(h => h.textContent)")
         assert h1 == ["Comets"], f"the Comets list's level-one headings are {h1}"
-        ids = got["m"]["ids"] + got["o"]["ids"] + got["f"]["ids"]
+        ids = sum((got[k]["ids"] for k in KS), [])
         assert sorted(ids) == sorted(by), f"{len(ids)} entries for {len(by)} known comets, or a comet twice"
-        for k in "mof":
-            assert set(got[k]["ids"]) == want[k], f"shelf {k}: {set(got[k]['ids']) ^ want[k]}"
-            assert got[k]["n"] == len(want[k]), f"shelf {k} says {got[k]['n']}, data has {len(want[k])}"
+        for k in KS:
+            assert set(got[k]["ids"]) == want[k], f"group {k}: {set(got[k]['ids']) ^ want[k]}"
+            assert got[k]["n"] == len(want[k]), f"group {k} says {got[k]['n']}, data has {len(want[k])}"
 
-        # the measured comets' CO2 results match the API (and migration 0012), each with its own photo, all above the fold
-        cards = await pg.eval_on_selector_all("#s-m .card", """cs => cs.map(c => { const r = c.getBoundingClientRect(), i = c.querySelector('img');
-          return { id: c.dataset.id, co2: c.dataset.co2, label: c.querySelector('.v').textContent, src: i?.getAttribute('src'),
-            loaded: !!i && i.complete && i.naturalWidth > 0, top: r.top, bottom: r.bottom, g: c.querySelector('.v .g').className }; })""")
-        assert {c["id"]: c["co2"] for c in cards} == {i: by[i]["co2"] for i in want["m"]}, "a card's CO2 result is not the API's"
+        # 1440x900, as the desktop mockup: four groups in order with the data's counts, three rows to a line, CO2 glow and
+        # No clear signal above the fold, Too faint folded
+        heads = await pg.evaluate(HEADS)
+        assert heads == [[name, len(want[k])] for k, name in GROUPS], f"group headings {heads}"
+        items = {i["id"]: i for i in await pg.evaluate(ITEMS)}
+        for k in "cuo":
+            xs = sorted({round(items[i]["x"]) for i in got[k]["ids"]})
+            assert len(xs) == min(3, len(want[k])), f"group {k}: rows in {len(xs)} columns ({xs})"
+            assert all(items[i]["h"] == 62 for i in got[k]["ids"]), f"group {k}: a row is not 62 px tall"
+        for i in want["c"] | want["u"]:
+            assert 0 <= items[i]["top"] and items[i]["bottom"] <= 900, f"{i} is below the fold at 1440x900 ({items[i]['bottom']:.0f})"
+        assert not await pg.is_visible("#s-f .rows"), "Too faint is open before it is asked"
+
+        # the CO2 results match the API (and migration 0012); every photo is the right one and loaded: a measured comet's
+        # brightest photo, any other comet's baked SPHEREx photo (bake/known_thumbs.py), none for a comet with neither
         assert {i: by[i]["co2"] for i in EXPECT} == EXPECT, f"API CO2 results changed: {[(i, by[i]['co2']) for i in EXPECT]}"
-        for c in cards:
-            assert c["label"] == LABEL[c["co2"]], f"{c['id']} says {c['label']!r}"
-            assert ("g-co2" in c["g"]) == (c["co2"] == "detected"), f"{c['id']} has the wrong dot"
-            detail = (await (await ctx.request.get(BASE + "/api/comets/" + urllib.parse.quote(c["id"], safe=""))).json())["detail"]
+        assert {i: await pg.get_attribute(f'#c-list .it[data-id="{i}"]', "data-co2") for i in EXPECT} == EXPECT, "a row's CO2 result is not the API's"
+        for i in want["c"] | want["u"]:
+            detail = (await (await ctx.request.get(BASE + "/api/comets/" + urllib.parse.quote(i, safe=""))).json())["detail"]
             top = max(ph["flux"] for ph in detail["photos"] if ph.get("flux") is not None)   # the thumbnail is its brightest photo
-            assert c["src"] in {f"data/comets/{detail['dir']}/{ph['file']}" for ph in detail["photos"] if ph.get("flux") == top}, f"{c['id']} thumbnail {c['src']} is not its brightest photo"
-            assert c["loaded"], f"{c['id']} thumbnail did not load"
-            assert 0 <= c["top"] and c["bottom"] <= 900, f"{c['id']} is below the fold at 1440x900 ({c['bottom']:.0f})"
+            assert items[i]["src"] in {f"data/comets/{detail['dir']}/{ph['file']}" for ph in detail["photos"] if ph.get("flux") == top}, f"{i} thumbnail {items[i]['src']} is not its brightest photo"
+            assert items[i]["loaded"], f"{i} thumbnail did not load"
+        for i in want["o"] | want["f"]:
+            exp = f"data/comets/thumbs/{baked[i]['file']}" if i in baked else None
+            assert items[i]["src"] == exp, f"{i}: photo {items[i]['src']}, baked {exp}"
+            if exp and i in want["o"]: assert items[i]["loaded"], f"{i}: baked photo did not load"
+        assert any(i in baked for i in want["o"]), "no could-be-measured comet has a baked photo"
+        await pg.click("#s-f summary")
+        assert await pg.is_visible(f"#s-f .it >> nth={len(want['f']) - 1}"), "Too faint did not open"
+        await pg.wait_for_function("[...document.querySelectorAll('#s-f img')].every(i => i.complete)", timeout=20000)
+        bad = [i["id"] for i in await pg.evaluate(ITEMS) if i["src"] and not i["loaded"]]
+        assert not bad, f"photos that did not load: {bad}"
 
-        # every card and tile links to its comet page on the day; Too faint is folded until asked
+        # every row links to its comet page on the day
         hrefs = await pg.eval_on_selector_all("#c-list [data-id]", "as => as.map(a => [a.dataset.id, a.getAttribute('href')])")
+        assert len(hrefs) == len(by)
         for i, h in hrefs:
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(h).query)
             assert h.startswith("comet.html?") and q == {"id": [i], "day": [str(DAY)]}, f"{i} links to {h}"
-        assert not await pg.is_visible("#s-f .faintlist"), "Too faint is open before it is asked"
-        await pg.click("#s-f summary")
-        assert await pg.is_visible(f"#s-f .faintlist a >> nth={len(want['f']) - 1}"), "Too faint did not open"
 
-        # each sky tile's dot sits where skymap.js puts that comet on the day, within 1% of the tile's map
+        # search and each filter change every group and its count, and the status line says how many match
         places = await pg.evaluate(PLACES, [DAY])
-        tiles = await pg.eval_on_selector_all("#s-o .tile", """ts => ts.map(t => { const m = t.querySelector('.skymini').getBoundingClientRect(), d = t.querySelector('.skymini i').getBoundingClientRect();
-          return [t.dataset.id, (d.left + d.width / 2 - m.left) / m.width, (d.top + d.height / 2 - m.top) / m.height]; })""")
-        for i, u, v in tiles:
-            eu, ev = places[i]["uv"]
-            assert abs(u - eu) < .01 and abs(v - ev) < .01, f"{i}: dot at {u:.3f},{v:.3f}, skymap.js puts it at {eu:.3f},{ev:.3f}"
-
-        # search and each filter change every shelf and its count, and the status line says how many match
         assert await pg.get_attribute("#l-status", "role") == "status", "no status line for screen readers"
         async def check(what, keep):
             g = await pg.evaluate(READ)
-            for k in "mof":
+            for k in KS:
                 exp = [i for i in by if shelf(by[i]) == k and keep(i)]
-                assert sorted(g[k]["ids"]) == sorted(exp) and g[k]["n"] == len(exp), f"{what}, shelf {k}: {g[k]['n']} shown, {len(exp)} expected"
-                assert g[k]["shown"] == bool(exp), f"{what}: shelf {k} shown={g[k]['shown']} with {len(exp)} comets"
+                assert sorted(g[k]["ids"]) == sorted(exp) and g[k]["n"] == len(exp), f"{what}, group {k}: {g[k]['n']} shown, {len(exp)} expected"
+                assert g[k]["shown"] == bool(exp), f"{what}: group {k} shown={g[k]['shown']} with {len(exp)} comets"
             n = len([i for i in by if keep(i)])   # what a screen reader hears: the persistent status line
             said = await pg.text_content("#l-status")
             assert said == (f"{n} comet{'' if n == 1 else 's'}" if n else "No comets match."), f"{what}: status says {said!r} for {n} comets"
+        await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-c .it")
         await pg.fill("#l-q", "ATLAS"); await check("search ATLAS", lambda i: "atlas" in i.lower())
         assert len([i for i in by if "atlas" in i.lower()]) < len(by)
+        # a search that matches a too-faint comet opens Too faint, so the match is on screen; clearing it folds it again
+        hit = sorted(want["f"])[0]
+        await pg.fill("#l-q", hit.lower()); await check(f"search {hit}", lambda i: hit.lower() in i.lower())
+        assert await pg.is_visible(f'#s-f .it[data-id="{hit}"]'), f"search {hit}: Too faint did not open to show it"
+        await pg.fill("#l-q", ""); await check("cleared", lambda i: True)
+        assert not await pg.is_visible("#s-f .rows"), "Too faint stays open after the search is cleared"
         await pg.fill("#l-q", "swan"); await check("search swan", lambda i: "swan" in i.lower())
+        assert not await pg.is_visible("#s-f"), "Too faint shows with no match in it"
         await pg.fill("#l-q", "")
         for region in ["north", "south", "ecliptic"]:
             await pg.select_option("#l-region", region); await check(f"region {region}", lambda i: places[i][region])
+            label = await pg.evaluate("() => document.getElementById('l-region').selectedOptions[0].textContent")
+            assert await pg.text_content(".sel:has(#l-region) .v") == label, f"Region box does not say {label}"
         await pg.fill("#l-q", "atlas"); await check("ecliptic + atlas", lambda i: places[i]["ecliptic"] and "atlas" in i.lower())
         await pg.fill("#l-q", "no such comet"); await check("no match", lambda i: False)
         assert await pg.is_visible("#l-none"), "no message when nothing matches"
         await pg.fill("#l-q", ""); await pg.select_option("#l-region", ""); await check("all sky", lambda i: True)
 
-        # sort: Result puts a CO2 glow first, Most photos and Name order every shelf
+        # sort: Result and Most photos put the most photographed first in every group, Name orders it by name
         g = await pg.evaluate(READ)
-        flags = [by[i]["co2"] == "detected" for i in g["m"]["ids"]]
-        assert flags == sorted(flags, reverse=True), "Result sort: a CO2 glow is not first"
+        assert all([by[i]["photos"] for i in g[k]["ids"]] == sorted((by[i]["photos"] for i in g[k]["ids"]), reverse=True) for k in KS), "Result is out of order"
         await pg.select_option("#l-sort", "photos"); g = await pg.evaluate(READ)
-        assert all([by[i]["photos"] for i in g[k]["ids"]] == sorted((by[i]["photos"] for i in g[k]["ids"]), reverse=True) for k in "mof"), "Most photos is out of order"
+        assert all([by[i]["photos"] for i in g[k]["ids"]] == sorted((by[i]["photos"] for i in g[k]["ids"]), reverse=True) for k in KS), "Most photos is out of order"
         await pg.select_option("#l-sort", "name"); g = await pg.evaluate(READ)
-        names = await pg.evaluate("ids => ids.map(x => [...x].sort((a, b) => a.localeCompare(b)))", [g[k]["ids"] for k in "mof"])
-        assert [g[k]["ids"] for k in "mof"] == names, "Name sort is out of order"
+        names = await pg.evaluate("ids => ids.map(x => [...x].sort((a, b) => a.localeCompare(b)))", [g[k]["ids"] for k in KS])
+        assert [g[k]["ids"] for k in KS] == names, "Name sort is out of order"
+        assert await pg.text_content(".sel:has(#l-sort) .v") == "Name", "Sort box does not say Name"
 
-        # opening a card, a tile and a faint comet shows that comet
-        for sel in ['#s-m .card[data-id="C/2025 R2 (SWAN)"]', "#s-o .tile >> nth=0", "#s-f .faintlist a >> nth=0"]:
-            await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-m .card")
-            if "faint" in sel: await pg.click("#s-f summary")
+        # opening a CO2 row, a could-be row and a faint comet shows that comet
+        for sel in ['#s-c .it[data-id="C/2025 R2 (SWAN)"]', "#s-o .it >> nth=0", "#s-f .it >> nth=0"]:
+            await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-c .it")
+            if "s-f" in sel: await pg.click("#s-f summary")
             name = await pg.get_attribute(sel, "data-id")
             await pg.click(sel); await pg.wait_for_function("n => document.getElementById('c-id').textContent === n", arg=name)
             assert await pg.is_hidden("#c-list") and await pg.is_visible(".comet-grid"), f"{name}: comet page shows the list"
             assert f"day={DAY}" in pg.url, f"{name}: opened without the day ({pg.url})"
 
-        # a list opened on another day links to that day and places the tiles on it
-        await pg.goto(BASE + "/comet.html?day=300"); await pg.wait_for_selector("#s-o .tile")
+        # a list opened on another day links to that day, and Region filters by the places on that day
+        await pg.goto(BASE + "/comet.html?day=300"); await pg.wait_for_selector("#s-o .it")
         assert all(h.endswith("&day=300") for h in await pg.eval_on_selector_all("#c-list [data-id]", "as => as.map(a => a.getAttribute('href'))")), "day 300 not carried"
         p300 = await pg.evaluate(PLACES, [300])
-        i, u, v = (await pg.eval_on_selector_all("#s-o .tile", """ts => ts.map(t => { const m = t.querySelector('.skymini').getBoundingClientRect(), d = t.querySelector('.skymini i').getBoundingClientRect();
-          return [t.dataset.id, (d.left + d.width / 2 - m.left) / m.width, (d.top + d.height / 2 - m.top) / m.height]; })"""))[0]
-        assert abs(u - p300[i]["uv"][0]) < .01 and abs(v - p300[i]["uv"][1]) < .01, f"day 300: {i} is not at its place"
-        # and Region filters by the places on that day, which differ from day 529's for some comets
         assert any(p300[i]["south"] != places[i]["south"] for i in by), "day 300 and 529 put every comet in the same hemisphere"
         for region in ["north", "south", "ecliptic"]:
             await pg.select_option("#l-region", region); await check(f"day 300, region {region}", lambda i: p300[i][region])
 
-        # a measured comet with no photos (thumb null) still gets its card, with an empty ring; counts follow the data
+        # a measured comet with no photo (thumb null) still gets its row, with an empty ring and no broken image; counts follow the data
         spare = sorted(want["o"])[0]
         async def stub(route):
             d = await (await route.fetch()).json()
@@ -184,13 +250,12 @@ async def main():
                 if c["id"] in ("3I/ATLAS", spare): c.update(co2="detected", thumb=None)
             await route.fulfill(json=d)
         await pg.route("**/api/comets", stub)
-        await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-m .card")
+        await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-c .it")
         g = await pg.evaluate(READ)
-        assert g["m"]["n"] == len(want["m"]) + 1 and g["o"]["n"] == len(want["o"]) - 1, f"stubbed counts {g['m']['n']}, {g['o']['n']}"
+        assert g["c"]["n"] == len(want["c"]) + 1 and g["o"]["n"] == len(want["o"]) - 1, f"stubbed counts {g['c']['n']}, {g['o']['n']}"
         for i in ("3I/ATLAS", spare):
-            card = pg.locator(f'#s-m .card[data-id="{i}"]')
-            assert await card.is_visible() and await card.locator("img").count() == 0, f"{i}: no card, or a broken photo, without a thumb"
-            assert await card.locator(".v").text_content() == LABEL["detected"], f"{i}: wrong result without a thumb"
+            row = pg.locator(f'#s-c .it[data-id="{i}"]')
+            assert await row.is_visible() and await row.locator("img").count() == 0, f"{i}: no row, or a broken photo, without a thumb"
         await pg.unroute("**/api/comets", stub)
 
         # the sky: a known comet's name is hidden until the pointer is on it (or it has keyboard focus)
@@ -216,11 +281,11 @@ async def main():
         await ctx.close()
 
         # the comet page and the Comets list fit the window from 700 to 1024 px (and a phone): nothing clipped
-        for w in [390, 700, 800, 900, 1024]:
+        for w in [320, 390, 700, 800, 900, 1024, 1440]:
             c2 = await b.new_context(viewport={"width": w, "height": 900})
             await c2.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
             p2 = await c2.new_page()
-            for path, ready in [("/comet?id=3I%2FATLAS", ".talk .composer"), ("/comet", "#s-m .card")]:
+            for path, ready in [("/comet?id=3I%2FATLAS", ".talk .composer"), ("/comet", "#s-c .it")]:
                 await p2.goto(BASE + path); await p2.wait_for_selector(ready); await p2.wait_for_timeout(500)
                 r = await p2.evaluate(CLIPPED)
                 assert r["overflow"] <= 0 and not r["out"], f"{path} at {w}px: overflow {r['overflow']}, clipped {r['out']}"
@@ -231,10 +296,13 @@ async def main():
                     assert not hit, f"{path} at {w}px: the comments panel covers the comet's panels"
             await c2.close()
         await b.close()
+        grid = await phone_grid(p)
         dark = await dark_on_iphone(p)
+    print(f"WebKit iPhone 390x844 grid: {grid}")
     print("WebKit iPhone 390x844, luminance behind (at most 0.1):\n  " + "\n  ".join(dark))
-    print(f"PASS Comets shelves: {len(by)} comets ({len(want['m'])} measured, {len(want['o'])} could be, {len(want['f'])} too faint), "
-          "CO2 results and photos (a missing one keeps its card), links, sky tiles on skymap.js places, search, regions (day 529 and 300), sort, spoken counts; sky names on hover; "
-          "UTF-8 titles; comet page and list fit 390-1024 px; dark behind header and search in WebKit, light and dark")
+    print(f"PASS Comets list: {len(by)} comets ({len(want['c'])} CO2 glow, {len(want['u'])} no clear signal, {len(want['o'])} could be measured, {len(want['f'])} too faint); "
+          "1440x900 three-column rows with the mockup's groups and counts; photos (measured, baked, none: no broken image); links with the day; "
+          "search (opens and refolds Too faint), regions (day 529 and 300), sort, spoken counts; phone grid (WebKit); sky names on hover; "
+          "UTF-8 titles; comet page and list fit 320-1440 px; dark behind header and search in WebKit, light and dark")
 
 asyncio.run(main())

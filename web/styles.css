@@ -605,6 +605,8 @@ body:has(#ly-photos:not(:checked)) .mk.deep { display: none; }
   #c-list .lanes .it.has .s { margin-top: 2px; font-size: 11px; }
   #c-list summary.sec { min-height: 44px; box-sizing: border-box; padding: 0; }
 }
+/* too narrow for "Search comets" beside both boxes: search on its own row, the two boxes sharing the next */
+@media (max-width: 370px) { #c-list .ctl .f-search { flex-basis: 100%; } #c-list .sel { flex: 1; justify-content: center; } }
 
 /* known comets on the sky: the name shows on hover (explore.js adds .peek); a bigger invisible target than the 6px dot */
 .mk.peek b { display: none; }
