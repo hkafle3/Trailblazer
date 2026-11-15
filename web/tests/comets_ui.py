@@ -48,6 +48,8 @@ async def main():
         await pg.wait_for_function("[...document.querySelectorAll('#s-m .card img')].every(i => i.complete)", timeout=20000)
         await pg.evaluate("document.fonts.ready.then(() => true)")
         got = await pg.evaluate(READ)
+        h1 = await pg.evaluate("[...document.querySelectorAll('h1')].filter(h => !h.closest('[hidden]')).map(h => h.textContent)")
+        assert h1 == ["Comets"], f"the Comets list's level-one headings are {h1}"
         ids = got["m"]["ids"] + got["o"]["ids"] + got["f"]["ids"]
         assert sorted(ids) == sorted(by), f"{len(ids)} entries for {len(by)} known comets, or a comet twice"
         for k in "mof":
@@ -64,7 +66,8 @@ async def main():
             assert c["label"] == LABEL[c["co2"]], f"{c['id']} says {c['label']!r}"
             assert ("g-co2" in c["g"]) == (c["co2"] == "detected"), f"{c['id']} has the wrong dot"
             detail = (await (await ctx.request.get(BASE + "/api/comets/" + urllib.parse.quote(c["id"], safe=""))).json())["detail"]
-            assert c["src"] in {f"data/comets/{detail['dir']}/{ph['file']}" for ph in detail["photos"]}, f"{c['id']} thumbnail {c['src']} is not one of its photos"
+            top = max(ph["flux"] for ph in detail["photos"] if ph.get("flux") is not None)   # the thumbnail is its brightest photo
+            assert c["src"] in {f"data/comets/{detail['dir']}/{ph['file']}" for ph in detail["photos"] if ph.get("flux") == top}, f"{c['id']} thumbnail {c['src']} is not its brightest photo"
             assert c["loaded"], f"{c['id']} thumbnail did not load"
             assert 0 <= c["top"] and c["bottom"] <= 900, f"{c['id']} is below the fold at 1440x900 ({c['bottom']:.0f})"
 
