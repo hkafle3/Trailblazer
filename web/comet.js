@@ -78,7 +78,7 @@ function player(items) {
   const [img, ring, line, knob, out] = ['img', '.ring', '.tl-line', '.tl-knob', '.tl-date'].map(q => wrap.querySelector(q));
   const t0 = items[0].mjd, span = items[N - 1].mjd - t0, pos = m => (span ? 4 + 92 * (m - t0) / span : 50) + '%';
   for (const it of items) { const d = el('i', 'tl-visit'); d.style.left = pos(it.mjd); wrap.querySelector('.tl-dots').append(d); }
-  let i = -1, timer = null;
+  let i = -1, timer = null, touched = false;
   const go = k => {
     const it = items[k];
     if (!it.src) return;
@@ -92,6 +92,7 @@ function player(items) {
   };
   const step = s => { for (let n = 1; n <= N; n++) { const k = (((i + s * n) % N) + N) % N; if (items[k].src) return go(k); } };
   const play = on => {
+    touched = true;
     clearInterval(timer); timer = on ? setInterval(() => step(1), PLAY_MS) : null; knob.classList.toggle('on', on); wrap.dataset.playing = on ? '1' : '';
     knob.setAttribute('aria-label', on ? 'Photo. Playing; press to pause, arrow keys step.' : 'Photo. Paused; press to play the photos in turn, arrow keys step.');
   };
@@ -105,7 +106,8 @@ function player(items) {
   new IntersectionObserver((es, o) => { if (es.some(e => e.isIntersecting)) { o.disconnect(); if (!calm) play(true); } }).observe(wrap);
   const first = items.findIndex(it => it.src);
   if (first >= 0) go(first);
-  return { set(k, src) { items[k].src = src; if (i < 0) go(k); } };
+  // until someone steps or it plays, the earliest photo built so far is the one shown
+  return { set(k, src) { items[k].src = src; if (i < 0 || (!timer && !touched && k < i)) go(k); } };
 }
 
 // A badge by the title only when the measurement is clear: "detected" or "quiet" (bake/comet_spectrum.py co2_verdict)
