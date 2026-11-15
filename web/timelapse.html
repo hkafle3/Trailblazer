@@ -20,7 +20,7 @@
 <div id="stage">
   <form id="search" role="search">
     <label for="coords">Sky coordinates</label>
-    <input id="coords" placeholder="Sky position: RA Dec in degrees, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false">
+    <input id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false">
     <details class="adv"><summary>Advanced</summary>
       <div class="adv-body glass">
         <label for="det">Infrared band (SPHEREx detector)</label>
@@ -214,7 +214,7 @@ function show(m, query, opts = {}) {
 }
 async function select(key, opts) {
   job?.terminate(); job = null; setStatus(opts?.note || '');
-  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === key));
+  document.querySelectorAll('#targets button[data-key]').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === key));
   show(await load(key), `?target=${key}`, opts);
 }
 
@@ -241,7 +241,7 @@ function parseCoords(text) {
 function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
-  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  document.querySelectorAll('#targets button[data-key]').forEach(b => b.setAttribute('aria-pressed', 'false'));
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
   if (live.has(key)) { setStatus(''); return show(live.get(key), query, opts); }
   job?.terminate();

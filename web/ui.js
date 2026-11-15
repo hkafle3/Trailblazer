@@ -122,7 +122,7 @@
     if (document.querySelector('.veil')) return;
     lastFocus = document.activeElement;
     const name = h('input', { type: 'text', maxlength: '24', placeholder: 'Pick a name', 'aria-label': 'Your name' });
-    const done = (n, via) => { setUser({ name: n, via }); closeModal(); };
+    const done = (n, via) => { setUser({ name: n, via }); lastFocus = null; closeModal(); document.querySelector('.authbox .av')?.focus(); };
     const gbtn = h('button', { class: 'btn gbtn', type: 'button', onclick: () => done('Sky Watcher', 'google-demo') });
     gbtn.innerHTML = `${G}<span>Continue with Google (demo)</span>`;
     const form = h('form', { onsubmit: e => { e.preventDefault(); done(name.value.trim() || 'Sky Watcher', 'name'); } }, name, h('button', { class: 'btn', type: 'submit', text: 'Continue' }));
@@ -325,7 +325,7 @@
   scanButtons();
   if (/[?&]guide=1/.test(location.search)) openGuide();
   new MutationObserver(() => scanButtons()).observe(document.body, { childList: true, subtree: true });
-  if (isExplore && (!store.get('ch.tour') || /[?&]tour=1/.test(location.search))) {
+  if (isExplore && !/[?&]guide=1/.test(location.search) && (!store.get('ch.tour') || /[?&]tour=1/.test(location.search))) {
     const wait = setInterval(() => { if (document.body.dataset.ready || document.querySelector('#go-unexplored[href]')) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);
     setTimeout(() => clearInterval(wait), 15000);
   }

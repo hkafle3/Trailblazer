@@ -104,7 +104,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   if (featured) {
     const n = votes(featured), t = featured.tags;
     card.href = `comet.html?id=${encodeURIComponent(featured.id)}`;
-    card.dataset.day = featured.day;
+    card.dataset.day = featured.day ?? 0;
     card.querySelector('[data-f=id]').textContent = featured.id;
     card.querySelector('[data-f=count]').textContent = `${t.comet} of ${n} tags say comet` + (featured.example ? ' · example' : '');
     card.querySelector('.t-comet').style.setProperty('--n', t.comet);
