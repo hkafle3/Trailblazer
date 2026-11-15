@@ -159,6 +159,9 @@ async def main():
         # 5. comets
         await cap("3I/ATLAS, the interstellar comet SPHEREx targeted")
         await click("nav a[href='comet.html']", 0)
+        await fast(True); await pg.wait_for_load_state("load"); await pg.wait_for_selector(".crow"); await pg.wait_for_timeout(600); await fast(False)
+        await pg.wait_for_timeout(1800)   # the list of known comets, then open 3I/ATLAS from it
+        await click('.crow:has-text("3I/ATLAS")', 0)
         await fast(True); await pg.wait_for_load_state("load"); await pg.wait_for_timeout(2500); await fast(False)
         await pg.wait_for_timeout(2500)
         await cap("Its spectrum shows carbon dioxide glowing at 4.26 µm")

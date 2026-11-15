@@ -28,6 +28,7 @@ check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
 check "home page served" "/" 200 'The sky moves'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
+check "Comets list page served" "/comet.html" 200 'id="c-list"'
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below
 curl -s -m 30 -D - -o /dev/null "$BASE/api/images?ra=400&dec=4" | grep -qi 'access-control-allow-origin: \*' && echo "PASS CORS header present" || { echo "FAIL CORS header missing"; fails=$((fails + 1)); }
@@ -51,8 +52,16 @@ expect = {"3I/ATLAS": "detected", "C/2025 R2 (SWAN)": "detected", "C/2024 T5 (AT
 got = {n: verdict(n) for n in expect}
 assert got == expect, f"CO2 verdicts {got}, expected {expect}"
 assert len(swan["detail"]["photos"]) > 0 and swan["detail"]["dir"] == "c-2025-r2-swan", "R2 photos missing"
+# the Comets list (comet.html with no id): all 35 known comets, each with its CO2 result and photo count, and each row's page opens
+assert len(known) == 35, f"{len(known)} known comets listed, expected 35"
+listed = {c["id"]: c.get("co2", "missing") for c in known}
+assert {n: listed.get(n) for n in expect} == expect, f"list CO2 {[(n, listed.get(n)) for n in expect]}"
+assert all(v is None for n, v in listed.items() if n not in expect), "an unmeasured comet has a CO2 result"
+assert all(isinstance(c.get("photos"), int) and c["photos"] > 0 for c in known), "a known comet without a photo count"
+bad = [c["id"] for c in known if get("/api/comets/" + urllib.parse.quote(c["id"], safe=""))["id"] != c["id"]]
+assert not bad, f"pages that do not open: {bad}"
 PY
-then echo "PASS known comets: paths reach the last day, every photo has a position, CO2 verdicts as measured"
+then echo "PASS known comets: paths reach the last day, every photo has a position, CO2 verdicts as measured, all 35 listed and open"
 else echo "FAIL known comets"; fails=$((fails + 1)); fi
 # POST /api/comments writes to D1, so it runs against the local dev server only (Cloudflare's test secret accepts its dummy token
 # XXXX.DUMMY.TOKEN.XXXX and, measured 2026-11-14, any string; each post gets a unique one because a token is single use)

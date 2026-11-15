@@ -1,7 +1,7 @@
 // Comet page: one comet from /api/comets/:id (D1). Real comets carry measured photos and a SPHEREx spectrum
 // in `detail` (bake/comet_spectrum.py); example comets have only their discussion.
 const $ = id => document.getElementById(id);
-const id = new URLSearchParams(location.search).get('id') || '3I/ATLAS';
+const id = new URLSearchParams(location.search).get('id');   // no id: the list of known comets
 const MJD_UNIX = 40587;
 const date = (mjd, opts) => new Date((mjd - MJD_UNIX) * 864e5).toLocaleDateString('en-GB', { timeZone: 'UTC', ...opts });
 
@@ -221,7 +221,27 @@ function composer(c) {
   });
 }
 
-fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
+// The Comets tab: every known comet SPHEREx photographed, measured ones first, then by how often it was photographed
+const CO2 = { detected: ['CO2 glow detected', 'detected'], quiet: ['No gas glow', 'quiet'], unclear: ['Not enough signal', 'unclear'] };
+function list() {
+  document.querySelector('.comet-head').hidden = document.querySelector('.comet-grid').hidden = true;
+  $('c-list').hidden = false;
+  document.title = 'Comets · Comet Catcher';
+  fetch('/api/comets').then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(({ comets }) => {
+    const rank = c => (c.co2 === 'detected' ? 0 : c.co2 ? 1 : 2);
+    const known = comets.filter(c => c.kind === 'known' && c.real).sort((a, b) => rank(a) - rank(b) || (b.photos ?? 0) - (a.photos ?? 0));
+    $('l-sub').textContent = `${known.length} known comets in SPHEREx photos. ${known.filter(c => c.co2).length} have a measured spectrum.`;
+    $('l-rows').replaceChildren(...known.map(c => {
+      const a = el('a', 'crow'), [text, cls] = CO2[c.co2] ?? ['Not measured yet', 'none'];
+      a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
+      a.append(el('b', null, c.id), el('span', `co2 ${cls}`, text), el('span', 'n', c.photos ? `${c.photos} photos` : ''));
+      return a;
+    }));
+  }).catch(err => { $('l-sub').textContent = 'Comets are unavailable right now.'; console.warn(err); });
+}
+
+if (!id) list();
+else fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
   document.title = `${c.id} · Comet Catcher`;
   $('c-id').textContent = c.id;
   $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : c.real ? 'Known comet · JPL catalog' : 'Known object') : 'Not in any catalog';

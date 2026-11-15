@@ -106,7 +106,8 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     } else a.setAttribute('aria-label', c.real ? `${c.id} (known comet)` : 'Known object (example)');
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
     if (c.kind === 'known') a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
-    if (c.kind === 'comet' || c.id === '3I/ATLAS') { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
+    if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
+    if (c.kind === 'known' && c.real && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
     if (c.track) { movers.push({ el: a, track: c.track }); if (c.detail?.photos || c.id === '3I/ATLAS') a.dataset.always = '1'; }
     if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
