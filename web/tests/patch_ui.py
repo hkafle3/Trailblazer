@@ -41,6 +41,13 @@ async def main():
             off = await pg.evaluate(PIXELS)
             assert on != base, f"{name} does not change the picture"
             assert off == base, f"turning {name} off does not bring the picture back"
+        # Color Difference's colour key shows only while it is on
+        assert await pg.is_hidden("#diffkey"), "the colour key shows with Color Difference off"
+        await pg.click("label:has(#diff)"); await pg.wait_for_timeout(100)
+        assert await pg.is_visible("#diffkey") and "brighter" in await pg.text_content("#diffkey"), "the colour key is missing with Color Difference on"
+        await pg.click("label:has(#diff)"); await pg.wait_for_timeout(100)
+        assert await pg.is_hidden("#diffkey"), "the colour key stays after Color Difference is turned off"
+        print("PASS colour key: shown only while Color Difference is on")
         for tid in TOGGLES: await pg.click(f"label:has(#{tid})")
         await pg.wait_for_timeout(200)
         assert await pg.evaluate(PIXELS) != base, "all four toggles together leave the picture unchanged"

@@ -37,7 +37,11 @@
 
   <div class="pv-frame">
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
-    <div id="legend" aria-hidden="true"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
+    <div id="legend" aria-hidden="true">
+      <div class="lg-row"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
+      <!-- Color Difference's key, only while it is on: square swatches, since it is the photo's pixels that are coloured -->
+      <div class="lg-row lg-key" id="diffkey"><span><i class="px" style="background:var(--comet)"></i>brighter</span><span><i class="px" style="background:var(--known)"></i>dimmer than the first visit</span></div>
+    </div>
   </div>
 
   <!-- the whole region SPHEREx cut out for this spot; the white box is the part in the big frame, the ring is the target -->

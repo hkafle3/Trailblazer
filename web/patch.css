@@ -46,8 +46,12 @@ label.pv-row { cursor: pointer; }
 .pv-frame { left: calc(675 * var(--e)); top: calc(229 * var(--e)); width: calc(1146 * var(--e)); height: calc(902 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(10 * var(--e)); background: #000; overflow: hidden; }
 #patch { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 #status.err { color: var(--glitch); }
-#legend { position: absolute; right: calc(20 * var(--e)); bottom: calc(16 * var(--e)); display: flex; gap: calc(26 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
+#legend { position: absolute; right: calc(20 * var(--e)); bottom: calc(16 * var(--e)); display: flex; flex-direction: column; align-items: flex-end; gap: calc(10 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
+#legend .lg-row { display: flex; gap: calc(26 * var(--e)); }
 #legend span { display: flex; align-items: center; gap: calc(10 * var(--e)); }
+#legend i.px { border-radius: 0; }
+#legend .lg-key { display: none; }
+body:has(#diff:checked) #legend .lg-key { display: flex; }   /* the colour key, under the markers' row, only while Color Difference is on */
 #legend i { width: calc(14 * var(--e)); height: calc(14 * var(--e)); min-width: 7px; min-height: 7px; border-radius: 50%; }
 body.busy .pv-frame { animation: breathe 1.6s ease-in-out infinite; }
 
@@ -160,7 +164,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   .pv-desc .box { width: min(100%, 320px); height: 34px; font-size: 14px; margin-top: 10px; }
   .pv-desc .sub, .pv-info { font-size: 13px; }
   #status { font-size: 12px; }
-  #legend { font-size: 11px; gap: 12px; }
+  #legend { font-size: 11px; } #legend .lg-row { gap: 12px; }
   #mapbox { left: 12px; bottom: 12px; }
   #hint { bottom: 230px; width: calc(100% - 24px); text-align: center; white-space: normal; }
 }
