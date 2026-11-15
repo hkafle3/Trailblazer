@@ -2,6 +2,7 @@
 // and the heat map line up with data/sky.jpg (RA increases to the left, RA 0 in the middle).
 // Data: data/coverage.{png,json} (built by bake/sky_assets.py), /api/comets and /api/explored (worker/).
 import { R2, RAD, wrap, fwdLon, fwd, trackAt, dayParam, dayDate, LAST_DAY, MJD0 } from './skymap.js';
+import * as phoneUI from './explore-phone.js';   // phones: pan, pinch, names, sheets
 // [u, v] -> [ra, dec], or null outside the oval
 function inv(u, v) {
   const x = (u * 2 - 1) * 2 * R2, y = (1 - v * 2) * R2;
@@ -102,6 +103,7 @@ function followTracks(day) {
     if (el.dataset.always === '1') el.classList.toggle('faint', !bright);
     else { el.hidden = !bright && !faintOn.checked; el.classList.toggle('speck', !bright); }
   }
+  phoneUI.onDay(day);
 }
 // Faint comets layer: off by default, remembered in this browser (localStorage), redrawn at once when switched
 const faintOn = $('ly-faint');
@@ -122,6 +124,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     a.className = `mk ${c.kind}`;
     if (c.id === focus && c !== featured) a.classList.add('focus'); else a.dataset.day = c.day ?? 0;   // a featured candidate's name is on its card   // the comet being found shows on any date
     a.innerHTML = '<i></i>';
+    a.comet = c;   // the phone sheet reads it
     if (c.kind === 'comet') {
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
@@ -172,7 +175,9 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
 // The link is read at the click: the replay is paused and later clicks wait, so the page that opens is the one clicked.
 // Clicks with a modifier key and middle clicks are left to the browser (new tab or window).
 let leaving = false, stopReplay = () => {};
+phoneUI.hooks.stop = () => stopReplay();
 $('marks').addEventListener('click', e => {
+  if (phoneUI.tap(e)) return;   // phones: a peek sheet first, the page stays
   const a = e.target.closest('a[href^="comet.html"]');
   if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   if (leaving) return e.preventDefault();
@@ -217,19 +222,8 @@ const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
   card.querySelector('[data-f=open]').href = url;
 }).catch(err => console.warn('explored unavailable', err));
 
-// ---- phones: flip a name to the left of its marker when it would cover another name or dot, or run off screen ----
-Promise.all([cometsLoaded, exploredLoaded]).then(() => {
-  if (!matchMedia('(max-width: 640px)').matches) return;
-  const box = el => el.getBoundingClientRect(), hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  const marks = [...document.querySelectorAll('.mk')], dots = marks.map(m => box(m.querySelector('i'))), kept = [];
-  for (const m of marks) {
-    const b = m.querySelector('b');
-    if (!b || !b.offsetWidth || m.classList.contains('focus')) continue;   // nameSide() places that one
-    const bad = () => { const r = box(b); return r.left < 4 || r.right > innerWidth - 4 || kept.some(k => hit(r, k)) || dots.some((d, i) => marks[i] !== m && hit(r, d)); };
-    if (bad()) { m.classList.toggle('left'); if (bad()) m.classList.toggle('left'); }
-    kept.push(box(b));
-  }
-});
+// ---- phones: names placed without collisions, the first view centred on 3I/ATLAS (explore-phone.js) ----
+Promise.all([cometsLoaded, exploredLoaded]).then(() => phoneUI.ready());
 
 // ---- timeline (Homepage-2): a tick for every month SPHEREx photographed, the year under each January, ----
 // the date over a round handle. The line runs from the first of the first month to the last day of data.
