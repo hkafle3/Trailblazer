@@ -83,10 +83,11 @@ async def desktop(b):
         await pg.click("#spec-csv")
     rows = open(await (await dl.value).path()).read().strip().split("\n")
     check(len(rows) - 1 == len(r["points"]) and rows[0].startswith("wavelength_um,"), f"desktop: CSV has {len(rows) - 1} rows for {len(r['points'])} points")
+    if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-star-g13.6.png"))
     await pg.click("#spec-log")
     logged = await pg.evaluate("document.querySelectorAll('#spec-chart circle.pt').length")
     check(logged == sum(1 for p in r["points"] if p["flux"] > 0), f"desktop: log scale draws the {logged} points above zero")
-    if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-star-g13.6.png"))
+    if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-star-g13.6-log.png"))
     await pg.click("#spec-log")
     url = pg.url
     # a drag still re-centres while picking is on
@@ -101,9 +102,14 @@ async def desktop(b):
     # Barnard's Star itself: saturated everywhere, gaps that say so
     await pg.goto(f"{BASE}/timelapse.html?target=barnard")
     await pg.wait_for_function("__lapse.state.m && __lapse.state.m.key === 'barnard'")
+    # by keyboard this time (Enter on the photo picks the star in its middle), with Log scale already on: the empty
+    # chart while it loads must not hang the page (log of 0)
     await pg.click("#spec-mode")
-    f = await pg.evaluate("(() => { const s = __lapse.state, f = s.m.frames[s.i]; return __spec.screenOfPix(f.x, f.y); })()")
-    await pg.mouse.click(*f)
+    await pg.evaluate("document.getElementById('spec-log').click()")
+    await pg.focus("#patch"); await pg.keyboard.press("Enter")
+    check(await pg.evaluate("document.body.classList.contains('speccing') && __lapse.state.m.key === 'barnard'"), "desktop: Enter on the photo in pick mode picks its middle, no re-centre")
+    r3 = await result(pg)
+    await pg.evaluate("document.getElementById('spec-log').click()")
     r3 = await result(pg)
     sat = sum("saturated" in g["why"] for g in r3["gaps"])
     print("  ", r3["where"], "|", r3["status"])

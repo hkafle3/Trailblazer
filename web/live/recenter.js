@@ -5,8 +5,9 @@
 //   moved()         the photo moved: redraw it shifted by .pan (sky outside the loaded grid stays empty)
 //   commit(pan)     make the spot `pan` from the built centre the new centre (build it, update the URL and the box)
 //   idle()          optional: a gesture ended without moving anything (a drag cancelled where it started)
-//   tap(to)         optional: a click or tap on the spot `to` (the pan that would centre it). Return true to take it:
-//                   then nothing moves (the Spectrum card picks a star this way); drags and keys still re-centre.
+//   tap(to)         optional: a click or tap on the spot `to` (the pan that would centre it), or Enter/Space on the
+//                   photo for the middle of the view. Return true to take it: then nothing moves (the Spectrum card
+//                   picks a star this way); drags and arrow keys still re-centre.
 // The page calls reset() when frames for a new centre land and when another search starts (it also ends a pending
 // arrow-key move or a drag still held), and asks moving() before it swaps frames mid-gesture. One pointer at a time: a
 // second finger is ignored until the first lifts. A press drops a pending arrow-key move: the pointer's spot wins.
@@ -88,6 +89,8 @@ export function recenterable(el, { scale, moved, commit, idle = () => {}, tap = 
   });
   // arrow keys move the view an eighth of its width (Shift: one pixel); the new centre builds once the keys rest
   el.addEventListener('keydown', e => {
+    // Enter or Space: a tap on the middle of the view, for the keyboard (the Spectrum card's pick)
+    if ((e.key === 'Enter' || e.key === ' ') && scale() && !grab && !nudge && tap(pan)) { e.preventDefault(); e.stopPropagation(); return; }
     const d = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key], k = scale();
     if (!d || !k) return;
     e.preventDefault(); e.stopPropagation();   // not the page scroll, not the page's visit stepping

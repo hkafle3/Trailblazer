@@ -38,6 +38,7 @@
     <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
     <!-- Spectrum mode: while it is on, a click or tap on the photo picks that star for the Spectrum card instead of
          re-centring (a drag still moves the photo). The button says which mode the photo is in. -->
+    <span class="sr-only" id="spec-how">Spectrum mode: click a star to measure it, or press Enter on the photo for the star in its middle. Arrow keys still move the photo.</span>
     <button class="pv-specbtn" id="spec-mode" type="button" aria-pressed="false" title="Turn on, then click a star to see its spectrum"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span>Spectrum</span></button>
     <div id="legend" aria-hidden="true">
       <div class="lg-row"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
@@ -958,12 +959,13 @@ const specEl = id => document.getElementById(id);
 const specQ = () => spec.at ? `&spec=${spec.at.ra.toFixed(5)},${spec.at.dec.toFixed(5)}` : '';
 const yearOf = mjd => 2000 + (mjd - 51544.5) / 365.25;
 // a Gaia star's place in a given year (positions are for 2016.0)
-const gaiaAt = (s, year) => { const dt = year - 2016; return [s.ra + s.pmra / 3.6e6 * dt / Math.cos(s.dec * D2R), s.dec + s.pmdec / 3.6e6 * dt]; };
+const gaiaAt = (s, year) => { const dt = year - 2016; return [((s.ra + s.pmra / 3.6e6 * dt / Math.cos(s.dec * D2R)) % 360 + 360) % 360, s.dec + s.pmdec / 3.6e6 * dt]; };
 function specMode(on) {
   spec.mode = on;
   specEl('spec-mode').setAttribute('aria-pressed', on);
   specEl('spec-mode').querySelector('span').textContent = on ? 'Pick a star' : 'Spectrum';
   patch.classList.toggle('picking', on);
+  if (on) patch.setAttribute('aria-describedby', 'spec-how'); else patch.removeAttribute('aria-describedby');
 }
 specEl('spec-mode').onclick = () => specMode(!spec.mode);
 // a click on the photo in Spectrum mode: `to` is the pan that would centre the spot (live/recenter.js)
@@ -1002,7 +1004,7 @@ async function openSpec(ra, dec, year = 2026) {
     const g = await Promise.race([fetch(`${API}/api/gaia?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&v=4`, { signal: ctl.signal }).then(r => r.ok ? r.json() : null).catch(() => null),
       new Promise(r => setTimeout(() => r(null), 8000))]);
     if (!mine()) return;
-    const sep = s => { const [a, d] = gaiaAt(s, year); return Math.hypot((a - ra) * Math.cos(dec * D2R), d - dec) * 3600; };
+    const sep = s => { const [a, d] = gaiaAt(s, year); return Math.hypot(((a - ra + 540) % 360 - 180) * Math.cos(dec * D2R), d - dec) * 3600; };
     const star = (g?.stars || []).reduce((b, s) => (!b || sep(s) < sep(b) ? s : b), null);
     if (star && sep(star) <= 8) {
       spec.gaia = star;
@@ -1018,7 +1020,7 @@ async function openSpec(ra, dec, year = 2026) {
     spec.res = res;
     const doubt = res.points.filter(p => p.doubt).length, sat = res.gaps.filter(g => /saturated/.test(g.why)).length;
     const bright = sat >= 10 && sat > res.gaps.length / 2 ? `SPHEREx saturates on this star at ${sat} of 102 wavelengths: it is too bright to measure cleanly. Fainter stars work.` : '';
-    specStatus(res.points.length ? `${res.points.length} of 102 channels measured${doubt ? `, ${doubt} doubtful (hollow)` : ''}${res.gaps.length ? `, ${res.gaps.length} gaps` : ''}. From ${res.covering} exposures.${bright ? ` ${bright}` : ''}`
+    specStatus(res.points.length ? `${bright ? `${bright} ` : ''}${res.points.length} of 102 channels measured${doubt ? `, ${doubt} doubtful (hollow)` : ''}${res.gaps.length ? `, ${res.gaps.length} gaps` : ''}. From ${res.covering} exposures.`
       : bright || `No usable exposure of this spot (${res.found} exposures searched).`);
     specEl('spec-csv').disabled = !res.points.length;
     specChart(); draw();
@@ -1079,7 +1081,7 @@ function specChart() {
   const X0 = 46, X1 = W - 8, Y0 = 16, Y1 = H - 22;
   const sx = l => X0 + (l - 0.75) / 4.25 * (X1 - X0);
   const pts = res ? res.points.filter(p => !spec.log || p.flux > 0) : [];
-  let lo = 0, hi = 1;
+  let lo = spec.log ? 1 : 0, hi = spec.log ? 100 : 1;   // nothing to draw yet: an empty frame (log of 0 has no place)
   if (pts.length) {
     hi = Math.max(...pts.map(p => p.flux + (spec.log ? 0 : p.err)));
     lo = spec.log ? Math.min(...pts.map(p => p.flux)) : Math.min(0, ...pts.map(p => p.flux - p.err));

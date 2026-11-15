@@ -382,8 +382,9 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   body.lapse:not(.sky) .pv-spec h2 { display: block; position: absolute; z-index: 1; right: 0; top: 0; width: 44px; height: 44px; margin: 0; font-size: 0; }
   body.lapse:not(.sky) .pv-spec .close { width: 44px; height: 44px; margin-right: 0; }
   body.lapse:not(.sky) .pv-spec .pv-scroll { display: flex; flex-direction: column; min-height: 0; max-height: none !important; overflow-y: auto; padding: 4px 22px 12px 0; }
-  body.lapse:not(.sky) #spec-chart { order: -2; margin: 0 22px 0 0; width: calc(100% - 22px); }
-  body.lapse:not(.sky) .spec-key { order: -1; }
+  body.lapse:not(.sky) #spec-chart { order: -3; margin: 0 22px 0 0; width: calc(100% - 22px); }
+  body.lapse:not(.sky) .spec-key { order: -2; }
+  body.lapse:not(.sky) :is(#spec-status, .spec-line) { order: -1; }
   body.lapse:not(.sky) .pv-spec .pv-info { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: #e8e8e8; }
   body.lapse:not(.sky) .spec-key { font-size: 11px; }
   body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; margin-left: -11px; }
