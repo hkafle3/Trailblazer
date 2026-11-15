@@ -3,7 +3,7 @@ and the network (IRSA, NASA's S3 copy of SPHEREx); takes a few minutes on a slow
 Run: uv run -q --with playwright python web/tests/recenter_ui.py [base url]   (default http://127.0.0.1:8787)
 Starts live 1.5 arcmin north of Barnard's Star (after a failed pipeline download and a failed wavelength-map download,
 neither of which may stick), clicks
-the star, then nudges, drags, taps, drags with two fingers, cancels a drag, switches detector during a key move, fails
+the star, then nudges, drags, taps, pinches mid-drag, cancels a drag, switches detector during a key move, fails
 a re-centre on purpose, and finally moves 4 degrees away, out of the listed images. Precision is 1 SPHEREx pixel
 (6.15 arcsec); the photo's grid is 5 arcsec per pixel. Throughout, the photo, the URL and the box must name one spot."""
 import asyncio, math, os, sys, time, urllib.parse
@@ -228,18 +228,19 @@ async def main():
         off = sep((v["ra"], v["dec"]), want)
         check(off <= PIXEL and images() == n0, f"tap: a 3 px wobble centred the tapped spot ({off:.2f}\" off), rebuilt in {dt:.1f} s, no new search")
 
-        # ---- two fingers: the second is ignored, the first finger's drag decides the centre
+        # ---- two fingers: the second turns the drag into a pinch (timelapse_zoom_ui.py): the drag goes back where it
+        # began, nothing builds, and the spreading fingers zoom in; then the Zoom bar goes back to 6 arcmin
         await cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
         n0 = images(); cx, cy = v["cx"], v["cy"]; await mark()
         await touch("touchStart", [(0, cx, cy)])
         for k in range(1, 6): await touch("touchMove", [(0, cx - 20 * k, cy)])
         await touch("touchStart", [(0, cx - 100, cy), (1, cx + 150, cy + 100)])
         for k in range(1, 6): await touch("touchMove", [(0, cx - 100, cy), (1, cx + 150 + 16 * k, cy + 100 + 16 * k)])
-        await touch("touchEnd")
-        want = moved(v, -100, 0)
-        dt = await rebuilt(); v = await view()
-        off = sep((v["ra"], v["dec"]), want)
-        check(off <= PIXEL and images() == n0, f"fingers: a second finger did not move the drag ({off:.2f}\" from the first finger's centre), rebuilt in {dt:.1f} s")
+        await touch("touchEnd"); await pg.wait_for_timeout(500)
+        fov, pinched = await pg.evaluate("__lapse.state.fov"), await view()
+        check(fov < 6 and pinched["pan"] == [0, 0] and pinched["url"] == v["url"] and images() == n0 and await pg.evaluate("__lapse.state.m === window.__was"),
+              f"fingers: a second finger turned the drag into a pinch (6 -> {fov} arcmin), the photo went back and nothing rebuilt")
+        await pg.evaluate("(() => { const f = document.getElementById('fov'); f.value = 7; f.dispatchEvent(new Event('input')); })()")
 
         # ---- a drag cancelled while the last move is still building puts the photo back where that move left it
         cx, cy = v["cx"], v["cy"]; await mark()

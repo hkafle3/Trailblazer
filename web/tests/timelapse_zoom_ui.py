@@ -102,7 +102,8 @@ async def main():
 
         # while it builds: the caption must cover neither the photo's centre nor a known object's name
         COVER = """() => { const L = document.getElementById('loading'), s = getComputedStyle(L);
-          if (s.visibility !== 'visible' || +s.opacity < .5) return null;
+          // while frames build (body.busy); once they land the names may take the corner back as the caption fades
+          if (!document.body.classList.contains('busy') || s.visibility !== 'visible' || +s.opacity < .5) return null;
           const a = L.getBoundingClientRect(), p = document.getElementById('patch'), r = p.getBoundingClientRect(), q = r.width / p.width;
           const mid = [r.left + r.width / 2, r.top + r.height / 2], bad = [];
           if (a.left <= mid[0] && mid[0] <= a.right && a.top <= mid[1] && mid[1] <= a.bottom) bad.push('the centre');
