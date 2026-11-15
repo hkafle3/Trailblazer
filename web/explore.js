@@ -369,5 +369,8 @@ let showByDay = () => {};
     play.classList.add('on');
     timer = setInterval(() => { setDay(+slider.value + 2); if (+slider.value >= meta.days) stop(); }, 40);
   };
+  // Ed: the replay plays every time Explore opens. A link to a day (?day=, Find on map) lands on that day instead,
+  // and reduced motion starts still on the last day.
+  if (!new URLSearchParams(location.search).has('day') && !matchMedia('(prefers-reduced-motion: reduce)').matches) { setDay(0); timeline.onPress(); }
   document.body.dataset.ready = '1';
 })();
