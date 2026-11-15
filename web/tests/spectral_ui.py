@@ -125,8 +125,10 @@ async def main():
         assert "3 layers at most" in await ev("document.getElementById('status').textContent")
         print("PASS cap: a fourth layer is refused and the status line says so")
 
-        # 9. the Band box moves the dial into its detector (with no layers)
-        for k in list(await ev("[...__spectral.active]")): await ev(f"__spectral.toggle({k}, false)")
+        # 9. the Band box moves the dial into its detector (with no layers); back at the start spot, whose D2 list is
+        # quick (a fresh spot can wait 30 s on IRSA locally, or fail on a bad IRSA day)
+        await pg.goto(START); await pg.wait_for_function("__lapse.state.m?.detector === 'D1'", timeout=240000)
+        await dial_to(MID); await settle(MID)
         await pg.select_option("#det", "D2")
         await pg.wait_for_function("__lapse.state.m.detector === 'D2' && __lapse.state.m.channel === null && !document.body.classList.contains('busy')", timeout=240000)
         i = await ev("__spectral.i")
