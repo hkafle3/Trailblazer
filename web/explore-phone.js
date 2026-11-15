@@ -4,14 +4,14 @@
 // A tap on a marker opens a peek sheet instead of leaving the page; Layers and Examples open as bottom sheets.
 // Desktop is untouched: every handler checks `phone` first, and leaving the phone width clears what this file set.
 import { fwd, trackAt, dayDate } from './skymap.js';
-import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, move, place, win, onView, atMin, glide, glideZoom, cancel } from './explore-view.js';
+import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, move, place, win, onView, atMin, glide, glideZoom, cancel, plain } from './explore-view.js';
 import { restore } from './explore-dive.js';   // back from a time-lapse, or a reload: the map where it was
 
 const phone = matchMedia('(max-width: 640px)');
 const $ = id => document.getElementById(id);
 const stage = document.querySelector('.xstage'), wrap = document.querySelector('.map-wrap');
 const sheet = $('csheet'), hint = $('maphint'), whole = $('whole'), HEAD = 60;
-export { hooks };   // explore.js sets stop: a first touch on the map stops the replay
+export { hooks };   // explore.js sets stop: it stops the replay
 
 let touched = false;
 // whole sky: the oval exactly as wide as the screen. The comet sheet's top is the bottom edge while it is open
@@ -38,10 +38,10 @@ function start() {
   $('zoomlvl').hidden = !atMin() || !hint.hidden;
 }
 function stop() {   // back to a desktop width: hand everything back to the desktop CSS
-  for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
-  wrap.classList.remove('deep-zoom');
   pts.clear();   // a pinch still on the screen must not move the desktop's map
-  closePeek();
+  closePeek();   // first: closing the sheet sets the view once more
+  for (const p of ['width', 'left', 'top']) wrap.style[p] = '';
+  wrap.classList.remove('deep-zoom'); plain();
   document.querySelectorAll('.mk.nm-off').forEach(m => m.classList.remove('nm-off'));
 }
 
@@ -57,7 +57,7 @@ let last = null, moved = 0, many = false, downAt = 0, lastTap = null, swallowUnt
 const snap = () => { const p = [...pts.values()], m = [(p[0][0] + (p[1] ?? p[0])[0]) / 2, (p[0][1] + (p[1] ?? p[0])[1]) / 2]; return { m, d: p[1] ? Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]) : 0 }; };
 stage.addEventListener('pointerdown', e => {
   if (!phone.matches || e.target.closest('.tl') || (e.pointerType === 'mouse' && e.button)) return;
-  cancel(); hooks.stop(); hideHint(); measure(area());
+  cancel(); hideHint(); measure(area());   // the replay keeps playing; a single tap pauses it (explore.js)
   if (!pts.size) { moved = 0; many = false; downAt = performance.now(); }
   pts.set(e.pointerId, [e.clientX, e.clientY]);
   if (pts.size > 1) many = true;

@@ -18,10 +18,10 @@
 //   uvAt(px, py), win(u, v) the same two for map fractions (0..1 across and down the oval's box), which is how markers are placed
 //   place(u, v, px, py, w) the view corner [x, y] that puts map fraction (u, v) at window point (px, py) at width w
 //   move(f, x0, y0, x1, y1) the sky under (x0, y0) goes to (x1, y1), zoomed by f: a drag (f = 1) or a pinch
-//   M, straight()          the straightening in force (see below), and whether there is any
+//   M, straight(), plain() the straightening in force (see below), whether there is any, and take it off the page
 //   onView(fn)             fn({ W, X, Y, zoom, M, C }) after every change (zoom is W / min, 1 = whole sky; C is M's pivot)
 //   W, X, Y, A, MAXW       live read-only values; atMin(), atMax()
-//   hooks.stop()           set by explore.js: stops the coverage replay. Call it on any pan or zoom.
+//   hooks.stop()           set by explore.js: stops the coverage replay. Pans and zooms leave it playing; leaving the map stops it.
 import { fwd, fwdLon, inv, wrap as wrap180, RAD } from './skymap.js';
 
 // the deepest zoom: one pixel of the screen per pixel of the sharpest SPHEREx sky tiles (HiPS order 5, 12.9 arcsec),
@@ -96,10 +96,11 @@ function dress() {   // write M to the page
   wrap.classList.add('straight'); wrap.style.animation = 'none';   // the map's scale-in on load would hold its own transform
   wrap.style.transformOrigin = `${cx - X}px ${cy - Y}px`; wrap.style.transform = `matrix(${M[0]},${M[2]},${M[1]},${M[3]},0,0)`;
   wrap.style.setProperty('--un', `matrix(${M[3] / det},${-M[2] / det},${-M[1] / det},${M[0] / det},0,0)`);
-  wrap.style.setProperty('--veil', 1 - fade(W));   // the coverage picture is half a degree a cell: a haze over the sharp sky this close in
+  wrap.style.setProperty('--veil', Math.max(0, 1 - fade(W) * 4));   // the coverage veil would dim the sharp sky; it is gone by about 5,000 px
 }
 // the switch between the phone and desktop layouts hands .map-wrap over: it starts unstraightened
-matchMedia('(max-width: 640px)').addEventListener('change', () => { M = ID; dress(); });
+export const plain = () => { M = ID; dress(); };
+matchMedia('(max-width: 640px)').addEventListener('change', plain);
 
 // keep the sky oval in view: an oval smaller than the area stays inside it and a bigger one covers it, give or take
 // 15% of the area. The margin keeps the rule continuous, so zooming around a point never jumps where the oval
