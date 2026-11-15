@@ -279,11 +279,13 @@ async function check(request, env) {
   let size = 0;
   if (request.body) {
     const reader = request.body.getReader();
-    for (let r; !(r = await reader.read()).done;) {
-      size += r.value.byteLength;
-      if (size > MAX_CHECK_BODY) { await reader.cancel(); return tooBig(); }
-      chunks.push(r.value);
-    }
+    try {
+      for (let r; !(r = await reader.read()).done;) {
+        size += r.value.byteLength;
+        if (size > MAX_CHECK_BODY) { reader.cancel().catch(() => {}); return tooBig(); }
+        chunks.push(r.value);
+      }
+    } catch { return json({ error: 'body must be JSON', field: 'body' }, 400); }   // a broken upload is the client's fault, not the database's
   }
   const bytes = new Uint8Array(size);
   let at = 0;
