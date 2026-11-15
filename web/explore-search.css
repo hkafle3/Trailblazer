@@ -94,3 +94,7 @@ body.explore .pincard .x { top: 2px; right: 2px; width: 44px; height: 44px; padd
   .xbtns { gap: 8px; }
   body.explore .layers > summary { padding: 0 11px; gap: 6px; }
 }
+/* 320 px phones: Layers shows its icon only (its name stays for screen readers) */
+@media (max-width: 350px) {
+  body.explore #layers > summary { font-size: 0; gap: 0; padding: 0 12px; }
+}
