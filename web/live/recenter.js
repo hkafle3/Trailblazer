@@ -88,6 +88,7 @@ export function recenterable(el, { scale, moved, commit, idle = () => {}, hint =
     const d = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key], k = scale();
     if (!d || !k) return;
     e.preventDefault(); e.stopPropagation();   // not the page scroll, not the page's visit stepping
+    if (grab) return;   // a pointer is held: it decides where the centre goes
     const by = e.shiftKey ? 1 : el.getBoundingClientRect().width * k[0] / 8;
     glide = null; set([pan[0] + d[0] * by, pan[1] + d[1] * by]);
     clearTimeout(nudge); nudge = setTimeout(() => { nudge = 0; done(pan); }, 350);
