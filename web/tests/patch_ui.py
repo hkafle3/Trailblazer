@@ -5,7 +5,7 @@ seen in sky mode, a discovery is dropped when the coordinates change, the play h
 readers) once and ignores the click after a press or a drag, and the cards fit (no hidden scrolling in Descriptions,
 nothing over the photo or the timeline) at 1440x900 and 1280x720.
 Run: uv run -q --with playwright python web/tests/patch_ui.py [base url]   (default http://127.0.0.1:8787)"""
-import asyncio, json, pathlib, sys
+import asyncio, json, pathlib, sys, urllib.parse
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
@@ -90,23 +90,49 @@ async def main():
         await pg.goto(f"{BASE}/timelapse.html?ra=77.3058&dec=27.3551&det=D1&diff=1&found=C-0147")
         await pg.wait_for_function(ready, timeout=180000)
         assert (await pg.text_content("#state-label")) == "Discovered" and await pg.get_attribute("#state", "href") == "comet.html?id=C-0147" and "found=C-0147" in pg.url, "Discovered not shown"
-        # a Findings list longer than its card is a named region the keyboard can reach, with a white outline
-        knob = pg.locator("#play"); await knob.focus(); await knob.press("End")
-        await pg.wait_for_function("(t => t && !/checking/i.test(t))(document.getElementById('vKnown')?.textContent)", timeout=180000)
-        sc = await pg.evaluate("(e => [e.scrollHeight > e.clientHeight + 2, e.tabIndex, e.getAttribute('role'), e.getAttribute('aria-label')])(document.querySelector('.pv-found .pv-scroll'))")
-        if sc[0]:
-            assert sc[1:] == [0, "region", "Findings"], f"the scrolling Findings list is not a reachable region: {sc}"
-            await pg.focus("#det"); await pg.keyboard.press("Tab")
-            got = await pg.evaluate("(e => [e.matches('.pv-found .pv-scroll'), getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineColor])(document.activeElement)")
-            assert got == [True, "solid", "rgb(255, 255, 255)"], f"Tab after Band does not land on Findings with a white outline: {got}"
-            print("PASS findings: the long list is a Findings region, next after Band on Tab, with a white outline")
-        else: print("NOTE findings: this visit's list fits, so the scroll region was not exercised")
         await pg.select_option("#det", "D2"); await pg.wait_for_timeout(300)   # another band at the same spot keeps it
         assert (await pg.text_content("#state-label")) == "Discovered", "a band change dropped the discovery"
         await pg.fill("#coords", "269.4463 4.7671"); await pg.press("#coords", "Enter"); await pg.wait_for_timeout(300)
         assert (await pg.text_content("#state-label")) == "Undiscovered" and await pg.get_attribute("#state", "href") == "forums.html", "new coordinates still say Discovered"
         assert "found=" not in pg.url and await pg.is_hidden("#vName"), f"new coordinates keep the discovery: {pg.url}"
         print("PASS discovery: kept for a band change, dropped from the label, link, Found as line and address at new coordinates")
+
+        # Findings, made to overflow: /api/known answers with a dozen asteroids at the patch centre for every time asked
+        async def many(route):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(route.request.url).query); ra, dec = float(q["ra"][0]), float(q["dec"][0])
+            await route.fulfill(json={"comets": [], "asteroids": [{"name": f"2026 TEST{n}", "ra": ra + n * 1e-4, "dec": dec, "mag": 19.5} for n in range(12)]})
+        async def none(route): await route.fulfill(json={"comets": [], "asteroids": []})
+        FOUND = "(e => [e.scrollHeight > e.clientHeight + 2, e.getAttribute('tabindex'), e.getAttribute('role'), e.getAttribute('aria-label')])(document.querySelector('.pv-found .pv-scroll'))"
+        listed = "document.querySelectorAll('#vKnown .known-row:not(.faint)').length >= 12"
+        await pg.route("**/api/known**", many)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready); await pg.wait_for_function(listed)
+        await pg.wait_for_timeout(200)
+        sc = await pg.evaluate(FOUND)
+        assert sc == [True, "0", "region", "Findings"], f"the overflowing Findings list is not a reachable region: {sc}"
+        assert await pg.evaluate("getComputedStyle(document.querySelector('.pv-found .pv-scroll')).maskImage") != "none", "no fade shows there is more below"
+        await pg.focus("#det"); await pg.keyboard.press("Tab")
+        got = await pg.evaluate("(e => [e.matches('.pv-found .pv-scroll'), getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineColor, getComputedStyle(e).maskImage])(document.activeElement)")
+        assert got == [True, "solid", "rgb(255, 255, 255)", "none"], f"Tab after Band does not land on Findings with a white outline and no fade: {got}"
+        await pg.set_viewport_size({"width": 390, "height": 844}); await pg.wait_for_timeout(300)   # phones: the card grows, nothing scrolls
+        sc = await pg.evaluate(FOUND)
+        assert sc[0] is False and sc[1] is None, f"on a phone the Findings list is still a Tab stop: {sc}"
+        await pg.set_viewport_size({"width": 1440, "height": 900})
+        await pg.unroute("**/api/known**", many); await pg.route("**/api/known**", none)   # a short list: it fits, so no Tab stop
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready)
+        await pg.wait_for_function("/None passed/.test(document.getElementById('vKnown').textContent)"); await pg.wait_for_timeout(200)
+        sc = await pg.evaluate(FOUND)
+        assert sc[0] is False and sc[1] is None, f"a Findings list that fits is still a Tab stop: {sc}"
+        await pg.unroute("**/api/known**", none)
+        print("PASS findings: an overflowing list is a Findings region reached by Tab after Band, white outline, no fade while focused; no Tab stop once it fits or on a phone")
+
+        # Color Difference explains its colours to screen readers (the legend's key is decorative)
+        d = await pg.evaluate("""(() => { const c = document.getElementById('diff'), t = document.getElementById(c.getAttribute('aria-describedby'));
+            return t && !t.closest('[aria-hidden=true]') ? t.textContent : null; })()""")
+        assert d and "Orange: brighter" in d and "Blue: dimmer" in d, f"Color Difference has no accessible description: {d}"
+        await pg.click("label:has(#diff)"); await pg.focus("#play"); await pg.keyboard.press("End"); await pg.wait_for_timeout(200)
+        assert "orange brighter, blue dimmer" in await pg.get_attribute("#patch", "aria-label"), "the photo's description does not explain the colours"
+        await pg.click("label:has(#diff)")
+        print("PASS colour key, spoken: Color Difference is described as orange brighter, blue dimmer, and so is the photo while it is on")
 
         # phones: Tab follows the one column from top to bottom (the markup is in that order)
         await pg.set_viewport_size({"width": 390, "height": 844})

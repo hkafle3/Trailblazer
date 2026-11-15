@@ -90,7 +90,8 @@
   <section class="pv-card pv-others" aria-label="Others">
     <h2>Others</h2>
     <label class="pv-row"><input class="cbx" type="checkbox" id="still"><span>Hide Stationary</span></label>
-    <label class="pv-row"><input class="cbx" type="checkbox" id="diff"><span>Color Difference</span></label>
+    <label class="pv-row"><input class="cbx" type="checkbox" id="diff" aria-describedby="diff-what"><span>Color Difference</span></label>
+    <span class="sr-only" id="diff-what">Colours the photo by change since the first visit. Orange: brighter. Blue: dimmer.</span>
   </section>
 </div>
 <div id="skyui">
@@ -316,7 +317,7 @@ function draw() {
   drawMini(m, f, v);
   showVisit(m, f);
   moreBelow();
-  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from first visit' : ''}`);
+  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
 }
 
 // ---------- mini-map: the whole region, the big frame's part outlined, the target ringed ----------
