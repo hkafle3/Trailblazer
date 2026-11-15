@@ -1,0 +1,27 @@
+/* Ming's Forums search box and filter selects (design/frontend-refactor/Forums.png), copied unchanged from his forums.css
+   (e455801, on design/frontend-refactor) so the Comets page uses the same pieces. Same selectors and values as his file;
+   --e is one design pixel of Forums.png (2462 wide), set by the page that uses these. When forums.css is on main, Forums
+   can load this file instead of its own copy of these rules. */
+@import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
+
+:root { --panel-font: "Space Mono", ui-monospace, monospace; }
+
+/* ---------- search ---------- */
+.f-search { position: relative; height: calc(126 * var(--e)); min-height: 48px; box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(12 * var(--e)); background: #000; }
+.f-search:focus-within { box-shadow: 0 0 0 calc(6 * var(--e)) rgba(255, 255, 255, .12); }
+.f-search-ic { position: absolute; left: calc(44 * var(--e)); top: 50%; width: calc(42 * var(--e)); height: calc(42 * var(--e)); min-width: 18px; min-height: 18px; transform: translateY(-50%); fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; opacity: .7; pointer-events: none; }
+.f-search input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 calc(44 * var(--e)) 0 calc(112 * var(--e)); border: 0; background: transparent; color: #fff; font: 400 max(15px, calc(34 * var(--e))) var(--panel-font); outline: 0; }
+.f-search input::placeholder { color: rgba(255, 255, 255, .38); }
+.f-search input::-webkit-search-cancel-button { filter: invert(1); cursor: pointer; }
+
+.f-row { display: flex; align-items: center; justify-content: space-between; gap: calc(30 * var(--e)); height: calc(42 * var(--e)); min-height: 26px; margin: 0 0 calc(11 * var(--e)) calc(3 * var(--e)); font-size: max(14px, calc(32 * var(--e))); color: #f2f2f2; white-space: nowrap; }
+.f-box { width: calc(194 * var(--e)); min-width: 110px; height: calc(31 * var(--e)); min-height: 20px; box-sizing: border-box; padding: 0 calc(8 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(5 * var(--e)); background: #000; color: #fff;
+  font: 400 max(11px, calc(19 * var(--e))) var(--panel-font); appearance: none; -webkit-appearance: none; cursor: pointer; outline: 0; }
+.f-box:focus-visible { box-shadow: 0 0 0 2px #fff; }
+.f-box option { background: #0b0f1a; }
+
+/* phones (his @media (max-width: 760px) block, these rules only) */
+@media (max-width: 760px) {
+  .f-search { height: 54px; }
+  .f-box { width: 170px; height: 32px; font-size: 13px; }
+}

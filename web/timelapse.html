@@ -579,9 +579,10 @@ const timeline = (() => {
 // opts.diff: open on the latest visit with Color Difference on (what a click on the sky asks for)
 // opts.keep (a re-centre): stay on the visit and the layers that were on screen
 function show(m, query, opts = {}) {
-  // a re-centre that lands while the photo is still being moved waits: the next move starts its own build
+  // a re-centre that lands while the photo is still being moved waits: the next move starts its own build. Any other
+  // result shows under the gesture, which carries on from it (its release re-centres on the new photo).
   if (opts.keep && rc.moving()) return;
-  setMode('lapse'); rc.reset();
+  setMode('lapse'); if (!rc.moving()) rc.reset();
   // one check for the Explore heat map (POST /api/checks) per cell a live result is shown in, so re-centring nearby
   // counts once; keepalive so leaving the page at once does not cancel it
   if (m.key.startsWith('live') && heatCell(m.ra, m.dec) !== lastCell) {
@@ -667,7 +668,8 @@ function knownList(f) {
 async function select(key, opts) {
   cancel(); setStatus(opts?.note || '');
   if (!opts?.keep) { rc.reset(); draw(); }   // another target: a pending move of the photo is dropped
-  const m = await load(key);
+  const id = ++asked, m = await load(key);
+  if (id !== asked) return;   // a newer search or target replaced this one while its frames downloaded
   leaveFound(m.ra, m.dec);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;   // the box always names the spot on screen
   document.getElementById('det').value = m.detector;   // and the band is the one the target was baked in (D5 for Epsilon Indi B)
@@ -684,6 +686,7 @@ let lastCell = null;   // the heat-map cell of the last check posted
 // One pipeline worker for the page's life, so a re-centre reuses the image list and the pixels it already read.
 // job is the number of the build in flight (0: none); a new build, or cancel(), replaces it.
 let builder = null, job = 0, builds = 0;
+let asked = 0;   // the number of the latest search or target asked for: a target's frames that arrive later are dropped
 function cancel() { if (job) builder?.postMessage({ id: ++builds }); job = 0; }
 const statusEl = document.getElementById('status');
 // a short reason for the status line; the full error stays in its tooltip
@@ -716,7 +719,7 @@ function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
   if (!opts.keep) { rc.reset(); draw(); }   // another search: a pending move of the photo is dropped
-  owed = false;   // a rollback still waiting for a gesture to end: this search replaces it
+  owed = false; asked++;   // a rollback still waiting for a gesture, or a target still loading: this search replaces it
   leaveFound(ra, dec);
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }

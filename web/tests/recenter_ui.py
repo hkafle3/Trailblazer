@@ -265,6 +265,15 @@ async def main():
         off = sep((v["ra"], v["dec"]), want)
         check(mid["pan"][0] < 0 and off <= PIXEL and agree(v) < 1, f"mixed input: arrow then click, the clicked spot is the centre ({off:.2f}\" off), rebuilt in {dt:.1f} s")
 
+        # ---- an arrow key pressed while a pointer is held is ignored: the release decides (a tap there: that spot)
+        await pg.focus("#patch"); await mark(); tx, ty = v["cx"] + 70, v["cy"] - 50
+        await pg.mouse.move(tx, ty); await pg.mouse.down(); await pg.keyboard.press("ArrowRight"); held = (await view())["pan"]
+        await pg.wait_for_timeout(250); await pg.mouse.up()
+        want = moved(v, v["cx"] - tx, v["cy"] - ty)
+        dt = await rebuilt(); await pg.wait_for_timeout(800); v = await view()   # long enough for a stray key move to land
+        off = sep((v["ra"], v["dec"]), want)
+        check(held == [0, 0] and off <= PIXEL and agree(v) < 1, f"held pointer: ArrowRight ignored (pan {held}), the tapped spot is the centre ({off:.2f}\" off), rebuilt in {dt:.1f} s")
+
         # ---- three small nudges inside one heat-map cell post no new check
         p1 = posts()
         for key in ("Shift+ArrowUp", "Shift+ArrowLeft", "Shift+ArrowDown"):
@@ -322,6 +331,23 @@ async def main():
               f"held through a failure: the D3 search failed mid-drag (selector {during['det']}), the cancel went back ({v['url']}, box '{v['box']}', selector {v['det']})")
         await ctx.unroute("**/api/images*det=D3*")
 
+        # ---- another band chosen, then a drag started before its frames land: they show under the drag, which carries on
+        # from them, and the release re-centres on them (D4: no earlier step built it)
+        a = v; await mark()
+        await pg.select_option("#det", "D4")
+        await pg.mouse.move(a["cx"], a["cy"]); await pg.mouse.down(); await pg.mouse.move(a["cx"] + 60, a["cy"] + 30, steps=5)
+        held = (await view())["pan"]
+        await pg.wait_for_function("__lapse.state.m !== window.__was || document.getElementById('status').className === 'err'", timeout=240000)
+        under = await view(); await mark()
+        await pg.mouse.move(a["cx"] + 90, a["cy"] + 50, steps=4); await pg.mouse.up()
+        want = deproject((under["ra"], under["dec"]), 90 * under["kx"] * under["aps"], 50 * under["ky"] * under["aps"])
+        try: await pg.wait_for_function("__lapse.state.m !== window.__was", timeout=90000)
+        except Exception: pass   # nothing re-centred: the check below says so
+        await pg.wait_for_timeout(300); v = await view()
+        off = sep((v["ra"], v["dec"]), want)
+        check(under["mdet"] == "D4" and under["pan"] == held and held != [0, 0] and off <= PIXEL and v["mdet"] == "D4" and agree(v) < 1,
+              f"band then drag: D4 landed under the drag (pan {under['pan']} kept), the release re-centred on it ({off:.2f}\" off, {v['url']})")
+
         # ---- a re-centre that fails goes back to the last spot: photo, URL and box agree with the panel
         await ctx.route("**/api/images*", lambda route: route.fulfill(status=502, content_type="application/json", body='{"error":"IRSA is not answering"}'))
         keep = v
@@ -368,6 +394,21 @@ async def main():
         check(label0 == label == "Discovered" and "found=TEST-1" in url and box == f"{START[0]:.4f} {START[1]:.4f}",
               f"discovery: B then C, C failed, A is back as '{label}' ({url}, box '{box}')")
         await pg2.close()
+
+        # ---- a target whose frames are slow to download, then a live search that lands first: the target's frames,
+        # arriving later, do not replace the newer photo
+        async def slow(route): await asyncio.sleep(15); await route.continue_()
+        await ctx.route("**/data/flip/barnard/manifest.json", slow)
+        pg3 = await ctx.new_page(); t0 = time.time()
+        await pg3.goto(f"{BASE}/timelapse.html?target=barnard")
+        await pg3.fill("#coords", f"{START[0]} {START[1]}"); await pg3.evaluate("document.getElementById('search').requestSubmit()")
+        await pg3.wait_for_function("__lapse.state.m && /visits, built/.test(document.getElementById('status').textContent)", timeout=240000)
+        first = time.time() - t0
+        await pg3.wait_for_timeout(max(0, (17 - first) * 1000))   # the target's frames have arrived by now
+        got = await pg3.evaluate("[__lapse.state.m.key, location.search, document.getElementById('coords').value]")
+        check(first < 15 and got[0].startswith("live") and got[1].startswith("?ra=") and got[2] == f"{START[0]:.4f} {START[1]:.4f}",
+              f"slow target: the live search landed in {first:.1f} s, before Barnard's frames, and stayed on screen after they arrived ({got[0]}, {got[1]})")
+        await pg3.close(); await ctx.unroute("**/data/flip/barnard/manifest.json")
         await b.close()
     sys.exit(1 if fails else 0)
 
