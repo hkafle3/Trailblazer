@@ -23,7 +23,11 @@
 // Reduced motion: no flight. The time-lapse simply takes the map's place, and back swaps the map in again.
 import { fwd, RAD } from './skymap.js';
 import * as view from './explore-view.js';
-import * as deep from './explore-deep.js';
+// The deep layer is fetched this way, not with a plain import: the phone and desktop files import this one, and a plain
+// import here would run explore-deep.js before them. Its switch between phone and desktop layouts must run after
+// theirs (it hides the layer last), and listeners run in the order the files did (deep_zoom_ui.py, "handoff with a sheet open").
+let deep = null;
+import('./explore-deep.js').then(m => { deep = m; }, () => {});
 
 const $ = id => document.getElementById(id);
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
@@ -66,8 +70,8 @@ export function restore() {
 // resting at the deepest zoom costs nothing. With no deep layer (no WebGL, or its tiles not in yet) the frame flies over
 // the map's plain sky picture.
 function snapshot() {
-  const st = deep.state(), c = document.querySelector('#map canvas.hips');
-  if (!st.shown || st.lost || st.dead || !c?.width) return null;
+  const st = deep?.state(), c = document.querySelector('#map canvas.hips');
+  if (!st?.shown || st.lost || st.dead || !c?.width) return null;
   deep.redraw();   // a WebGL canvas can only be copied in the task that drew it
   const o = new OffscreenCanvas(c.width, c.height);
   o.getContext('2d').drawImage(c, 0, 0);
