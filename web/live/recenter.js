@@ -4,7 +4,9 @@
 //   scale()         -> [x, y] grid pixels per CSS pixel, or null while there is no photo
 //   moved()         the photo moved: redraw it shifted by .pan (sky outside the loaded grid stays empty)
 //   commit(pan)     make the spot `pan` from the built centre the new centre (build it, update the URL and the box)
-// The page calls reset() when frames for a new centre land, and asks moving() before it swaps frames mid-gesture.
+// The page calls reset() when frames for a new centre land and when another search starts (it also drops a pending
+// arrow-key move), and asks moving() before it swaps frames mid-gesture. One pointer at a time: a second finger is
+// ignored until the first lifts.
 import { tanDeproject } from './fits.js';
 
 export const TAP = 5;   // CSS px: a press that moves less than this is a click on that spot, not a drag
@@ -37,15 +39,16 @@ export function recenterable(el, { scale, moved, commit, hint = 'Drag or click t
 
   el.tabIndex = 0;   // Tab to the photo, then the arrow keys move it
   try { if (!localStorage.getItem('ch.recenter')) el.title = hint; } catch {}   // until the first re-centre
+  const mine = e => grab && e.pointerId === grab.id;
   el.addEventListener('pointerdown', e => {
     const k = scale();
-    if (!k || e.button) return;
+    if (!k || e.button || grab) return;
     glide = null;
-    grab = { x: e.clientX, y: e.clientY, pan, moved: 0, k };
+    grab = { id: e.pointerId, x: e.clientX, y: e.clientY, pan, moved: 0, k };
     el.setPointerCapture(e.pointerId);
   });
   el.addEventListener('pointermove', e => {
-    if (!grab) return;
+    if (!mine(e)) return;
     const dx = e.clientX - grab.x, dy = e.clientY - grab.y;
     grab.moved = Math.max(grab.moved, Math.hypot(dx, dy));
     if (grab.moved <= TAP) return;
@@ -53,18 +56,20 @@ export function recenterable(el, { scale, moved, commit, hint = 'Drag or click t
     set([grab.pan[0] + dx * grab.k[0], grab.pan[1] + dy * grab.k[1]]);
   });
   el.addEventListener('pointerup', e => {
-    if (!grab) return;
+    if (!mine(e)) return;
     const g = grab, b = el.getBoundingClientRect(); grab = null; el.classList.remove('drag');
     el.blur();   // after a pointer the arrow keys step through visits again; Tab to the photo to move it with them
     if (g.moved > TAP) return done(pan);   // a drag: the centre moves by what was dragged
     const to = [g.pan[0] + (b.left + b.width / 2 - e.clientX) * g.k[0], g.pan[1] + (b.top + b.height / 2 - e.clientY) * g.k[1]];
     ease(to); done(to);   // a click or a tap: that spot becomes the centre
   });
-  // a cancelled drag goes back to where it started (frames that landed meanwhile are in the page's cache)
-  el.addEventListener('pointercancel', () => {
-    if (!grab) return;
+  // a cancelled drag goes back to where it started: the photo at once, and that centre is asked for again when it
+  // was itself a move still building (frames that landed meanwhile are in the page's cache)
+  el.addEventListener('pointercancel', e => {
+    if (!mine(e)) return;
     const p = grab.pan; grab = null; el.classList.remove('drag');
-    if (p[0] || p[1]) done(p); else set(p);
+    set(p);
+    if (p[0] || p[1]) done(p);
   });
   // arrow keys move the view an eighth of its width (Shift: one pixel); the new centre builds once the keys rest
   el.addEventListener('keydown', e => {
@@ -78,7 +83,7 @@ export function recenterable(el, { scale, moved, commit, hint = 'Drag or click t
 
   return {
     get pan() { return pan; },
-    reset() { glide = null; pan = [0, 0]; },
+    reset() { glide = null; pan = [0, 0]; clearTimeout(nudge); nudge = 0; },
     moving: () => !!(grab || nudge),
   };
 }

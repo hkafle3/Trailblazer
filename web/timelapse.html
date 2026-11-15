@@ -316,6 +316,7 @@ function knownList(f) {
 }
 async function select(key, opts) {
   cancel(); setStatus(opts?.note || '');
+  if (!opts?.keep) { rc.reset(); draw(); }   // another target: a pending move of the photo is dropped
   document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === key));
   const m = await load(key);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;   // the box always names the spot on screen
@@ -325,7 +326,9 @@ async function select(key, opts) {
 // ---------- live: any RA/Dec. The browser does the astronomy in a Web Worker (live/pipeline.js); a small
 // Cloudflare Worker (worker/) only finds the images. Results are kept for this session.
 const API = P.get('api') || '';   // the same Worker serves this page and /api (npm run dev); ?api= points elsewhere
-const live = new Map();
+// the last LIVE_KEPT results, for an instant return to a spot (about 650 KB each); the least recently shown goes first
+const live = new Map(), LIVE_KEPT = 8;
+function remember(key, m) { live.delete(key); live.set(key, m); if (live.size > LIVE_KEPT) live.delete(live.keys().next().value); return m; }
 // One pipeline worker for the page's life, so a re-centre reuses the image list and the pixels it already read.
 // job is the number of the build in flight (0: none); a new build, or cancel(), replaces it.
 let builder = null, job = 0, builds = 0;
@@ -350,22 +353,25 @@ function parseCoords(text) {
 function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
+  if (!opts.keep) { rc.reset(); draw(); }   // another search: a pending move of the photo is dropped
   document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', 'false'));
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
-  if (live.has(key)) { cancel(); setStatus(''); return show(live.get(key), query, opts); }
+  if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
   const t0 = performance.now(), id = job = ++builds;
   builder ??= new Worker('live/pipeline.js', { type: 'module' });
   setStatus('Finding SPHEREx images of this spot...');
   if (opts.diff) setMode('lapse');   // a sky click lands on the time-lapse right away; frames arrive in seconds
+  // a failed re-centre goes back to the spot the frames on screen describe
+  const fail = (text, full) => { job = 0; if (opts.keep) { back(); text += ' Back at the last spot.'; } setStatus(text, true); if (full) statusEl.title = full; };
   builder.onmessage = ({ data: m }) => {
     if (m.id !== job) return;
     if (m.type === 'progress') setStatus(m.text + '...');
     else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
-    else if (m.type === 'empty') { job = 0; setStatus(`No SPHEREx images of this spot on ${det} yet. Try another detector.`, true); }
-    else if (m.type === 'error') { job = 0; setStatus(`${brief(m.error)}. The targets below always work.`, true); statusEl.title = m.error; }
+    else if (m.type === 'empty') fail(`No SPHEREx images of this spot on ${det} yet.${opts.keep ? '' : ' Try another detector.'}`);
+    else if (m.type === 'error') fail(`${brief(m.error)}.${opts.keep ? '' : ' The targets below always work.'}`, m.error);
     else if (m.type === 'done') {
       job = 0;
-      live.set(key, prep(m.manifest));
+      remember(key, prep(m.manifest));
       // one check for the Explore heat map (POST /api/checks); keepalive so leaving the page at once does not cancel it
       fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra, dec }) }).catch(() => {});
       setStatus(`${m.manifest.frames.length} visits, built in ${((performance.now() - t0) / 1000).toFixed(1)} s from NASA's public SPHEREx copy`);
@@ -387,10 +393,21 @@ function recenter(pan) {
   history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${m.detector}`);   // the URL names the new spot at once
   search(ra, dec, m.detector, { keep: true });
 }
+// back to the view the frames on screen describe (photo, box, detector, URL): the photo and the panel always name
+// the same spot. A move still in progress makes its own build instead.
+function back() {
+  const m = state.m; if (!m || rc.moving()) return;
+  rc.reset(); draw();
+  const baked = !m.key.startsWith('live');
+  document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;
+  document.getElementById('det').value = m.detector;
+  document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', baked && b.dataset.key === m.key));
+  history.replaceState(null, '', baked ? `?target=${m.key}` : `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}`);
+}
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const k = Math.round(state.fov * 60 / state.m.arcsec_per_pixel) / patch.getBoundingClientRect().width; return [k, k]; },
   moved: () => draw(), commit: recenter });
-window.__lapse = { state, recenter, get pan() { return rc.pan; } };   // for tests/recenter_ui.py
+window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 document.getElementById('search').onsubmit = e => {
   e.preventDefault();

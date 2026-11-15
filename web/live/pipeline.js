@@ -140,7 +140,10 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
   const alive = () => { if (id !== cur) throw new Error('replaced by a newer build'); };
   try {
     const t0 = performance.now();
-    const maps = await (mapsP ??= fetch(new URL('../data/wavemaps.json', import.meta.url)).then(r => r.json()));
+    // a failed download is forgotten, so the next build tries again (the worker outlives errors)
+    const maps = await (mapsP ??= fetch(new URL('../data/wavemaps.json', import.meta.url))
+      .then(r => { if (!r.ok) throw new Error(`wavelength maps: HTTP ${r.status}`); return r.json(); })
+      .catch(e => { mapsP = null; throw e; }));
     alive();
     if (!maps[det]) return post({ type: 'error', error: `no wavelength map for ${det} yet` });
     // the images of a visit that cover this spot, each with the wavelength it has there (copies: a build never
@@ -181,13 +184,16 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
     if (!usable.length) return post({ type: 'empty' });
     const { lam0, tol, picked } = match(usable);
 
-    // Gaia, fetched while frames build: the star at this spot, propagated from 2016.0 to the target epoch (2026.0).
+    // Gaia: the star at this spot, propagated from 2016.0 to the target epoch (2026.0).
     // The Worker answers with every 2016 position within 144" of the spot asked. A re-centre within 100" of the last
     // spot tries those stars first and waits for its own answer (1.5 s, or 20 s on a slow IRSA day) only when none
     // fits: a fast star's 2016 position can sit 100" from where it is now (Barnard's Star), outside the old cone.
-    const cached = gaiaAt && Math.hypot((gaiaAt.ra - ra) * Math.cos(dec * D2R), gaiaAt.dec - dec) * 3600 <= 100 ? gaiaAt.stars : [];
-    const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`, { signal })   // v=3: Gaia from IRSA; drops answers cached before the switch
+    // With no stars to try, the request starts now and runs beside the frames.
+    const cached = gaiaAt && Math.hypot((gaiaAt.ra - ra) * Math.cos(dec * D2R), gaiaAt.dec - dec) * 3600 <= 100 ? gaiaAt.stars : null;
+    let gaiaP = null;
+    const ask = () => gaiaP ??= fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`, { signal })   // v=3: Gaia from IRSA; drops answers cached before the switch
      .then(r => r.ok ? r.json() : null).catch(() => null).then(g => { if (g?.stars) gaiaAt = { ra, dec, stars: g.stars }; return g?.stars || []; });
+    if (!cached) ask();
 
     const frames = [];
     for (const [n, v] of picked.entries()) {
@@ -225,8 +231,8 @@ self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
       }
       return [star, best];
     };
-    let [gaia, bestOff] = fit(seen.length ? cached : []);
-    if (seen.length && !(bestOff <= slack)) [gaia, bestOff] = fit(await Promise.race([gaiaP, new Promise(r => setTimeout(() => r([]), 8000))]));   // Gaia late: show the frames without it
+    let [gaia, bestOff] = fit(seen.length && cached ? cached : []);
+    if (seen.length && !(bestOff <= slack)) [gaia, bestOff] = fit(await Promise.race([ask(), new Promise(r => setTimeout(() => r([]), 8000))]));   // Gaia late: show the frames without it
     if (gaia && bestOff <= slack) frames.forEach(f => { [f.pred_east, f.pred_north] = pred(gaia, f); });
     else gaia = null;
     // straight-line motion fit from detected positions: at least 3 visits spanning half a year, with the
