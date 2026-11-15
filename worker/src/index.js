@@ -114,7 +114,11 @@ async function images(url) {
     for (const x of rows) if (!seen.has(x.obs_id)) seen.set(x.obs_id, { t: Number(x.t_min), key: s3Key(x), obs: x.obs_id, coll });  // DR1 first wins
   });
   const list = [...seen.values()].sort((a, b) => a.t - b.t);
-  return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts }, 200, { 'Cache-Control': 'public, max-age=86400' });
+  // a failed collection (the deep fields' searches are the slow ones) must never be remembered as "no images"
+  const partial = Object.values(counts).includes('failed');
+  if (partial && !list.length)
+    return json({ error: 'IRSA search is not answering, try again or pick a baked target', retry_after: 30 }, 503, { 'Retry-After': '30' });
+  return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
 }
 
 async function gaia(url) {
@@ -243,10 +247,12 @@ export default {
     }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/explored': explored }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
-    const cache = caches.default, hit = await cache.match(request);
+    // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
+    const key = new URL(url); key.searchParams.set('cache', 'v2');
+    const cache = caches.default, hit = await cache.match(key);
     if (hit) return hit;
     const res = await route(url);
-    if (res.status === 200) ctx.waitUntil(cache.put(request, res.clone()));
+    if (res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '')) ctx.waitUntil(cache.put(key, res.clone()));
     return res;
   }
 };
