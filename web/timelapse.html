@@ -36,6 +36,9 @@
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
     <!-- while a time-lapse builds: what it is doing and how far along (the status line in Descriptions says it to screen readers) -->
     <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
+    <!-- Spectrum mode: while it is on, a click or tap on the photo picks that star for the Spectrum card instead of
+         re-centring (a drag still moves the photo). The button says which mode the photo is in. -->
+    <button class="pv-specbtn" id="spec-mode" type="button" aria-pressed="false" title="Turn on, then click a star to see its spectrum"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span>Spectrum</span></button>
     <div id="legend" aria-hidden="true">
       <div class="lg-row"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
       <!-- Color Difference's key, only while it is on: square swatches, since it is the photo's pixels that are coloured -->
@@ -83,6 +86,24 @@
     <p class="pv-info" id="vVisit"></p>
     <p class="pv-info" id="vMotion"></p>
     <p class="pv-info"><b>Known comets and asteroids</b><span id="vKnown" aria-live="polite"></span></p>
+    </div>
+  </section>
+
+  <!-- the spectrum of the picked star: Ming's Descriptions card, in the right column's place while open (as Discuss is);
+       on phones it fills the Info tab. live/spectrum.js measures it, the "Spectrum card" block in the script draws it. -->
+  <section class="pv-card pv-spec" id="spec" aria-labelledby="spec-h">
+    <h2 id="spec-h">Spectrum<button class="close" id="spec-close" type="button" aria-label="Close the spectrum"><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button></h2>
+    <div class="pv-scroll" role="region" aria-label="Spectrum">
+      <p class="pv-info" id="spec-where"></p>
+      <p class="pv-info" id="spec-status" role="status" aria-live="polite"></p>
+      <i class="spec-line" id="spec-line" aria-hidden="true"></i>
+      <svg id="spec-chart" role="img" aria-label="Spectrum chart"></svg>
+      <div class="spec-key" id="spec-key" aria-hidden="true"></div>
+      <div class="spec-tools">
+        <label class="spec-log"><input class="cbx" type="checkbox" id="spec-log">Log scale</label>
+        <button class="spec-csv" id="spec-csv" type="button" disabled>Download CSV</button>
+      </div>
+      <p class="pv-info spec-note">Each dot is one SPHEREx exposure, light in a circle 18″ wide minus the sky around it. Absolute brightness is approximate. A step between two detectors can come from the instrument, not the star. Hollow dots may be off: hover for why. Ticks on the axis are wavelengths with no usable exposure.</p>
     </div>
   </section>
 
@@ -142,7 +163,8 @@
 import * as THREE from 'three';
 import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } from './sky.js';
 import { recenterable, panToSky, heatCell } from './live/recenter.js';
-import { CHANNELS, colourOf, align, mix } from './live/spectral.js';
+import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
+import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
 import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Undiscovered, and Discovered for reported dots
 
 const TARGETS = [
@@ -471,6 +493,7 @@ function draw() {
     ctx.textAlign = 'left';
     window.__labels = { rings: taken.slice(0, rings), names: taken.slice(rings) };
   }
+  specRing(toPx, f);
   knownList(f);
   drawMini(m, f, v);
   showVisit(m, f);
@@ -639,7 +662,7 @@ function show(m, query, opts = {}) {
   document.getElementById('pv-name').textContent = m.key.startsWith('live') ? 'Sky spot' : m.name;   // the phone's title row
   document.getElementById('pv-radec').textContent = `RA ${m.ra.toFixed(2)} Dec ${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(2)}`;
   panel(m); draw();
-  history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : ''));
+  history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
   knownFor(m);
   spSync();
 }
@@ -839,7 +862,7 @@ function recenter(pan) {
   if (home) return select(home.key, { keep: true });
   document.getElementById('coords').value = `${ra.toFixed(4)} ${dec.toFixed(4)}`;
   document.getElementById('det').value = m.detector;   // a baked target keeps its own detector when it goes live
-  history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${m.detector}${spQuery()}`);   // the URL names the new spot at once
+  history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${m.detector}${spQuery()}${specQ()}`);   // the URL names the new spot at once
   search(ra, dec, m.detector, { keep: true });
 }
 // back to the view the frames on screen describe (photo, box, band, discovery, URL): the photo and the panel always
@@ -852,14 +875,14 @@ function back() {
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;
   document.getElementById('det').value = m.detector;
   const query = m.key.startsWith('live') ? `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}` : `?target=${m.key}`;
-  history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : ''));
+  history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
   return true;
 }
 // grid pixels per CSS pixel across and down: the frame is not square, and its CSS size can differ from its pixels
 // (the exact box, not clientWidth's whole pixels, since pointer positions are fractional)
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
-  moved: () => draw(), commit: recenter, idle: () => { if (owed) { owed = false; back(); } } });
+  moved: () => draw(), commit: recenter, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
 talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text) });
 window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
@@ -878,7 +901,7 @@ function spSync() {
   // a baked target is one fixed wavelength: a channel asks for that spot live
   // with no channel, the band in the Band box (it follows the dial, and a Band change sets it)
   if (ch !== (m.channel ?? null) || (ch != null && !m.key.startsWith('live'))) return search(m.ra, m.dec, ch == null ? document.getElementById('det').value : m.detector, { keep: true });
-  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}`);
+  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}${specQ()}`);
   const spot = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, have = [], missing = [], missed = [];
   for (const { n, detector } of state.spectral) {
     const lm = n === ch ? m : live.get(`${spot},${detector}@${n}`);
@@ -922,6 +945,172 @@ addEventListener('spectral-layers', () => {
 });
 addEventListener('spectral-full', () => setStatus(`${spectral.max} layers at most. Click one to turn it off.`));
 Object.defineProperties(window.__lapse, { channels: { value: CHANNELS }, builds: { get: () => builds } });   // for tests/spectral_ui.py
+
+// ---------- Spectrum card: click a star, get its spectrum (live/spectrum.js measures it) ----------
+// The Spectrum button turns the photo's click into a pick: the click lands on the nearest bright pixel within 10″ (the
+// target, if it is there), and that sky spot is measured in the exposure nearest the middle of each of SPHEREx's 102
+// channels, all six detectors. A Gaia star at the spot gives its id, and its motion moves the circle exposure by exposure
+// (Barnard's Star moves 10″ a year). Drags and arrow keys still re-centre. &spec=ra,dec reopens it.
+const SPEC_COLOURS = Object.fromEntries(SP_BANDS.map(([lo, hi], n) => [`D${n + 1}`, `rgb(${colourOf((lo + hi) / 2).map(Math.round).join(',')})`]));
+const spec = { mode: false, at: null, gaia: null, res: null, ctl: null, log: false, n: 0 };
+let specMaps = null;
+const specEl = id => document.getElementById(id);
+const specQ = () => spec.at ? `&spec=${spec.at.ra.toFixed(5)},${spec.at.dec.toFixed(5)}` : '';
+const yearOf = mjd => 2000 + (mjd - 51544.5) / 365.25;
+// a Gaia star's place in a given year (positions are for 2016.0)
+const gaiaAt = (s, year) => { const dt = year - 2016; return [s.ra + s.pmra / 3.6e6 * dt / Math.cos(s.dec * D2R), s.dec + s.pmdec / 3.6e6 * dt]; };
+function specMode(on) {
+  spec.mode = on;
+  specEl('spec-mode').setAttribute('aria-pressed', on);
+  specEl('spec-mode').querySelector('span').textContent = on ? 'Pick a star' : 'Spectrum';
+  patch.classList.toggle('picking', on);
+}
+specEl('spec-mode').onclick = () => specMode(!spec.mode);
+// a click on the photo in Spectrum mode: `to` is the pan that would centre the spot (live/recenter.js)
+function specTap(to) {
+  const m = state.m;
+  if (!spec.mode || !m) return false;
+  const G = m.grid, f = m.frames[state.i], c0 = (G - 1) / 2;
+  let gx = c0 - to[0], gr = c0 - to[1];   // grid column, and row from the top (north)
+  if (f.x != null && Math.hypot(f.x - gx, G - 1 - f.y - gr) < 3) [gx, gr] = [f.x, G - 1 - f.y];   // the target
+  else {   // the brightest pixel within 2 (10″)
+    let best = -Infinity, at = null;
+    for (let r = Math.round(gr) - 2; r <= Math.round(gr) + 2; r++) for (let c = Math.round(gx) - 2; c <= Math.round(gx) + 2; c++) {
+      const v = r >= 0 && c >= 0 && r < G && c < G ? f.px[r * G + c] : NaN;
+      if (Number.isFinite(v) && Math.hypot(c - gx, r - gr) <= 2.5 && v > best) { best = v; at = [c, r]; }
+    }
+    if (at) [gx, gr] = at;
+  }
+  const [ra, dec] = panToSky(m.ra, m.dec, [c0 - gx, c0 - gr], m.arcsec_per_pixel);
+  openSpec(ra, dec, f.year);
+  return true;
+}
+// measure the spot (ra, dec), where it is in `year` (the frame it was picked on)
+async function openSpec(ra, dec, year = 2026) {
+  spec.ctl?.abort();
+  const ctl = spec.ctl = new AbortController(), n = ++spec.n, mine = () => n === spec.n;
+  if (document.body.classList.contains('talking')) document.querySelector('#talk .close')?.click();   // one card in the right column
+  spec.at = { ra, dec }; spec.gaia = null; spec.res = null;
+  document.body.classList.add('speccing');
+  if (matchMedia('(max-width: 640px)').matches) tabs.querySelector('[data-t=info]').click();   // phones: the card is the Info tab
+  specEl('spec-csv').disabled = true;
+  specEl('spec-where').textContent = `RA ${ra.toFixed(4)}, Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(4)}`;
+  specStatus('Looking the spot up in Gaia...', 0);
+  specChart(); draw(); specUrl();
+  try {
+    // Gaia: the star whose place in `year` is within 8″ of the spot (Gaia answers late: go on without it)
+    const g = await Promise.race([fetch(`${API}/api/gaia?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&v=4`, { signal: ctl.signal }).then(r => r.ok ? r.json() : null).catch(() => null),
+      new Promise(r => setTimeout(() => r(null), 8000))]);
+    if (!mine()) return;
+    const sep = s => { const [a, d] = gaiaAt(s, year); return Math.hypot((a - ra) * Math.cos(dec * D2R), d - dec) * 3600; };
+    const star = (g?.stars || []).reduce((b, s) => (!b || sep(s) < sep(b) ? s : b), null);
+    if (star && sep(star) <= 8) {
+      spec.gaia = star;
+      [spec.at.ra, spec.at.dec] = gaiaAt(star, 2026);   // the link names the star's 2026.0 place, so it reopens on it
+      specUrl();
+    }
+    specWhere(g == null);
+    specMaps ??= fetch('data/wavemaps.json').then(r => { if (!r.ok) throw new Error(`wavelength maps: HTTP ${r.status}`); return r.json(); }).catch(e => { specMaps = null; throw e; });
+    const maps = await specMaps;
+    const at = spec.gaia ? t => gaiaAt(spec.gaia, yearOf(t)) : () => [ra, dec];
+    const res = await measureSpectrum(spec.at.ra, spec.at.dec, { api: API, maps, signal: ctl.signal, at, progress: (text, p) => mine() && specStatus(text, p) });
+    if (!mine()) return;
+    spec.res = res;
+    const doubt = res.points.filter(p => p.doubt).length, sat = res.gaps.filter(g => /saturated/.test(g.why)).length;
+    specStatus(res.points.length ? `${res.points.length} of 102 channels measured${doubt ? `, ${doubt} doubtful (hollow)` : ''}${res.gaps.length ? `, ${res.gaps.length} gaps` : ''}. From ${res.covering} exposures.`
+      : sat > res.gaps.length / 2 ? `SPHEREx saturates on this star at ${sat} of 102 wavelengths: it is too bright to measure cleanly here. Fainter stars work.`
+      : `No usable exposure of this spot (${res.found} exposures searched).`);
+    specEl('spec-csv').disabled = !res.points.length;
+    specChart(); draw();
+  } catch (e) {
+    if (mine() && !ctl.signal.aborted) specStatus(`Could not measure it: ${brief(String(e.message || e))}.`);
+  }
+}
+function specWhere(gaiaDown) {
+  const s = spec.gaia, el = specEl('spec-where');
+  el.textContent = `RA ${spec.at.ra.toFixed(4)}, Dec ${spec.at.dec >= 0 ? '+' : ''}${spec.at.dec.toFixed(4)}`;
+  el.append(document.createElement('br'), s ? Object.assign(document.createElement('b'), { textContent: `Gaia DR3 ${s.id ?? ''}` }) : gaiaDown ? 'Gaia did not answer' : 'No Gaia star within 8″');
+  if (s) el.append(` · G ${s.g.toFixed(1)}`);
+}
+function specStatus(text, p = null) {
+  specEl('spec-status').textContent = text;
+  specEl('spec-line').style.setProperty('--p', p == null ? '' : `${Math.round(100 * p)}%`);
+  specEl('spec-line').hidden = p == null;
+  moreBelow();
+}
+function specUrl() {
+  const u = new URL(location.href);
+  if (spec.at) u.searchParams.set('spec', `${spec.at.ra.toFixed(5)},${spec.at.dec.toFixed(5)}`); else u.searchParams.delete('spec');
+  history.replaceState(null, '', u);
+}
+function closeSpec() {
+  spec.ctl?.abort(); spec.n++; spec.at = spec.gaia = spec.res = null;
+  document.body.classList.remove('speccing'); specMode(false); specUrl(); draw();
+  specEl('spec-mode').focus();
+}
+specEl('spec-close').onclick = closeSpec;
+specEl('spec').addEventListener('keydown', e => { if (e.key === 'Escape') closeSpec(); });
+specEl('spec-log').onchange = e => { spec.log = e.target.checked; specChart(); };
+specEl('spec-csv').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([spectrumCsv(spec.res.points)], { type: 'text/csv' }));
+  a.download = `spherex-spectrum-${spec.at.ra.toFixed(4)}_${spec.at.dec.toFixed(4)}.csv`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+// the ring on the photo: the measuring circle (18″ across) where the star is in this visit
+function specRing(toPx, f) {
+  const m = state.m; if (!spec.at || !m) return;
+  const [ra, dec] = spec.gaia ? gaiaAt(spec.gaia, f.year) : [spec.at.ra, spec.at.dec], [e, n] = offset(m, ra, dec), G = m.grid;
+  const [x, y] = toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel);
+  const r = Math.max(10, 3 * 6.15 / m.arcsec_per_pixel * patch.width / view(m).cw);
+  for (const [color, width] of [['rgba(0,0,0,.85)', 4], ['#9fe8ff', 1.6]]) {
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(x + dx * (r + 3), y + dy * (r + 3)); ctx.lineTo(x + dx * (r + 11), y + dy * (r + 11)); }
+    ctx.stroke();
+  }
+}
+// the chart: flux against wavelength, 0.75 to 5 µm, a colour per detector, hollow where doubtful, ticks for gaps
+function specChart() {
+  const svg = specEl('spec-chart'), NS = 'http://www.w3.org/2000/svg', res = spec.res;
+  svg.replaceChildren();
+  const add = (tag, attrs, title) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (title) e.append(Object.assign(document.createElementNS(NS, 'title'), { textContent: title })); svg.append(e); return e; };
+  const W = Math.max(240, Math.round(svg.clientWidth || 300)), H = Math.round(Math.min(260, Math.max(150, W * (innerWidth <= 640 ? 0.52 : 0.8))));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.style.aspectRatio = `${W} / ${H}`;
+  const X0 = 46, X1 = W - 8, Y0 = 16, Y1 = H - 22;
+  const sx = l => X0 + (l - 0.75) / 4.25 * (X1 - X0);
+  const pts = res ? res.points.filter(p => !spec.log || p.flux > 0) : [];
+  let lo = 0, hi = 1;
+  if (pts.length) {
+    hi = Math.max(...pts.map(p => p.flux + (spec.log ? 0 : p.err)));
+    lo = spec.log ? Math.min(...pts.map(p => p.flux)) : Math.min(0, ...pts.map(p => p.flux - p.err));
+  }
+  const L = v => Math.log10(v), y0 = spec.log ? L(lo) - 0.1 : lo, y1 = spec.log ? L(hi) + 0.1 : hi * 1.08 || 1;
+  const sy = v => Y1 - ((spec.log ? L(Math.max(v, lo / 10)) : v) - y0) / (y1 - y0) * (Y1 - Y0);
+  for (const l of [1, 2, 3, 4, 5]) { add('line', { class: 'grid', x1: sx(l), x2: sx(l), y1: Y0, y2: Y1 }); add('text', { x: sx(l), y: Y1 + 15, 'text-anchor': l === 5 ? 'end' : 'middle' }).textContent = `${l} µm`; }
+  // y ticks: decades on the log scale, three round steps on the straight one
+  let ticks;
+  if (spec.log) { ticks = []; for (let d = Math.floor(y0); d <= Math.ceil(y1); d++) for (const k of [1, 2, 5]) { const v = k * 10 ** d; if (L(v) >= y0 && L(v) <= y1) ticks.push(v); } if (ticks.length > 5) ticks = ticks.filter(v => /^1/.test(String(v))); }
+  else { const step = (s => [1, 2, 5, 10].map(k => k * 10 ** Math.floor(Math.log10(s))).find(k => k >= s))((y1 - y0) / 3.5); ticks = []; for (let v = Math.ceil(y0 / step) * step; v <= y1; v += step) ticks.push(+v.toPrecision(6)); }
+  for (const v of ticks) { add('line', { class: 'grid', x1: X0, x2: X1, y1: sy(v), y2: sy(v) }); add('text', { x: X0 - 5, y: sy(v) + 3.5, 'text-anchor': 'end' }).textContent = `${v}`; }
+  add('text', { x: 2, y: Y0 - 5 }).textContent = 'mJy';
+  // carbon dioxide's line, as a guide (a mark, not a detection)
+  add('line', { class: 'co2', x1: sx(4.26), x2: sx(4.26), y1: Y0, y2: Y1 }, 'Carbon dioxide absorbs and glows at 4.26 µm');
+  add('text', { class: 'lab', x: sx(4.26), y: Y0 - 5, 'text-anchor': 'middle' }).textContent = 'CO₂ 4.26';
+  add('line', { class: 'axis', x1: X0, x2: X1, y1: Y1, y2: Y1 });
+  if (!res) return;
+  for (const g of res.gaps) add('line', { class: 'gap', x1: sx(g.lam), x2: sx(g.lam), y1: Y1 - 5, y2: Y1 + 3 }, `${g.lam.toFixed(3)} µm (${g.det}): no measurement. ${g.why}`);
+  for (const p of pts) {
+    const c = SPEC_COLOURS[p.det], x = sx(p.lam), tip = `${p.lam.toFixed(3)} µm (${p.det}): ${p.flux.toFixed(1)} ± ${p.err.toFixed(1)} mJy${p.doubt ? `. Doubtful: ${p.doubt}` : ''}`;
+    if (!spec.log) add('line', { class: 'err', x1: x, x2: x, y1: sy(p.flux - p.err), y2: sy(p.flux + p.err), stroke: c });
+    add('circle', { class: p.doubt ? 'pt doubt' : 'pt', cx: x, cy: sy(p.flux), r: p.doubt ? 2.8 : 2.4, ...(p.doubt ? { stroke: c } : { fill: c }) }, tip);
+  }
+  const off = res.points.length - pts.length;
+  if (off) add('text', { x: X1, y: Y0 + 10, 'text-anchor': 'end' }).textContent = `${off} at or under zero not shown`;
+  svg.setAttribute('aria-label', `Spectrum: ${res.points.length} measurements from 0.75 to 5 micrometres${res.points.length ? `, brightest ${Math.max(...res.points.map(p => p.flux)).toFixed(0)} millijansky` : ''}`);
+  specEl('spec-key').innerHTML = res.points.length ? Object.entries(SPEC_COLOURS).map(([d, c]) => `<span><i style="background:${c}"></i>${d}</span>`).join('') + '<span><i class="hollow"></i>doubtful</span>' : '';
+}
+addEventListener('resize', () => { if (spec.at) specChart(); });
+window.__spec = { spec, open: openSpec, csv: () => spectrumCsv(spec.res.points) };   // for tests/spectrum_ui.py
 
 document.getElementById('search').onsubmit = e => {
   e.preventDefault();
@@ -1103,6 +1292,8 @@ if (P.has('ra') && P.has('dec')) {
   search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}) });
 } else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1' });
 else setMode('sky');   // the whiteboard flow starts at the whole sky
+// &spec=ra,dec: the Spectrum card opens on that spot (its 2026.0 place) as soon as the page shows a patch
+{ const sp = (P.get('spec') || '').split(',').map(Number); if (sp.length === 2 && sp[0] >= 0 && sp[0] < 360 && Math.abs(sp[1]) <= 90) { specMode(true); openSpec(sp[0], sp[1], 2026); } }
 </script>
 <script src="ui.js"></script>
 </body>

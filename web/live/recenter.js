@@ -5,6 +5,8 @@
 //   moved()         the photo moved: redraw it shifted by .pan (sky outside the loaded grid stays empty)
 //   commit(pan)     make the spot `pan` from the built centre the new centre (build it, update the URL and the box)
 //   idle()          optional: a gesture ended without moving anything (a drag cancelled where it started)
+//   tap(to)         optional: a click or tap on the spot `to` (the pan that would centre it). Return true to take it:
+//                   then nothing moves (the Spectrum card picks a star this way); drags and keys still re-centre.
 // The page calls reset() when frames for a new centre land and when another search starts (it also ends a pending
 // arrow-key move or a drag still held), and asks moving() before it swaps frames mid-gesture. One pointer at a time: a
 // second finger is ignored until the first lifts. A press drops a pending arrow-key move: the pointer's spot wins.
@@ -29,7 +31,7 @@ export function heatCell(ra, dec) {
   return `${i},${Math.min(n - 1, Math.floor(ra % 360 / 360 * n))}`;
 }
 
-export function recenterable(el, { scale, moved, commit, idle = () => {}, hint = 'Drag or click to re-center' }) {
+export function recenterable(el, { scale, moved, commit, idle = () => {}, tap = () => false, hint = 'Drag or click to re-center' }) {
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   let pan = [0, 0], grab = null, glide = null, nudge = 0;
   const set = p => { pan = p; moved(); };
@@ -73,6 +75,7 @@ export function recenterable(el, { scale, moved, commit, idle = () => {}, hint =
     el.blur();   // after a pointer the arrow keys step through visits again; Tab to the photo to move it with them
     if (g.moved > TAP) return done(pan);   // a drag: the centre moves by what was dragged
     const to = [g.pan[0] + (b.left + b.width / 2 - e.clientX) * g.k[0], g.pan[1] + (b.top + b.height / 2 - e.clientY) * g.k[1]];
+    if (tap(to)) return;
     ease(to); done(to);   // a click or a tap: that spot becomes the centre
   });
   // a cancelled drag goes back to where it started: the photo at once, and that centre is asked for again when it

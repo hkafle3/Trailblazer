@@ -149,6 +149,15 @@ export async function flagsHeader(key, h, signal) {
   return f;
 }
 
+// VARIANCE (the HDU after FLAGS): a plain float32 image like IMAGE, so imageRows reads it with this header
+export async function varianceHeader(key, f, signal) {
+  const off = f._dataOffset + Math.ceil((f.NAXIS1 * f.NAXIS2 + (f.PCOUNT || 0)) / 2880) * 2880;
+  const p = parseCards(await range(key, off, off + 14399, signal));   // 119 cards in DR1: 4 blocks
+  if (p.end < 0 || p.h.EXTNAME !== 'VARIANCE' || p.h.BITPIX !== -32) throw new Error(`no VARIANCE after FLAGS in ${key}`);
+  p.h._dataOffset = off + Math.ceil(p.end / 2880) * 2880;
+  return p.h;
+}
+
 // cfitsio's fits_rdecomp for 4-byte pixels: per block of `nblock` pixels a 5-bit code (fs + 1), then the pixel
 // differences, zigzag mapped: Rice codes (a run of zeros, a 1, fs low bits), or raw 32-bit values when fs is 25
 export function riceDecode(bytes, n, nblock = 32) {

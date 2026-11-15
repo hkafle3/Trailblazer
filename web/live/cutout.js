@@ -2,7 +2,7 @@
 // For a known comet's page (comet.js): each visit's photo centred on where JPL says the comet was, so the comet stays in
 // the middle and the stars slide past. The picture is drawn the way bake/comet_spectrum.py photo() draws a measured
 // comet's (96 pixels of 6.15 arcsec, bilinear like reproject_interp); the light is measured on the raw pixels.
-import { imageHeader, imageRows, worldToPix, pixToWorld, wavelengthAt, flagsHeader, flagRows } from './fits.js';
+import { imageHeader, imageRows, worldToPix, pixToWorld, wavelengthAt, flagsHeader, flagRows, varianceHeader } from './fits.js';
 
 const D2R = Math.PI / 180, SIZE = 2040;
 export const R_AP = 3, R_IN = 9, R_OUT = 14;   // aperture and sky ring radii, SPHEREx pixels (6.15 arcsec)
@@ -30,13 +30,22 @@ const HALF = R_OUT + 1, W = 2 * HALF + 1;   // the measuring window: W x W of th
 
 // value at each of `cells` ([x, y] pixels of this exposure, 0-based) from its IMAGE, bilinear, NaN where a pixel that
 // counts is flagged, missing or off the image
-async function readCells(key, h, cells, signal) {
+// more (a star's spectrum, starLight): also fills more.flag and more.var with each cell's raw FLAGS bits and VARIANCE
+// (cells on whole pixels; -1 and NaN off the image)
+async function readCells(key, h, cells, signal, more = null) {
   const ys = cells.filter(Boolean).map(c => c[1]);
   const y0 = Math.max(0, Math.floor(Math.min(...ys))), y1 = Math.min(SIZE - 1, Math.ceil(Math.max(...ys)) + 1);
   const out = new Float64Array(cells.length).fill(NaN);
   if (!ys.length || y0 > y1) return out;
-  const [px, fl] = await Promise.all([imageRows(key, h, y0, y1, signal), flagsHeader(key, h, signal).then(f => flagRows(key, f, y0, y1, signal))]);
-  const at = (x, y) => (x < 0 || y < y0 || x >= SIZE || y > y1) ? NaN : mask(px[(y - y0) * SIZE + x], fl[(y - y0) * SIZE + x]);
+  const fh = flagsHeader(key, h, signal);
+  const [px, fl, vr] = await Promise.all([imageRows(key, h, y0, y1, signal), fh.then(f => flagRows(key, f, y0, y1, signal)),
+    more && fh.then(f => varianceHeader(key, f, signal)).then(v => imageRows(key, v, y0, y1, signal))]);
+  const off = (x, y) => x < 0 || y < y0 || x >= SIZE || y > y1;
+  const at = (x, y) => off(x, y) ? NaN : mask(px[(y - y0) * SIZE + x], fl[(y - y0) * SIZE + x]);
+  if (more) {
+    more.flag = cells.map(([x, y]) => off(x, y) ? -1 : fl[(y - y0) * SIZE + x]);
+    more.var = cells.map(([x, y]) => off(x, y) ? NaN : vr[(y - y0) * SIZE + x]);
+  }
   cells.forEach((c, k) => {
     if (!c) return;
     const xi = Math.floor(c[0]), yi = Math.floor(c[1]), fx = c[0] - xi, fy = c[1] - yi;
@@ -80,6 +89,41 @@ export function diffMeasure(t, refs, cx, cy) {
   const star = Math.max(0, ap.reduce((s, k) => s + (Number.isFinite(M[k]) ? M[k] : 0), 0));
   const noise = Math.hypot(sig * Math.sqrt(ap.length + ap.length ** 2 * Math.PI / 2 / g.length), MISMATCH * star);
   return { flux, noise, snr: noise > 0 ? flux / noise : 0, scales, usable: a.length / ap.length, peak: flux > 0 ? Math.max(...a.map(v => v - s0)) / flux : 0 };
+}
+
+// ---------- a star's light in one exposure (the time-lapse's Spectrum card, live/spectrum.js) ----------
+// Circle minus ring on the exposure alone, as bake/comet_spectrum.py photometry() does it: the sky is the ring's median,
+// flagged or missing pixels in the circle count as the circle's average, and the noise is the VARIANCE of the circle's
+// pixels plus the error of the sky level. Returns { flux, noise } in image units (MJy/sr summed over pixels), or
+// { gap } with the reason when the circle or the ring is too damaged to measure. doubt: why the value may be off.
+const BIT_NAMES = { 0: 'transient', 1: 'overflow (saturated)', 2: 'onboard processing error', 6: 'dead', 9: 'missing data', 10: 'hot', 11: 'cold', 15: 'nonlinear', 17: 'persistence' };
+const bitsOf = f => Object.keys(BIT_NAMES).filter(b => f & (1 << b)).map(b => BIT_NAMES[b]);
+export function starMeasure(t, { flag, var: vr }, cx, cy) {
+  const ap = [], ring = [], near = [];
+  for (let k = 0; k < W * W; k++) {
+    const r = Math.hypot(k % W - cx, Math.floor(k / W) - cy);
+    if (r <= R_AP) ap.push(k); else if (r >= R_IN && r <= R_OUT) ring.push(k);
+    if (r <= R_AP + 1) near.push(k);
+  }
+  const a = ap.filter(k => Number.isFinite(t[k])), g = ring.map(k => t[k]).filter(Number.isFinite);
+  const bad = near.filter(k => !Number.isFinite(t[k])), bits = [...new Set(bad.flatMap(k => flag[k] < 0 ? ['off the detector'] : bitsOf(flag[k])))];
+  const what = bits.length ? ` (${bits.join(', ')})` : '';
+  if (a.length < 0.8 * ap.length) return { gap: `${ap.length - a.length} of ${ap.length} pixels in the circle unusable${what}` };
+  if (g.length < 50) return { gap: 'the sky ring around it is off the detector or flagged' };
+  const sky = median(g), mean = g.reduce((s, v) => s + v, 0) / g.length;
+  const skyErr = 1.2533 * Math.sqrt(g.reduce((s, v) => s + (v - mean) ** 2, 0) / g.length) / Math.sqrt(g.length);
+  const fill = ap.length / a.length, vsum = a.reduce((s, k) => s + (Number.isFinite(vr[k]) ? vr[k] : 0), 0);
+  const doubt = [bad.length ? `${bad.length} flagged pixel${bad.length > 1 ? 's' : ''} in or next to the circle${what}` : '',
+    ring.some(k => flag[k] < 0) ? 'at the edge of the detector' : ''].filter(Boolean).join('; ');
+  return { flux: a.reduce((s, k) => s + t[k] - sky, 0) * fill, noise: Math.sqrt(vsum * fill ** 2 + (ap.length * skyErr) ** 2), sky, doubt };
+}
+// exposure e ({ key, h }) at (ra, dec): starMeasure plus where it fell, 0-based pixels
+export async function starLight(e, ra, dec, signal) {
+  const p = worldToPix(e.h, ra, dec);
+  if (!inImage(p)) return { gap: 'not on this exposure' };
+  const win = targetCells(p), more = {};
+  const t = await readCells(e.key, e.h, win.cells, signal, more);
+  return { ...starMeasure(t, more, win.cx, win.cy), x: p[0], y: p[1] };
 }
 
 // Which other photos to compare with: only those whose wavelength at the spot is within one channel width (bw, the
