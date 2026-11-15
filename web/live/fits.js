@@ -74,7 +74,7 @@ function tanProject(h, ra, dec) {
   const y = (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(a - a0)) / cosc;
   return [x / D2R, y / D2R];
 }
-function tanDeproject(h, x, y) {
+export function tanDeproject(h, x, y) {
   const X = x * D2R, Y = y * D2R, a0 = h.CRVAL1 * D2R, d0 = h.CRVAL2 * D2R, rho = Math.hypot(X, Y);
   if (rho === 0) return [h.CRVAL1, h.CRVAL2];
   const c = Math.atan(rho), sc = Math.sin(c), cc = Math.cos(c);

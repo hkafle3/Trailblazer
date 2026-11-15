@@ -64,6 +64,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } from './sky.js';
+import { recenterable, panToSky } from './live/recenter.js';
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -114,14 +115,18 @@ const monthYear = s => `${MONTH[+s.slice(5, 7) - 1]} ${s.slice(0, 4)}`;
 function draw() {
   const m = state.m; if (!m) return;
   const G = m.grid, f = m.frames[state.i], ref = m.frames[0];
-  const crop = Math.round(state.fov * 60 / m.arcsec_per_pixel), o = (G - crop) / 2;
+  const crop = Math.round(state.fov * 60 / m.arcsec_per_pixel);
   const W = patch.width, s = W / crop;
-  const img = ctx.createImageData(crop, crop), { lo, hi: fieldHi } = m.stretch, hi = m.hiDisplay;
+  // the view's first column and row in the grid. A moved photo starts part-way into a pixel, so one more column and
+  // row are drawn and the picture is placed by the fraction; outside the grid is sky not loaded yet.
+  const ox = (G - crop) / 2 - rc.pan[0], oy = (G - crop) / 2 - rc.pan[1], bx = Math.floor(ox), by = Math.floor(oy), n = crop + 1;
+  const img = ctx.createImageData(n, n), { lo, hi: fieldHi } = m.stretch, hi = m.hiDisplay;
   // asinh scaled to the field, with the target's peak as white: a very bright star (Barnard, R Draconis) compresses
   // the curve instead of crushing every other star in a wide view to black. Same curve as before when the peak is not brighter.
   const A = Math.asinh(10 * (hi - lo) / (fieldHi - lo));
-  for (let r = 0; r < crop; r++) for (let c = 0; c < crop; c++) {
-    const k = (r + o) * G + (c + o), v = f.px[k], j = 4 * (r * crop + c);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const gr = r + by, gc = c + bx, k = gr * G + gc, v = f.px[k], j = 4 * (r * n + c);
+    if (gr < 0 || gc < 0 || gr >= G || gc >= G) { img.data.set([22, 26, 34, 255], j); continue; }
     if (state.diff && state.i > 0) {   // the first visit is the reference: subtracted from itself it is all black, so show the photo
       const d = v - ref.px[k];
       if (!Number.isFinite(d)) { img.data.set([60, 60, 66, 255], j); continue; }
@@ -130,17 +135,17 @@ function draw() {
     } else {
       // NaN next to the star means its core saturated the detector: draw it as the brightest value.
       // NaN anywhere else is outside SPHEREx's coverage for that visit: draw it as "no data".
-      if (!Number.isFinite(v) && !(f.x != null && Math.hypot(c + o - f.x, G - 1 - (r + o) - f.y) < 7)) { img.data.set([22, 26, 34, 255], j); continue; }
+      if (!Number.isFinite(v) && !(f.x != null && Math.hypot(gc - f.x, G - 1 - gr - f.y) < 7)) { img.data.set([22, 26, 34, 255], j); continue; }
       const x = Number.isFinite(v) ? Math.asinh(Math.max(0, (v - lo) / (fieldHi - lo)) * 10) / A : 1;
       const g = Math.min(1, x) * 255;
       img.data.set([g, g * 0.97, g * 0.92, 255], j);
     }
   }
   // nearest-neighbour upscale keeps SPHEREx's real 5 arcsec pixels honest
-  const tmp = new OffscreenCanvas(crop, crop); tmp.getContext('2d').putImageData(img, 0, 0);
-  ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, W); ctx.drawImage(tmp, 0, 0, W, W);
+  const tmp = new OffscreenCanvas(n, n); tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W, W); ctx.drawImage(tmp, (bx - ox) * s, (by - oy) * s, n * s, n * s);
 
-  const toPx = (x, y) => [(x - o + 0.5) * s, (G - 1 - y - o + 0.5) * s];   // FITS x,y (bottom origin) -> canvas
+  const toPx = (x, y) => [(x - ox + 0.5) * s, (G - 1 - y - oy + 0.5) * s];   // FITS x,y (bottom origin) -> canvas
   const predPx = fr => toPx((G - 1) / 2 - fr.pred_east / m.arcsec_per_pixel, (G - 1) / 2 + fr.pred_north / m.arcsec_per_pixel);
   // ghost trail: earlier visits in blue, fading with age; this visit in orange
   const shown = m.frames.slice(0, state.i + 1).filter(fr => fr.x != null);
@@ -235,9 +240,12 @@ function panel(m) {
 
 // opts.diff: open on the latest visit with the difference view on (what a click on the sky asks for)
 function show(m, query, opts = {}) {
-  setMode('lapse');
-  Object.assign(state, { m, i: opts.diff ? m.frames.length - 1 : 0, diff: !!opts.diff });
-  document.getElementById('diff').checked = !!opts.diff;
+  // a re-centre that lands while the photo is still being moved waits: the next move starts its own build
+  if (opts.keep && rc.moving()) return;
+  setMode('lapse'); rc.reset();
+  // opts.keep (a re-centre): stay on the visit and the view that were on screen
+  Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.diff ? m.frames.length - 1 : 0, diff: !!opts.diff });
+  document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   panel(m); draw();
   history.replaceState(null, '', query);
@@ -307,7 +315,7 @@ function knownList(f) {
   if (note.length) el.append(Object.assign(document.createElement('span'), { className: 'known-row faint', textContent: note.join(' · ') }));
 }
 async function select(key, opts) {
-  job?.terminate(); job = null; setStatus(opts?.note || '');
+  cancel(); setStatus(opts?.note || '');
   document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === key));
   const m = await load(key);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;   // the box always names the spot on screen
@@ -318,7 +326,10 @@ async function select(key, opts) {
 // Cloudflare Worker (worker/) only finds the images. Results are kept for this session.
 const API = P.get('api') || '';   // the same Worker serves this page and /api (npm run dev); ?api= points elsewhere
 const live = new Map();
-let job = null;
+// One pipeline worker for the page's life, so a re-centre reuses the image list and the pixels it already read.
+// job is the number of the build in flight (0: none); a new build, or cancel(), replaces it.
+let builder = null, job = 0, builds = 0;
+function cancel() { if (job) builder.postMessage({ id: ++builds }); job = 0; }
 const statusEl = document.getElementById('status');
 // a short reason for the status line; the full error stays in its tooltip
 const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
@@ -341,19 +352,19 @@ function search(ra, dec, det, opts = {}) {
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
   document.querySelectorAll('#targets button').forEach(b => b.setAttribute('aria-pressed', 'false'));
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
-  if (live.has(key)) { setStatus(''); return show(live.get(key), query, opts); }
-  job?.terminate();
+  if (live.has(key)) { cancel(); setStatus(''); return show(live.get(key), query, opts); }
+  const t0 = performance.now(), id = job = ++builds;
+  builder ??= new Worker('live/pipeline.js', { type: 'module' });
   setStatus('Finding SPHEREx images of this spot...');
   if (opts.diff) setMode('lapse');   // a sky click lands on the time-lapse right away; frames arrive in seconds
-  const t0 = performance.now(), w = job = new Worker('live/pipeline.js', { type: 'module' });
-  w.onmessage = ({ data: m }) => {
-    if (w !== job) return;
+  builder.onmessage = ({ data: m }) => {
+    if (m.id !== job) return;
     if (m.type === 'progress') setStatus(m.text + '...');
     else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
-    else if (m.type === 'empty') { setStatus(`No SPHEREx images of this spot on ${det} yet. Try another detector.`, true); w.terminate(); }
-    else if (m.type === 'error') { { setStatus(`${brief(m.error)}. The targets below always work.`, true); statusEl.title = m.error; }; w.terminate(); }
+    else if (m.type === 'empty') { job = 0; setStatus(`No SPHEREx images of this spot on ${det} yet. Try another detector.`, true); }
+    else if (m.type === 'error') { job = 0; setStatus(`${brief(m.error)}. The targets below always work.`, true); statusEl.title = m.error; }
     else if (m.type === 'done') {
-      w.terminate(); job = null;
+      job = 0;
       live.set(key, prep(m.manifest));
       // one check for the Explore heat map (POST /api/checks); keepalive so leaving the page at once does not cancel it
       fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra, dec }) }).catch(() => {});
@@ -361,8 +372,26 @@ function search(ra, dec, det, opts = {}) {
       show(live.get(key), query, opts);
     }
   };
-  w.postMessage({ ra, dec, det, api: API });
+  builder.postMessage({ id, ra, dec, det, api: API });
 }
+
+// ---------- re-centre: click a spot, drag the photo, or the arrow keys with the photo in focus (live/recenter.js) ----------
+// The photo moves at once over the pixels already loaded; the new centre then builds, reusing the image list.
+function recenter(pan) {
+  const m = state.m, [ra, dec] = panToSky(m.ra, m.dec, pan, m.arcsec_per_pixel);
+  // back on a challenge target's own centre (a move and its reverse): its baked frames again
+  const home = TARGETS.find(t => { const b = mapMarks[t.key]; return b && b.detector === m.detector && Math.hypot(...offset(b, ra, dec)) < 0.5; });
+  if (home) return select(home.key, { keep: true });
+  document.getElementById('coords').value = `${ra.toFixed(4)} ${dec.toFixed(4)}`;
+  document.getElementById('det').value = m.detector;   // a baked target keeps its own detector when it goes live
+  history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${m.detector}`);   // the URL names the new spot at once
+  search(ra, dec, m.detector, { keep: true });
+}
+const rc = recenterable(patch, {
+  scale: () => { if (!state.m) return null; const k = Math.round(state.fov * 60 / state.m.arcsec_per_pixel) / patch.getBoundingClientRect().width; return [k, k]; },
+  moved: () => draw(), commit: recenter });
+window.__lapse = { state, recenter, get pan() { return rc.pan; } };   // for tests/recenter_ui.py
+
 document.getElementById('search').onsubmit = e => {
   e.preventDefault();
   const c = parseCoords(document.getElementById('coords').value);

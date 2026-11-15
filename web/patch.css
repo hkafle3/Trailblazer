@@ -107,3 +107,9 @@ body.busy #patch { animation: breathe 1.6s ease-in-out infinite; }
 .known-row { display: flex; align-items: center; gap: 8px; }
 .known-row i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .known-row.faint { color: var(--ink-3); }
+
+/* The photo can be dragged or clicked to re-centre (live/recenter.js): a grab hand, and a touch drag moves the
+   photo instead of scrolling the page. */
+#patch { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+#patch.drag { cursor: grabbing; }
+#patch:focus-visible { outline: 2px solid var(--known); outline-offset: 6px; }
