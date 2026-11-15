@@ -200,7 +200,33 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .topbar nav a::after { bottom: 1px; }
   body.explore .topbar .av { width: 44px; height: 44px; border: 4px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .85); }
 }
-@media (prefers-reduced-motion: reduce) { body.explore .map-wrap, .tl { animation: none; } }
+/* ---------- the dive: zoom straight into a time-lapse (explore-dive.js) ----------
+   .aim: a small frame in the photo's shape at the middle of the view, at the deepest zoom, with "Dive in" under it (the
+   Layers button's outlined look). Its outline fills as a scroll or a pinch heads into the dive.
+   .dive: that frame in flight, growing into the time-lapse's photo. .dive-frame: timelapse.html, over the map. */
+.aim { position: fixed; z-index: 4; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.aim[hidden], .dive[hidden] { display: none; }
+.aim-box { position: absolute; left: -33px; top: -26px; width: 66px; height: 52px; overflow: visible; fill: none; stroke: #fff; stroke-width: 1.5; stroke-linecap: round; filter: drop-shadow(0 0 2px #000) drop-shadow(0 0 6px rgba(0, 0, 0, .7)); }
+#aim-ring { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .15s linear; }
+.aim-go {
+  position: absolute; left: 0; top: 40px; transform: translateX(-50%); pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px;
+  border: 1.5px solid rgba(255, 255, 255, .85); border-radius: 10px; background: rgba(0, 0, 0, .62); color: #fff; font: 400 15px var(--panel-font); white-space: nowrap; cursor: pointer;
+}
+.aim-go:hover { background: rgba(38, 42, 52, .8); }
+.aim-go:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.aim-go svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+body.explore .map-wrap { transition: transform .2s var(--ease); }   /* the lean toward a dive, and its spring back */
+body.diving .map-wrap { transition: none; will-change: transform, opacity; }
+body.diving .aim { visibility: hidden; }
+.dive { position: fixed; z-index: 22; left: 0; top: 0; overflow: hidden; border-radius: 4px; box-shadow: 0 0 0 1.5px #fff, 0 0 60px rgba(127, 184, 255, .2); pointer-events: none; will-change: transform, width, height; }
+.dive canvas { display: block; width: 100%; height: 100%; }
+/* loading ahead of a dive it is not rendered at all (visibility), so the wheel and touches still reach the map under it */
+.dive-frame { position: fixed; z-index: 21; left: 0; top: 0; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; visibility: hidden; pointer-events: none; color-scheme: dark; }
+body.diving .dive-frame { visibility: visible; }
+.dive-frame.on { pointer-events: auto; }
+body.flying::after { content: ""; position: fixed; inset: 0; z-index: 30; }   /* in flight nothing can be pressed */
+body.explore:has(.dive-frame.on) { touch-action: auto; }   /* phones: the time-lapse in the frame scrolls */
+@media (prefers-reduced-motion: reduce) { body.explore .map-wrap, .tl { animation: none; } body.explore .map-wrap, #aim-ring { transition: none; } }
 
 /* the map takes over from the homepage sky oval (same view-transition-name) */
 body.explore .map { view-transition-name: sky; }
