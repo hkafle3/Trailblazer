@@ -101,10 +101,10 @@ async function images(url, env) {
   // (no binding, a missing file, an R2 error). Same answer: checked against IRSA at 47 D1 positions, 0 differences.
   // The answer is written as JSON text straight from the index rows (the same bytes json() would give), which halves
   // the CPU of a deep-field answer of about 1 MB.
-  // skyImagesJson checks every read and tries once more with a fresh head (a file replaced meanwhile); if it still
-  // cannot answer, IRSA does.
+  // skyImagesJson accepts only the pinned version of the file (SKY_ETAG_D1..D6 in wrangler.toml), checks every read and
+  // tries once more with a fresh head; if it still cannot answer, IRSA does.
   try {
-    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1)),
+    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`]),
       { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400' } });
   } catch (e) { console.warn('sky index', e); }
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches

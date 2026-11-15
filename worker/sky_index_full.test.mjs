@@ -5,7 +5,8 @@
 // Its own file because skyImages keeps one parsed head per file name, and the fixture test uses d1.bin too.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openSync, readSync, fstatSync } from 'node:fs';
+import { openSync, readSync, fstatSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { skyImages, skyImagesJson, skyHead, cellAt } from './src/sky_index.js';
 
 const dir = process.env.SKY_INDEX_DIR;
@@ -18,14 +19,14 @@ const read = async (name, off, len) => {
 
 for (const det of [1, 2, 3, 4, 5, 6]) {
   test(`D${det}: the JSON writer gives JSON.stringify's bytes`, { skip: !dir && 'set SKY_INDEX_DIR to run' }, async () => {
-    const { first } = await skyHead(read, det);
+    const { first } = await skyHead(read, det, 'file');
     let big = 0;
     for (let c = 1; c < first.length - 1; c++) if (first[c + 1] - first[c] > first[big + 1] - first[big]) big = c;
     let busiest;
     for (let dec = -89.95; !busiest && dec < 90; dec += 0.1) for (let ra = 0.05; ra < 360; ra += 0.1) if (cellAt(ra, dec) === big) { busiest = [ra, dec]; break; }
     for (const [ra, dec] of [[270, 66.560708], busiest, [180, 0]]) {
-      const want = JSON.stringify({ ra, dec, det: `D${det}`, ...(await skyImages(read, ra, dec, det)), source: 'index' });
-      assert.equal(await skyImagesJson(read, ra, dec, det), want, `D${det} at (${ra}, ${dec})`);
+      const want = JSON.stringify({ ra, dec, det: `D${det}`, ...(await skyImages(read, ra, dec, det, 'file')), source: 'index' });
+      assert.equal(await skyImagesJson(read, ra, dec, det, 'file'), want, `D${det} at (${ra}, ${dec})`);
     }
   });
 }
@@ -43,8 +44,16 @@ for (const det of [1, 2, 3, 4, 5, 6]) {
     let images = 0;
     for (const [c, [ra, dec]] of centres.entries()) {
       assert.equal(cellAt(ra, dec), c);
-      images += (await skyImages(read, ra, dec, det)).images.length;
+      images += (await skyImages(read, ra, dec, det, 'file')).images.length;
     }
     assert.ok(images > 100000, `D${det}: ${images} images over all cell centres`);
+  });
+}
+
+for (const det of [1, 2, 3, 4, 5, 6]) {
+  test(`D${det}: wrangler.toml pins this file (SKY_ETAG_D${det} is its MD5, R2's etag)`, { skip: !dir && 'set SKY_INDEX_DIR to run' }, () => {
+    const toml = readFileSync(new URL('./wrangler.toml', import.meta.url), 'utf8');
+    const pinned = toml.match(new RegExp(`^SKY_ETAG_D${det} = "([0-9a-f]{32})"`, 'm'))?.[1];
+    assert.equal(pinned, createHash('md5').update(readFileSync(`${dir}/d${det}.bin`)).digest('hex'));
   });
 }

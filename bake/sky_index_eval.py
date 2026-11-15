@@ -39,7 +39,7 @@ const read = async (name, off, len) => {{
   readSync(fd, b, 0, len, off); return {{ buf: b.buffer.slice(b.byteOffset, b.byteOffset + len), etag: 'file', size: fstatSync(fd).size }};
 }};
 const out = [];
-for (const [ra, dec] of JSON.parse(readFileSync(0, 'utf8'))) out.push(await skyImages(read, ra, dec, {det}));
+for (const [ra, dec] of JSON.parse(readFileSync(0, 'utf8'))) out.push(await skyImages(read, ra, dec, {det}, 'file'));
 process.stdout.write(JSON.stringify(out));
 """
     r = subprocess.run(["node", "--input-type=module", "-e", js], input=json.dumps(points), capture_output=True, text=True, check=True)

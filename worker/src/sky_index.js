@@ -3,6 +3,8 @@
 // One file per detector (d1.bin .. d6.bin). Its head lists, per sky cell, where that cell's rows start; a request reads
 // the head (once per Worker instance) and one cell's rows. The storage is the caller's choice: `read(name, offset,
 // length)` resolves to { buf: ArrayBuffer, etag, size } (size: the whole file's), from R2 or a test's local file.
+// `pin` is the etag of the one file version to accept (wrangler.toml SKY_ETAG_D1..D6: the MD5 of the file as built
+// and checked by bake/sky_index.py); any other version, replaced, truncated or corrupted, throws.
 //
 // A row is one image in one cell: its start time, its footprint as four great-circle edges (unit normals, the image
 // is where every n . p >= 0) and the pieces of its obs_id and S3 key. The footprint is IRSA's own s_region (the outer
@@ -44,8 +46,10 @@ async function get(read, name, offset, length, etag) {
   return r;
 }
 
-async function head(read, name, det) {
-  const fixed = await get(read, name, 0, 24), v = new DataView(fixed.buf), etag = fixed.etag;
+async function head(read, name, det, pin) {
+  // only the pinned version of the file is accepted: the one bake/sky_index.py built and checked, as uploaded
+  if (!pin) throw new Error(`no pinned etag for ${name}`);
+  const fixed = await get(read, name, 0, 24, pin), v = new DataView(fixed.buf), etag = fixed.etag;
   if (v.getUint32(0, true) !== 0x49594b53 || v.getUint32(4, true) !== 2) throw new Error(`${name} is not a version 2 sky index`);
   const cells = v.getUint32(12, true), rows = v.getUint32(16, true), fbytes = v.getUint32(20, true);
   if (v.getUint32(8, true) !== Number(det)) throw new Error(`${name} is for another detector`);
@@ -69,10 +73,10 @@ async function head(read, name, det) {
 }
 
 // The parsed head of one detector's file, read once per Worker instance (a failed read is retried next time)
-export function skyHead(read, det) {
+export function skyHead(read, det, pin) {
   const name = `d${det}.bin`;
   if (!heads.has(name)) {
-    const h = head(read, name, det).catch(e => { if (heads.get(name) === h) heads.delete(name); throw e; });
+    const h = head(read, name, det, pin).catch(e => { if (heads.get(name) === h) heads.delete(name); throw e; });
     heads.set(name, h);
   }
   return heads.get(name);
@@ -109,8 +113,9 @@ function nearOutside(f32, j, x, y, z, d) {
 // images per collection searched. Rows are stored in time order, so the answer comes out sorted. An obs_id seen again
 // in a lower (earlier listed) collection takes the place of the first one, as /api/images keeps DR1 first; only then is
 // a re-sort needed. Plain numbers only: the two writers below turn the rows into objects or straight into JSON text.
-async function pickOnce(read, ra, dec, det) {
-  const name = `d${det}.bin`, hp = skyHead(read, det), h = await hp;
+async function pickOnce(read, ra, dec, det, pin) {
+  const name = `d${det}.bin`, hp = skyHead(read, det, pin), h = await hp;
+  if (h.etag !== pin) { if (heads.get(name) === hp) heads.delete(name); throw new Error(`${name}: head from another version`); }
   try {
     const c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
     const deep = Math.abs(eclipticLat(ra, dec)) > 75;
@@ -158,8 +163,8 @@ async function pickOnce(read, ra, dec, det) {
 
 // A file replaced since this instance read its head shows as a different etag (or a range past its end): one more try
 // with a fresh head. A second failure goes to the caller.
-async function pick(read, ra, dec, det) {
-  try { return await pickOnce(read, ra, dec, det); } catch { return await pickOnce(read, ra, dec, det); }
+async function pick(read, ra, dec, det, pin) {
+  try { return await pickOnce(read, ra, dec, det, pin); } catch { return await pickOnce(read, ra, dec, det, pin); }
 }
 
 // one row's fields; t is MJD-BEG to 6 decimals, the way SIA writes t_min. The file already holds it rounded (version
@@ -170,8 +175,8 @@ function fields(p, i) {
 }
 
 // The images of one detector covering (ra, dec): { images: [{ t, key, obs, coll }] sorted by t, collections }
-export async function skyImages(read, ra, dec, det) {
-  const p = await pick(read, ra, dec, det);
+export async function skyImages(read, ra, dec, det, pin) {
+  const p = await pick(read, ra, dec, det, pin);
   return { images: p.rows.map(i => { const [t, key, obs, coll] = fields(p, i); return { t, key, obs, coll }; }), collections: p.collections };
 }
 
@@ -179,8 +184,8 @@ export async function skyImages(read, ra, dec, det) {
 // { ra, dec, det: 'D<det>', ...skyImages(), source: 'index' } (worker/sky_index.test.mjs checks it), without building
 // thousands of objects first. A deep-field answer is about 1 MB and that building took most of a request's CPU.
 // Numbers print as JSON.stringify prints them; keys, obs and collections need no escaping (head() checks the folders).
-export async function skyImagesJson(read, ra, dec, det) {
-  const p = await pick(read, ra, dec, det);
+export async function skyImagesJson(read, ra, dec, det, pin) {
+  const p = await pick(read, ra, dec, det, pin);
   let s = `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}","images":[`;
   for (let k = 0; k < p.rows.length; k++) {   // fields() inlined, with the constant text cut once per folder
     const i = p.rows[k], fo = p.h.folders[p.u16[i * 32 + 28]], rest = String(p.u16[i * 32 + 29]).padStart(4, '0') + '_' + p.u8[i * ROW + 60];

@@ -10,11 +10,11 @@ import { skyImages, skyImagesJson, skyHead, cellAt } from './src/sky_index.js';
 const [dir, det = '1', only, mode] = process.argv.slice(2);
 const file = readFileSync(`${dir}/d${det}.bin`);
 const read = async (name, off, len) => ({ buf: file.buffer.slice(file.byteOffset + off, file.byteOffset + off + len), etag: 'file', size: file.length });
-const answer = (ra, dec) => skyImagesJson(read, ra, dec, det);   // the text /api/images sends
+const answer = (ra, dec) => skyImagesJson(read, ra, dec, det, 'file');   // the text /api/images sends
 
 if (only) {   // child: one cold answer; mode "head" reads the head first, as a Worker instance that already answered once has
   const [ra, dec] = only.split(',').map(Number);
-  if (mode === 'head') await skyHead(read, det);
+  if (mode === 'head') await skyHead(read, det, 'file');
   const t0 = performance.now(), c0 = process.cpuUsage();
   const n = (await answer(ra, dec)).length, c = process.cpuUsage(c0);
   console.log(JSON.stringify({ ms: performance.now() - t0, cpu_ms: (c.user + c.system) / 1000, bytes: n }));
@@ -39,7 +39,7 @@ if (only) {   // child: one cold answer; mode "head" reads the head first, as a 
     const times = [];
     for (let i = 0; i < 50; i++) { const t0 = performance.now(); await answer(ra, dec); times.push(performance.now() - t0); }
     times.sort((a, b) => a - b);
-    const r = await skyImages(read, ra, dec, det);
+    const r = await skyImages(read, ra, dec, det, 'file');
     console.log(`${name.padEnd(24)} (${ra.toFixed(2)}, ${dec.toFixed(2)}) cell ${cellAt(ra, dec)} rows ${first[cellAt(ra, dec) + 1] - first[cellAt(ra, dec)]} images ${r.images.length} ` +
       `json ${(cold.bytes / 1024).toFixed(0)} KB | cold (median of 5) ${cold.ms.toFixed(2)} ms (cpu ${cold.cpu_ms.toFixed(2)}) | cold, head cached ${coldHead.ms.toFixed(2)} ms (cpu ${coldHead.cpu_ms.toFixed(2)}) | warm median ${times[25].toFixed(2)} ms, max ${times[49].toFixed(2)} ms`);
   }

@@ -6,6 +6,7 @@ edges (pixel 0.5 and 2040.5) joined by great circles. That is IRSA's own s_regio
 (see the evaluator, bake/sky_index_eval.py). A point counts when it lies within SIA's 0.001 degree circle of the polygon.
 
   uv run --with numpy python bake/sky_index.py HEADERS.jsonl OUT_DIR KEYS.tsv
+  uv run --with numpy python bake/sky_index.py --check d1.bin ...     (a built file's rows, see check_rows)
 
 KEYS.tsv is the bucket listing the headers were read from (key<TAB>size). Before writing a detector's file, every key
 of that detector in the listing must have exactly one header row, and no row may be missing from the listing.
@@ -161,15 +162,64 @@ def cells_of(H, C, N):
     return out
 
 
+DTYPE = [("t", "<f8"), ("n", "<f4", 12), ("folder", "<u2"), ("seq", "<u2"), ("sub", "u1"), ("coll", "u1"), ("pad", "<u2")]
+
+
+def corners_from_normals(n):
+    """(R, 4, 3) corners from (R, 4, 3) edge normals, as the Worker works them out: corner k is where edges k - 1 and k
+    cross, on the inner side of the other two edges."""
+    v = np.cross(np.roll(n, 1, axis=1), n)
+    v /= np.linalg.norm(v, axis=-1, keepdims=True)
+    inner = np.roll(n, -1, axis=1) + np.roll(n, -2, axis=1)   # edges k + 1 and k + 2
+    return v * np.sign((v * inner).sum(-1, keepdims=True))
+
+
+def check_rows(t, n, first, true_corners=None):
+    """Why these rows must not be written (an empty list when they are fine). t: (R,) as written; n: (R, 4, 3) the
+    normals as written (float32, so what the Worker reads); first: the cell table; true_corners: (R, 4, 3) the image
+    corners from the headers, or None to check a built file on its own. Every row must have:
+      - t already on 6 decimals, written back exactly (the Worker prints it as stored; IRSA's t_min has 6 decimals)
+      - rows in time order within each cell (the Worker relies on it to skip sorting)
+      - a proper quadrilateral: unit normals; opposite edges facing each other, neither parallel nor exactly opposite
+        (a 3.5 degree image gives -0.998); corners worked out from neighbouring normals that are the image's own
+        corners (within 2 arcsec), with sides of 3 to 4 degrees; and the image's centre inside all four edges."""
+    errs = []
+    def flag(bad, what):
+        if bad.any():
+            errs.append(f"{int(bad.sum())} rows: {what} (first: row {int(np.argmax(bad))})")
+    t = np.asarray(t, dtype="<f8")
+    flag(np.array([float(f"{x:.6f}") != x for x in t]), "t is not on 6 decimals")
+    cell = np.repeat(np.arange(len(first) - 1), np.diff(first))
+    flag(np.concatenate([[False], (np.diff(t) < 0) & (np.diff(cell) == 0)]), "t out of time order within a cell")
+    n = np.asarray(n, dtype=float).reshape(-1, 4, 3)
+    flag((abs((n * n).sum(-1) - 1) > 1e-6).any(-1), "a normal is not of unit length")
+    dot = lambda a, b: (n[:, a] * n[:, b]).sum(-1)
+    flag(~((dot(0, 2) < -0.99) & (dot(0, 2) > -0.9995) & (dot(1, 3) < -0.99) & (dot(1, 3) > -0.9995)),
+         "opposite edges are not those of a 2 to 8 degree image")
+    with np.errstate(invalid="ignore", divide="ignore"):
+        v = corners_from_normals(n)
+        if true_corners is not None:
+            flag(~(np.arccos(np.clip((v * true_corners).sum(-1), -1, 1)) < math.radians(2 / 3600)).all(-1),
+                 "corners from the normals are not the image's corners")
+        side = np.degrees(np.arccos(np.clip((v * np.roll(v, -1, axis=1)).sum(-1), -1, 1)))
+        flag(~((side > 3) & (side < 4)).all(-1), "a side is not 3 to 4 degrees long")
+        centre = (true_corners if true_corners is not None else v).sum(1)
+        centre /= np.linalg.norm(centre, axis=-1, keepdims=True)
+        flag(~((n * centre[:, None, :]).sum(-1) > math.sin(math.radians(1))).all(-1), "the image centre is not inside every edge")
+    return errs
+
+
+def read_index(path):
+    """(first, rows) of a built file: the cell table and the rows as a structured array."""
+    b = Path(path).read_bytes()
+    magic, version, det, cells, nrows, fbytes = struct.unpack_from("<4s5I", b)
+    first = np.frombuffer(b, "<u4", cells + 1, 24)
+    size = 24 + 4 * (cells + 1) + fbytes
+    return first, np.frombuffer(b, DTYPE, nrows, size + (-size % 8))
+
+
 def build(meta, H, out_dir):
     C = corners(H); N = normals(C)
-    # the footprint checks worker/src/sky_index.js applies, here for every row: unit normals, opposite edges facing each
-    # other, neighbours far from parallel
-    dot = lambda a, b: (N[:, a] * N[:, b]).sum(-1)
-    bad = ~((abs((N * N).sum(-1) - 1) < 1e-6).all(-1) & (dot(0, 2) < -0.99) & (dot(1, 3) < -0.99) &
-            (abs(dot(0, 1)) < 0.5) & (abs(dot(1, 2)) < 0.5) & (abs(dot(2, 3)) < 0.5) & (abs(dot(3, 0)) < 0.5))
-    if bad.any():
-        sys.exit(f"{bad.sum()} images have a footprint the Worker would refuse, e.g. {meta[int(np.argmax(bad))]['key']}")
     cells = cells_of(H, C, N)
     det = meta[0]["det"]
     folders = sorted({m["folder"] for m in meta}); fidx = {f: i for i, f in enumerate(folders)}
@@ -182,7 +232,7 @@ def build(meta, H, out_dir):
     ftab = "\n".join(folders).encode()
     head = struct.pack("<4s5I", b"SKYI", 2, det, CELLS, len(order), len(ftab)) + first.tobytes() + ftab
     head += b"\0" * (-len(head) % 8)
-    rows = np.zeros(len(order), dtype=[("t", "<f8"), ("n", "<f4", 12), ("folder", "<u2"), ("seq", "<u2"), ("sub", "u1"), ("coll", "u1"), ("pad", "<u2")])
+    rows = np.zeros(len(order), dtype=DTYPE)
     assert rows.dtype.itemsize == ROW
     idx = np.array(order)
     # rounded here so the Worker prints t without toFixed (a third of its time per row). No MJD is a rounding tie
@@ -193,6 +243,9 @@ def build(meta, H, out_dir):
     rows["seq"] = [meta[i]["seq"] for i in order]
     rows["sub"] = [meta[i]["sub"] for i in order]
     rows["coll"] = [COLLS.index(meta[i]["coll"]) for i in order]
+    errs = check_rows(rows["t"], rows["n"], first, C[idx])
+    if errs:
+        sys.exit(f"D{det}: not written: " + "; ".join(errs))
     out = Path(out_dir) / f"d{det}.bin"
     out.write_bytes(head + rows.tobytes())
     sizes = np.diff(first)
@@ -208,6 +261,12 @@ def complete(meta, keys_path, det):
 
 
 if __name__ == "__main__":
+    if sys.argv[1] == "--check":   # a built file on its own: python bake/sky_index.py --check d1.bin [d2.bin ...]
+        for f in sys.argv[2:]:
+            first, rows = read_index(f)
+            errs = check_rows(rows["t"], rows["n"], first)
+            print(f, len(rows), "rows", "OK" if not errs else "; ".join(errs))
+        sys.exit(0)
     meta, H = load(sys.argv[1])
     for d in sorted({m["det"] for m in meta}):   # one detector at a time keeps memory to one detector's rows
         missing, unlisted, repeated = complete(meta, sys.argv[3], d)

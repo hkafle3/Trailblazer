@@ -162,6 +162,17 @@ The SPHEREx photos covering a point, cached for a day. The browser then reads th
 
 The index is a snapshot of the bucket as listed on 2026-11-15 (DR1, and QR3 through week 2026W40_2A). Photos from weeks published after that are missing from `"index"` answers until the index is rebuilt; a scheduled refresh is not built yet.
 
+The Worker accepts only one version of each index file: the one whose R2 etag is pinned in `worker/wrangler.toml` (`SKY_ETAG_D1` to `SKY_ETAG_D6`; for these single-part uploads the etag is the file's MD5). A replaced, truncated or corrupted file has another etag, so it is refused and IRSA answers until the pins match again.
+
+#### Refreshing the image index
+
+1. List the bucket's level-2 keys again (`keys.tsv`: key, tab, size).
+2. Read the headers: `uv run --with aiohttp python bake/sky_headers.py keys.tsv hdr_dN.jsonl N` for each detector. It resumes, and exits non-zero while any file failed.
+3. Build: `uv run --with numpy python bake/sky_index.py hdr_dN.jsonl OUT keys.tsv`. It writes nothing unless every listed key has exactly one header and every row passes its checks (6-decimal times in time order, footprints that are the images' own quadrilaterals).
+4. Verify: `bake/sky_index_eval.py` against IRSA answers (0 unexplained differences), `SKY_INDEX_DIR=OUT node --test worker/sky_index_full.test.mjs`, and `uv run --with numpy python bake/test_sky_index.py`.
+5. Upload each file: `npx wrangler r2 object put comet-hunt-sky-index/dN.bin --file OUT/dN.bin --remote --config worker/wrangler.toml`, then download it again and compare.
+6. Put each file's MD5 (`md5 -q OUT/dN.bin`) in `SKY_ETAG_DN` in `worker/wrangler.toml` (the full-file test checks they match), and deploy. Between the upload and the deploy, that detector's searches fall back to IRSA.
+
 Refusals: `400 {"error":"ra must be 0 to 360"}`, `400 {"error":"dec must be -90 to 90"}`, `400 {"error":"det must be D1 to D6"}`, and `503` with `retry_after` when the index cannot answer and IRSA's search is down (an empty `images` list always means "no photos here", never "search failed").
 
 ## GET /api/gaia?ra=&dec=
