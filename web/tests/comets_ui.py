@@ -7,7 +7,8 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 EXPECT = {"3I/ATLAS": "CO2 glow detected", "C/2025 R2 (SWAN)": "CO2 glow detected",
           "C/2024 T5 (ATLAS)": "Not enough signal", "210P/Christensen": "Not enough signal",
           "C/2026 A2 (Bok)": "CO2 glow detected", "P/2021 N1 (ZTF)": "Not enough signal",
-          "C/2024 G3 (ATLAS)": "Not enough signal"}   # migration 0012
+          "C/2024 G3 (ATLAS)": "Not enough signal",
+          "C/2023 A3 (Tsuchinshan-ATLAS)": "Not enough signal"}   # migration 0012
 
 
 async def main():
