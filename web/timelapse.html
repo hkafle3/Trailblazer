@@ -347,7 +347,7 @@ function search(ra, dec, det, opts = {}) {
     if (m.type === 'progress') setStatus(m.text + '...');
     else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
     else if (m.type === 'empty') { setStatus(`No SPHEREx images of this spot on ${det} yet. Try another detector.`, true); w.terminate(); }
-    else if (m.type === 'error') { setStatus(`${m.error}. The five targets above always work.`, true); w.terminate(); }
+    else if (m.type === 'error') { setStatus(`${m.error.replace(/, try again or pick a baked target$/, '')}. The targets below always work.`, true); w.terminate(); }
     else if (m.type === 'done') {
       w.terminate(); job = null;
       live.set(key, prep(m.manifest));

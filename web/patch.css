@@ -52,9 +52,9 @@ canvas#gl.drag { cursor: grabbing; }
   background-repeat: no-repeat; background-position: right 22px center; background-size: 11px 8px; }
 #search select option { background: #0b0f1a; }
 #search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-#status { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); min-height: 18px; padding: 0 8px; text-shadow: 0 1px 8px #000; }
+#status { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); min-height: 18px; padding: 0 8px; text-shadow: 0 1px 8px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* one line: the target buttons sit right below */
 #status.err { color: var(--glitch); }
-#targets { position: fixed; left: 40px; top: 188px; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(50vw - var(--s) / 2 - 64px); pointer-events: auto; }
+#targets { position: fixed; left: 40px; top: 212px; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(50vw - var(--s) / 2 - 64px); pointer-events: auto; }
 #targets button { height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 15, 26, .72); color: var(--ink-2); font: 500 13.5px var(--body); cursor: pointer; transition: color .2s, border-color .2s, background .2s, box-shadow .2s; }
 #targets button:hover { color: #fff; border-color: rgba(255, 255, 255, .35); }
 #targets button[aria-pressed=true] { color: #ffd2b0; border-color: rgba(255, 154, 77, .6); background: rgba(255, 154, 77, .14); box-shadow: 0 0 20px -6px var(--comet); }
@@ -85,6 +85,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   #stage { grid-template-columns: 1fr; align-content: start; overflow: auto; pointer-events: auto; padding: 84px 12px 32px; gap: 18px; }
   #search, #targets, #caption { position: static; max-width: none; width: auto; }
   #search { grid-template-columns: 1fr; }
+  #status { white-space: normal; }   /* the phone layout stacks, so wrapping is fine */
   #center, #panel, #caption, #targets, #search { grid-column: 1; }
   #panel { width: 100%; max-height: none; overflow: visible; }
   :root { --s: min(86vw, 56vh); }
