@@ -17,13 +17,14 @@ let W = 0, X = 0, Y = 0, A = null, touched = false, anim = 0;
 const area = () => { const h = innerHeight, bar = $('tl').getBoundingClientRect().height; return { w: innerWidth, t: HEAD, b: h - bar }; };
 const minW = () => A.w;   // whole sky: the oval exactly as wide as the screen
 const atMin = () => W <= minW() + 0.5;
+const sheetH = () => (sheet.hidden ? 0 : sheet.dataset.detent === 'full' ? Math.min(sheet.scrollHeight, A.b - 150) : 136);   // the comet sheet's height once it settles
 
 // keep the sky oval in view: an oval smaller than the screen stays inside it and a bigger one covers it, give or take
 // 15% of the screen. The margin keeps the rule continuous, so zooming around the fingers never jumps where the oval
 // grows past the screen. With the comet sheet open its top is the bottom edge, so a low comet can be raised above it.
 function set(w, x, y) {
   W = Math.min(MAXW, Math.max(minW(), w));
-  const H = W / 2, bot = sheet.hidden ? A.b : A.b - 136, mx = A.w * .15, my = (bot - A.t) * .15;
+  const H = W / 2, bot = A.b - sheetH(), mx = A.w * .15, my = (bot - A.t) * .15;
   X = Math.min(Math.max(0, A.w - W) + mx, Math.max(Math.min(0, A.w - W) - mx, x));
   Y = Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y));
   wrap.style.width = W + 'px'; wrap.style.left = X + 'px'; wrap.style.top = Y + 'px';
@@ -89,7 +90,7 @@ function up(e) {
   if (!pts.has(e.pointerId)) return;
   pts.delete(e.pointerId);
   if (pts.size) { last = snap(); return; }
-  if (moved >= 8 || many) { swallowUntil = performance.now() + 500; lastTap = null; return; }
+  if (moved >= 8 || many) { swallowUntil = performance.now() + 500; lastTap = null; if (atMin()) glide(...wholeView(), 200); return; }
   const t = performance.now(), here = [e.clientX, e.clientY];
   if (lastTap && t - lastTap.t < 320 && Math.hypot(here[0] - lastTap.p[0], here[1] - lastTap.p[1]) < 30) {   // double tap: zoom in 2x there
     lastTap = null; swallowUntil = t + 500;
@@ -204,12 +205,15 @@ function openPeek(m) {
   picked = m; m.classList.add('pick');
   for (const d of document.querySelectorAll('details.layers')) d.open = false;
   sheet.dataset.detent = 'peek'; sheet.hidden = false; sheet.scrollTop = 0;
-  fill(); declutter();
-  // glide so the marker sits in the middle of the map left above the sheet
+  fill(); declutter(); bringIntoView();
+}
+function bringIntoView() {   // glide so the picked marker sits in the middle of the map left above the sheet
+  if (!picked) return;
   A = area();
-  const [x, y] = [X + parseFloat(m.style.left) / 100 * W, Y + parseFloat(m.style.top) / 100 * W / 2], top = A.b - 136;
+  const m = picked, x = X + parseFloat(m.style.left) / 100 * W, y = Y + parseFloat(m.style.top) / 100 * W / 2, top = A.b - sheetH();
   glide(W, X + A.w / 2 - x, Y + (A.t + top) / 2 - y);
 }
+const detent = d => { sheet.dataset.detent = d; bringIntoView(); };
 function closePeek() {
   if (sheet.hidden) return;
   sheet.hidden = true; sheet.style.transform = '';
@@ -241,9 +245,9 @@ function swipe(handle, sheetEl, onEnd) {
   addEventListener('pointerup', end); addEventListener('pointercancel', end);
 }
 for (const part of sheet.querySelectorAll('.cs-top, .ch')) swipe(part, sheet, dy => {
-  if (dy < -24) sheet.dataset.detent = 'full';
-  else if (dy > 24) { if (sheet.dataset.detent === 'full') sheet.dataset.detent = 'peek'; else closePeek(); }
-  else if (part.classList.contains('cs-top')) sheet.dataset.detent = sheet.dataset.detent === 'full' ? 'peek' : 'full';
+  if (dy < -24) detent('full');
+  else if (dy > 24) { if (sheet.dataset.detent === 'full') detent('peek'); else closePeek(); }
+  else if (part.classList.contains('cs-top')) detent(sheet.dataset.detent === 'full' ? 'peek' : 'full');
 });
 sheet.addEventListener('click', e => { if (performance.now() < swallowUntil && e.target.closest('a')) e.preventDefault(); }, true);
 for (const det of document.querySelectorAll('details.layers')) {

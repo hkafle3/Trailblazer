@@ -118,7 +118,8 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .mk.pick i { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 9px rgba(255, 255, 255, .16), 0 0 14px var(--known); }
   body.explore .mk.comet.pick i { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 9px rgba(255, 255, 255, .16), 0 0 14px var(--comet); }
   body.explore .mk.pick b { display: block !important; color: #fff; font-weight: 700; }
-  body.explore .mk.sel.faint { opacity: 1; } body.explore .mk.sel.faint i { opacity: .4; }   /* 3I/ATLAS too faint to see: a dim dot, its name still readable */
+  body.explore .mk.sel.faint { opacity: 1; } body.explore .mk.sel.faint:not(.pick) i { opacity: .4; }
+  body.explore .mk.deep.left b { left: auto; right: 18px; }   /* a deep field's name can sit left of its ring too */   /* 3I/ATLAS too faint to see: a dim dot, its name still readable */
   body.explore .mk:hover i { transform: none; }   /* a tap leaves :hover stuck on touch screens */
   body.explore #card-comet, body.explore #card-patch { display: none !important; }   /* folded into the sheet a tap opens */
 
@@ -142,7 +143,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   /* sheets: Layers and Examples rise from the bottom over the timeline; the comet sheet sits on the timeline */
   body.explore .layers-body, .csheet {
     position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; width: auto; margin: 0; padding: 0 22px calc(18px + env(safe-area-inset-bottom));
-    display: block; border: 0; border-top: 2px solid #fff; border-radius: 0; background: rgba(4, 6, 12, .96); box-shadow: 0 -20px 50px -20px #000; font-family: var(--panel-font); color: #fff;
+    display: block; border: 0; border-top: 2px solid #fff; border-radius: 0; background: rgba(4, 6, 12, .985); box-shadow: 0 -20px 50px -20px #000; font-family: var(--panel-font); color: #fff;
   }
   body.explore .layers-body .grab, .csheet .grab { display: block; width: 36px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: rgba(255, 255, 255, .55); }
   body.explore .layers-body .sheet-x, .csheet .sheet-x { display: grid; place-items: center; position: absolute; right: 10px; top: 4px; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fff; cursor: pointer; }
@@ -153,11 +154,13 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .layers .cbx, .csheet .cbx { width: 22px; height: 22px; }
   body.explore .layers .cbx::after, .csheet .cbx::after { width: 11px; height: 11px; }
   body.explore .layer:has(#ly-people, #ly-comets, #ly-known)::after { content: ""; margin-left: auto; width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
-  body.explore .heat-key { padding: 0 0 12px 38px; }
+  body.explore .heat-key { justify-content: flex-start; padding: 0 0 12px 38px; border-top: 0; }
 
-  .csheet { display: block; bottom: var(--bar); z-index: 4; padding: 0 20px 18px 22px; max-height: 136px; overflow: hidden; box-shadow: none; transition: max-height .3s var(--ease), transform .3s var(--ease); }
+  .csheet { display: block; bottom: var(--bar); z-index: 7; padding: 0 20px 18px 22px; max-height: 136px; overflow: hidden; box-shadow: none; transition: max-height .3s var(--ease), transform .3s var(--ease); }
   .csheet[data-detent="full"] { max-height: calc(100dvh - var(--bar) - 150px); overflow-y: auto; box-shadow: 0 -20px 50px -20px #000; }
   .csheet.drag { transition: none; }
+  .csheet:not([data-detent="full"]) .cs-body { visibility: hidden; }   /* the peek is the head only */
+  body.explore:has(#csheet:not([hidden])) .xbtns { visibility: hidden; }   /* under the comet sheet, not through it */
   .csheet .cs-top { height: 22px; touch-action: none; }
   .csheet .ch { display: flex; align-items: center; gap: 12px; touch-action: none; }
   .csheet .ch > div { flex: 1; min-width: 0; }
@@ -175,7 +178,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   .csheet dt { margin-top: 4px; color: #999; }
   .csheet dt:first-child { margin-top: 0; }
   .csheet dd { margin: 0; color: #f2f2f2; }
-  .csheet .layer { display: flex; align-items: center; border-top: 1px solid rgba(255, 255, 255, .08); cursor: pointer; }
+  .csheet .layer { display: flex; align-items: center; justify-content: flex-start; border-top: 1px solid rgba(255, 255, 255, .08); cursor: pointer; }
   .csheet .wide { display: flex; align-items: center; height: 56px; margin-top: 12px; padding: 0 6px 0 20px; border: 1.5px solid #fff; border-radius: 10px; font-size: 16px; color: #fff; text-decoration: none; }
   .csheet .wide > span:first-child { flex: 1; }
   .csheet .wide.ghost { border-color: rgba(255, 255, 255, .4); font-size: 14px; }
