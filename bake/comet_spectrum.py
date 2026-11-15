@@ -10,6 +10,8 @@ it, and read the wavelength SPHEREx saw there. Each exposure is a different wave
 comet's spectrum. Comets are spread out (not points), so the circle is wide and every point carries its noise.
 
 Run: uv run -q --with astropy --with pillow --with certifi --with reproject sh -c 'SSL_CERT_FILE=$(python -m certifi) exec python -u bake/comet_spectrum.py "3I/ATLAS" "C/2025 R2 (SWAN)"'
+Flags: --all-visits (every SPHEREx visit, how the known comets are published); --most (find exposures with IRSA's
+moving-object search, one request per visit, instead of hundreds of SIA requests).
 """
 import csv, io, json, re, sys, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +38,10 @@ SR_PER_PIX = (6.15 / 206265) ** 2
 # OUTLIER (19) and SOURCE (21) are left alone: a moving comet's own coma trips both.
 BAD = sum(1 << b for b in (0, 1, 2, 6, 9, 10, 11, 15, 17))
 ALL_VISITS = "--all-visits" in sys.argv   # search every SPHEREx visit of a known comet, not just its brightest
+# Find a known comet's candidate exposures with IRSA's moving-object search (MOST, one request per window) instead of
+# SIA at its position every 6 hours (hundreds of requests). Same windows, same Horizons + outline check afterwards.
+# Checked 2026-11-15 on C/2025 R2 (SWAN): MOST held all 269 of the SIA list's exposures, with the same file paths.
+USE_MOST = "--most" in sys.argv
 
 
 def slug(name):
@@ -84,6 +90,29 @@ def horizons_at(pdes, mjds):
     return out
 
 
+def most_rows(pdes, a, b):
+    """SPHEREx exposures whose outline MOST says the comet crossed between days a and b (since MJD0), as rows shaped
+    like SIA's (the fields exposures_known reads), DR1 before QR3 so DR1 wins a duplicate."""
+    day = lambda d: (datetime(1858, 11, 17) + timedelta(days=MJD0 + d)).strftime("%Y-%m-%d")
+    url = "https://irsa.ipac.caltech.edu/cgi-bin/MOST/nph-most?" + urllib.parse.urlencode(
+        {"catalog": "spherex", "input_type": "name_input", "obj_name": pdes, "obj_type": "Comet",
+         "obs_begin": day(np.floor(a)), "obs_end": day(np.ceil(b) + 1), "output_mode": "Brief"})
+    lines = get(url).decode().splitlines()
+    head = next((l for l in lines if l.startswith("|")), None)
+    assert head, f"MOST answered without a table (an empty answer still has one): {lines[:5]}"
+    bars = [i for i, ch in enumerate(head) if ch == "|"]
+    cols = [head[i + 1:j].strip() for i, j in zip(bars, bars[1:])]
+    out = []
+    for l in lines:
+        if l.startswith(("\\", "|")) or not l.strip():
+            continue
+        r = {k: l[i:j + 1].strip() for k, i, j in zip(cols, bars, bars[1:])}
+        out.append(dict(obs_id=r["observationid"], energy_bandpassname="SPHEREx-" + r["productid"], t_min=r["mjd_start"],
+                        t_max=r["mjd_end"], access_url="https://irsa.ipac.caltech.edu/" + r["uri"], dataproduct_subtype="science",
+                        s_region="POLYGON ICRS " + " ".join(r[f"{x}{n}"] for n in range(1, 5) for x in ("ra", "dec"))))
+    return sorted(out, key=lambda r: "/dr1/" not in r["access_url"])
+
+
 def exposures_known(name, cache):
     """Every SPHEREx exposure (all detectors) that held a known comet during its brightest SPHEREx visit."""
     from known_comets import inside   # gnomonic point-in-outline, checked on import
@@ -111,7 +140,13 @@ def exposures_known(name, cache):
     inwin = lambda t: any(a <= t <= b for a, b in windows)
     lo, hi = min(a for a, _ in windows), max(b for _, b in windows)
     rows = {}
-    for d in np.concatenate([np.arange(a, b + 0.01, 0.25) for a, b in windows]):   # search IRSA at the comet's position every 6 hours
+    if USE_MOST:
+        for a, b in windows:
+            for r in most_rows(c["pdes"], a, b):
+                t = float(r["t_min"]) - MJD0
+                if inwin(t):
+                    rows.setdefault((r["obs_id"], r["energy_bandpassname"]), r)
+    for d in [] if USE_MOST else np.concatenate([np.arange(a, b + 0.01, 0.25) for a, b in windows]):   # search IRSA at the comet's position every 6 hours
         ra, dec = float(np.interp(d, days, ra_u)) % 360, float(np.interp(d, days, [r[2] for r in track]))
         for coll in ("spherex_dr1", "spherex_qr3"):
             url = "https://irsa.ipac.caltech.edu/SIA?" + urllib.parse.urlencode(
@@ -128,7 +163,7 @@ def exposures_known(name, cache):
     out = [dict(obs=r["obs_id"], det=r["energy_bandpassname"].replace("SPHEREx-", ""), t=mid(r),
                 ra=p[0], dec=p[1], url=r["access_url"]) for r, p, h in zip(cand, pos, hit) if h]
     f.write_text(json.dumps(out))
-    print(f"  {name}: {len(windows)} window(s) MJD {lo + MJD0:.1f}-{hi + MJD0:.1f}, {len(cand)} candidate exposures, {len(out)} held the comet", flush=True)
+    print(f"  {name}: {'MOST' if USE_MOST else 'SIA'}, {len(windows)} window(s) MJD {lo + MJD0:.1f}-{hi + MJD0:.1f}, {len(cand)} candidate exposures, {len(out)} held the comet", flush=True)
     return out
 
 

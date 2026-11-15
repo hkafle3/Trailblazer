@@ -5,7 +5,8 @@ from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 EXPECT = {"3I/ATLAS": "CO2 glow detected", "C/2025 R2 (SWAN)": "CO2 glow detected",
-          "C/2024 T5 (ATLAS)": "Not enough signal", "210P/Christensen": "Not enough signal"}
+          "C/2024 T5 (ATLAS)": "Not enough signal", "210P/Christensen": "Not enough signal",
+          "C/2026 A2 (Bok)": "CO2 glow detected"}   # migration 0012
 
 
 async def main():
