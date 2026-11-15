@@ -1,5 +1,7 @@
 // Web Worker: builds a time-lapse for any RA/Dec in the browser, the same way bake/flipbook.py does in Python.
-// in:  {ra, dec, det, api}     out: {type:'progress'|'frame'|'done'|'empty'|'error', ...}
+// in:  {id, ra, dec, det, api}     out: {id, type:'progress'|'frame'|'done'|'empty'|'error', ...}
+// The worker stays alive between builds. A new message replaces the build in flight (one with no ra only stops it), and
+// a build for a spot the listed images still cover reuses the list, their headers and the rows already read.
 // Each visit becomes one frame: exposures at one matched wavelength, reprojected north up, median combined.
 import { imageHeader, imageRows, worldToPix, wavelengthAt } from './fits.js';
 
@@ -7,7 +9,6 @@ import { imageHeader, imageRows, worldToPix, wavelengthAt } from './fits.js';
 // 2 of 4 visits and its fitted motion went to 18 "/yr; at 3 it keeps 4 and measures 6.45 (published 8.1).
 const SNR_MIN = Number(new URLSearchParams(self.location.search).get('snr') || 3);
 const GRID = 144, PIX = 5.0, PER_VISIT = 3, MAX_PER_VISIT = 30, SIZE = 2040, D2R = Math.PI / 180;
-const post = (m, transfer) => self.postMessage(m, transfer || []);
 
 async function pool(items, n, fn) {   // run fn over items, at most n at a time (polite to S3)
   const out = new Array(items.length); let i = 0;
@@ -47,15 +48,33 @@ function gridWorld(ra0, dec0, ix, iy) {
   return [((ra / D2R) % 360 + 360) % 360, dec / D2R];
 }
 
+// Rows y0..y1 of one exposure, kept between builds: a re-centre a little way off reads only the strip it lacks.
+// A block that would pass 600 rows (5 MB) starts again from the rows asked for. At most ROWS_KEPT exposures are kept,
+// the least recently used dropped first (a re-centre can pick other exposures of a visit, at the new wavelength).
+const rowCache = new Map(), ROWS_KEPT = 48;
+async function rows(e, y0, y1, signal) {
+  const read = (a, b) => imageRows(e.key, e.h, a, b, signal);
+  const join = (a, b) => { const o = new Float32Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
+  let c = rowCache.get(e.key);
+  if (!c || y0 > c.y1 + 1 || y1 < c.y0 - 1 || Math.max(y1, c.y1) - Math.min(y0, c.y0) > 600) c = { y0, y1, px: await read(y0, y1) };
+  else {
+    if (y0 < c.y0) c = { y0, y1: c.y1, px: join(await read(y0, c.y0 - 1), c.px) };
+    if (y1 > c.y1) c = { y0: c.y0, y1, px: join(c.px, await read(c.y1 + 1, y1)) };
+  }
+  rowCache.delete(e.key); rowCache.set(e.key, c);   // Map order is use order
+  if (rowCache.size > ROWS_KEPT) rowCache.delete(rowCache.keys().next().value);
+  return c;
+}
+
 // one exposure -> GRID x GRID normalized frame (FITS row order, bottom row first), bilinear like reproject_interp
-async function reproject(e, ra, dec) {
+async function reproject(e, ra, dec, signal) {
   const map = [];
   for (let iy = 0; iy < GRID; iy++) for (let ix = 0; ix < GRID; ix++) map.push(worldToPix(e.h, ...gridWorld(ra, dec, ix, iy)));
   const ys = map.filter(Boolean).map(p => p[1]);
   const y0 = Math.max(0, Math.floor(Math.min(...ys)) - 1), y1 = Math.min(SIZE - 1, Math.ceil(Math.max(...ys)) + 1);
   if (y0 > y1) return null;
-  const rows = await imageRows(e.key, e.h, y0, y1);
-  const at = (x, y) => (x < 0 || y < y0 || x >= SIZE || y > y1) ? NaN : rows[(y - y0) * SIZE + x];
+  const c = await rows(e, y0, y1, signal);
+  const at = (x, y) => (x < 0 || y < c.y0 || x >= SIZE || y > c.y1) ? NaN : c.px[(y - c.y0) * SIZE + x];
   const out = new Float32Array(GRID * GRID);
   map.forEach((p, k) => {
     if (!p) { out[k] = NaN; return; }
@@ -109,37 +128,77 @@ const epochs = ts => {
   return g.map(x => +(x.reduce((a, b) => a + b, 0) / x.length).toFixed(4));
 };
 
-self.onmessage = async ({ data: { ra, dec, det, api } }) => {
+// kept between builds: the latest request, the last image list (visits of images with their headers), the wavelength
+// maps, and the Gaia stars around the last spot asked
+let cur, stop = null, list = null, mapsP = null, gaiaAt = null;
+
+self.onmessage = async ({ data: { id, ra, dec, det, api } }) => {
+  cur = id; stop?.abort();
+  if (ra == null) return;
+  const signal = (stop = new AbortController()).signal;
+  const post = m => { if (id === cur) self.postMessage({ ...m, id }); };
+  const alive = () => { if (id !== cur) throw new Error('replaced by a newer build'); };
   try {
     const t0 = performance.now();
-    // v=2: a browser may still hold a failed search that the old Worker let it cache for a day (2026-11-14)
-    const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}&v=2`);
-    const found = await res.json();
-    if (!res.ok) return post({ type: 'error', error: found.error || `HTTP ${res.status}` });
-    if (!found.images.length) return post({ type: 'empty' });
-    const maps = await fetch(new URL('../data/wavemaps.json', import.meta.url)).then(r => r.json());
+    // a failed download is forgotten, so the next build tries again (the worker outlives errors)
+    const maps = await (mapsP ??= fetch(new URL('../data/wavemaps.json', import.meta.url))
+      .then(r => { if (!r.ok) throw new Error(`wavelength maps: HTTP ${r.status}`); return r.json(); })
+      .catch(e => { mapsP = null; throw e; }));
+    alive();
     if (!maps[det]) return post({ type: 'error', error: `no wavelength map for ${det} yet` });
-    const vs = visits(found.images).map(v => v.slice(0, MAX_PER_VISIT));
-    post({ type: 'progress', text: `${found.images.length} images in ${vs.length} visits; reading where the target falls in each`, ms: performance.now() - t0 });
-
-    let done = 0;
-    await pool(vs.flat(), 8, async e => {
-      e.h = await imageHeader(e.key);
+    // the images of a visit that cover this spot, each with the wavelength it has there (copies: a build never
+    // changes the list)
+    const here = v => v.flatMap(e => {
       const p = worldToPix(e.h, ra, dec);
-      if (p && p[0] >= 0 && p[1] >= 0 && p[0] <= SIZE - 1 && p[1] <= SIZE - 1) [e.lam, e.bw] = wavelengthAt(maps[det], p[0], p[1]);
-      if (++done % 10 === 0) post({ type: 'progress', text: `read ${done} of ${vs.flat().length} image headers` });
+      if (!(p && p[0] >= 0 && p[1] >= 0 && p[0] <= SIZE - 1 && p[1] <= SIZE - 1)) return [];
+      const [lam, bw] = wavelengthAt(maps[det], p[0], p[1]);
+      return [{ ...e, lam, bw }];
     });
-    const usable = vs.map(v => v.filter(e => e.lam != null)).filter(v => v.length);
+    // Re-centre: the list is reused while any of its images covers the new spot. Visits with no image there are left
+    // out of this build (the list keeps them, so moving back brings them back); IRSA is asked again (20 to 30 s on a
+    // slow day) only when no listed image covers the spot.
+    // ponytail: an image that covers the new spot but not the searched one is not in the list, so a re-centre can
+    // have fewer visits or exposures than a fresh search of the same spot; a region search in the Worker would close that.
+    let usable = list?.det === det ? list.visits.map(here).filter(v => v.length) : [];
+    if (!usable.length) {
+      // v=2: a browser may still hold a failed search that the old Worker let it cache for a day (2026-11-14)
+      const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}&v=2`, { signal });
+      const found = await res.json();
+      alive();
+      if (!res.ok) return post({ type: 'error', error: found.error || `HTTP ${res.status}` });
+      if (!found.images.length) return post({ type: 'empty' });
+      const vs = visits(found.images).map(v => v.slice(0, MAX_PER_VISIT));
+      post({ type: 'progress', text: `${found.images.length} images in ${vs.length} visits; reading where the target falls in each`, ms: performance.now() - t0 });
+      const had = new Map((list?.visits.flat() || []).map(e => [e.key, e.h]));   // headers the last list already read
+      let done = 0;
+      await pool(vs.flat(), 8, async e => {
+        e.h = had.get(e.key) ?? await imageHeader(e.key, signal);
+        alive();
+        if (++done % 10 === 0) post({ type: 'progress', text: `read ${done} of ${vs.flat().length} image headers` });
+      });
+      usable = vs.map(here);
+      list = { det, visits: vs.filter((_, k) => usable[k].length) };
+      usable = usable.filter(v => v.length);
+      const keep = new Set(vs.flat().map(e => e.key));
+      for (const k of rowCache.keys()) if (!keep.has(k)) rowCache.delete(k);
+    }
     if (!usable.length) return post({ type: 'empty' });
     const { lam0, tol, picked } = match(usable);
 
-    // Gaia, fetched while frames build: the star at this spot, propagated from 2016.0 to the target epoch (2026.0)
-    const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`)   // v=3: Gaia from IRSA; drops answers cached before the switch
-     .then(r => r.ok ? r.json() : null).catch(() => null).then(g => g?.stars || []);
+    // Gaia: the star at this spot, propagated from 2016.0 to the target epoch (2026.0).
+    // The Worker answers with every 2016 position within 144" of the spot asked. A re-centre within 100" of the last
+    // spot tries those stars first and waits for its own answer (1.5 s, or 20 s on a slow IRSA day) only when none
+    // fits: a fast star's 2016 position can sit 100" from where it is now (Barnard's Star), outside the old cone.
+    // The request still starts now, beside the frames, and its answer is dropped when the cached stars fit: waiting to
+    // ask until they fail cost re-centres about 2 s (the Worker caches /api/gaia for a day, so the extra ask is cheap).
+    const cached = gaiaAt && Math.hypot((gaiaAt.ra - ra) * Math.cos(dec * D2R), gaiaAt.dec - dec) * 3600 <= 100 ? gaiaAt.stars : [];
+    const gaiaP = fetch(`${api}/api/gaia?ra=${ra}&dec=${dec}&v=3`, { signal })   // v=3: Gaia from IRSA; drops answers cached before the switch
+     .then(r => r.ok ? r.json() : null).catch(() => null).then(g => { if (g?.stars) gaiaAt = { ra, dec, stars: g.stars }; return g?.stars || []; });
 
     const frames = [];
     for (const [n, v] of picked.entries()) {
-      const arrs = (await pool(v, 3, e => reproject(e, ra, dec))).filter(Boolean);
+      const arrs = (await pool(v, 3, e => reproject(e, ra, dec, signal))).filter(Boolean);
+      alive();
       const stack = new Float32Array(GRID * GRID).map((_, k) => median(arrs.map(a => a[k])));
       const ts = v.map(e => e.t), mjd = ts.reduce((a, b) => a + b, 0) / ts.length;
       frames.push({ px: stack, start: date(Math.min(...ts)), end: date(Math.max(...ts)), mjd, epochs: epochs(ts), year: year(mjd), exposures: arrs.length,
@@ -164,11 +223,16 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
     // A saturated star's blob is only good to a few pixels, so it gets 2 pixels of slack.
     const seen = frames.filter(f => f.east != null), slack = seen.some(f => f.blob) ? 2 * PIX : 4;
     const pred = (s, f) => { const dt = f.year - 2016; return [(s.ra - ra) * 3600 * Math.cos(s.dec * D2R) + s.pmra / 1000 * dt, (s.dec - dec) * 3600 + s.pmdec / 1000 * dt]; };
-    let gaia = null, bestOff = Infinity;
-    for (const s of seen.length ? await Promise.race([gaiaP, new Promise(r => setTimeout(() => r([]), 8000))]) : []) {   // Gaia late: show the frames without it
-      const off = seen.reduce((a, f) => { const [e, n] = pred(s, f); return a + Math.hypot(e - f.east, n - f.north); }, 0) / seen.length;
-      if (off < bestOff) { bestOff = off; gaia = s; }
-    }
+    const fit = stars => {
+      let star = null, best = Infinity;
+      for (const s of stars) {
+        const off = seen.reduce((a, f) => { const [e, n] = pred(s, f); return a + Math.hypot(e - f.east, n - f.north); }, 0) / seen.length;
+        if (off < best) { best = off; star = s; }
+      }
+      return [star, best];
+    };
+    let [gaia, bestOff] = fit(seen.length ? cached : []);
+    if (seen.length && !(bestOff <= slack)) [gaia, bestOff] = fit(await Promise.race([gaiaP, new Promise(r => setTimeout(() => r([]), 8000))]));   // Gaia late: show the frames without it
     if (gaia && bestOff <= slack) frames.forEach(f => { [f.pred_east, f.pred_north] = pred(gaia, f); });
     else gaia = null;
     // straight-line motion fit from detected positions: at least 3 visits spanning half a year, with the
@@ -194,6 +258,6 @@ self.onmessage = async ({ data: { ra, dec, det, api } }) => {
       gaia: gaia ? { pmra: gaia.pmra, pmdec: gaia.pmdec, g: gaia.g, total: Math.hypot(gaia.pmra, gaia.pmdec) / 1000 } : null,
       frames } });
   } catch (err) {
-    post({ type: 'error', error: String(err.message || err) });
+    post({ type: 'error', error: String(err.message || err) });   // not sent for a build that was replaced
   }
 };

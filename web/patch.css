@@ -170,3 +170,10 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
   #mapbox { left: 12px; bottom: 12px; }
   #hint { bottom: 230px; width: calc(100% - 24px); text-align: center; white-space: normal; }
 }
+
+/* The photo can be dragged or clicked to re-centre (live/recenter.js): a grab hand, and a touch drag moves the photo
+   instead of scrolling the page. Its keyboard focus rings the frame, as the other controls are ringed (the frame clips
+   anything drawn outside the canvas). */
+#patch { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; outline: none; }
+#patch.drag { cursor: grabbing; }
+.pv-frame:has(#patch:focus-visible) { outline: 2px solid #fff; outline-offset: 3px; }
