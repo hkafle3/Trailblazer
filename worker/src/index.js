@@ -3,7 +3,7 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=
-//   GET /api/comets   GET /api/comets/:id   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   (D1)   See docs/api.md.
+//   GET /api/comets   GET /api/comets/:id   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 import { skyImagesJson, eclipticLat } from './sky_index.js';
@@ -268,13 +268,15 @@ const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, d
 
 // Comets people found plus known objects, for the map's markers
 async function comets(url, env) {
-  // for the Comets list: the CO2 verdict of a measured comet and how many SPHEREx photos it is in (read inside D1, so the
-  // Worker never parses the large detail column)
+  // for the Comets list: the CO2 verdict of a measured comet, how many SPHEREx photos it is in, and its thumbnail (the
+  // brightest of the photos its page shows). Read inside D1, so the Worker never parses the large detail column.
   const [rows, tags] = await Promise.all([env.DB.prepare(`SELECT id, kind, ra, dec, day, tail, real, track, det, visit, author, created_at,
     json_extract(detail, '$.co2_verdict') AS co2, COALESCE(json_extract(detail, '$.exposures'), json_array_length(detail, '$.spherex')) AS photos,
-    json_extract(detail, '$.faint') AS faint
+    json_extract(detail, '$.faint') AS faint,
+    'data/comets/' || json_extract(detail, '$.dir') || '/' || (SELECT json_extract(p.value, '$.file') FROM json_each(detail, '$.photos') p
+      ORDER BY json_extract(p.value, '$.flux') DESC LIMIT 1) AS thumb
     FROM comets`).all(), tallies(env.DB)]);
-  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint } : {}) })) });
+  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, thumb: c.thumb } : {}) })) });
 }
 
 // One comet for its page: position, tags, the measured detail (photos, spectrum) and its discussion
@@ -285,6 +287,20 @@ async function comet(id, env) {
     env.DB.prepare('SELECT author, tag, body, created_at FROM comments WHERE comet_id = ? ORDER BY created_at').bind(id).all()]);
   return json({ ...cometRow(c, tags), tags: tags[id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 },
     detail: c.detail ? JSON.parse(c.detail) : null, comments: talk.results });
+}
+
+// Every comet with written comments is a thread, for the Forums page: the comet, its votes and its comments, oldest
+// first; threads with the newest comment first. Votes with no text stay out (they are counted in tags).
+async function threads(env) {
+  const [rows, talk, tags] = await Promise.all([
+    env.DB.prepare(`SELECT id, kind, ra, dec, day, real FROM comets WHERE id IN (SELECT comet_id FROM comments WHERE body != '')`).all(),
+    env.DB.prepare(`SELECT comet_id, author, tag, body, created_at FROM comments WHERE body != '' ORDER BY created_at, id`).all(),
+    tallies(env.DB)]);
+  const by = {};
+  for (const { comet_id, ...c } of talk.results) (by[comet_id] ??= []).push(c);
+  const list = rows.results.map(c => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, real: !!c.real,
+    tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 }, last: by[c.id].at(-1).created_at, comments: by[c.id] }));
+  return json({ threads: list.sort((a, b) => b.last - a.last) }, 200, { 'Cache-Control': 'no-store' });
 }
 
 // The Forums feed: the latest comments across every comet, newest first, with where each comet is
@@ -590,6 +606,10 @@ export default {
         catch { return json({ error: 'comet id is not valid' }, 400); }
       }
       try { return await (id === null ? comets(url, env) : comet(id, env)); }
+      catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
+    }
+    if (url.pathname === '/api/threads') {
+      try { return await threads(env); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];

@@ -192,7 +192,7 @@ async def main():
 
         # ---- layers follow the drag: with Heat and Color Difference on, the photo held 6 grid pixels right is the same
         # picture moved by exactly 6 pixels (every layer is coloured through view(), so they move together)
-        await pg.click("label:has(#ly-heat)"); await pg.click("label:has(#diff)"); await pg.focus("#play"); await pg.keyboard.press("End")
+        await pg.click("label[for=ly-heat]"); await pg.click("label[for=diff]"); await pg.focus("#play"); await pg.keyboard.press("End")
         await pg.wait_for_timeout(300); v = await view(); N = 6
         await pg.evaluate("window.__img = (c => c.getContext('2d').getImageData(0, 0, c.width, c.height))(document.getElementById('patch'))")
         await pg.mouse.move(v["cx"], v["cy"]); await pg.mouse.down(); await pg.mouse.move(v["cx"] + N / v["kx"], v["cy"], steps=6)
@@ -207,7 +207,7 @@ async def main():
         await mark(); await pg.mouse.up(); await rebuilt(); v = await view()
         check(same[0] >= 0.97 * same[1] and same[2] and same[3] and same[4] > 0,
               f"layers: Heat and Color Difference on, the held photo is the same picture moved {N} pixels ({same[0]} of {same[1]} sampled pixels match)")
-        await pg.click("label:has(#ly-heat)"); await pg.click("label:has(#diff)"); await pg.wait_for_timeout(200); v = await view()
+        await pg.click("label[for=ly-heat]"); await pg.click("label[for=diff]"); await pg.wait_for_timeout(200); v = await view()
 
         # ---- short tap: under 5 px of movement is a click on that spot, not a 3 px drag
         tx, ty = v["cx"] + 110, v["cy"] - 70

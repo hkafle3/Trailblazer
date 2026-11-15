@@ -21,6 +21,7 @@ Markers for the Explore map: comets people found (`kind: "comet"`) and known obj
 - `ra`, `dec`: degrees. `day`: days since the coverage start (MJD 60789, 24 Apr 2025); the marker appears once the time slider reaches it.
 - `tags`: votes, counted from the `comments` table. A tag is part of a comment, and only each person's latest tag counts.
 - `co2`, `photos` (known comets): the carbon dioxide verdict of a measured comet (`detected`, `quiet` or `unclear`; `null` until its spectrum is measured) and how many SPHEREx photos it is in. The Comets page lists them.
+- `thumb` (measured comets): one of the photos its page shows, the one where the comet is brightest (`data/comets/<dir>/<file>`); `null` for the rest. The Comets page uses it for the measured comets' cards.
 - `track` (known comets): `[[day, ra, dec, magnitude], ...]` every 10 days from JPL Horizons. The map moves the marker along it and shows it only while magnitude is 16 or brighter. Built by `bake/known_comets.py`.
 
 ## GET /api/comets/:id (D1)
@@ -40,6 +41,18 @@ A measured comet (`bake/comet_spectrum.py`; 3I/ATLAS, C/2025 R2, C/2024 T5, 210P
 For a known comet from JPL's catalog, `detail` holds `spherex`: every SPHEREx D1 photo whose outline held the comet when it was taken (`[{ "day": 210.43, "obs": "2025W47_..." }]`), plus `q` (closest distance to the Sun, AU), `tp` (when, Julian date) and `mags`.
 
 Refusals: `404 {"error":"no comet C-9999"}`, `400 {"error":"comet id is not valid"}`, `503` if the database does not answer.
+
+## GET /api/threads (D1)
+
+The Forums page's threads: every comet with at least one written comment, newest activity first. Votes with no text are left out of `comments` (they are counted in `tags`).
+
+```json
+{ "threads": [ { "id": "C-0147", "kind": "comet", "ra": 77.3, "dec": 30.4, "day": 120, "real": false,
+    "tags": { "comet": 12, "asteroid": 1, "glitch": 0, "unsure": 1 }, "last": 1762994000000,
+    "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun in all six photos.", "created_at": 1762992800000 } ] } ] }
+```
+
+- `last`: the newest comment's `created_at` (unix ms). `comments` are oldest first.
 
 ## POST /api/comments (D1)
 
