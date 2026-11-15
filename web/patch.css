@@ -75,6 +75,12 @@ label.at { cursor: pointer; }
 .pv-frame { left: calc(675 * var(--e)); top: calc(229 * var(--e)); width: calc(1146 * var(--e)); height: calc(902 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(10 * var(--e)); background: #000; overflow: hidden; }
 #patch { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 #status.err { color: var(--glitch); }
+/* Explore's dive hands over its last picture of the sky: it covers the photo until the first frame is drawn, then fades */
+#hold { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .45s, visibility 0s .45s; }
+#hold.on { opacity: 1; visibility: visible; transition: none; }
+html.flying :is(#patch, #hold, #loading, #legend) { visibility: hidden !important; }   /* the dive's frame is flying in over this one */
+.pv-frame { transition: transform .18s var(--ease); }   /* it shrinks a little while a scroll outward heads back to the map */
+@media (prefers-reduced-motion: reduce) { #hold, .pv-frame { transition: none; } }
 #legend { position: absolute; right: calc(20 * var(--e)); bottom: calc(16 * var(--e)); display: flex; flex-direction: column; align-items: flex-end; gap: calc(10 * var(--e)); padding: calc(8 * var(--e)) calc(16 * var(--e)); border-radius: calc(8 * var(--e)); background: rgba(0, 0, 0, .6); font: 400 calc(17 * var(--e)) / 1 var(--panel-font); color: #cfd6e4; pointer-events: none; }
 #legend .lg-row { display: flex; gap: calc(26 * var(--e)); }
 #legend span { display: flex; align-items: center; gap: calc(10 * var(--e)); }

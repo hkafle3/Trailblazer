@@ -33,3 +33,13 @@ export function radec2tile(order, ra, dec) {
   const n = 1 << order, [x, y, f] = radec2xyf(ra, dec);
   return f * n * n + spread(Math.min(n - 1, Math.floor(x * n))) + 2 * spread(Math.min(n - 1, Math.floor(y * n)));
 }
+
+// ---- for Explore's dive (explore-dive.js), which samples tile pictures pixel by pixel ----
+export const HIPS = 'https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube';
+export const tileUrl = (order, k) => `${HIPS}/Norder${order}/Dir${Math.floor(k / 10000) * 10000}/Npix${k}.png`;
+// [ra, dec] in radians -> the tile number k at `order` and the place in its picture: column c and row r, 0..1 from the
+// top left (the picture's column runs along iy and its row along ix, as sky.js tileUV and explore-deep.js have it)
+export function tilePos(order, ra, dec) {
+  const n = 1 << order, [x, y, f] = radec2xyf(ra, dec), ix = Math.min(n - 1, Math.floor(x * n)), iy = Math.min(n - 1, Math.floor(y * n));
+  return { k: f * n * n + spread(ix) + 2 * spread(iy), c: y * n - iy, r: x * n - ix };
+}

@@ -4,6 +4,7 @@
 // zooms in 2x, and the +, - and whole-sky buttons (bottom right) or the + - 0 and arrow keys do the same.
 // The whole sky is the oval where the page's CSS puts it; nothing here writes to the page until the first pan or zoom.
 import { W, X, Y, A, hooks, measure, set, zoomAt, glide, glideZoom, cancel, onView, atMin, atMax } from './explore-view.js';
+import { restore } from './explore-dive.js';   // back from a time-lapse, or a reload: the map where it was
 import * as view from './explore-view.js';
 
 const phone = matchMedia('(max-width: 640px)');
@@ -118,5 +119,12 @@ addEventListener('keydown', e => {
   e.preventDefault();
 });
 
+// a zoomed view kept in this history entry (explore-dive.js) is put back as the page opens
+if (desk() && history.state?.view?.zoom > 1.001) {
+  begin(); restore();
+  // the timeline is still rising into place (its top edge is the map area's bottom): once it has, measure and place again
+  const was = [W, X, Y];
+  $('tl').addEventListener('animationend', () => { if (on && desk() && W === was[0] && X === was[1] && Y === was[2]) { measure(area()); restore(); } }, { once: true });
+}
 // the search (search.js): glide so sky position (ra, dec) is in the middle, at zoom z (1 = whole sky) or closer if already in
 export function flyTo(ra, dec, z = 4) { begin(); view.flyTo(ra, dec, Math.max(W, A.min * z), 600); }

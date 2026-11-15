@@ -4,6 +4,7 @@
 // A tap on a marker opens a peek sheet instead of leaving the page; Layers and Examples open as bottom sheets.
 // Desktop is untouched: every handler checks `phone` first, and leaving the phone width clears what this file set.
 import { fwd, trackAt, dayDate } from './skymap.js';
+import { restore } from './explore-dive.js';   // back from a time-lapse, or a reload: the map where it was
 import { W, X, Y, A, MAXW, hooks, measure, set, zoomAt, onView, atMin, glide, cancel } from './explore-view.js';
 
 const phone = matchMedia('(max-width: 640px)');
@@ -32,7 +33,7 @@ const focus = new URLSearchParams(location.search).get('focus');   // "Find on m
 
 function start() {
   measure(area());
-  if (focus) set(...wholeView()); else set(...homeView());
+  if (focus) set(...wholeView()); else if (!restore()) set(...homeView());
   try { if (!localStorage.getItem('ch.maphint')) hint.hidden = false; } catch { hint.hidden = false; }
   $('zoomlvl').hidden = !atMin() || !hint.hidden;
 }
@@ -262,7 +263,7 @@ export function onDay() {
 export function ready() {
   if (!phone.matches) return;
   const f = document.querySelector('#marks .mk.sel')?.comet;
-  if (f && !touched && !focus) {   // centre the first view on 3I/ATLAS where the replay ends
+  if (f && !touched && !focus && !history.state?.view) {   // centre the first view on 3I/ATLAS where the replay ends
     const [ra, dec] = f.track?.length ? trackAt(f.track, +$('time').max) : [f.ra, f.dec];
     homeU = fwd(ra, dec)[0]; measure(area()); set(...homeView());
   }
