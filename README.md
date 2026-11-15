@@ -1,4 +1,4 @@
-# Comet Hunt
+# Comet Catcher
 
 ![Explore](design/screens/shots/explore.png)
 

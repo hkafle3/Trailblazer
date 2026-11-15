@@ -26,7 +26,7 @@ case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is 
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
 check "explored cells" "/api/explored" 200 '"checks":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":77'
-check "home page served" "/" 200 'Find the dots that move'
+check "home page served" "/" 200 'The sky moves'
 check "time-lapse page served" "/timelapse.html" 200 'SPHEREx'
 check "unknown route" "/api/nope" 404 'not found'
 check "CORS header" "/api/images?ra=400&dec=4" 400 'ra must'   # header checked below

@@ -122,11 +122,22 @@ function spectrum(d) {
   $('c-spec-panel').hidden = false;
 }
 
+// Mollweide position on the all-sky picture (same maths as explore.js; RA 0 in the middle, increasing to the left)
+function where(c) {
+  const R2 = Math.SQRT2, RAD = Math.PI / 180, lon = (((-c.ra + 180) % 360 + 360) % 360 - 180);
+  let t = c.dec * RAD;
+  for (let i = 0; i < 10 && Math.abs(c.dec) < 89.9; i++) t -= (2 * t + Math.sin(2 * t) - Math.PI * Math.sin(c.dec * RAD)) / (2 + 2 * Math.cos(2 * t));
+  const x = (2 * R2 / Math.PI) * lon * RAD * Math.cos(t), y = R2 * Math.sin(t), dot = $('c-mini-dot');
+  dot.style.left = (x + 2 * R2) / (4 * R2) * 100 + '%'; dot.style.top = (R2 - y) / (2 * R2) * 100 + '%';
+  $('c-where').textContent = `RA ${c.ra.toFixed(1)}\u00b0   Dec ${c.dec >= 0 ? '+' : ''}${c.dec.toFixed(1)}\u00b0`;
+}
+
 // A known comet from JPL's catalog: when SPHEREx photographed it (matched to the survey's photo outlines),
 // each with a link that opens that patch on that date. Its spectrum is not measured yet.
 function known(c) {
   const shots = c.detail.spherex, box = $('c-empty');
-  box.innerHTML = '';
+  // keep the card's "Where it is" mini map (where()); drop only its example-comet sentence, which is wrong here
+  box.querySelector(':scope > p:not(.where)')?.remove();
   box.append(el('h2', null, shots.length ? `SPHEREx photographed it ${shots.length} times` : 'Not in a SPHEREx photo yet'));
   // one link per visit: photos less than 5 days after the previous one belong to the same visit
   const visits = [];
@@ -194,13 +205,13 @@ function composer(c) {
 }
 
 fetch(`/api/comets/${encodeURIComponent(id)}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
-  document.title = `${c.id} · Comet Hunt`;
+  document.title = `${c.id} · Comet Catcher`;
   $('c-id').textContent = c.id;
   $('c-cat').querySelector('span').textContent = c.kind === 'known' ? (c.detail?.photos ? 'Known comet · measured by SPHEREx' : c.real ? 'Known comet · JPL catalog' : 'Known object') : 'Not in any catalog';
   if (c.kind === 'comet') { const p = $('c-patch'); p.href = `timelapse.html?ra=${c.ra}&dec=${c.dec}&det=D1&diff=1`; p.hidden = false; }
   if (c.detail?.photos) { photos(c.detail); measures(c.detail); spectrum(c.detail); }
-  else if (c.detail?.spherex) known(c);
-  else $('c-empty').hidden = false;
+  else if (c.detail?.spherex) { where(c); known(c); }
+  else { where(c); $('c-empty').hidden = false; }
   talk(c);
   composer(c);
 }).catch(err => { $('c-id').textContent = 'Comet not found'; console.warn(err); });

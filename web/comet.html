@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comet · Comet Hunt</title>
+<title>Comet · Comet Catcher</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui.css">
 </head>
 <body class="page">
 
 <header class="topbar glass">
-  <a class="brand" href="./"><span class="brand-mark"></span>Comet Hunt</a>
+  <a class="brand" href="./"><span class="brand-mark"></span>Comet Catcher</a>
   <nav><a href="./">Explore</a><a class="on" href="comet.html">Comets</a><a href="guide.html">Guide</a></nav>
   <label class="search"><svg class="ic"><use href="icons.svg#search"/></svg><input placeholder="Comet or sky position" aria-label="Search" disabled></label>
-  <a class="av" title="orbit_owl">OO</a>
 </header>
 
 <main class="shell">
@@ -25,9 +25,12 @@
 
   <div class="comet-grid">
     <div class="col">
-      <section class="panel glass" id="c-empty" hidden>
-        <p class="faint">Example comet. Photos and a spectrum appear here once its dots are measured.</p>
-        <a class="link" href="comet.html?id=3I%2FATLAS">See a real one: 3I/ATLAS</a>
+      <section class="panel glass empty-card" id="c-empty" hidden>
+        <h2>Where it is</h2>
+        <div class="skymini" id="c-mini"><i id="c-mini-dot"></i></div>
+        <p class="where" id="c-where"></p>
+        <p>Example comet: its photos and spectrum appear here once its dots are measured.</p>
+        <div class="actions"><a class="btn ghost" href="comet.html?id=3I%2FATLAS">See a real one: 3I/ATLAS</a></div>
       </section>
 
       <section class="panel glass" id="c-photos-panel" hidden>
@@ -78,5 +81,6 @@
 </script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script type="module" src="comet.js"></script>
+<script src="ui.js"></script>
 </body>
 </html>
