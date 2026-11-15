@@ -343,3 +343,26 @@ body:has(#ly-paths:not(:checked)) .mk .trail { display: none; }
 @keyframes breathe { 50% { box-shadow: 0 0 0 1px rgba(255, 255, 255, .2), 0 0 120px rgba(127, 184, 255, .4); } }
 .nb-photo { margin-top: 30px; }
 .nb-steps .pic { justify-content: flex-end; }
+
+/* ---------- comet page "Where it is": the Explore map in small, beside the date, the place and "Find on map" ---------- */
+.col > .wherecard { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 36px; align-items: center; padding: 26px 34px; animation: none; }
+.wherecard h2 { font-size: 22px; }
+.wherecard #c-when { margin: 12px 0 6px; font: 300 17px/1 var(--head-font); color: #e8e8e8; }   /* the timeline's date, in its type (explore.css .tl-date) */
+.wherecard #c-when:empty { margin-bottom: 0; }
+.wherecard .where { font: 500 12px var(--mono); color: var(--ink-3); letter-spacing: .04em; white-space: pre; }
+.wherecard .btn { margin-top: 20px; }
+.skymini svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.skymini path { fill: none; stroke: var(--comet); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1 6; vector-effect: non-scaling-stroke; opacity: .8; }   /* the dotted comet trail of the big map (.mk .trail), at this size */
+@media (max-width: 640px) { .col > .wherecard { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 22px 16px; text-align: center; } }
+/* Opened from Explore, the big map glides into this one (same view-transition-name as body.explore .map) */
+@media (prefers-reduced-motion: no-preference) {
+  .skymini { view-transition-name: sky; }
+  html:has(#c-mini)::view-transition-group(sky) { animation-duration: .4s; animation-timing-function: var(--ease); }
+}
+
+/* Explore opened by "Find on map" (?focus=): that comet is ringed and named, on any date */
+.mk.focus::after { content: ""; position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .85); box-shadow: 0 0 0 6px rgba(255, 255, 255, .14); pointer-events: none; }   /* the timeline handle's white line and halo */
+.mk.known.focus.faint { opacity: 1; }   /* too faint to see on this date: only its dot dims */
+.mk.focus.faint i { opacity: .35; }
+#marks .mk.focus b { display: block; left: 20px; }
+#marks .mk.focus.left b { left: auto; right: 20px; }

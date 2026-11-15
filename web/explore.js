@@ -1,18 +1,7 @@
 // Explore: the all-sky map. One Mollweide projection places everything so markers, the coverage replay
 // and the heat map line up with data/sky.jpg (RA increases to the left, RA 0 in the middle).
 // Data: data/coverage.{png,json} (built by bake/sky_assets.py), /api/comets and /api/explored (worker/).
-const R2 = Math.SQRT2, RAD = Math.PI / 180;
-const wrap = d => ((d + 180) % 360 + 360) % 360 - 180;
-
-// map longitude (degrees, -180..180, positive right) and Dec -> [u, v] in 0..1 across the map
-function fwdLon(lon, dec) {
-  const lat = dec * RAD;
-  let t = lat;
-  for (let i = 0; i < 10 && Math.abs(dec) < 89.9; i++) t -= (2 * t + Math.sin(2 * t) - Math.PI * Math.sin(lat)) / (2 + 2 * Math.cos(2 * t));
-  const x = (2 * R2 / Math.PI) * lon * RAD * Math.cos(t), y = R2 * Math.sin(t);
-  return [(x + 2 * R2) / (4 * R2), (R2 - y) / (2 * R2)];
-}
-const fwd = (ra, dec) => fwdLon(wrap(-ra), dec);
+import { R2, RAD, wrap, fwdLon, fwd, trackAt, dayParam, LAST_DAY, MJD0 } from './skymap.js';
 // [u, v] -> [ra, dec], or null outside the oval
 function inv(u, v) {
   const x = (u * 2 - 1) * 2 * R2, y = (1 - v * 2) * R2;
@@ -28,6 +17,8 @@ for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]])
 const $ = id => document.getElementById(id);
 const place = (el, ra, dec) => { const [u, v] = fwd(ra, dec); el.style.left = u * 100 + '%'; el.style.top = v * 100 + '%'; return u; };
 const patchUrl = (ra, dec) => `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=D1&diff=1`;
+const focus = new URLSearchParams(location.search).get('focus');   // ?focus=<comet>&day=<day>: "Find on map" on a comet's page
+$('time').value = dayParam();
 const getJson = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(`${url}: HTTP ${r.status}`))));
 
 // ---- grid and ecliptic ----
@@ -73,13 +64,13 @@ addEventListener('keydown', e => { if (e.key === 'Escape') pin.hidden = true; })
 // and shows only while the comet is bright enough to see (magnitude 16 or brighter).
 const movers = [];
 function followTracks(day) {
-  for (const { el, track } of movers) {
-    const i = Math.min(track.length - 2, Math.max(0, Math.floor(day / 10))), [d0, r0, c0, m0] = track[i], [d1, r1, c1, m1] = track[i + 1];
-    const f = Math.min(1, Math.max(0, (day - d0) / (d1 - d0))), dr = ((r1 - r0 + 540) % 360) - 180;   // shortest way round in RA
-    place(el, (r0 + f * dr + 360) % 360, c0 + f * (c1 - c0));
-    const mag = m0 == null ? m1 : m1 == null ? m0 : m0 + f * (m1 - m0);
-    const bright = mag != null && mag <= 16;
-    // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see; the rest hide
+  for (const { el, id, track } of movers) {
+    const [ra, dec, mag] = trackAt(track, day), bright = mag != null && mag <= 16;
+    const u = place(el, ra, dec);
+    if (el.classList.contains('focus')) el.classList.toggle('left', u > 0.88);   // its name stays on the map
+    el.href = `comet.html?id=${encodeURIComponent(id)}&day=${day}`;   // its page shows the same date
+    // 3I/ATLAS stays findable as our measured comet, but dimmed while it is too faint to see (so does a comet
+    // opened with "Find on map"); the rest hide
     if (el.dataset.always === '1') el.classList.toggle('faint', !bright); else el.hidden = !bright;
   }
 }
@@ -87,11 +78,11 @@ let trailN = 0;
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
   const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
-  const featured = comets.filter(c => c.kind === 'comet').sort((a, b) => votes(b) - votes(a))[0];
+  const featured = focus ? null : comets.filter(c => c.kind === 'comet').sort((a, b) => votes(b) - votes(a))[0];   // no card while a comet is being found
   for (const c of comets) {
     const a = document.createElement('a');
     a.className = `mk ${c.kind}`;
-    a.dataset.day = c.day ?? 0;
+    if (c.id === focus) a.classList.add('focus'); else a.dataset.day = c.day ?? 0;   // the comet being found shows on any date
     a.innerHTML = '<i></i>';
     if (c.kind === 'comet') {
       a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
@@ -102,7 +93,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     if (c.kind === 'known') a.href = `comet.html?id=${encodeURIComponent(c.id)}`;
     if (c.kind === 'comet' || c.real) { const b = document.createElement('b'); b.textContent = c.id; a.append(b); }
     if (c.kind === 'known' && c.real && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
-    if (c.track) { movers.push({ el: a, track: c.track }); if (c.detail?.photos || c.id === '3I/ATLAS') a.dataset.always = '1'; }
+    if (c.track) { movers.push({ el: a, id: c.id, track: c.track }); if (c.detail?.photos || c.id === '3I/ATLAS' || c.id === focus) a.dataset.always = '1'; }
     if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (heading is illustrative for example comets)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
       const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
@@ -112,6 +103,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     marks.prepend(a);
   }
   followTracks(+$('time').value);
+  if (focus) marks.append(...marks.querySelectorAll('.focus'));   // on top of its neighbours
   if (featured) {
     const n = votes(featured), t = featured.tags;
     card.href = `comet.html?id=${encodeURIComponent(featured.id)}`;
@@ -126,6 +118,20 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   }
   showByDay();
 }).catch(err => console.warn('comets unavailable', err));
+
+// A click on a comet: the map zooms toward it, then the page changes and the map becomes that page's mini map
+// (the shared view-transition-name "sky"). Browsers without page-to-page view transitions, and people who
+// asked for less motion, follow the link as usual.
+$('marks').addEventListener('click', e => {
+  const a = e.target.closest('a[href^="comet.html"]');
+  if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  if (!('CSSViewTransitionRule' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  e.preventDefault();
+  const stage = document.querySelector('.map-wrap');
+  stage.style.transformOrigin = `${a.style.left} ${a.style.top}`;
+  stage.animate({ transform: ['none', 'scale(1.3)'] }, { duration: 200, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' })
+    .finished.then(() => { location.href = a.href; });
+});
 
 // Back from a time-lapse: the browser may restore this page from memory, with the heat map from before; reload it
 addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
@@ -248,6 +254,7 @@ let showByDay = () => {};
 (async () => {
   const img = new Image(); img.src = 'data/visits.png';
   const [meta] = await Promise.all([getJson('data/coverage.json'), img.decode()]);   // both at once
+  console.assert(meta.days === LAST_DAY && meta.mjd0 === MJD0, 'skymap.js is out of step with data/coverage.json');
   deepFields(meta.deep_fields ?? []);
   const src = Object.assign(document.createElement('canvas'), { width: 720, height: 1080 }).getContext('2d', { willReadFrequently: true });
   src.drawImage(img, 0, 0);
@@ -289,8 +296,7 @@ let showByDay = () => {};
     timeline.show(d);
     showByDay();
   }
-  slider.max = meta.days;
-  slider.value = meta.days;
+  slider.max = meta.days;   // the handle starts on the last day, or on ?day= (set above)
   let queued = 0;   // many moves can arrive per frame while dragging: draw once per frame
   const setDay = d => { slider.value = Math.max(0, Math.min(meta.days, Math.round(d))); if (!queued) queued = requestAnimationFrame(() => { queued = 0; draw(); }); };
   draw();
