@@ -45,10 +45,12 @@
         <a class="btn small" data-f="open">Look closer <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
       </div>
     </div>
-    <a class="mapcard glass" id="card-comet" hidden>
-      <div class="head"><h3 data-f="id"></h3><span class="tag comet">comet</span></div>
-      <div class="tally"><i class="t-comet"></i><i class="t-asteroid"></i><i class="t-unsure"></i></div>
-      <div class="head"><span class="mono muted" data-f="count"></span><svg class="ic"><use href="icons.svg#arrow"/></svg></div>
+    <!-- the featured comet (3I/ATLAS, or a candidate opened with "Where it is"): name, verdict, where it is on the timeline's date -->
+    <a class="mapcard" id="card-comet" hidden>
+      <h3 data-f="id"></h3>
+      <span class="tag" data-f="what"></span>
+      <span class="when" data-f="when"></span>
+      <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
     </a>
     <div class="mapcard glass" id="card-patch">
       <h3>Nobody has looked here</h3>
