@@ -3,6 +3,8 @@
 // Data: data/coverage.{png,json} (built by bake/sky_assets.py), /api/comets and /api/explored (worker/).
 import { RAD, wrap, fwdLon, fwd, inv, trackAt, dayParam, dayDate, LAST_DAY, MJD0 } from './skymap.js';
 import * as phoneUI from './explore-phone.js';   // phones: pan, pinch, names, sheets
+import './explore-desktop.js';   // desktops: drag, wheel, double click, zoom buttons and keys
+import { onView } from './explore-view.js';
 for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]]) {   // projection round trip
   const [r2, d2] = inv(...fwd(ra, dec));
   console.assert(Math.abs(wrap(r2 - ra)) < 1e-3 && Math.abs(d2 - dec) < 1e-3, 'projection round trip failed', ra, dec);
@@ -45,7 +47,18 @@ function showPin(ra, dec) {
   pin.querySelector('.pin-ring').style.animation = 'none'; void pin.offsetWidth; pin.querySelector('.pin-ring').style.animation = '';   // replay the drop
 }
 const skyAt = e => { const b = $('map').getBoundingClientRect(); return inv((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height); };
-$('map').addEventListener('click', e => { const rd = skyAt(e); if (rd) showPin(...rd); });
+// a double click zooms in (explore-desktop.js): its first click dropped a pin, so the pin goes back to how it was
+const desktop = () => !matchMedia('(max-width: 640px)').matches;
+let shown = null, before = null;   // the pin's place now, and before the last single click
+$('map').addEventListener('click', e => {
+  if (e.detail > 1 && desktop()) return;
+  const rd = skyAt(e);
+  if (rd) { before = pin.hidden ? null : shown; shown = rd; showPin(...rd); }
+});
+$('map').addEventListener('dblclick', () => {
+  if (!desktop()) return;
+  if (before) showPin(...(shown = before)); else { pin.hidden = true; shown = null; }
+});
 $('map').addEventListener('pointerdown', () => stopReplay());   // a touch on the sky stops the replay (stopReplay is set below)
 $('map').addEventListener('pointermove', e => {   // live coordinates beside the pointer (hidden on touch by CSS)
   const rd = skyAt(e);
@@ -185,6 +198,8 @@ $('marks').addEventListener('click', e => {
 // measured again when the window changes size, and once the map has finished scaling in (its size is off until then)
 for (const [target, event] of [[window, 'resize'], [document.querySelector('.map-wrap'), 'animationend']])
   target.addEventListener(event, () => document.querySelectorAll('.mk.focus').forEach(nameSide));
+let sideQ = 0;   // and after a pan or zoom, once it settles
+onView(() => { clearTimeout(sideQ); sideQ = setTimeout(() => document.querySelectorAll('.mk.focus').forEach(nameSide), 150); });
 
 // Back from a time-lapse: the browser may restore this page from memory, with the heat map from before; reload it
 addEventListener('pageshow', e => { if (e.persisted) location.reload(); });

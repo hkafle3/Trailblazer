@@ -23,7 +23,7 @@
      Markers and cards are filled in by explore.js from /api/comets and /api/explored. -->
 <div class="xstage">
 <div class="map-wrap">
-  <div class="map" id="map">
+  <div class="map" id="map" tabindex="0" aria-roledescription="map" aria-label="Sky map. Drag to look around, scroll to zoom. Arrow keys move, plus and minus zoom, 0 shows the whole sky.">
     <img class="sky" src="data/sky.jpg" alt="All-sky picture from SPHEREx" fetchpriority="high" decoding="async" onload="this.classList.add('ld')">
     <canvas class="cover" id="cover" width="720" height="360"></canvas>
     <canvas class="heat" id="heat" width="2000" height="1000"></canvas>
@@ -113,6 +113,15 @@
   </div>
 </details>
 <button class="whole" id="whole" type="button" aria-label="Whole sky"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><path d="M12 6.5v11M2.5 12h19"/></svg></button>
+</div>
+
+<!-- desktops only (explore-desktop.js): zoom in, zoom out, the whole sky. Bottom right, clear of Layers, Examples and the timeline -->
+<div class="zoomctl" role="group" aria-label="Zoom">
+  <button id="zoom-whole" type="button" aria-label="Whole sky" title="Whole sky (0)" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><path d="M12 6.5v11M2.5 12h19"/></svg></button>
+  <div class="zoompair">
+    <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in (+)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out (-)" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+  </div>
 </div>
 
 <!-- phones only (explore-phone.js): the one-time gesture hint, the zoom note, and the sheet a tapped comet or marker opens -->
