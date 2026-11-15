@@ -4,9 +4,10 @@
 //   scale()         -> [x, y] grid pixels per CSS pixel, or null while there is no photo
 //   moved()         the photo moved: redraw it shifted by .pan (sky outside the loaded grid stays empty)
 //   commit(pan)     make the spot `pan` from the built centre the new centre (build it, update the URL and the box)
+//   idle()          optional: a gesture ended without moving anything (a drag cancelled where it started)
 // The page calls reset() when frames for a new centre land and when another search starts (it also ends a pending
-// arrow-key move or a drag still held), and asks moving() before it swaps frames mid-gesture. One pointer at a time: a second finger is
-// ignored until the first lifts.
+// arrow-key move or a drag still held), and asks moving() before it swaps frames mid-gesture. One pointer at a time: a
+// second finger is ignored until the first lifts. A press drops a pending arrow-key move: the pointer's spot wins.
 import { tanDeproject } from './fits.js';
 
 export const TAP = 5;   // CSS px: a press that moves less than this is a click on that spot, not a drag
@@ -28,7 +29,7 @@ export function heatCell(ra, dec) {
   return `${i},${Math.min(n - 1, Math.floor(ra % 360 / 360 * n))}`;
 }
 
-export function recenterable(el, { scale, moved, commit, hint = 'Drag or click to re-center' }) {
+export function recenterable(el, { scale, moved, commit, idle = () => {}, hint = 'Drag or click to re-center' }) {
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   let pan = [0, 0], grab = null, glide = null, nudge = 0;
   const set = p => { pan = p; moved(); };
@@ -54,7 +55,7 @@ export function recenterable(el, { scale, moved, commit, hint = 'Drag or click t
   el.addEventListener('pointerdown', e => {
     const k = scale();
     if (!k || e.button || grab) return;
-    glide = null;
+    glide = null; clearTimeout(nudge); nudge = 0;   // the photo stays where the keys put it; the press decides from there
     grab = { id: e.pointerId, x: e.clientX, y: e.clientY, pan, moved: 0, k };
     el.setPointerCapture(e.pointerId);
   });
@@ -80,7 +81,7 @@ export function recenterable(el, { scale, moved, commit, hint = 'Drag or click t
     if (!mine(e)) return;
     const p = grab.pan; grab = null; el.classList.remove('drag');
     set(p);
-    if (p[0] || p[1]) done(p);
+    if (p[0] || p[1]) done(p); else idle();
   });
   // arrow keys move the view an eighth of its width (Shift: one pixel); the new centre builds once the keys rest
   el.addEventListener('keydown', e => {

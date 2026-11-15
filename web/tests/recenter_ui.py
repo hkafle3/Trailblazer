@@ -255,6 +255,16 @@ async def main():
               f"keys: ArrowRight moved the photo at once and the centre {sep((v['ra'], v['dec']), (v2['ra'], v2['dec'])):.1f}\" west ({off:.2f}\" off), rebuilt in {dt:.1f} s")
         v = v2
 
+        # ---- an arrow key, then a click 250 ms later: the click's spot wins. The key's move would fire at 350 ms, in the
+        # middle of the click's 180 ms glide, and ask for a spot part way there; a press must drop it.
+        await mark(); await pg.focus("#patch"); await pg.keyboard.press("ArrowRight"); t0 = time.time(); mid = await view()
+        tx, ty = v["cx"] - 90, v["cy"] + 40
+        await pg.wait_for_timeout(max(0, 250 - (time.time() - t0) * 1000)); await pg.mouse.click(tx, ty)
+        want = deproject((v["ra"], v["dec"]), (mid["pan"][0] + (v["cx"] - tx) * v["kx"]) * v["aps"], (mid["pan"][1] + (v["cy"] - ty) * v["ky"]) * v["aps"])
+        dt = await rebuilt(); await pg.wait_for_timeout(800); v = await view()   # long enough for a stray key move to land too
+        off = sep((v["ra"], v["dec"]), want)
+        check(mid["pan"][0] < 0 and off <= PIXEL and agree(v) < 1, f"mixed input: arrow then click, the clicked spot is the centre ({off:.2f}\" off), rebuilt in {dt:.1f} s")
+
         # ---- three small nudges inside one heat-map cell post no new check
         p1 = posts()
         for key in ("Shift+ArrowUp", "Shift+ArrowLeft", "Shift+ArrowDown"):
@@ -293,6 +303,23 @@ async def main():
         await pg.wait_for_function(settled, arg=s0, timeout=90000); await pg.wait_for_timeout(500); v = await view()
         check(v["key"] == a["key"] and v["pan"] == [0, 0] and v["det"] == v["mdet"] == "D2" and agree(v) < 1,
               f"replaced re-centre: D3 chosen before it landed, D3 failed, back at the spot on screen ({v['url']}, box '{v['box']}', selector {v['det']})")
+        # a band search that fails while a finger holds the photo: the rollback waits, and a cancel where the drag began
+        # brings back the spot on screen (box, band, URL)
+        await ctx.unroute("**/api/images*det=D3*")
+        async def slow_fail(route):
+            await asyncio.sleep(2); await route.fulfill(status=502, content_type="application/json", body='{"error":"IRSA is not answering"}')
+        await ctx.route("**/api/images*det=D3*", slow_fail)
+        a = v; await mark(); s0 = ""
+        await pg.evaluate("document.getElementById('status').textContent = ''")
+        await cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        await pg.select_option("#det", "D3")
+        await touch("touchStart", [(0, a["cx"], a["cy"])]); await touch("touchMove", [(0, a["cx"] + 30, a["cy"])])
+        await pg.wait_for_function(settled, arg=s0, timeout=60000)
+        during = await view()
+        await touch("touchCancel"); await cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": False})
+        await pg.wait_for_timeout(300); v = await view()
+        check(during["det"] == "D3" and v["key"] == a["key"] and v["pan"] == [0, 0] and v["det"] == v["mdet"] == a["mdet"] and agree(v) < 1 and "Back at the last spot" in v["status"],
+              f"held through a failure: the D3 search failed mid-drag (selector {during['det']}), the cancel went back ({v['url']}, box '{v['box']}', selector {v['det']})")
         await ctx.unroute("**/api/images*det=D3*")
 
         # ---- a re-centre that fails goes back to the last spot: photo, URL and box agree with the panel
@@ -326,6 +353,21 @@ async def main():
               f"leave: new /api/images request ({images() - n0}), {v['frames']} visits at the new spot ({off:.2f}\" off), built in {dt:.1f} s")
         check(posts() == p1 + 1, f"heatmap: the move into a new cell, once shown, posted {posts() - p1} check ({posts()} in all for {landed[0]} builds)")
         check(v["cached"] <= 8 and landed[0] > 8, f"cache: {landed[0]} live builds, {v['cached']} kept for instant return (at most 8)")
+
+        # ---- the discovery belongs to the photo on screen: from discovered spot A, search B and then C before B lands;
+        # C fails, and A comes back labelled Discovered with its discovery still in the URL
+        pg2 = await ctx.new_page()
+        await pg2.goto(f"{BASE}/timelapse.html?ra={START[0]}&dec={START[1]}&det=D1&found=TEST-1")
+        await pg2.wait_for_function("__lapse.state.m && /visits, built/.test(document.getElementById('status').textContent)", timeout=240000)
+        label0 = await pg2.text_content("#state-label")
+        await ctx.route(lambda url: "/api/images" in url and "ra=200&" in url, lambda route: route.fulfill(status=502, content_type="application/json", body='{"error":"IRSA is not answering"}'))
+        for spot in ("269.4400 4.7900", "200 10"):   # B (inside the listed images, builds in about a second), then C at once
+            await pg2.fill("#coords", spot); await pg2.evaluate("document.getElementById('search').requestSubmit()")
+        await pg2.wait_for_function("document.getElementById('status').className === 'err'", timeout=60000)
+        label = await pg2.text_content("#state-label"); url = await pg2.evaluate("location.search"); box = await pg2.input_value("#coords")
+        check(label0 == label == "Discovered" and "found=TEST-1" in url and box == f"{START[0]:.4f} {START[1]:.4f}",
+              f"discovery: B then C, C failed, A is back as '{label}' ({url}, box '{box}')")
+        await pg2.close()
         await b.close()
     sys.exit(1 if fails else 0)
 

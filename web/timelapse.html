@@ -479,6 +479,7 @@ function show(m, query, opts = {}) {
     lastCell = heatCell(m.ra, m.dec);
     fetch(API + '/api/checks', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ra: m.ra, dec: m.dec }) }).catch(() => {});
   }
+  shownFound = [found, foundAt];   // the discovery belongs to what is on screen: a failed search later restores it
   Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.diff ? m.frames.length - 1 : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
@@ -606,7 +607,7 @@ function search(ra, dec, det, opts = {}) {
   if (!(ra >= 0 && ra < 360)) return setStatus('RA must be 0 to 360 degrees (or 0h to 24h)', true);
   if (!(dec >= -90 && dec <= 90)) return setStatus('Dec must be -90 to +90 degrees', true);
   if (!opts.keep) { rc.reset(); draw(); }   // another search: a pending move of the photo is dropped
-  const was = [found, foundAt];   // a failed search goes back to the spot on screen, discovery label included
+  owed = false;   // a rollback still waiting for a gesture to end: this search replaces it
   leaveFound(ra, dec);
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`;
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
@@ -615,7 +616,14 @@ function search(ra, dec, det, opts = {}) {
   setStatus('Finding SPHEREx images of this spot...');
   if (opts.diff) setMode('lapse');   // a sky click lands on the time-lapse right away; frames arrive in seconds
   // a failed search goes back to the spot the frames on screen describe, when there are frames on screen
-  const fail = (text, hint, full) => { job = 0; setStatus(text + (back(was) ? ' Back at the last spot.' : hint), true); if (full) statusEl.title = full; };
+  // During a gesture it waits (owed) until the gesture ends: a move then builds its own spot, a cancel goes back.
+  const fail = (text, hint, full) => {
+    job = 0;
+    const went = back();
+    owed = !went && !!state.m && state.mode !== 'sky' && rc.moving();
+    setStatus(text + (went || owed ? ' Back at the last spot.' : hint), true);
+    if (full) statusEl.title = full;
+  };
   // the worker itself failed (pipeline.js or a module it imports did not load): start a new one next time
   builder.onerror = e => { e.preventDefault(); builder.terminate(); builder = null; if (id === job) fail('Could not load the image pipeline.', ' Try again in a moment.', e.message); };
   builder.onmessage = ({ data: m }) => {
@@ -648,10 +656,11 @@ function recenter(pan) {
 }
 // back to the view the frames on screen describe (photo, box, band, discovery, URL): the photo and the panel always
 // name the same spot. A move still in progress makes its own build instead. True when it went back.
-function back(was) {
+let owed = false, shownFound = [null, null];
+function back() {
   const m = state.m; if (!m || state.mode === 'sky' || rc.moving()) return false;
   rc.reset(); draw();
-  if (was) setFound(...was);
+  setFound(...shownFound);
   document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`;
   document.getElementById('det').value = m.detector;
   const query = m.key.startsWith('live') ? `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}` : `?target=${m.key}`;
@@ -662,7 +671,7 @@ function back(was) {
 // (the exact box, not clientWidth's whole pixels, since pointer positions are fractional)
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
-  moved: () => draw(), commit: recenter });
+  moved: () => draw(), commit: recenter, idle: () => { if (owed) { owed = false; back(); } } });
 window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 document.getElementById('search').onsubmit = e => {
