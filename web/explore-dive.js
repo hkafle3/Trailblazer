@@ -106,6 +106,13 @@ async function cutout(ra, dec, sky) {
   c.getContext('2d').putImageData(out, 0, 0);
   return c;
 }
+// the cutouts for a spot, made once: first while the view rests at the deepest zoom, so a dive finds them ready
+let cuts = { key: '', made: [] };
+function cutouts(ra, dec) {
+  const key = ra + ',' + dec;
+  if (cuts.key !== key) cuts = { key, made: SKIES.map(sky => cutout(ra, dec, sky).catch(() => null)) };
+  return cuts.made;
+}
 // A frame as the time-lapse builds it (timelapse.html preview(): the same stretch and colour), on its whole 12 arcmin
 // grid with a soft edge, so it can fade in at the middle of the tiles while the dive is still zooming.
 function frameCanvas(px) {
@@ -150,7 +157,7 @@ function aimAt() {
   const [x, y] = mid();
   aim.style.left = x + 'px'; aim.style.top = y + 'px';
   // settled at the deepest zoom: the sky tiles for this spot and the time-lapse page (no spot yet, so it builds nothing) load ahead of a dive
-  clearTimeout(warmQ); warmQ = setTimeout(() => { const s = here(); if (!s || !view.atMax()) return; for (const sky of SKIES) cutTiles(round4(s[0]), round4(s[1]), sky); prepare(); }, 250);
+  clearTimeout(warmQ); warmQ = setTimeout(() => { const s = here(); if (!s || !view.atMax()) return; cutouts(round4(s[0]), round4(s[1])); prepare(); }, 250);
 }
 view.onView(() => { aimAt(); clearTimeout(saveQ); saveQ = setTimeout(save, 300); });
 addEventListener('resize', () => setTimeout(aimAt));   // after the map files have re-measured
@@ -220,7 +227,7 @@ function target(spot = here()) {
   if (!spot || d.ra != null) return d;
   const ra = d.ra = round4(spot[0]), dec = d.dec = round4(spot[1]), day = +$('time').value;
   d.ready.then(() => { if (dive === d) d.f.contentWindow.postMessage({ type: 'dive-go', ra, dec, det: DET, day }, location.origin); });
-  SKIES.forEach((sky, i) => cutout(ra, dec, sky).then(c => { d.skies[i] = c; }, () => {}));
+  cutouts(ra, dec).forEach((made, i) => made.then(c => { d.skies[i] = c; }));
   return d;
 }
 function drop() { dive.f.remove(); dive = null; }
@@ -259,10 +266,10 @@ async function start(pushEntry = true, spot = here()) {
   document.body.classList.add('diving', 'flying');
   d.c = view.toScreen(d.ra, d.dec); d.M0 = mapScale(d.ra, d.dec); d.s0 = Math.sqrt(Math.abs(d.M0[0] * d.M0[3] - d.M0[1] * d.M0[2]));
   d.o = `${d.c[0] - view.X}px ${d.c[1] - view.Y}px`;
-  await Promise.race([d.ready, new Promise(r => setTimeout(r, 5000))]);
+  const loaded = await Promise.race([d.ready.then(() => true), new Promise(r => setTimeout(r, 5000))]);
   if (dive !== d || d.phase !== 'in') return;   // backed out while it loaded
   const r = photoRect(d);
-  if (!r) return location.reload();   // the frame did not load: the address is the time-lapse's, so this opens the page itself
+  if (!loaded || !r) return location.reload();   // the page in the frame did not start: the address is the time-lapse's, so this opens the page itself
   const dpr = Math.min(devicePixelRatio || 1, 2);
   cv.width = Math.round(r.w * dpr); cv.height = Math.round(r.h * dpr);
   fly(1);
