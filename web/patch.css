@@ -42,7 +42,9 @@ canvas#gl.drag { cursor: grabbing; }
 .toggle input:focus-visible + .tg { outline: 2px solid var(--known); outline-offset: 3px; }
 
 /* Search and targets, top left */
-#search { position: fixed; left: 40px; top: 96px; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; width: min(660px, 46vw); pointer-events: auto; }
+/* search, status line and target buttons share one fixed column, so the buttons always sit below the status line */
+#left { position: fixed; left: 40px; top: 96px; z-index: 2; display: flex; flex-direction: column; gap: 10px; width: min(660px, 46vw); pointer-events: none; }
+#search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; width: min(660px, 46vw); pointer-events: auto; }
 #search input, #search select { height: 48px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 15, 26, .8); color: var(--ink); font: 400 14px var(--body); padding: 0 22px; outline: 0; transition: border-color .2s; }
 #search input:focus, #search select:focus { border-color: rgba(255, 255, 255, .4); }
 #search input { min-width: 0; }
@@ -52,9 +54,10 @@ canvas#gl.drag { cursor: grabbing; }
   background-repeat: no-repeat; background-position: right 22px center; background-size: 11px 8px; }
 #search select option { background: #0b0f1a; }
 #search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-#status { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); min-height: 18px; padding: 0 8px; text-shadow: 0 1px 8px #000; }
+#status { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); padding: 0 8px; text-shadow: 0 1px 8px #000; }
+#status:empty { height: 0; padding: 0; overflow: hidden; }   /* no room when empty, but still in the accessibility tree so its first message is announced */
 #status.err { color: var(--glitch); }
-#targets { position: fixed; left: 40px; top: 188px; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(50vw - var(--s) / 2 - 64px); pointer-events: auto; }
+#targets { display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(50vw - var(--s) / 2 - 64px); pointer-events: auto; }
 #targets button { height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 15, 26, .72); color: var(--ink-2); font: 500 13.5px var(--body); cursor: pointer; transition: color .2s, border-color .2s, background .2s, box-shadow .2s; }
 #targets button:hover { color: #fff; border-color: rgba(255, 255, 255, .35); }
 #targets button[aria-pressed=true] { color: #ffd2b0; border-color: rgba(255, 154, 77, .6); background: rgba(255, 154, 77, .14); box-shadow: 0 0 20px -6px var(--comet); }
@@ -83,6 +86,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 
 @media (max-width: 900px) {
   #stage { grid-template-columns: 1fr; align-content: start; overflow: auto; pointer-events: auto; padding: 84px 12px 32px; gap: 18px; }
+  #left { display: contents; }
   #search, #targets, #caption { position: static; max-width: none; width: auto; }
   #search { grid-template-columns: 1fr; }
   #center, #panel, #caption, #targets, #search { grid-column: 1; }
