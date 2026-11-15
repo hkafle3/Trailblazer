@@ -21,6 +21,9 @@
   .scene > * { position: absolute; display: block; }
   .scene img { width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
   .home-sky { left: calc(243 * var(--s)); top: calc(162 * var(--s)); width: calc(2458 * var(--s)); aspect-ratio: 2 / 1; border-radius: 50%; overflow: hidden; }
+  /* the oval's edge fades out, and #home-stars carries its stars on past it (FEATHER in the script below matches 86%) */
+  .home-sky { mask-image: radial-gradient(closest-side, #000 86%, transparent); }
+  #home-stars { position: fixed; left: 0; top: 0; pointer-events: none; }
   .home-sky img { height: 100%; filter: grayscale(1) brightness(.9) contrast(1.05); transition: filter .5s; }
   .home-sky:hover img { filter: grayscale(1) brightness(1.1) contrast(1.05); }
   .earth { left: 0; top: calc(706 * var(--s)); width: 100%; pointer-events: none; }
@@ -47,6 +50,7 @@
   <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
 </header>
 
+<canvas id="home-stars" aria-hidden="true"></canvas>
 <main class="scene">
   <h1 class="sr-only">Trailblazer: find comets in NASA SPHEREx images</h1>
   <a class="home-sky" href="explore.html" title="Explore the sky" aria-label="Explore the whole sky SPHEREx has photographed"><img src="data/sky.jpg" alt=""></a>
@@ -71,6 +75,42 @@
     document.querySelector('.scene').addEventListener('click', go);
     document.querySelector('.topbar nav a[href="explore.html"]').addEventListener('click', go);
     addEventListener('pageshow', () => { going = false; document.body.classList.remove('leaving'); });   // back button: show the scene again
+  })();
+</script>
+<script>
+  // Stars past the oval, so the black around it is not empty: single-pixel stars like sky.jpg's (density and brightness
+  // measured from its quiet, Milky-Way-free parts), drawn at the image's own scale so they look the same, fading in across
+  // the oval's feathered edge. Seeded by place in the scene, so they never reshuffle. Drawn once, and again on resize.
+  (() => {
+    const cv = document.getElementById('home-stars'), sky = document.querySelector('.home-sky'), g = cv.getContext('2d');
+    const PEAK = [13, 25, 29, 31, 33, 34, 35, 36, 37, 39, 40, 43, 54, 59, 64, 74, 84, 97, 113, 136, 250];   // sky.jpg star peaks, 5% steps
+    const DENSITY = .05, FEATHER = .86;   // stars per sky.jpg pixel (its quiet parts have .054); where the oval's fade starts
+    const hash = (a, b) => {
+      let n = Math.imul(a, 0x9e3779b1) ^ Math.imul(b, 0x85ebca77);
+      n ^= n >>> 16; n = Math.imul(n, 0x7feb352d); n ^= n >>> 15; n = Math.imul(n, 0x846ca68b); n ^= n >>> 16;
+      return (n >>> 0) / 4294967296;
+    };
+    const draw = () => {
+      const r = sky.getBoundingClientRect(), k = r.width / 2000;   // CSS pixels per sky.jpg pixel
+      const w = Math.ceil(innerWidth / k), h = Math.ceil(innerHeight / k);
+      const cx = (r.left + r.width / 2) / k, cy = (r.top + r.height / 2) / k, rx = r.width / 2 / k, ry = r.height / 2 / k;
+      const img = g.createImageData(w, h), d = img.data;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4; d[i + 3] = 255;
+        const e = Math.hypot((x + .5 - cx) / rx, (y + .5 - cy) / ry);
+        const keep = Math.min(1, (e - FEATHER) / (1 - FEATHER));   // 0 inside the oval, 1 past its edge: the mask, turned over
+        if (keep <= 0) continue;
+        const u = hash(Math.round(x - cx), Math.round(y - cy)) / (DENSITY * keep);
+        if (u >= 1) continue;
+        const t = u * 20, j = Math.floor(t), v = PEAK[j] + (PEAK[j + 1] - PEAK[j]) * (t - j);
+        d[i] = d[i + 1] = d[i + 2] = .945 * v - 6.4;   // the oval's filter: brightness(.9) contrast(1.05)
+      }
+      cv.width = w; cv.height = h; cv.style.width = w * k + 'px'; cv.style.height = h * k + 'px';
+      g.putImageData(img, 0, 0);
+    };
+    let queued = 0;
+    addEventListener('resize', () => { cancelAnimationFrame(queued); queued = requestAnimationFrame(draw); });
+    draw();
   })();
 </script>
 <script src="ui.js"></script>
