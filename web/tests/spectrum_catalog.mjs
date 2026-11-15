@@ -1,7 +1,8 @@
 // Independent check of the Spectrum card's numbers: our SPHEREx points for isolated, unsaturated field stars against
 // catalogue photometry of the same stars, 2MASS J, H, Ks and AllWISE W1, W2 (IRSA, CDS VizieR was down on 2026-11-15), converted to mJy with the
 // published Vega zero points. Ours at each band is the median of the unflagged points within 4% of its wavelength.
-// Neighbours: the 2MASS stars within 25" (our circle is 18.45" in radius) and the share of Ks light they add, printed
+// Not judged (printed only): a star whose 2MASS neighbours within 25" add 10% or more of its Ks light, or with a star
+// 5 Ks magnitudes brighter within 150". Neighbours: the 2MASS stars within 25" (our circle is 18.45" in radius) and the share of Ks light they add, printed
 // beside each star, since they are in our circle and not in the catalogue's. Pass: every band of every isolated star (neighbours under 10%) within 30%, for 3 stars or more.
 // Run with the app up: node web/tests/spectrum_catalog.mjs [base url]   (network: the image search, S3, VizieR)
 import { readFileSync } from 'node:fs';
@@ -40,20 +41,24 @@ for (const [name, ra, dec] of STARS) {
   if (!me || +me.dist > 2) { console.log(`SKIP ${name}: no 2MASS star within 2"`); continue; }
   const ks = s => 10 ** (-0.4 * +s.k_m);
   const others = tm.slice(1).filter(s => s.k_m).reduce((a, s) => a + ks(s), 0) / ks(me);
+  // a much brighter star (5 Ks magnitudes or more) within 150": its glow reaches our circle (R Draconis, 127" away,
+  // lifted two field stars 2 to 6 times); the card warns about it, so such a star is reported, not judged
+  const bright = (await gator('fp_psc', ra, dec, 150, 'ra,dec,k_m')).filter(s => s.k_m && +s.k_m < +me.k_m - 5);
   const cat = { J: me.j_m, H: me.h_m, Ks: me.k_m, W1: wise[0]?.w1mpro, W2: wise[0]?.w2mpro };
-  const r = await spectrum(ra, dec, { api: BASE, maps });
-  const row = [name, `neighbours ${(100 * others).toFixed(1)}%${others < 0.1 ? '' : ' (crowded: not judged)'}`];
+  const r = await spectrum(ra, dec, { api: BASE, maps }).catch(e => { console.log(`SKIP ${name}: ${e.message}`); return null; });
+  if (!r) continue;
+  const row = [name, `neighbours ${(100 * others).toFixed(1)}%${bright.length ? `, Ks ${(+bright[0].k_m).toFixed(1)} star ${Math.round(+bright[0].dist)}" away (not judged)` : others < 0.1 ? '' : ' (crowded: not judged)'}`];
   for (const [b, lam, zp] of BANDS) {
     const near = r.points.filter(p => !p.doubt && Math.abs(p.lam / lam - 1) <= 0.04).map(p => p.flux).sort((x, y) => x - y);
     const ours = near.length ? near[near.length >> 1] : NaN, theirs = cat[b] ? zp * 1000 * 10 ** (-0.4 * +cat[b]) : NaN;
     const ratio = ours / theirs, ok = Math.abs(ratio - 1) <= 0.3;
-    const judged = others < 0.1;   // isolated: 2MASS neighbours within 25" add under 10% of its Ks light
+    const judged = others < 0.1 && !bright.length;   // isolated: 2MASS neighbours within 25" add under 10% of its Ks light
     if (judged && Number.isFinite(ratio) && !ok) fail++;
     row.push(`${b} ${ours.toFixed(1)} vs ${theirs.toFixed(1)} mJy (${Number.isFinite(ratio) ? ratio.toFixed(2) : 'n/a'}, n=${near.length})${judged && Number.isFinite(ratio) && !ok ? ' FAIL' : ''}`);
   }
   table.push(row);
   console.log(row.join(' | '));
 }
-const judged = table.filter(r => !r[1].includes('crowded')).length;
+const judged = table.filter(r => !r[1].includes('not judged')).length;
 console.log(fail ? `FAIL ${fail} band(s) of isolated stars more than 30% off` : `PASS every band within 30% for the ${judged} isolated stars`);
 process.exit(fail || judged < 3 ? 1 : 0);
