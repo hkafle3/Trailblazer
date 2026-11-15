@@ -31,7 +31,7 @@ async function fetchRetry(url, tries = 5, ms = 20000, withStatus = false) {
       last = `HTTP ${r.status}`;
     } catch (e) { last = String(e); }
     // short waits: one 502 is common; doubling from 400 ms cost 14 s on 2026-11-14. Capped at 2 s for long retry runs.
-    await new Promise(res => setTimeout(res, Math.min(2000, 300 * 1.5 ** i) + Math.random() * 200));
+    await new Promise(res => setTimeout(res, Math.min(2000, 300 * 1.5 ** i + Math.random() * 200)));
   }
   throw new Error(last);
 }
