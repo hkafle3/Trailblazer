@@ -125,7 +125,7 @@ faintOn.addEventListener('change', () => {
 });
 let trailN = 0;
 const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
-// the featured card shows comet c: 3I/ATLAS, a candidate opened with "Where it is", or a comet picked in the search
+// the featured card shows comet c: a measured comet on the map that day (pickFeatured), a candidate opened with "Where it is", or a comet picked in the search
 // (`marker`: its dot, whose name hides while the card shows)
 let cardLink = null;
 function feature(c, marker) {
@@ -150,11 +150,20 @@ function feature(c, marker) {
   card.hidden = false;
   if (marker) { followTracks(+$('time').value); card.style.visibility = +card.dataset.day <= +$('time').value ? '' : 'hidden'; }
 }
+// The comet the card opens on: one bright enough to be on the map on `day` (magnitude 16 or brighter on its JPL path).
+// 3I/ATLAS when it is; else the brightest with a clear CO2 result, then the brightest measured, then the brightest known.
+// None bright enough: 3I/ATLAS, dimmed.
+function pickFeatured(comets, day) {
+  const mag = c => (c.kind === 'known' && c.real && c.track?.length ? trackAt(c.track, day)[2] ?? 99 : 99);
+  const tier = c => (c.id === '3I/ATLAS' ? 0 : c.co2 === 'detected' || c.co2 === 'quiet' ? 1 : c.co2 ? 2 : 3);
+  const seen = comets.filter(c => mag(c) <= 16).sort((a, b) => tier(a) - tier(b) || mag(a) - mag(b));
+  return seen[0] ?? comets.find(c => c.id === '3I/ATLAS');
+}
 const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
   const marks = $('marks'), card = $('card-comet');
-  // the card: 3I/ATLAS, our measured comet, following its JPL path. No card while a comet is being found, except a
+  // the card: a measured comet on the map that day, following its JPL path. No card while a comet is being found, except a
   // candidate's ("Where it is" on its page), which says it is one
-  const featured = focus ? comets.find(c => c.id === focus && c.candidate) : comets.find(c => c.id === '3I/ATLAS');
+  const featured = focus ? comets.find(c => c.id === focus && c.candidate) : pickFeatured(comets, dayParam());   // the day it opens on (the slider may not have its range yet)
   for (const c of comets) {
     const a = document.createElement('a');
     a.className = `mk ${c.kind}`;
@@ -173,7 +182,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     a.append(Object.assign(document.createElement('b'), { textContent: c.id }));
     if (c.kind === 'known' && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
     if (c.track?.length) movers.push({ el: a, track: c.track });   // no path, or an empty one: it stays at its fixed place
-    if (c.track?.length && (c.detail?.photos || c.id === '3I/ATLAS' || c.id === focus)) a.dataset.always = '1';
+    if (c.track?.length && (c.detail?.photos || c.id === '3I/ATLAS' || c.id === focus || c === featured)) a.dataset.always = '1';
     if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (the heading is illustrative)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
       const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);

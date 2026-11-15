@@ -53,7 +53,7 @@ async def strip(b):
         else: assert f["verdict"] == "faint" and f["vis"].startswith("Too faint"), f
     seen = sum(f["verdict"] == "seen" for f in figs)
     note = await pg.text_content("#c-photos-panel .frames-note")
-    assert (note.startswith(f"Seen in {seen} of 4") if seen else note.startswith("Too faint")), note
+    assert (note.startswith(f"Seen in {seen} of 4") if seen else note.startswith("SPHEREx could not see it")), note
     print("  SNR per visit:", [(f["snr"], f["vis"]) for f in figs], "|", note)
 
     # the second visit's pill: the time-lapse opens on that visit, centred on the comet's position then, centre ringed
@@ -108,7 +108,9 @@ async def player(b):
     await pg.wait_for_selector(".player[data-i]")
     await pg.locator(".player").scroll_into_view_if_needed()
     await pg.wait_for_timeout(1500)
-    assert await pg.get_attribute(".player", "data-i") == "0" and not await pg.get_attribute(".player", "data-playing"), "reduced motion did not start paused"
+    shots = sorted((await (await ctx.request.get(BASE + "/api/comets/" + urllib.parse.quote(SWAN, safe=""))).json())["detail"]["photos"], key=lambda p: p["mjd"])
+    best = max(range(len(shots)), key=lambda k: shots[k]["flux"])   # it opens on the photo with the most light
+    assert await pg.get_attribute(".player", "data-i") == str(best) and not await pg.get_attribute(".player", "data-playing"), "reduced motion did not start paused"
     await ctx.close()
     print(f"  player: cycled {len(seen)} of {n} photos, pause holds, thumbnail click and arrow key step, reduced motion starts paused")
 
