@@ -168,12 +168,22 @@ async def main():
         check(posts() == p0, f"heatmap: the click, 90\" away in the same cell, posted {posts() - p0} new checks")
         check(url_and_box(v) < 0.5, f"click: URL {v['url']} and box '{v['box']}' name the new centre")
 
-        # ---- Gaia is asked only when the stars already fetched do not fit: a 1 pixel nudge on the star reuses them
-        c = (v["ra"], v["dec"]); await mark()
+        # ---- Gaia does not hold up a rebuild: a 1 pixel nudge on the star reuses the stars already fetched, so with
+        # /api/gaia slowed to 5 s the frames still land within 4 s of the build starting (timed from the URL change,
+        # after the keys' 350 ms settle)
+        async def slow_gaia(route):
+            await asyncio.sleep(5)
+            try: await route.continue_()
+            except Exception: pass   # that build was replaced and its request cancelled
+        await ctx.route("**/api/gaia*", slow_gaia)
+        c = (v["ra"], v["dec"]); await mark(); url0 = await pg.evaluate("location.search")
         await pg.focus("#patch"); await pg.keyboard.press("Shift+ArrowUp")
-        dt = await rebuilt(); v = await view()
-        check(dt < 2.5 and v["ok"] and abs(sep(c, (v["ra"], v["dec"])) - 5) < 0.5,
-              f"gaia: a 5\" nudge on the star rebuilt in {dt:.1f} s (limit 2.5 s), panel still agrees")
+        await pg.wait_for_function("u => location.search !== u", arg=url0, timeout=10000); t0 = time.time()
+        await pg.wait_for_function("__lapse.state.m !== window.__was || document.getElementById('status').className === 'err'", timeout=60000)
+        dt = time.time() - t0; landed[0] += 1; v = await view()
+        await ctx.unroute("**/api/gaia*")
+        check(dt < 4 and v["ok"] and abs(sep(c, (v["ra"], v["dec"])) - 5) < 0.5,
+              f"gaia: a 5\" nudge on the star rebuilt in {dt:.1f} s from the build's start with /api/gaia slowed to 5 s (limit 4 s), panel still agrees")
 
         # ---- drag precision: the photo follows the pointer at once, the centre moves by the dragged amount
         dx, dy = -180, 120
@@ -267,12 +277,16 @@ async def main():
 
         # ---- an arrow key pressed while a pointer is held is ignored: the release decides (a tap there: that spot)
         await pg.focus("#patch"); await mark(); tx, ty = v["cx"] + 70, v["cy"] - 50
+        await pg.evaluate("addEventListener('keydown', e => { window.__key = e; }, true)")   # its defaultPrevented is read after dispatch
+        i0 = await pg.evaluate("__lapse.state.i")
         await pg.mouse.move(tx, ty); await pg.mouse.down(); await pg.keyboard.press("ArrowRight"); held = (await view())["pan"]
+        swallowed = await pg.evaluate("[window.__key.key, window.__key.defaultPrevented, __lapse.state.i]")
         await pg.wait_for_timeout(250); await pg.mouse.up()
         want = moved(v, v["cx"] - tx, v["cy"] - ty)
         dt = await rebuilt(); await pg.wait_for_timeout(800); v = await view()   # long enough for a stray key move to land
         off = sep((v["ra"], v["dec"]), want)
-        check(held == [0, 0] and off <= PIXEL and agree(v) < 1, f"held pointer: ArrowRight ignored (pan {held}), the tapped spot is the centre ({off:.2f}\" off), rebuilt in {dt:.1f} s")
+        check(held == [0, 0] and swallowed == ["ArrowRight", True, i0] and off <= PIXEL and agree(v) < 1,
+              f"held pointer: ArrowRight ignored and swallowed (pan {held}, default prevented {swallowed[1]}, visit {swallowed[2]} was {i0}), the tapped spot is the centre ({off:.2f}\" off), rebuilt in {dt:.1f} s")
 
         # ---- three small nudges inside one heat-map cell post no new check
         p1 = posts()
@@ -397,17 +411,23 @@ async def main():
 
         # ---- a target whose frames are slow to download, then a live search that lands first: the target's frames,
         # arriving later, do not replace the newer photo
-        async def slow(route): await asyncio.sleep(15); await route.continue_()
-        await ctx.route("**/data/flip/barnard/manifest.json", slow)
-        pg3 = await ctx.new_page(); t0 = time.time()
+        # Barnard's frames are held back until the live result has landed, then let through
+        release = asyncio.Event()
+        async def held_back(route):
+            await release.wait()
+            try: await route.continue_()
+            except Exception: pass
+        await ctx.route("**/data/flip/barnard/manifest.json", held_back)
+        pg3 = await ctx.new_page()
         await pg3.goto(f"{BASE}/timelapse.html?target=barnard")
         await pg3.fill("#coords", f"{START[0]} {START[1]}"); await pg3.evaluate("document.getElementById('search').requestSubmit()")
         await pg3.wait_for_function("__lapse.state.m && /visits, built/.test(document.getElementById('status').textContent)", timeout=240000)
-        first = time.time() - t0
-        await pg3.wait_for_timeout(max(0, (17 - first) * 1000))   # the target's frames have arrived by now
+        async with pg3.expect_event("requestfinished", predicate=lambda r: "flip/barnard/manifest.json" in r.url, timeout=60000):
+            release.set()
+        await pg3.wait_for_timeout(1500)   # the frames are decoded and the old select() has resumed by now
         got = await pg3.evaluate("[__lapse.state.m.key, location.search, document.getElementById('coords').value]")
-        check(first < 15 and got[0].startswith("live") and got[1].startswith("?ra=") and got[2] == f"{START[0]:.4f} {START[1]:.4f}",
-              f"slow target: the live search landed in {first:.1f} s, before Barnard's frames, and stayed on screen after they arrived ({got[0]}, {got[1]})")
+        check(got[0].startswith("live") and got[1].startswith("?ra=") and got[2] == f"{START[0]:.4f} {START[1]:.4f}",
+              f"slow target: Barnard's frames, let through only after the live search landed, did not replace it ({got[0]}, {got[1]})")
         await pg3.close(); await ctx.unroute("**/data/flip/barnard/manifest.json")
         await b.close()
     sys.exit(1 if fails else 0)
