@@ -102,6 +102,10 @@ await saved.backfill({ DB }, '/api/known?ra=1', new Response('{"old":1}', { head
 sql.prepare("UPDATE searches SET body = '{\"new\":1}', saved_at = ? WHERE key = '/api/known?ra=1'").run(Date.now());
 const saveFn = new Function('CORS', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return save;')(CORS);
 const late = (env, id, body, at = Date.now()) => saveFn(env, id, async () => body, at), DAY = 86400e3;
+// two saves of the same search at once (both passed the early check) write once; the second finds the first's parts
+const writes = () => sql.prepare("SELECT count(*) n FROM searches WHERE key = '/api/twice'").get().n;
+await Promise.all([late({ DB }, '/api/twice', 'a'.repeat(700000), 5 * DAY), late({ DB }, '/api/twice', 'b'.repeat(700000), 5 * DAY + 1)]);
+const okTwice = writes() === 2 && sql.prepare("SELECT count(DISTINCT saved_at) n FROM searches WHERE key = '/api/twice'").get().n === 1;
 await late({ DB }, '/api/known?ra=1', '{"old":1}', Date.parse('2026-11-14T10:00:00Z'));
 const okOrder = sql.prepare("SELECT body FROM searches WHERE key = '/api/known?ra=1'").get().body === '{"new":1}';
 // the 100 MB cap holds even for two saves at once that each saw room: one fits, the other rolls back whole
@@ -115,8 +119,9 @@ sql.prepare('UPDATE saved_bytes SET n = 99700000').run();
 await Promise.allSettled([late({ DB }, '/api/e', 'x'.repeat(200000)), late({ DB }, '/api/f', 'x'.repeat(200000))]);   // each fits alone, not both
 const okRace = sql.prepare("SELECT count(DISTINCT key) k FROM searches WHERE key IN ('/api/e', '/api/f')").get().k === 1 && sql.prepare('SELECT n FROM saved_bytes').get().n <= 100e6;
 // keys stay short: a 15 KB v or a long spelling of a number is the same short key
-const longKey = saved.savedKey(new URL('https://x/api/gaia?ra=80.6900000000000000000000000000001&dec=31.76&v=' + 'z'.repeat(15000)));
-const okKey = longKey === '/api/gaia?ra=80.69&dec=31.76&v=zzzzzzzz';
+const longKey = saved.savedKey(new URL('https://x/api/gaia?ra=80.69&dec=31.76&junk=1&v=' + 'z'.repeat(15000)));
+const okKey = okTwice && longKey === '/api/gaia?ra=80.69&dec=31.76&v=zzzzzzzz'
+  && saved.savedKey(new URL('https://x/api/images?ra=1&dec=2&det=D1invalid')) !== saved.savedKey(new URL('https://x/api/images?ra=1&dec=2&det=D1'));
 // a replacement near the cap is judged on the space it adds, not its whole size
 sql.prepare('UPDATE saved_bytes SET n = 99000000').run(); await late({ DB }, '/api/g', 'x'.repeat(900000), DAY);   // fills to about 99.9 MB
 await late({ DB }, '/api/g', 'y'.repeat(800000), 3 * DAY);
@@ -132,7 +137,7 @@ await saved.backfill({ DB }, '/api/h', cached('{"b":2}', 3 * DAY));
 const okNewer = okDay && sql.prepare("SELECT body FROM searches WHERE key = '/api/h'").get().body === '{"b":2}';
 await saved.backfill({ DB }, '/api/h', cached('{"a":1}', DAY));
 const okNewer2 = okNewer && sql.prepare("SELECT body FROM searches WHERE key = '/api/h'").get().body === '{"b":2}';
-console.log(`${okKey && okReplace && okNewer2 ? 'PASS' : 'FAIL'} saved searches: short keys, replacements near the cap, a cached answer over a day newer replaces the saved one, nothing rewritten within a day`); fail += !(okKey && okReplace && okNewer2);
+console.log(`${okKey && okReplace && okNewer2 ? 'PASS' : 'FAIL'} saved searches: two saves at once write once, short keys, a bad detector is its own key, replacements near the cap, a cached answer over a day newer replaces the saved one, nothing rewritten within a day`); fail += !(okKey && okReplace && okNewer2);
 console.log(`${okOrder && okCap && okRace ? 'PASS' : 'FAIL'} saved searches: the newest answer wins, the 100 MB cap holds for one save or two at once`); fail += !(okOrder && okCap && okRace);
 console.log(`${okSaved ? 'PASS' : 'FAIL'} saved searches: a ${(bigText.length / 1e6).toFixed(1)} MB answer kept in parts and served on a failure or partial answer, replaced whole, never for a bad request or unsaved search; cached answers backfilled`); fail += !okSaved;
 process.exit(fail ? 1 : 0);
