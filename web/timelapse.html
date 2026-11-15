@@ -18,6 +18,7 @@
 </header>
 
 <div id="stage">
+  <div id="left">
   <form id="search" role="search">
     <label for="coords">Sky coordinates</label>
     <input id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false" enterkeyhint="go">
@@ -29,6 +30,7 @@
     <div id="status" role="status" aria-live="polite"></div>
   </form>
   <div id="targets" role="group" aria-label="Challenge targets"><button id="back" type="button">&larr; Sky map</button></div>
+  </div>
   <div id="center">
     <canvas id="patch" width="720" height="720" role="img" aria-label="SPHEREx image of the target"></canvas>
     <div id="timeline" class="glass">
@@ -318,7 +320,9 @@ const API = P.get('api') || '';   // the same Worker serves this page and /api (
 const live = new Map();
 let job = null;
 const statusEl = document.getElementById('status');
-function setStatus(text, err = false) { statusEl.textContent = text; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); }
+// a short reason for the status line; the full error stays in its tooltip
+const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
+function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : ''; document.body.classList.toggle('busy', !!job && !err); }
 // "269.4463 4.7671", "269.4463, +4.7671", "17h57m47s +04d46m02s", "17:57:47 +04:46:02" -> degrees
 function parseCoords(text) {
   const parts = text.trim().replace(/^ra\s*/i, '').replace(/\s*dec\s*/i, ' ').split(/[\s,]+(?=[+-]?\d)/).map(t => t.trim()).filter(Boolean);
@@ -347,7 +351,7 @@ function search(ra, dec, det, opts = {}) {
     if (m.type === 'progress') setStatus(m.text + '...');
     else if (m.type === 'frame') setStatus(`Building frame ${m.n + 1} of ${m.of}...`);
     else if (m.type === 'empty') { setStatus(`No SPHEREx images of this spot on ${det} yet. Try another detector.`, true); w.terminate(); }
-    else if (m.type === 'error') { setStatus(`${m.error.replace(/, try again or pick a baked target$/, '')}. The targets below always work.`, true); w.terminate(); }
+    else if (m.type === 'error') { { setStatus(`${brief(m.error)}. The targets below always work.`, true); statusEl.title = m.error; }; w.terminate(); }
     else if (m.type === 'done') {
       w.terminate(); job = null;
       live.set(key, prep(m.manifest));
