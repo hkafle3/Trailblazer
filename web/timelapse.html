@@ -250,6 +250,7 @@ const spectral = (() => {
     const cur = box.querySelector('.cur');   // more layers than fit: scroll the box to the one on the dial
     if (cur) box.scrollLeft = Math.max(0, Math.min(box.scrollLeft, cur.offsetLeft - 8), cur.offsetLeft + cur.offsetWidth - box.clientWidth + 8);
   }
+  api.clear = () => { api.active.clear(); chips(); emit(); };   // every layer off at once
   api.set = (i, byUser = true) => {
     i = Math.max(0, Math.min(N - 1, Math.round(i))); if (byUser) api.touched = true; if (i !== api.i) { api.i = i; paint(); }
     if (byUser) dispatchEvent(new CustomEvent('spectral-channel', { detail: CHANNELS[i] }));   // the time-lapse rebuilds at it
@@ -860,7 +861,8 @@ function spSync() {
   const m = state.m; if (!m || state.mode === 'sky') return;
   const ch = spMain();
   // a baked target is one fixed wavelength: a channel asks for that spot live
-  if (ch !== (m.channel ?? null) || (ch != null && !m.key.startsWith('live'))) return search(m.ra, m.dec, m.detector, { keep: true });
+  // with no channel, the band in the Band box (it follows the dial, and a Band change sets it)
+  if (ch !== (m.channel ?? null) || (ch != null && !m.key.startsWith('live'))) return search(m.ra, m.dec, ch == null ? document.getElementById('det').value : m.detector, { keep: true });
   if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}`);
   const spot = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, have = [], missing = [], missed = [];
   for (const { n, detector } of state.spectral) {
@@ -914,7 +916,12 @@ document.getElementById('search').onsubmit = e => {
 };
 // a new detector reloads the spot on screen straight away (Enter in the box loads a typed position)
 // The dial lets go of its channel, so the build takes that detector's best-covered wavelength and the dial follows it
-document.getElementById('det').onchange = () => { spectral.touched = false; if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit(); };
+// (Ed: with layers on, a Band change clears them and shows that band; clearing them rebuilds through spSync)
+document.getElementById('det').onchange = () => {
+  spectral.touched = false;
+  if (spectral.active.size && state.m) return spectral.clear();
+  if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit();
+};
 // the target buttons live in the Explore page's Examples menu now (explore.html links here with ?target=)
 
 const playBtn = document.getElementById('play');

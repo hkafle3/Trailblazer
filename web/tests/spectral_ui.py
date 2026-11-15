@@ -4,7 +4,7 @@ Starts live at RA 77, Dec 30.4 on D1. The dial turned into another detector rebu
 every frame's wavelength sits inside the channel; spinning makes one build, not one per step; a ?ch= link gives the same
 wavelengths; one active layer is that channel's photo; two make a colour composite with both colours that differs from
 either alone; removing a chip takes its colour away; re-centring keeps and shifts the composite; Heat and Color
-Difference still change it; a fourth layer is refused; the Band box moves the dial into its detector.
+Difference still change it; a fourth layer is refused; with layers on, the Band box clears them and shows that band.
 Run: uv run -q --with playwright python web/tests/spectral_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, re, sys, urllib.parse
 from playwright.async_api import async_playwright
@@ -125,15 +125,21 @@ async def main():
         assert "3 layers at most" in await ev("document.getElementById('status').textContent")
         print("PASS cap: a fourth layer is refused and the status line says so")
 
-        # 9. the Band box moves the dial into its detector (with no layers); back at the start spot, whose D2 list is
-        # quick (a fresh spot can wait 30 s on IRSA locally, or fail on a bad IRSA day)
+        # 9. with two layers on, the Band box clears them and shows that band, and the dial follows it (Ed, 2026-11-15).
+        # Back at the start spot, whose D2 list is quick (a fresh spot can wait 30 s on IRSA locally)
         await pg.goto(START); await pg.wait_for_function("__lapse.state.m?.detector === 'D1'", timeout=240000)
-        await dial_to(MID); await settle(MID)
+        await dial_to(BLUE); await pg.keyboard.press("Enter"); await dial_to(MID); await pg.keyboard.press("Enter"); await settle(BLUE, 2)
+        comp = await ev(PIXELS)
         await pg.select_option("#det", "D2")
         await pg.wait_for_function("__lapse.state.m.detector === 'D2' && __lapse.state.m.channel === null && !document.body.classList.contains('busy')", timeout=240000)
-        i = await ev("__spectral.i")
-        assert ch[i]["detector"] == "D2" and "ch=" not in pg.url, (i, pg.url)
-        print(f"PASS band: D2 in the Band box turns the dial to channel {i + 1}, D2's best-covered wavelength")
+        await pg.focus("#play"); await pg.keyboard.press("Home"); await pg.wait_for_timeout(150)
+        i = await ev("__spectral.i"); lams = await ev("__lapse.state.m.frames.map(f => f.lam)")
+        assert await ev("document.querySelectorAll('.sp-chip').length") == 0 and await ev("__spectral.active.size") == 0, "chips left after the Band change"
+        assert await ev("__lapse.state.comp") is None and await ev(PIXELS) != comp, "the photo is still the composite"
+        assert all(1.08 < x < 1.67 for x in lams), f"D2 frames at {lams}"
+        assert "layers=" not in pg.url and "ch=" not in pg.url and "det=D2" in pg.url, pg.url
+        assert ch[i]["detector"] == "D2" and await ev("document.getElementById('det').value") == "D2", (i, pg.url)
+        print(f"PASS band: with two layers on, D2 in the Band box clears the chips, shows D2 at {lams[0]:.3f} µm, the dial on channel {i + 1}, the URL {pg.url.split('?')[1]}")
 
         assert not errors, f"page errors: {errors}"
         await b.close()
