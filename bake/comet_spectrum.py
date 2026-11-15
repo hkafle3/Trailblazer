@@ -76,18 +76,21 @@ def horizons_at(pdes, mjds):
     """The comet's RA, Dec (degrees) as SPHEREx saw it at each MJD, from JPL Horizons (batched). The observer is the
     spacecraft itself (Horizons body -163182), not Earth's centre: SPHEREx orbits ~650 km up, which shifts a comet
     0.26 AU away (C/2025 R2) by about 37 arcsec, more than the 25 arcsec measuring circle."""
-    out = []
-    for i in range(0, len(mjds), 40):
-        batch = mjds[i:i + 40]
+    jds = [f"{m + 2400000.5:.6f}" for m in mjds]
+    # each time once, in order: Horizons reads a two-time list as start and stop, and refuses two equal times (C/2024 G3's
+    # last batch was one exposure seen by two detectors)
+    uniq, pos = sorted(set(jds)), {}
+    for i in range(0, len(uniq), 40):
+        batch = uniq[i:i + 40]
         params = {"format": "json", "COMMAND": f"'DES={pdes};CAP;NOFRAG'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
-                  "EPHEM_TYPE": "'OBSERVER'", "CENTER": "'500@-163182'", "TLIST": "'" + " ".join(f"{m + 2400000.5:.6f}" for m in batch) + "'",
+                  "EPHEM_TYPE": "'OBSERVER'", "CENTER": "'500@-163182'", "TLIST": "'" + " ".join(batch) + "'",
                   "TLIST_TYPE": "'JD'", "QUANTITIES": "'1'", "ANG_FORMAT": "'DEG'", "CSV_FORMAT": "'YES'"}
         text = json.loads(get("https://ssd.jpl.nasa.gov/api/horizons.api?" + urllib.parse.urlencode(params)).decode()).get("result", "")
         assert "$$SOE" in text, f"Horizons gave no positions for {pdes}: {text[-500:]}"
         lines = text.split("$$SOE")[1].split("$$EOE")[0].strip().splitlines()
         assert len(lines) == len(batch), f"Horizons returned {len(lines)} of {len(batch)} positions"
-        out += [(float(l.split(",")[3]), float(l.split(",")[4])) for l in lines]
-    return out
+        pos.update(zip(batch, [(float(l.split(",")[3]), float(l.split(",")[4])) for l in lines]))
+    return [pos[j] for j in jds]
 
 
 def most_rows(pdes, a, b):
