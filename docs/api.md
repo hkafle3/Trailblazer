@@ -34,6 +34,8 @@ One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `deta
   "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun.", "created_at": 1762998800000 } ] }
 ```
 
+A measured comet (`bake/comet_spectrum.py`; 3I/ATLAS, C/2025 R2, C/2024 T5, 210P so far) adds `photos`, `spectrum` (by month), `dir` (its folder under `web/data/comets/`), `co2` (the carbon dioxide verdict per month: `state` detected, quiet or unclear, with `excess` and `sigma` in mJy) and `co2_verdict` (one word for the page's badge: detected if any month shows it).
+
 For a known comet from JPL's catalog, `detail` holds `spherex`: every SPHEREx D1 photo whose outline held the comet when it was taken (`[{ "day": 210.43, "obs": "2025W47_..." }]`), plus `q` (closest distance to the Sun, AU), `tp` (when, Julian date) and `mags`.
 
 Refusals: `404 {"error":"no comet C-9999"}`, `400 {"error":"comet id is not valid"}`, `503` if the database does not answer.

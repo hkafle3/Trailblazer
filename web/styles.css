@@ -536,3 +536,5 @@ body:has(#ly-people:checked) .if-heat { display: revert; }
 .mk.known.faint { opacity: .35; }   /* a known comet too faint to see on this date */
 .chip.co2.detected { color: var(--comet); border-color: color-mix(in srgb, var(--comet) 55%, transparent); }   /* carbon dioxide glow */
 .chip.co2.quiet { color: var(--ink-2); }
+.spectrum .legend i.pale { border-top: 2px dashed rgba(255, 255, 255, .35); }   /* months other than the verdict's */
+.spectrum .legend span:last-child i:not(.pale) { border-top-style: solid; border-top-color: var(--comet); }
