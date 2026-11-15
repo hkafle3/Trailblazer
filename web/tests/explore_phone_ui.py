@@ -24,7 +24,7 @@ EMPTY = """([x0, y0, x1, y1]) => { for (let y = y0; y < y1; y += 13) for (let x 
   return null; }"""
 # every tap target on screen smaller than 44 px; markers are measured by their invisible tap circle (i::before)
 SMALL = """() => { const bad = [], seen = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e);
-    return r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight && s.visibility !== 'hidden' && s.pointerEvents !== 'none' && !e.closest('[hidden]'); };
+    return r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight && s.visibility !== 'hidden' && s.pointerEvents !== 'none' && !e.closest('[hidden], details:not([open]) > :not(summary)'); };   // a closed sheet's rows still have boxes (Chrome hides them with content-visibility), not shown
   for (const e of document.querySelectorAll('a[href], button, summary, label, input:not([type=hidden]):not(label input), select, textarea, [role=slider], [tabindex]:not([tabindex="-1"])')) {
     if (e.closest('.mk') || !seen(e)) continue;
     const r = e.getBoundingClientRect();

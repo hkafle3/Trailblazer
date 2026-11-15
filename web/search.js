@@ -54,8 +54,8 @@ function render() {
   };
   const group = (name, body) => (body ? `<div role="group" aria-label="${name}"><h4 aria-hidden="true">${name}</h4>${body}</div>` : '');
   const bold = (s, a, b) => esc(s.slice(0, a)) + '<b>' + esc(s.slice(a, b)) + '</b>' + esc(s.slice(b));
-  const cross = '<span class="k cross"><i></i></span>', ring = '<span class="k ring"></span>';
-  const dot = c => `<span class="k dot" style="--c:var(--${c.kind === 'known' ? 'known' : 'comet'})"></span>`;
+  const cross = '<span class="k k-cross"><i></i></span>', ring = '<span class="k k-ring"></span>';
+  const dot = c => `<span class="k k-dot" style="--c:var(--${c.kind === 'known' ? 'known' : 'comet'})"></span>`;
   const targetRow = (t, label, side) => row({ kind: 'target', t }, ring, label, side);
   const cometRow = (c, label, side) => row({ kind: 'comet', c }, dot(c), label, side);
   const hint = `<div class="xs-row quiet">${cross}<span class="t">Or type RA Dec, like 269.45 4.69</span></div>`;
@@ -106,6 +106,10 @@ function pick(r) {
   if (!r) return;
   if (r.kind === 'sesame') return lookUp(r.q);
   let text = input.value.trim();
+  const pin = (ra, dec, name, href) => {
+    if (phone.matches && !$('csheet').hidden) $('csheet').querySelector('.sheet-x').click();   // a comet's sheet would cover the pin card
+    fly(ra, dec); hooks.showPin(ra, dec, name, href);
+  };
   if (r.kind === 'comet') {
     const mk = markers().find(k => k.comet === r.c);
     text = r.c.id;
@@ -113,10 +117,8 @@ function pick(r) {
     else { hooks.feature(r.c, mk); fly(...where(r.c)); }
   } else if (r.kind === 'target') {
     text = r.t.name;
-    fly(r.t.ra, r.t.dec); hooks.showPin(r.t.ra, r.t.dec, r.t.name, `timelapse.html?target=${r.t.key}`);
-  } else {   // coordinates, or a star from Sesame
-    fly(r.ra, r.dec); hooks.showPin(r.ra, r.dec, r.name ?? 'Patch of sky');
-  }
+    pin(r.t.ra, r.t.dec, r.t.name, `timelapse.html?target=${r.t.key}`);
+  } else pin(r.ra, r.dec, r.name);   // coordinates, or a star from Sesame
   input.value = text;
   const u = new URL(location.href); u.searchParams.set('q', text); history.replaceState(history.state, '', u);
   done();

@@ -213,7 +213,7 @@ async def phone(b):
     assert not errors, errors
     await ctx.close()
 
-    for width in (360, 390):   # the four buttons in one row
+    for width in (320, 360, 390):   # the four buttons in one row
         ctx = await b.new_context(viewport={"width": width, "height": 740}, has_touch=True, is_mobile=True)
         await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
         pg = await ctx.new_page(); await load(pg)
@@ -222,7 +222,7 @@ async def phone(b):
         assert all(boxes[i][0] + boxes[i][2] <= boxes[i + 1][0] for i in range(3)), f"{width} px: buttons overlap {boxes}"
         assert max(bx[1] + bx[3] for bx in boxes) - min(bx[1] + bx[3] for bx in boxes) < 1, f"{width} px: not one row {boxes}"
         await ctx.close()
-    print("PASS phone: Examples, Layers, search and whole sky fit in one row at 360 and 390 px")
+    print("PASS phone: Examples, Layers, search and whole sky fit in one row at 320, 360 and 390 px")
 
 
 async def main():
