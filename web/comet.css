@@ -76,8 +76,9 @@
   .cpage .measures .pv-info { font-size: 12px; }
   .cpage .wherecard .where { max-width: 360px; }
   .cpage .wherecard #c-where { font-size: 12px; }
-  .cpage .wherecard .pv-state, .cpage .empty-box .pv-state { width: min(100%, 300px); }
+  .cpage .wherecard .pv-state { width: min(100%, 300px); }
+  .cpage .empty-box .pv-state { font-size: 16px; white-space: nowrap; }
   .cpage .frames figure { font-size: 11px; }
   .cpage .spectrum .legend, .cpage .spec-head .pv-info { font-size: 12px; }
 }
-@media (min-width: 901px) { .cpage #c-photos { grid-template-columns: repeat(6, minmax(0, 1fr)); } }   /* six a row, as before: 3I/ATLAS's six photos on one line */
+@media (min-width: 561px) { .cpage #c-photos { grid-template-columns: repeat(6, minmax(0, 1fr)); } }   /* six a row, as before (three on a phone): 3I/ATLAS's six photos on one line */
