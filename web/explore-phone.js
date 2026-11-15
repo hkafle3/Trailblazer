@@ -18,13 +18,14 @@ const area = () => { const h = innerHeight, bar = $('tl').getBoundingClientRect(
 const minW = () => A.w;   // whole sky: the oval exactly as wide as the screen
 const atMin = () => W <= minW() + 0.5;
 
-// keep the sky oval in view: an oval narrower than the screen stays centred; a bigger one can slide until 40% of the
-// screen is left over on either side (so a comet near the edge can still be brought above an open sheet)
+// keep the sky oval in view: an oval smaller than the screen stays inside it and a bigger one covers it, give or take
+// 15% of the screen. The margin keeps the rule continuous, so zooming around the fingers never jumps where the oval
+// grows past the screen. With the comet sheet open its top is the bottom edge, so a low comet can be raised above it.
 function set(w, x, y) {
   W = Math.min(MAXW, Math.max(minW(), w));
-  const H = W / 2, mx = A.w * .4, my = (A.b - A.t) * .4;
-  X = W <= A.w ? (A.w - W) / 2 : Math.min(mx, Math.max(A.w - W - mx, x));
-  Y = Math.min(A.t + my, Math.max(A.b - H - my, y));
+  const H = W / 2, bot = sheet.hidden ? A.b : A.b - 136, mx = A.w * .15, my = (bot - A.t) * .15;
+  X = Math.min(Math.max(0, A.w - W) + mx, Math.max(Math.min(0, A.w - W) - mx, x));
+  Y = Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y));
   wrap.style.width = W + 'px'; wrap.style.left = X + 'px'; wrap.style.top = Y + 'px';
   whole.classList.toggle('on', atMin());
   $('zoomlvl').hidden = !atMin() || !hint.hidden;
@@ -212,7 +213,8 @@ function openPeek(m) {
 function closePeek() {
   if (sheet.hidden) return;
   sheet.hidden = true; sheet.style.transform = '';
-  picked?.classList.remove('pick'); picked = null; drawPath(); declutterSoon();
+  picked?.classList.remove('pick'); picked = null; drawPath();
+  if (A) set(W, X, Y);   // without the sheet the oval must fit the full map area again
 }
 // explore.js calls this for a click on a marker: on phones it opens the sheet and keeps the page
 export function tap(e) {

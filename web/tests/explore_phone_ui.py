@@ -106,18 +106,18 @@ async def main():
         print(f"PASS fit: the page is exactly {size[4]} x {size[3]}, nothing scrolls down or sideways")
         await home(pg, t)
 
-        # one finger pans: every marker moves by the drag
+        # one finger pans: every marker moves by the drag (the first view has 56 px of room upward)
         before = {m["name"]: m for m in await pg.evaluate(MARKS)}
         a = await pg.evaluate(EMPTY, [80, 250, 300, 500])
-        await t.gesture([a], [(a[0] - 80, a[1] + 60)]); await pg.wait_for_timeout(200)
+        await t.gesture([a], [(a[0] - 80, a[1] - 40)]); await pg.wait_for_timeout(200)
         after = {m["name"]: m for m in await pg.evaluate(MARKS)}
         common = [n for n in before if n in after and n]
         assert common, "no marker to follow"
         for n in common:
             dx, dy = after[n]["x"] - before[n]["x"], after[n]["y"] - before[n]["y"]
-            assert abs(dx + 80) <= 2 and abs(dy - 60) <= 2, f"drag of (-80, +60) moved {n} by ({dx:.1f}, {dy:.1f})"
+            assert abs(dx + 80) <= 2 and abs(dy + 40) <= 2, f"drag of (-80, -40) moved {n} by ({dx:.1f}, {dy:.1f})"
         assert (await pg.evaluate("location.pathname")).startswith("/explore") and await pg.locator("#csheet").is_hidden(), "a drag opened something"
-        print(f"PASS pan: a one-finger drag of (-80, +60) px moves all {len(common)} markers by it within 2 px")
+        print(f"PASS pan: a one-finger drag of (-80, -40) px moves all {len(common)} markers by it within 2 px")
 
         # double tap zooms in 2x around the tap
         w0 = (await pg.evaluate(WRAP))[2]
@@ -220,4 +220,5 @@ async def main():
         await b.close()
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

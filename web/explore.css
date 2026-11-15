@@ -118,6 +118,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   body.explore .mk.pick i { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 9px rgba(255, 255, 255, .16), 0 0 14px var(--known); }
   body.explore .mk.comet.pick i { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 9px rgba(255, 255, 255, .16), 0 0 14px var(--comet); }
   body.explore .mk.pick b { display: block !important; color: #fff; font-weight: 700; }
+  body.explore .mk.sel.faint { opacity: 1; } body.explore .mk.sel.faint i { opacity: .4; }   /* 3I/ATLAS too faint to see: a dim dot, its name still readable */
   body.explore .mk:hover i { transform: none; }   /* a tap leaves :hover stuck on touch screens */
   body.explore #card-comet, body.explore #card-patch { display: none !important; }   /* folded into the sheet a tap opens */
 
