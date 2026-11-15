@@ -94,19 +94,106 @@ body.explore .examples .example:hover { color: #fff; }
 body.explore .examples .example:hover .ic { opacity: 1; transform: translateX(3px); }
 body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 3px; }
 
-/* ---------- phones: map, timeline and layers stack ---------- */
+/* ---------- phones (direction A, "full-screen map"): the map is the page and the page never scrolls ----------
+   explore-phone.js pans and zooms by setting .map-wrap's width, left and top; every layer is placed in percent of it,
+   so dots and names keep their pixel size at any zoom. Everything below is phone only; the parts it adds to the page
+   (whole-sky button, sheet handles and close buttons, hint, comet sheet) are hidden on a desktop. */
+.xbtns { display: contents; }
+.whole, .layers-body .grab, .layers-body .sheet-x, .layers .ly-ic, .maphint, .zoomlvl, .csheet { display: none; }
+
 @media (max-width: 640px) {
-  .xstage { position: static; transform: none; width: auto; height: auto; display: contents; --e: .44px; }
-  body.explore .map-wrap { position: relative; left: auto; top: auto; width: calc(100% + 16px); margin: 0 -8px; }
-  .tl { position: relative; left: auto; top: auto; width: auto; margin: 70px 26px 70px; --e: .5px; }
-  .tl-tick:nth-child(even):not(:has(small)) b { visibility: hidden; }   /* every other month fits on a phone; January always shows */
-  .tl-knob { width: 28px; height: 28px; }
-  body.explore .layers { position: static; order: 1; }
-  body.explore .layers-body { position: static; width: auto; margin-top: 10px; }
-  /* the featured comet's card: under the map, full width, the timeline moved down to make room */
-  body.explore #card-comet, body.explore #card-comet.left { left: 8px !important; right: 8px; top: calc(100% + 16px) !important; width: auto; margin: 0; }   /* .left is for beside its dot */
-  body.explore #card-comet::before { content: none; }
-  body.explore:has(#card-comet:not([hidden])) .tl { margin-top: 160px; }
+  :root { --bar: calc(96px + env(safe-area-inset-bottom)); }
+  body.explore { position: fixed; inset: 0; height: 100dvh; padding: 0; display: block; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .xstage { position: fixed; left: 0; top: 0; width: 100%; height: 100dvh; transform: none; display: block; overflow: hidden; --e: .6px; touch-action: none; }
+  body.explore .map-wrap { position: absolute; left: 0; top: 60px; width: 100%; margin: 0; }
+  body.explore .map { cursor: grab; }
+  body.explore .map .grat text { display: inline; }
+  body.explore .map .grat .pick-path { stroke: var(--known); stroke-width: 2.5; stroke-dasharray: 1 7; stroke-linecap: round; fill: none; vector-effect: non-scaling-stroke; }
+
+  /* markers: a 44 px invisible tap circle round each dot; known comets show their names (explore-phone.js drops the ones that would collide) */
+  body.explore .mk i::before { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
+  body.explore .mk b { font-size: 12px; }
+  body.explore .mk.peek b { display: block; }
+  body.explore .mk.nm-off b { display: none !important; }
+  body.explore .mk.pick i { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 9px rgba(255, 255, 255, .16), 0 0 14px var(--known); }
+  body.explore .mk.comet.pick i { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 9px rgba(255, 255, 255, .16), 0 0 14px var(--comet); }
+  body.explore .mk.pick b { display: block !important; color: #fff; font-weight: 700; }
+  body.explore .mk:hover i { transform: none; }   /* a tap leaves :hover stuck on touch screens */
+  body.explore #card-comet, body.explore #card-patch { display: none !important; }   /* folded into the sheet a tap opens */
+
+  /* timeline: docked at the bottom on Ming's panel (a straight white rule on a square top) */
+  .tl { position: absolute; z-index: 3; left: 0; right: 0; top: auto; bottom: 0; width: auto; height: var(--bar); margin: 0; padding: 36px 30px 0; box-sizing: border-box; background: rgba(4, 6, 12, .94); border-top: 2px solid #fff; }
+  .tl-tick:nth-child(even) b { visibility: hidden; }   /* every other month; January keeps its year underneath */
+  .tl-knob { width: 44px; height: 44px; min-width: 0; min-height: 0; border: 4px solid rgba(255, 255, 255, .12); background-clip: padding-box; }
+
+  /* Examples, Layers and the whole-sky button float in one row above the timeline */
+  .xbtns { position: fixed; z-index: 5; left: 12px; right: 12px; bottom: calc(var(--bar) + 12px); display: flex; align-items: flex-end; gap: 10px; pointer-events: none; }
+  .xbtns > * { pointer-events: auto; }
+  body.explore .layers, body.explore .layers.examples { position: static; order: 0; display: block; left: auto; bottom: auto; }
+  body.explore .layers > summary { width: auto; height: 44px; padding: 0 14px; gap: 8px; justify-content: center; border-radius: 10px; font-size: 14px; background: rgba(0, 0, 0, .6); }
+  body.explore .layers .ly-ic { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+  body.explore #layers > summary .chev { display: none; }
+  body.explore .examples > summary .chev { width: 12px; height: 12px; }
+  .whole { display: grid; place-items: center; margin-left: auto; width: 48px; height: 48px; padding: 0; border: 1.5px solid rgba(255, 255, 255, .85); border-radius: 10px; background: rgba(0, 0, 0, .6); color: #fff; cursor: pointer; }
+  .whole svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+  .whole.on { background: #fff; color: #000; }
+
+  /* sheets: Layers and Examples rise from the bottom over the timeline; the comet sheet sits on the timeline */
+  body.explore .layers-body, .csheet {
+    position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; width: auto; margin: 0; padding: 0 22px calc(18px + env(safe-area-inset-bottom));
+    display: block; border: 0; border-top: 2px solid #fff; border-radius: 0; background: rgba(4, 6, 12, .96); box-shadow: 0 -20px 50px -20px #000; font-family: var(--panel-font); color: #fff;
+  }
+  body.explore .layers-body .grab, .csheet .grab { display: block; width: 36px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: rgba(255, 255, 255, .55); }
+  body.explore .layers-body .sheet-x, .csheet .sheet-x { display: grid; place-items: center; position: absolute; right: 10px; top: 4px; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fff; cursor: pointer; }
+  .sheet-x svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  body.explore .layers-body h2 { display: flex; align-items: center; height: 44px; margin: 0 0 4px; font-size: 21px; }
+  body.explore .layers .layer, body.explore .examples .example, .csheet .layer { min-height: 52px; padding: 0; gap: 16px; font-size: 15px; color: #f2f2f2; }
+  body.explore .layers-body > :is(.layer, .example) + :is(.layer, .example), body.explore .heat-key + .layer { border-top: 1px solid rgba(255, 255, 255, .08); }
+  body.explore .layers .cbx, .csheet .cbx { width: 22px; height: 22px; }
+  body.explore .layers .cbx::after, .csheet .cbx::after { width: 11px; height: 11px; }
+  body.explore .layer:has(#ly-people, #ly-comets, #ly-known)::after { content: ""; margin-left: auto; width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  body.explore .heat-key { padding: 0 0 12px 38px; }
+
+  .csheet { display: block; bottom: var(--bar); z-index: 4; padding: 0 20px 18px 22px; max-height: 136px; overflow: hidden; box-shadow: none; transition: max-height .3s var(--ease), transform .3s var(--ease); }
+  .csheet[data-detent="full"] { max-height: calc(100dvh - var(--bar) - 150px); overflow-y: auto; box-shadow: 0 -20px 50px -20px #000; }
+  .csheet.drag { transition: none; }
+  .csheet .cs-top { height: 22px; touch-action: none; }
+  .csheet .ch { display: flex; align-items: center; gap: 12px; touch-action: none; }
+  .csheet .ch > div { flex: 1; min-width: 0; }
+  .csheet h3 { margin: 0 0 6px; font: 400 21px/1.15 var(--panel-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .csheet .v { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 13.5px; color: #cfcfcf; }
+  .csheet .v.hot { color: var(--comet); }
+  .csheet .v.hot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--comet); }
+  .csheet .w { margin: 0; font-size: 13px; color: #cfcfcf; }
+  .csheet .go { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: #ececec; color: #050505; }
+  .csheet .go svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .csheet .facts { display: flex; gap: 14px; margin: 18px 0 10px; }
+  .csheet .facts img { flex: none; width: 104px; height: 104px; object-fit: cover; image-rendering: pixelated; border: 1.5px solid #fff; border-radius: 6px; }
+  .csheet .facts img:not([src]) { display: none; }
+  .csheet dl { margin: 0; display: grid; gap: 2px; font-size: 12.5px; }
+  .csheet dt { margin-top: 4px; color: #999; }
+  .csheet dt:first-child { margin-top: 0; }
+  .csheet dd { margin: 0; color: #f2f2f2; }
+  .csheet .layer { display: flex; align-items: center; border-top: 1px solid rgba(255, 255, 255, .08); cursor: pointer; }
+  .csheet .wide { display: flex; align-items: center; height: 56px; margin-top: 12px; padding: 0 6px 0 20px; border: 1.5px solid #fff; border-radius: 10px; font-size: 16px; color: #fff; text-decoration: none; }
+  .csheet .wide > span:first-child { flex: 1; }
+  .csheet .wide.ghost { border-color: rgba(255, 255, 255, .4); font-size: 14px; }
+  .csheet .wide.ghost .go { background: transparent; border: 1.5px solid rgba(255, 255, 255, .7); color: #fff; }
+
+  /* the one-time hint, and "whole sky" while zoomed all the way out */
+  .maphint { position: fixed; z-index: 4; left: 50%; top: 68px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px; border: 1.5px solid rgba(255, 255, 255, .85); border-radius: 10px; background: rgba(0, 0, 0, .72); font: 400 12.5px var(--panel-font); color: #fff; white-space: nowrap; pointer-events: none; transition: opacity .4s; }
+  .maphint.out { opacity: 0; }
+  .maphint svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .zoomlvl { position: fixed; z-index: 4; right: 14px; top: 70px; display: block; font: 400 11px var(--panel-font); color: #aaa; pointer-events: none; }
+
+  /* header: the same look, with 44 px tap targets (the link dividers are drawn, so each link can be the full height) */
+  body.explore .topbar { padding: 0 8px 0 6px; }
+  body.explore .topbar .brand { width: 44px; height: 44px; justify-content: center; }
+  body.explore .topbar nav { height: 44px; }
+  body.explore .topbar nav a { height: 44px; padding-bottom: 0; border-left: 0; }
+  body.explore .topbar nav a + a::before { content: ""; position: absolute; left: 0; top: 9px; width: 1px; height: 26px; background: #fff; }
+  body.explore .topbar nav a::after { bottom: 1px; }
+  body.explore .topbar .av { width: 44px; height: 44px; border: 4px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .85); }
 }
 @media (prefers-reduced-motion: reduce) { body.explore .map-wrap, .tl { animation: none; } }
 

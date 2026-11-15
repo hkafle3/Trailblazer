@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Explore · Trailblazer</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
@@ -30,6 +30,7 @@
     <svg class="grat" viewBox="0 0 2000 1000" preserveAspectRatio="none">
       <path id="grat"/>
       <path id="ecl" class="ecl"/>
+      <path id="pick-path" class="pick-path"/>
       <text dy="-10"><textPath href="#ecl" startOffset="24%">most comets travel near this line</textPath></text>
     </svg>
   </div>
@@ -82,9 +83,12 @@
 
 <!-- Examples: the five baked targets (they open instantly in the patch viewer). Sits above Layers and opens upward the same way;
      it comes first in the page so an open Layers panel draws over its button. -->
+<!-- phones: the two buttons and the whole-sky button float in one row above the timeline; on a desktop this wrapper does nothing (display: contents) -->
+<div class="xbtns">
 <details class="layers examples" id="examples">
   <summary>Examples<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></summary>
   <div class="layers-body" aria-label="Example targets">
+    <div class="grab" aria-hidden="true"></div><button class="sheet-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <h2>Examples</h2>
     <a class="example" href="timelapse.html?target=barnard">Barnard's Star<svg class="ic"><use href="icons.svg#arrow"/></svg></a>
     <a class="example" href="timelapse.html?target=epsindib">Epsilon Indi B<svg class="ic"><use href="icons.svg#arrow"/></svg></a>
@@ -95,8 +99,9 @@
 </details>
 
 <details class="layers" id="layers">
-  <summary>Layers<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></summary>
+  <summary><svg class="ly-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.5l9 5 9-5"/></svg>Layers<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></summary>
   <div class="layers-body" aria-label="Map layers">
+    <div class="grab" aria-hidden="true"></div><button class="sheet-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <h2>Layers</h2>
     <label class="layer" style="--c:var(--photo)"><input class="cbx" type="checkbox" id="ly-photos" checked><span>SPHEREx photos</span></label>
     <label class="layer" style="--c:var(--people)"><input class="cbx" type="checkbox" id="ly-people"><span>Heat map</span></label>
@@ -107,6 +112,25 @@
     <label class="layer" style="--c:var(--known)"><input class="cbx" type="checkbox" id="ly-faint"><span>Faint comets</span></label>
   </div>
 </details>
+<button class="whole" id="whole" type="button" aria-label="Whole sky"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><path d="M12 6.5v11M2.5 12h19"/></svg></button>
+</div>
+
+<!-- phones only (explore-phone.js): the one-time gesture hint, the zoom note, and the sheet a tapped comet or marker opens -->
+<div class="maphint" id="maphint" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>Drag to look around. Pinch to zoom.</div>
+<span class="zoomlvl" id="zoomlvl" hidden>whole sky</span>
+<section class="csheet" id="csheet" hidden data-detent="peek" aria-label="Selected on the map">
+  <div class="cs-top"><div class="grab" aria-hidden="true"></div><button class="sheet-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="ch">
+    <div><h3 data-f="name"></h3><p class="v" data-f="what"></p><p class="w" data-f="when"></p></div>
+    <a class="go" data-f="go" aria-label="Open"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></a>
+  </div>
+  <div class="cs-body">
+    <div class="facts"><img data-f="thumb" alt=""><dl data-f="facts"></dl></div>
+    <label class="layer" data-f="pathrow" style="--c:var(--known)"><input class="cbx" type="checkbox" id="pk-path" checked><span>Show its path on the map</span></label>
+    <a class="wide" data-f="open"><span data-f="openlabel">Open comet page</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+    <a class="wide ghost" data-f="patch"><span data-f="patchlabel"></span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+  </div>
+</section>
 
 
 <div class="readout" id="readout" hidden></div>
