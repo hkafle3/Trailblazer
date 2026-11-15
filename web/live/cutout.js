@@ -154,10 +154,15 @@ export async function cutout(key, ra, dec, { grid = 96, pix = 6.15, signal, h } 
 }
 
 // grey levels as bake/comet_spectrum.py photo(): 20th percentile black, asinh stretch; white at the frame's 99.5th
-// percentile rather than the comet's own peak, so a comet that is not there is not drawn as one
+// percentile rather than the comet's own peak, so a comet that is not there is not drawn as one.
+// A bright star's core that saturated the detector has no value (NaN): drawn black it looks like a hole, so it is drawn
+// at the star's peak (fillCores). Only the picture changes: the light is measured on the raw pixels (readCells).
+// Returns how many pixels were filled.
 export function paint(canvas, { px, grid }) {
   const v = Array.from(px).filter(Number.isFinite).sort((a, b) => a - b);
   const q = f => v[Math.min(v.length - 1, Math.floor(f * v.length))], lo = q(0.2), hi = q(0.995), A = Math.asinh(8);
+  const filled = fillCores(px, grid, hi);
+  px = filled.px;
   canvas.width = canvas.height = grid;
   const g = canvas.getContext('2d'), img = g.createImageData(grid, grid);
   for (let k = 0; k < grid * grid; k++) {
@@ -165,6 +170,37 @@ export function paint(canvas, { px, grid }) {
     img.data.set([255 * s, 255 * s, 255 * s, 255], 4 * k);
   }
   g.putImageData(img, 0, 0);
+  return filled.n;
+}
+
+// A copy of px with each saturated star core filled: a patch of NaN pixels that does not touch the crop's edge (the edge
+// is off the image), is at most CORE_MAX pixels, and sits next to light at or above `bright`, takes its brightest
+// neighbour's value. Other NaN stays NaN.
+const CORE_MAX = 64;
+export function fillCores(px, grid, bright) {
+  const out = Float32Array.from(px), seen = new Uint8Array(px.length);
+  let n = 0;
+  for (let k0 = 0; k0 < px.length; k0++) {
+    if (seen[k0] || Number.isFinite(px[k0])) continue;
+    const patch = [k0], ring = new Set();
+    let edge = false;
+    seen[k0] = 1;
+    for (let i = 0; i < patch.length; i++) {
+      const k = patch[i], x = k % grid, y = (k - x) / grid;
+      if (x === 0 || y === 0 || x === grid - 1 || y === grid - 1) edge = true;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const X = x + dx, Y = y + dy, j = Y * grid + X;
+        if ((!dx && !dy) || X < 0 || Y < 0 || X >= grid || Y >= grid) continue;
+        if (Number.isFinite(px[j])) ring.add(j);
+        else if (!seen[j]) { seen[j] = 1; patch.push(j); }
+      }
+    }
+    const peak = Math.max(...[...ring].map(j => px[j]));
+    if (edge || patch.length > CORE_MAX || !(peak >= bright)) continue;
+    for (const k of patch) out[k] = peak;
+    n += patch.length;
+  }
+  return { px: out, n };
 }
 
 export const SNR_SEEN = 5;

@@ -76,7 +76,7 @@ CROP = """async () => {
   for (let k = 0; k < G * G; k++) { const x = k % G, y = Math.floor(k / G);
     px[k] = 10 + rnd() + 4000 * Math.exp(-((x - c) ** 2 + (y - c) ** 2) / 8) + 300 * Math.exp(-((x - 70) ** 2 + (y - 20) ** 2) / 4); }
   for (let k = 0; k < G * G; k++) { const x = k % G, y = Math.floor(k / G);
-    if (Math.hypot(x - c, y - c) <= 2.2) px[k] = NaN;   // the saturated core, masked
+    if (Math.hypot(x - c, y - c) <= 1) px[k] = NaN;   // the saturated core, masked (5 pixels, so the circle can still be measured)
     if (x < 4) px[k] = NaN; }   // off the image: a strip at the edge
   // the measurement, on the star's window (as readCells gives it): the masked core is left out, before and after paint
   const W = 2 * (R_OUT + 1) + 1, h = (W - 1) / 2, win = Float64Array.from({ length: W * W }, (_, k) => px[(c - h + Math.floor(k / W)) * G + c - h + k % W]);
@@ -84,7 +84,7 @@ CROP = """async () => {
   const before = starMeasure(win, more, h, h), copy = Float32Array.from(px);
   const cv = document.createElement('canvas'); paint(cv, { px, grid: G });
   const d = cv.getContext('2d').getImageData(0, 0, G, G).data, grey = (x, y) => d[4 * (y * G + x)];
-  const core = []; for (let y = c - 3; y <= c + 3; y++) for (let x = c - 3; x <= c + 3; x++) if (Math.hypot(x - c, y - c) <= 3) core.push(grey(x, y));
+  const core = []; for (let y = c - 2; y <= c + 2; y++) for (let x = c - 2; x <= c + 2; x++) if (Math.hypot(x - c, y - c) <= 2) core.push(grey(x, y));
   const winAfter = Float64Array.from({ length: W * W }, (_, k) => px[(c - h + Math.floor(k / W)) * G + c - h + k % W]);
   return { core, edge: [grey(1, 50), grey(3, 10)], same: px.every((v, k) => Object.is(v, copy[k])),
     before: before.flux ?? before.gap, after: (r => r.flux ?? r.gap)(starMeasure(winAfter, more, h, h)) };

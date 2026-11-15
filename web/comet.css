@@ -95,3 +95,4 @@
 .cpage .frames .vis { margin: 0; font-size: max(10px, calc(18 * var(--e))); }
 .cpage .frames figure { align-content: start; }   /* a two-line label under one photo keeps every photo on one line */
 .cpage #c-photos-panel .frames-note { margin-top: calc(30 * var(--e)); line-height: 1.5; }
+.cpage #c-photos-panel .cores { margin-top: calc(8 * var(--e)); line-height: 1.5; }

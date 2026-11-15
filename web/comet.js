@@ -244,7 +244,10 @@ function knownPhotos(c, picks) {
     fig.append(plate, label, vis); box.append(fig);
     return { fig, cv, ringEl, vis, s, mjd: MJD0 + s.day, label: date(MJD0 + s.day, { day: 'numeric', month: 'short', year: 'numeric' }), alt: `${c.id} on ${label}`, ring: 'ring earlier' };
   });
-  panel.append(note); panel.hidden = false;
+  // said once, under the strip, when a photo had a star's saturated centre filled in (live/cutout.js paint)
+  const cores = el('p', 'pv-info cores', 'Bright star centres are filled in: SPHEREx saturates there.');
+  cores.hidden = true;
+  panel.append(note, cores); panel.hidden = false;
   const pl = player(items);
   let started = false;
   new IntersectionObserver(async (es, o) => {
@@ -254,7 +257,7 @@ function knownPhotos(c, picks) {
     await pool(items, 2, async (it, k) => {
       try {
         const p = await knownPhoto(it.s), mag = magAt(c.detail.mags, it.s.day);
-        paint(it.cv, p);
+        if (paint(it.cv, p)) cores.hidden = false;
         Object.assign(it.fig.dataset, { verdict: p.verdict, snr: p.snr == null ? '' : p.snr.toFixed(1), ra: it.s.ra, dec: it.s.dec });
         // fewer comparison photos than wanted (one failed to load, or few at this wavelength): the number is less sure
         it.vis.textContent = p.verdict === 'seen' ? `Seen \u00b7 SNR ${Math.round(p.snr)}${p.few ? ' \u00b7 less sure' : ''}`
