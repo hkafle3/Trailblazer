@@ -251,10 +251,12 @@ function knownPhotos(c, picks) {
       } catch (e) { it.vis.textContent = 'Photo unavailable'; it.fig.dataset.verdict = 'error'; console.warn(e); }
       note.textContent = `Built ${++done} of ${items.length} photos\u2026`;
     });
-    const seen = items.filter(it => it.fig.dataset.verdict === 'seen').length, n = items.length;
+    const count = v => items.filter(it => it.fig.dataset.verdict === v).length, seen = count('seen'), faint = count('faint'), n = items.length;
     const ms = items.map(it => magAt(c.detail.mags, it.s.day)).filter(m => m != null), lo = Math.min(...ms).toFixed(1), hi = Math.max(...ms).toFixed(1);
+    // "too faint" only from measured visits: a photo that failed or could not be measured says nothing about brightness
     note.textContent = seen ? `Seen in ${seen} of ${n} visit${n === 1 ? '' : 's'}: light in the ring at SNR 5 or more, once the stars there are taken away.`
-      : `Too faint to see in ${n === 1 ? 'this visit' : `any of the ${n} visits`}${ms.length ? ` (JPL magnitude ${lo === hi ? lo : `${lo} to ${hi}`})` : ''}.`;
+      : !faint ? `These photos could not be measured.`
+      : `Too faint to see in ${faint < n ? `${faint} of ${n} visits` : n === 1 ? 'this visit' : `any of the ${n} visits`}${ms.length ? ` (JPL magnitude ${lo === hi ? lo : `${lo} to ${hi}`})` : ''}.`;
   }).observe(panel);
 }
 
