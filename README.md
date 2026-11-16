@@ -1,6 +1,6 @@
 # Trailblazer
 
-![Explore](design/screens/shots/explore.png)
+![Trailblazer Explore: the whole SPHEREx sky as a flat map with comets, deep fields and a timeline](docs/explore.jpg)
 
 Trailblazer is a public web tool for NASA Space Apps 2026 (challenge: "Planet X and SPHEREx"). It lets anyone explore real infrared photos from NASA's SPHEREx telescope, find the dots that move between photos (comets, asteroids, nearby cold stars), read what SPHEREx measured in known comets, and talk about what they see. It was called Comet Catcher until 15 November 2026.
 
