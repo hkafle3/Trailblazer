@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import detector_v3_fetch as F
 import detector_cold as d2                    # v2 plumbing reused: mesh, combine, maps, centroid
 
-VERSION = 'v3-2026-11-16'
+VERSION = 'v3-2026-11-16-frozen'
 HERE = os.path.dirname(os.path.abspath(__file__))
 MJD_REF, MJD_CW, MJD_GAIA = 61000.0, 57170.0, 57388.5
 OPIX, AS = d2.OPIX, F.AS
@@ -438,10 +438,10 @@ def plot(out_json, png_dir, which='candidates', near=None):
         q = ax[1]; sp = m.get('spectrum') or {}
         if sp.get('bins'):
             b = np.array(sp['bins']); q.errorbar(b[:, 0], b[:, 1], yerr=b[:, 2], fmt='.', color='#222', lw=0.8, label='SPHEREx forced photometry (all passes)')
-            for k, c, lab in (('model_dwarf', '#0a7', 'methane dwarf templates'), ('model_alt', '#c60', 'best smooth alternative')):
+            for k, c, lab in (('model_dwarf', '#0a7', 'methane dwarf (+ any smooth blend), all passes'), ('model_alt', '#c60', 'best smooth alternative')):
                 if sp.get(k): v = np.array(sp[k]); v = v[np.argsort(v[:, 0], kind='stable')]; q.plot(v[:, 0], v[:, 1], '-', color=c, lw=1, alpha=0.8, label=lab)
             q.axvspan(3.05, 3.65, color='#88f', alpha=0.12); q.axhline(0, color='#999', lw=0.5); q.legend(fontsize=7)
-        q.set_xlabel('wavelength (um)'); q.set_ylabel('flux density (mJy)'); q.set_title(f"verdict {m['verdict']}; chi2 alt - dwarf = {sp.get('dchi2', float('nan')):.0f}; dwarf chi2/bin {sp.get('q_dwarf', float('nan')):.1f}; W2 {m['w2']:.2f}", fontsize=8)
+        q.set_xlabel('wavelength (um)'); q.set_ylabel('flux density (mJy)'); q.set_title(f"verdict {m['verdict']}; chi2 alt - dwarf = {sp.get('dchi2', float('nan')):.0f}; dwarf chi2/bin {sp.get('q_dwarf', float('nan')):.1f}; dwarf share 4-5 um {sp.get('dwarf_share_45', float('nan')):.2f}; W2 {m['w2']:.2f}", fontsize=8)
         fig.suptitle(f"{m['id']}  RA {m['ra']:.4f} Dec {m['dec']:.4f} (MJD 61000)", fontsize=9); fig.tight_layout(); f = f"{png_dir}/{m['id']}.png"; fig.savefig(f, dpi=110); plt.close(fig); done.append(f)
     return done
 
