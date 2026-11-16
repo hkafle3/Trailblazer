@@ -121,3 +121,16 @@ commit, made from predictions only, before any photometry.
   stack (inverse-variance mean reflectance of every image under 2.42 um) at SNR at least 5.
 
 Overall pass: (a), (b) for all 10 confirmation asteroids, (e) for F1 and F2, and (d) for at least 8 of the 10.
+
+## Selection (from bake/asteroid_spectra/choose.py, predictions only)
+
+Slots T0 to C2, committed while the selector was still searching later slots, before any photometry.
+
+| Slot | Asteroid | Class (source) | Orbit | Predicted single-exposure SNR | Predicted flux (mJy) | Images (DR1+QR3) | Gaia DR3 |
+|---|---|---|---|---|---|---|---|
+| T0 | (60) Echo | S (Bus (SMASSII), Tholen S) | MBA | 795.71 | 14.3227 | 417 | yes |
+| S1 | (17) Thetis | Sl (Bus (SMASSII), Tholen S) | MBA | 1088.31 | 19.5896 | 254 | yes |
+| S2 | (228) Agathe | S (Bus (SMASSII), Tholen S) | MBA | 95.67 | 1.722 | 345 | yes |
+| S3 | (1272) Gefion | Sl (Bus (SMASSII)) | MBA | 7.39 | 0.1331 | 273 | yes |
+| C1 | (34) Circe | Ch (Bus (SMASSII), Tholen C) | MBA | 774.02 | 13.9324 | 253 | yes |
+| C2 | (253) Mathilde | Cb (Bus (SMASSII)) | MBA | 89.7 | 1.6145 | 260 | yes |
