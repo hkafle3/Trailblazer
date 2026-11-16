@@ -50,7 +50,7 @@ CHECKS (PASS, FAIL or INVALID; an INVALID check is never a pass)
    fewer than 5 valid: INVALID. Barnard's Star (development) is reported, not gated.
 
 Run (inside the uv environment of detector_v3_fetch.py, plus matplotlib):
-    python -I bake/detector_v3_eval.py spectra            injection spectra from four development dwarfs (once, before the freeze)
+    python -I bake/detector_v3_eval.py spectra            injection spectra from three development dwarfs (once, before the freeze)
     python -I bake/detector_v3_eval.py base dev|final     baseline detector runs
     python -I bake/detector_v3_eval.py plant dev|final    write injected inputs and truth (final seed = detector freeze commit)
     python -I bake/detector_v3_eval.py runs dev|final     mover, glitch and null runs
@@ -76,7 +76,8 @@ N_G1, N_G2, N_G3, N_G4 = 4, 3, 2, 3           # per field: single glitches, pair
 NULLS = [('shift', 90, 0), ('shift', -90, 0), ('shift', 0, 90), ('shift', 0, -90), ('reverse', 0, 0)]
 P_ROW, ERR_INFLATE = 0.98, 1.3                # chance a plant gets its CatWISE row; factor on the donor row's quoted errors
 ZP_W1, ZP_W2 = 309.540, 171.787               # Jy
-INJ_FROM = ['PSO J043.5395+02.3995', '2MASSI J0937347+293142', 'WISE J004945.61+215120.0', '2MASS J11145133-2618235']   # never used as fitter templates
+INJ_FROM = ['PSO J043.5395+02.3995', '2MASSI J0937347+293142', '2MASS J11145133-2618235']   # never used as fitter templates. WISE J004945.61+215120.0 was dropped after the freeze, before any plant existed: its SPHEREx spectrum sits on a neighbouring star's light (0.3 to 0.6 of the peak at every wavelength), so it is not a methane-dwarf spectrum
+FLAG_BAD = sum(1 << b for b in (0, 1, 2, 6, 9, 10, 11, 15, 17, 22, 23, 24, 25, 26, 27, 28, 29))   # pixels the injection-spectrum photometry skips (added after the freeze)
 OMEGA = (6.15 / F.AS) ** 2                    # sr per detector pixel (nominal scale; distortion changes it by a few percent)
 hsh = lambda s: hashlib.sha256(s.encode()).hexdigest()
 fl = lambda v: float(v) if v not in ('', 'null', 'NaN', None) else float('nan')
@@ -112,7 +113,7 @@ def box_flux(img, x, y):
     own crude photometry, used only to build injection spectra.)"""
     xi, yi = int(round(float(x))), int(round(float(y)))
     if not (7 <= xi < img.shape[1] - 7 and 7 <= yi < img.shape[0] - 7): return None
-    c = img[yi - 2:yi + 3, xi - 2:xi + 3]; b = img[yi - 6:yi + 7, xi - 6:xi + 7].copy(); b[3:10, 3:10] = np.nan
+    c = img[yi - 1:yi + 2, xi - 1:xi + 2]; b = img[yi - 6:yi + 7, xi - 6:xi + 7].copy(); b[3:10, 3:10] = np.nan      # fixed after the freeze: 3x3 (was 5x5, which let neighbours in); the caller now blanks flagged pixels
     return float((c - np.nanmedian(b)).sum()) if np.isfinite(c).all() else None
 
 LAM = np.round(np.concatenate([np.arange(0.76, 2.40, 0.03), np.arange(2.42, 3.80, 0.06), np.arange(3.82, 5.01, 0.04)]), 3)
@@ -126,11 +127,11 @@ def spectra():
         d = f"{F.CACHE}/{f['field']}"; E = json.load(open(d + '/exposures.json')); lam, flx = [], []
         for e in E:
             a = load(d, e); ra, dec = F.track(t['ra'], t['dec'], t['pme'], t['pmn'], (t.get('plx_mas') or 0) / 1000 if np.isfinite(t.get('plx_mas') or 0) else 0, a['t'], MJD_REF)
-            x, y = a['w'].all_world2pix(ra, dec, 0, quiet=True); x, y = float(x[0]) - a['x0'], float(y[0]) - a['y0']; v = box_flux(a['img'], x, y)
+            x, y = a['w'].all_world2pix(ra, dec, 0, quiet=True); x, y = float(x[0]) - a['x0'], float(y[0]) - a['y0']; v = box_flux(np.where((a['flg'] & FLAG_BAD) != 0, np.nan, a['img']), x, y)
             if v is not None: lam.append(float(F.wave(e['det'])(np.array([[y + a['y0'], x + a['x0']]]))[0])); flx.append(v)
         lam, flx = np.array(lam), np.array(flx); edges = np.r_[LAM[0] - 0.015, (LAM[1:] + LAM[:-1]) / 2, LAM[-1] + 0.02]
         s = np.array([np.median(flx[(lam >= a) & (lam < b)]) if ((lam >= a) & (lam < b)).any() else np.nan for a, b in zip(edges[:-1], edges[1:])])
-        s = np.interp(LAM, LAM[np.isfinite(s)], s[np.isfinite(s)]); s = np.clip(s, 0, None); out['spectra'][t['name']] = (s / s[(LAM >= 4.0) & (LAM <= 5.0)].mean()).round(4).tolist()
+        s = np.interp(LAM, LAM[np.isfinite(s)], s[np.isfinite(s)]); m5 = ndi.median_filter(s, 5, mode='nearest');    s = np.where(np.abs(s - m5) > np.maximum(3 * np.abs(m5), 0.3 * np.median(s[(LAM >= 4.0) & (LAM <= 5.0)])), m5, s); s = np.clip(s, 0, None); out['spectra'][t['name']] = (s / s[(LAM >= 4.0) & (LAM <= 5.0)].mean()).round(4).tolist()
         print(t['name'], len(lam), 'samples; J/H/3.3/4.1 =', [round(float(np.interp(v, LAM, out['spectra'][t['name']])), 2) for v in (1.27, 1.58, 3.3, 4.1)])
     json.dump(out, open(HERE + '/detector_v3_inject_spectra.json', 'w'))
 
