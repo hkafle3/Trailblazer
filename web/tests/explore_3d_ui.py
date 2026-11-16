@@ -245,6 +245,8 @@ async def stays_put(b, name, opts, errs):
         assert not await pg.is_visible("#map"), "the flat map still shows under the 3D view"
         # use the 3D view: turn it, zoom it, fly to a photo
         await drag(pg, vw * .5, vh * .45, vw * .7, vh * .52); await drag(pg, vw * .5, vh * .45, vw * .4, vh * .38)
+        if await pg.evaluate(X3D_STATE) == 'photo':   # back to the whole sky first: scrolling in at a photo hands over to the flat map
+            await press(pg, "#x3d-back"); await pg.wait_for_function(f"{X3D_STATE} === 'overview'", timeout=8000)
         if not pg.phone:
             await pg.mouse.move(vw * .5, vh * .45)
             for _ in range(4): await pg.mouse.wheel(0, -120); await pg.wait_for_timeout(60)
@@ -341,8 +343,29 @@ async def lazy_and_keys(b, name, opts, errs):
     await pg.context.close()
 
 
+async def deep_handoff(b, name, opts, errs):
+    """Zooming in at a photo past what 3D shows hands over to the flat map at the same spot, deep enough for its sharp tiles."""
+    pg = await page(b, opts, errs)
+    await to_3d(pg)
+    spot = await fly_to(pg, *BARNARD, f"{name} deep zoom")
+    if pg.phone: await press(pg, "#x3d-deep")
+    else:
+        await pg.mouse.move(pg.viewport_size["width"] * .4, pg.viewport_size["height"] * .3)
+        for _ in range(10):   # scroll in until 3D lets go; a further notch would zoom the flat map about the pointer
+            if await pg.evaluate(MODE) != '3d': break
+            await pg.mouse.wheel(0, -120); await pg.wait_for_timeout(120)
+    await pg.wait_for_function(f"{MODE} !== '3d'", timeout=5000)
+    await pg.wait_for_timeout(2500)
+    v = await pg.evaluate("import('/explore-view.js').then(v => ({ W: v.W, sky: v.skyAt(v.A.w / 2, (v.A.t + v.A.b) / 2) }))")
+    off = sep(v["sky"][0], v["sky"][1], spot["ra"], spot["dec"]) if v["sky"] else 999
+    sharp = [u for u in pg.fetched if "/hips/" in u and ("Norder4" in u or "Norder5" in u)]
+    check(f"{name}: zooming in past 3D hands over to Flat at the same spot, deep", await pg.is_visible("#map") and off <= 0.05 and v["W"] >= 30000 and len(sharp) > 0, f"{off:.4f} deg from the 3D spot, map {v['W']:.0f} px wide, {len(sharp)} sharp tiles asked for")
+    await pg.context.close()
+
+
 async def run(b, name, opts):
     errs = []
+    await deep_handoff(b, name, opts, errs)
     await lazy_and_keys(b, name, opts, errs)
     await stays_put(b, name, opts, errs)
     await speed(b, name, opts, errs)

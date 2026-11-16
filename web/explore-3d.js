@@ -28,16 +28,17 @@ const SHELL = `<canvas id="x3d-gl" tabindex="0" aria-label="The sky in 3D. Drag 
     <h3 id="x3d-when"></h3>
     <p id="x3d-where"></p>
     <a id="x3d-open">Open time-lapse here<svg class="ic" aria-hidden="true"><use href="icons.svg#arrow"/></svg></a>
+    <button id="x3d-deep" type="button">Zoom in<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
   </div>
   <div id="x3d-loading">Loading the sky</div>`;
 
 const $ = id => document.getElementById(id);
 const page = document.body, calm = matchMedia('(prefers-reduced-motion: reduce)'), phone = matchMedia('(max-width: 640px)');
-let root = null, made = null, live = null, patchUrl = null;   // made: the scene's promise; live: the scene once it is up
+let root = null, made = null, live = null, patchUrl = null, deepAt = null;   // made: the scene's promise; live: the scene once it is up
 let under = [];   // the flat map's controls under the 3D view, made inert while it is up
 
 // show(true, patchUrl) switches to 3D, show(false) back to Flat
-export function show(on, urlFor) { if (urlFor) patchUrl = urlFor; (on ? enter : leave)(); }
+export function show(on, urlFor, deepFn) { if (urlFor) patchUrl = urlFor; if (deepFn) deepAt = deepFn; (on ? enter : leave)(); }
 const pressed = on => { $('view-3d').setAttribute('aria-pressed', on); $('view-flat').setAttribute('aria-pressed', !on); };
 
 function enter() {
@@ -471,7 +472,20 @@ const turn = (dx, dy, now) => {   // by window pixels: the sky follows the point
   } else if (st.mode === 'photo') { const k = 2 * tanH() / H; st.yaw = clamp(st.yaw + dx * k, -1, 1); st.pitch = clamp(st.pitch + dy * k, -1, 1); }
   dirty = true;
 };
-const zoomBy = f => { if (st.mode === 'overview') { st.zoomT = clamp(st.zoomT * f, ZOOM_MIN, 1); dirty = true; } };
+// Zooming in further than 3D goes (at the overview's closest, or at a photo) hands over to the flat map at the same sky
+// position: it has the sharp tiles for a deep zoom. A scroll, pinch or + has to keep asking for a moment (push) first.
+let push = 0, pushT = 0;
+function handOff() {
+  const n = st.mode === 'photo' ? st.spot : skyAt(W / 2, (area.t + area.b) / 2);
+  push = 0; if (!n || !deepAt || st.mode === 'flying') return;
+  const [ra, dec] = dirEq(n); leave(); deepAt(ra, dec);
+}
+function deeper(f) { push -= Math.log(f); clearTimeout(pushT); pushT = setTimeout(() => { push = 0; }, 700); if (push > .6) handOff(); }
+$('x3d-deep').onclick = handOff;
+const zoomBy = f => {
+  if (f < 1 && (st.mode === 'photo' || (st.mode === 'overview' && st.zoomT <= ZOOM_MIN * 1.001))) return deeper(f);
+  if (st.mode === 'overview') { st.zoomT = clamp(st.zoomT * f, ZOOM_MIN, 1); dirty = true; }
+};
 const pts = new Map(); let press = null;
 const spread = () => { const [a, b] = [...pts.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]); };
 canvas.addEventListener('pointerdown', e => {

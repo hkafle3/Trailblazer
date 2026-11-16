@@ -42,8 +42,11 @@ body[data-view="3d"] .viewsw { z-index: 10; }   /* on the flat map it sits with 
 #x3d-card h3 { font: 400 19px/1.2 var(--panel-font); }
 #x3d-where { font-size: 13px; color: rgba(255, 255, 255, .72); }
 #x3d-open { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; height: 44px; margin-top: 8px; padding: 0 16px; border: 1.5px solid rgba(255, 255, 255, .85); border-radius: 10px; background: #fff; color: #000; font: 400 14px var(--panel-font); text-decoration: none; }
+#x3d-deep { display: inline-flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 16px; border: 1.5px solid rgba(255, 255, 255, .85); border-radius: 10px; background: none; color: #fff; font: 400 14px var(--panel-font); cursor: pointer; }
+#x3d-deep:hover { background: rgba(255, 255, 255, .08); }
+#x3d-deep svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 #x3d-open:hover { background: rgba(255, 255, 255, .86); }
-#x3d-open:focus-visible, #x3d-back:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+#x3d-open:focus-visible, #x3d-deep:focus-visible, #x3d-back:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 #x3d-back { position: absolute; right: 6px; top: 6px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: rgba(255, 255, 255, .72); cursor: pointer; }
 #x3d-back:hover { color: #fff; }
 #x3d-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
