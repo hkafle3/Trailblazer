@@ -134,3 +134,18 @@ Slots T0 to C2, committed while the selector was still searching later slots, be
 | S3 | (1272) Gefion | Sl (Bus (SMASSII)) | MBA | 7.39 | 0.1331 | 273 | yes |
 | C1 | (34) Circe | Ch (Bus (SMASSII), Tholen C) | MBA | 774.02 | 13.9324 | 253 | yes |
 | C2 | (253) Mathilde | Cb (Bus (SMASSII)) | MBA | 89.7 | 1.6145 | 260 | yes |
+
+Remaining slots, committed when the selector finished, before any of them was measured (only T0 had been cut out by then).
+
+| Slot | Asteroid | Class (source) | Orbit | Predicted single-exposure SNR | Predicted flux (mJy) | Images (DR1+QR3) | Gaia DR3 |
+|---|---|---|---|---|---|---|---|
+| C3 | (2370) van Altena | Cb (Bus (SMASSII)) | MBA | 6.26 | 0.1127 | 298 | yes |
+| V1 | (4) Vesta | V (Bus (SMASSII), Tholen V) | MBA | 275901.3 | 4966.2234 | 319 | yes |
+| X1 | (16) Psyche | X (Bus (SMASSII), Tholen M) | MBA | 6438.04 | 115.8847 | 295 | yes |
+| F1 | (2744) Birgitta | S (Bus (SMASSII), Tholen S) | MCA | 1.65 | 0.0297 | 152 | no |
+| F2 | (3833) Calingasta | Cb (Bus (SMASSII)) | MCA | 1.44 | 0.0259 | 299 | no |
+
+Known flaw in the rule, noticed on reading this list and before measuring: V1 and X1 have no flux ceiling, so they
+picked (4) Vesta (predicted 5 Jy) and (16) Psyche (116 mJy), far brighter than the level at which Iris's core was
+flagged. They stay in the counted set as chosen. Replacements under the 20 mJy ceiling (slots V1b, X1b, same rule plus
+that ceiling) are measured and reported separately and do not count toward the pass.
