@@ -243,8 +243,10 @@ async def deadline(b):
         await go(pg, "Barnard"); await pg.wait_for_timeout(500)
         await go(pg, "Orion"); await pg.wait_for_timeout(500)
         check((await pg.evaluate(STATE))["failed"] == 0, "moving aborts quietly", f"body={body}")
-        await pg.wait_for_function("__dz().then(({ d }) => d.stats.failed > 0 && !d.state().pending && !d.state().queued)", timeout=20000)
-        s = await pg.evaluate(STATE)
+        for _ in range(40):   # wait_for_function does not await a Promise, so poll: the 15 s deadline has to fire first
+            s = await pg.evaluate(STATE)
+            if s["failed"] > 0 and not s.get("pending") and not s.get("queued"): break
+            await pg.wait_for_timeout(500)
         check(s["failed"] > 0, "stalled requests release pending slots", f"body={body}, failed={s['failed']}")
         await pg.evaluate("window.__stallTiles = false")
         s = await settled(pg, 40000)
