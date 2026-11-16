@@ -52,8 +52,10 @@ const token = () => widget?.querySelector('[name=cf-turnstile-response]')?.value
 // the tags the comments API knows: a real mover is an asteroid-like vote, a star is its own tag (migration 0015)
 const VOTES = [['asteroid', 'Real mover'], ['glitch', 'Glitch'], ['star', 'Star']];
 const NAME = /^[A-Za-z0-9 _.-]{1,24}$/;
-function visit(c) {   // the visit as POST /api/candidates reads it: the detections' days, mean time and count
-  const ts = c.detections.map(d => d.t), day = t => new Date((t - 40587) * 864e5).toISOString().slice(0, 10);
+// The visit as POST /api/candidates reads it (one SPHEREx visit spans at most 14 days): the first detection's visit only.
+// A slow mover's detections span several six-month passes; the candidate id in the body ties the vote to the rest.
+function visit(c) {
+  const t0 = c.detections[0].t, ts = c.detections.map(d => d.t).filter(t => t >= t0 && t - t0 <= 13), day = t => new Date((t - 40587) * 864e5).toISOString().slice(0, 10);
   const ch = CHANNELS.filter(x => x.detector === c.detections[0].det), lam = ch.reduce((a, x) => a + x.um, 0) / ch.length;
   return { start: day(Math.min(...ts)), end: day(Math.max(...ts)), mjd: +(ts.reduce((a, b) => a + b, 0) / ts.length).toFixed(5), exposures: ts.length, lam: +lam.toFixed(4), epochs: ts };
 }
