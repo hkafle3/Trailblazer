@@ -5,6 +5,7 @@
   scene.json     trimmed copy of the 3D prototype's scene.json (JPL Horizons): inner planets' orbits, Earth every 2 days,
                  every comet's position every 2 days, and 3I/ATLAS's path and photos.
   sky.jpg        the prototype's SPHEREx all-sky picture (web/data/allsky3.png resampled to ecliptic equirectangular), copied as is.
+The first photo itself (photo.jpg, photo.json) is baked by bake/intro_photo.py.
 tiles.bin is rebuilt from this repo (bake/coverage/exposures.jsonl, from bake/coverage.py). scene.json and sky.jpg came from the
 earlier 3D prototype, which is not in the repo: give its data folder to rebuild them, or leave it out to keep the committed ones.
 Run: python3 bake/intro_assets.py [prototype data folder]

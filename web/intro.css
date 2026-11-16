@@ -9,6 +9,9 @@
 #intro-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 #intro .lbl { position: absolute; left: 0; top: 0; font: 400 11px/1 var(--mono); letter-spacing: .02em; color: var(--ink2); white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; will-change: transform, opacity; }
 #intro .lbl.accent { color: var(--accent); }
+#intro .lbl.mark { color: var(--ink3); }
+#intro .lbl.lead::after { content: ""; position: absolute; left: 50%; top: 100%; margin-top: 3px; width: 1px; height: 21px; background: rgba(255, 255, 255, .45); }
+#intro-spec { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; }
 
 #intro-hud { position: absolute; left: 28px; top: 26px; display: grid; gap: 4px; font: 400 12px/1.2 var(--mono); color: var(--ink2); }
 #intro-h-count { color: var(--ink3); }
@@ -20,9 +23,11 @@
 
 /* caption: one straight rule, the line of text under it; it owns the bottom band so it never sits on the subject */
 #intro-cap { position: absolute; left: 50%; bottom: max(34px, env(safe-area-inset-bottom)); width: min(700px, calc(100vw - 40px)); transform: translateX(-50%); }
+/* the close looks at one photo fill the window: the words keep a dark ground of their own */
+#intro-cap::before { content: ""; position: absolute; z-index: -1; left: -100vw; right: -100vw; top: -56px; bottom: -80px; background: linear-gradient(to bottom, rgba(1, 2, 6, 0), rgba(1, 2, 6, .9) 56px); pointer-events: none; }
 #intro .cap-top { display: flex; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, .85); font-size: 11px; color: var(--ink3); }
 #intro-cap-ticks { display: flex; gap: 5px; }
-#intro-cap-ticks i { width: 22px; height: 2px; background: rgba(255, 255, 255, .28); }
+#intro-cap-ticks i { width: 18px; height: 2px; background: rgba(255, 255, 255, .28); }
 #intro-cap-ticks i.on { background: var(--accent); }
 #intro #intro-next { margin-left: auto; min-height: 32px; }
 #intro-cap-text { margin-top: 14px; min-height: 3em; font-size: 17px; line-height: 1.5; color: var(--ink); text-wrap: balance; }
@@ -39,4 +44,5 @@
   #intro-cap-text { font-size: 14px; min-height: 4.5em; }
   #intro-cap-note { font-size: 10px; min-height: 3em; }
   #intro .lbl { font-size: 10px; }
+  #intro .lbl.mark { white-space: pre; text-align: right; line-height: 1.25; }
 }
