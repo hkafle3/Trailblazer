@@ -52,24 +52,32 @@ async def run(p, name, ctx_args):
     await pg.unroute("**/data/candidates.json")
 
     # ---- the real detector file: a test run, said so; each check pass or fail; Worth reporting empty, said so ----
-    REAL = json.load(urllib.request.urlopen(BASE + "/data/candidates.json"))
-    await pg.goto(BASE + "/candidates.html"); await pg.wait_for_selector(".c-group")
-    assert await pg.is_hidden("#c-sample"), "real data labelled as sample"
-    v = REAL["validation"]; fails = (v["known_recovered"] / v["known_expected"] < .8) + (v["planted_found"] < .8) + (v["false_per_sqdeg"] >= 1)
-    if fails:
-        t = await pg.text_content("#c-test")
-        assert await pg.is_visible("#c-test") and f"Test run on {len(REAL['regions'])} fields, detector still being tuned" in t, t
-    marks = await pg.eval_on_selector_all("#c-check dl > div", "e => e.map(d => [d.dataset.pass, d.querySelector('.ok').textContent])")
-    assert [m[0] for m in marks] == [str(v["known_recovered"] / v["known_expected"] >= .8).lower(), str(v["planted_found"] >= .8).lower(), str(v["false_per_sqdeg"] < 1).lower()], marks
-    assert all(m[1].startswith("Pass") if m[0] == "true" else m[1].startswith("Fail") for m in marks), marks
-    groups = await pg.eval_on_selector_all(".c-group", "e => e.map(g => [g.dataset.v, +g.querySelector('.sec .n').textContent, [...g.querySelectorAll('.cd')].map(c => c.dataset.id), g.querySelector('.c-none')?.textContent || ''])")
-    for gv, n, cids, none in groups:
-        want = [c["id"] for c in REAL["candidates"] if c["verdict"] == gv]
-        assert n == len(want) and cids == want, (gv, n, cids)
-        if gv == "worth_reporting" and not want: assert none.startswith("None yet"), none
-    assert groups[0][0] == "worth_reporting", "Worth reporting is not first"
-    assert await pg.evaluate(SIDEWAYS) <= 0, "sideways scroll on the real Candidates page"
-    await shot("real")
+    # (skipped while the detector has not shipped a file: then the page says so, checked above)
+    try: REAL = json.load(urllib.request.urlopen(BASE + "/data/candidates.json"))
+    except urllib.error.HTTPError as e: assert e.code == 404; REAL = None
+    if REAL is not None:
+        await pg.goto(BASE + "/candidates.html"); await pg.wait_for_selector(".c-group")
+        assert await pg.is_hidden("#c-sample"), "real data labelled as sample"
+        v = REAL["validation"]; fails = (v["known_recovered"] / v["known_expected"] < .8) + (v["planted_found"] < .8) + (v["false_per_sqdeg"] >= 1)
+        if fails:
+            t = await pg.text_content("#c-test")
+            assert await pg.is_visible("#c-test") and f"Test run on {len(REAL['regions'])} fields, detector still being tuned" in t, t
+        marks = await pg.eval_on_selector_all("#c-check dl > div", "e => e.map(d => [d.dataset.pass, d.querySelector('.ok').textContent])")
+        assert [m[0] for m in marks] == [str(v["known_recovered"] / v["known_expected"] >= .8).lower(), str(v["planted_found"] >= .8).lower(), str(v["false_per_sqdeg"] < 1).lower()], marks
+        assert all(m[1].startswith("Pass") if m[0] == "true" else m[1].startswith("Fail") for m in marks), marks
+        groups = await pg.eval_on_selector_all(".c-group", "e => e.map(g => [g.dataset.v, +g.querySelector('.sec .n').textContent, [...g.querySelectorAll('.cd')].map(c => c.dataset.id), g.querySelector('.c-none')?.textContent || ''])")
+        for gv, n, cids, none in groups:
+            want = [c["id"] for c in REAL["candidates"] if c["verdict"] == gv]
+            assert n == len(want) and cids == want, (gv, n, cids)
+            if gv == "worth_reporting" and not want: assert none.startswith("None yet"), none
+        assert groups[0][0] == "worth_reporting", "Worth reporting is not first"
+        # a real card opens the time-lapse at its own first detection, never a baked target patch that only shares the region's name
+        links = await pg.eval_on_selector_all(".cd .cd-open", "e => e.map(a => [a.closest('.cd').dataset.id, new URL(a.href).searchParams.toString()])")
+        for cid, q in links:
+            d0 = next(c for c in REAL["candidates"] if c["id"] == cid)["detections"][0]
+            assert "target=" not in q and f"ra={d0['ra']:.4f}" in q and f"cand={cid}" in q, (cid, q)
+        assert await pg.evaluate(SIDEWAYS) <= 0, "sideways scroll on the real Candidates page"
+        await shot("real")
 
     # ---- sample: every verdict in its group (the Comets list's headings, with counts), the check banner ----
     await pg.goto(BASE + "/candidates.html?sample=1"); await pg.wait_for_selector(".cd")

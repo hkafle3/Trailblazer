@@ -37,7 +37,7 @@ function head(c) {
 }
 
 function talk(c) {
-  for (const [k, n] of Object.entries(c.tags)) document.querySelector(`[data-t=${k}]`).textContent = n;
+  for (const [k, n] of Object.entries(c.tags)) { const e = document.querySelector(`[data-t=${k}]`); if (e) e.textContent = n; }   // a tag this page has no row for is skipped
   $('c-status').textContent = settled(c.tags) ? 'Likely comet' : 'Candidate';
   const said = c.comments.filter(m => m.body);   // a tag alone is a vote: counted above, no box
   $('c-talk').replaceChildren(...said.map(m => {

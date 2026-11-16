@@ -20,10 +20,11 @@ export async function load() {
   return data && Array.isArray(data.candidates) ? { data, sample: SAMPLE } : null;
 }
 
-// the five baked challenge targets open instantly; anywhere else is a live build at the first detection's time
+// sample candidates sit on the baked challenge targets and open instantly. Real ones always build live at the first
+// detection's place and time: a detector field is degrees wide, a baked patch 12 arcmin, so a region name is not enough
 const BAKED = { "Barnard's Star": 'barnard', 'Epsilon Indi B': 'epsindib', 'WISE 0855': 'wise0855', 'RW Aurigae': 'rwaur', 'R Draconis': 'rdra' };
 export function lapseUrl(c) {
-  const d = c.detections[0], key = BAKED[c.region], tail = `&cand=${encodeURIComponent(c.id)}${SAMPLE ? '&sample=1' : ''}`;
+  const d = c.detections[0], key = SAMPLE ? BAKED[c.region] : null, tail = `&cand=${encodeURIComponent(c.id)}${SAMPLE ? '&sample=1' : ''}`;
   return key ? `timelapse.html?target=${key}&day=${Math.max(0, Math.floor(d.t - MJD0))}${tail}`
     : `timelapse.html?ra=${d.ra.toFixed(4)}&dec=${d.dec.toFixed(4)}&det=${d.det}&t=${d.t}${tail}`;
 }
