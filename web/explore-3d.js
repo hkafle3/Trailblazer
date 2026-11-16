@@ -65,6 +65,7 @@ function leave() {
 }
 // Keys, before the flat map hears them (explore-desktop.js pans and zooms on the same ones, explore.js closes its pin on Escape)
 function onKey(e) {
+  if (document.querySelector('[aria-modal="true"]')) return;   // the sign-in sheet, the guide or the tour is up (ui.js): the keys are theirs
   if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); return leave(); }
   if (e.metaKey || e.ctrlKey || e.altKey || (e.target !== document.body && e.target.id !== 'x3d-gl')) return;   // the timeline's handle, buttons and links keep their own keys
   const go = e.target.id === 'x3d-gl' && (e.key === 'Enter' || e.key === ' ');
@@ -350,7 +351,7 @@ function flightPose(f, s) {
   if (s < T_IN) return { rel: swing(st.spot, NEAR_EARTH, k), q: f.q.clone().slerp(to.q, k), shift };
   return { rel: st.spot.clone().multiplyScalar(NEAR_EARTH + (to.rel.length() - NEAR_EARTH) * k2), q: to.q, shift };
 }
-function land(mode) { st.fly = null; st.mode = mode; st.sel = mode === 'photo' ? 1 : 0; card.classList.toggle('in', mode === 'photo'); if (mode === 'overview') { card.hidden = true; st.spot = null; layout(); } words(); dirty = true; }
+function land(mode) { st.fly = null; st.mode = mode; st.sel = mode === 'photo' ? 1 : 0; card.classList.toggle('in', mode === 'photo'); if (mode === 'overview') { card.hidden = true; st.spot = null; layout(); } words(); setCam(poseNow()); dirty = true; }   // the camera again: hiding the card changed the room
 
 // a sky direction chosen: fill the card, then fly (or cut) to its photo
 const f2 = x => (Math.abs(x) + 1e-9).toFixed(2);   // as the flat map's pin writes them
