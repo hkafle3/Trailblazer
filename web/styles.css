@@ -84,10 +84,8 @@ body.page::after {
 .rule { height: 1px; background: var(--line); border: 0; }
 
 /* ---------- Top bar: see header.css ---------- */
-/* The comet mark (the app icon), drawn in em so it scales with font-size: 1em box, dot and tail. */
-.brand-mark { position: relative; display: inline-block; flex: none; width: 1em; height: 1em; font-size: 22px; }
-.brand-mark::before { content: ""; position: absolute; left: .045em; bottom: .136em; width: .318em; height: .318em; border-radius: 50%; background: var(--comet); box-shadow: 0 0 .45em var(--comet); }
-.brand-mark::after { content: ""; position: absolute; left: .227em; bottom: .273em; width: .864em; height: max(2px, .09em); border-radius: 2px; background: linear-gradient(90deg, var(--comet), transparent); transform-origin: left center; transform: rotate(-38deg); }
+/* The comet mark (the app icon): the Trailblazer sticker (img/mark-128.png, also favicon.ico and apple-touch-icon.png), sized in em. */
+.brand-mark { position: relative; display: inline-block; flex: none; width: 1em; height: 1em; font-size: 22px; background: url(img/mark-128.png) center / contain no-repeat; }
 .av { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font: 500 11px/1 var(--mono); color: var(--ink); background: linear-gradient(140deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, .06)); border: 1px solid rgba(255, 255, 255, .16); }
 
 /* ---------- Controls ---------- */
