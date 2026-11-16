@@ -62,11 +62,12 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
       <span class="when" data-f="when"></span>
       <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
     </a>
-    <div class="mapcard glass" id="card-patch">
+    <!-- the unexplored suggestion: the same panel as the featured comet's card, the whole card opens the patch -->
+    <a class="mapcard" id="card-patch" aria-label="Open this unexplored patch">
       <h3>Nobody has looked here</h3>
-      <p class="mono" data-f="where"></p>
-      <a class="btn small" data-f="open">Open patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-    </div>
+      <span class="when" data-f="where"></span>
+      <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+    </a>
   </div>
 </div>
 
