@@ -174,7 +174,7 @@ def ui_json(allr, summ):
         if field == FLASH['field'] and 'flash' in summ[field]: picks.append((summ[field]['flash']['index'], 'glitch'))
         rng = np.random.default_rng(3)
         for why, verdict, lo, hi in (('flag', 'glitch', 15, 300), ('shape', 'glitch', 10, 300), ('star', 'star', 20, 200)):
-            k = np.nonzero((D['why'] == why) & (D['snr'] > lo) & (D['snr'] < hi) & ((why != 'flag') | ((D['flags'] & 1) > 0)))[0]
+            k = np.nonzero((D['why'] == why) & (D['snr'] > lo) & (D['snr'] < hi) & ((why != 'flag') | ((D['flags'] & 1) > 0)) & ((why != 'shape') | (D['sharp'] > d.SHARP_MAX)))[0]   # flag: TRANSIENT; shape: single-pixel hits only
             picks += [(int(q), verdict) for q in rng.choice(k, min(1, len(k)), replace=False)]
         for q, verdict in picks:
             i = int(D['e'][q]); det = dict(t=float(D['t'][q]), ra=float(D['ra'][q]), dec=float(D['dec'][q]), det='D1', flux_mjy=float(D['s'][q] * d.JY * 1e3), snr=float(D['snr'][q]), obs=E[i]['obs'])

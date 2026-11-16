@@ -34,10 +34,11 @@ BAD = sum(1 << b for b in (0, 1, 2, 6, 9, 10, 11, 15, 17, 25, 27, 28, 29))   # n
 GROW = (1 << 1) | (1 << 26)                  # OVERFLOW and BLOOM: grown by 3 px
 SNR_MIN, SHARP_MAX, SHARP_MIN = 5.0, 0.80, 0.20   # box SNR floor; brightest pixel / 3x3 sum: above = single-pixel hit, below = diffuse
 STATIC_DT, STATIC_S, STATIC_R, STATIC_N = 0.1, 2.0, 0.15, 3   # days apart for a "different look"; stacked SNR and share of its own brightness that mark a stationary source
-TOL = 4.5                                    # arcsec, allowed distance from the straight-line fit (0.73 px); 6.16 (1 px) for faint ones
-tol = lambda snr: np.where(snr < 10, PIX, TOL)
+TOL = 4.5                                    # arcsec, typical allowed distance from the straight-line fit; per detection it follows its SNR
+tol = lambda snr: np.clip(1.5 + 45 / snr, 2.5, PIX)   # 6.16 (1 px) at SNR 10 and below, 4.5 at 15, 2.5 for bright ones
 RATE_MIN, RATE_MAX = 5.0, 300.0              # arcsec per hour
 MOVE_MIN = 2 * PIX                           # arcsec of fitted motion needed to call it moving
+FAINT_N, FAINT_SNR = 5, 8.0                   # a track fainter than this mean SNR needs at least this many detections
 FLUX_RATIO = 3.0                             # brightest burst / faintest burst allowed on one track
 BURST_GAP, LINK_H, COMPLETE = 0.01, 96.0, 0.6   # days; hours between bursts that may link; share of photos it must show in
 MAX_EXP = 40
@@ -207,6 +208,8 @@ def link(E, D, field, times=None):
     tracks = []; rej = [np.nonzero((D['e'] == i) & (D['why'] != ''))[0] for i in range(len(E))]
     for s in seeds:
         t0, p, v, rmax, rms = fit(t[s], x[s], y[s])
+        while (rmax > tl[s]).any() and len(s) > 4:                     # one bad centroid must not sink a track: drop the worst and refit
+            s = np.delete(s, np.argmax(rmax - tl[s])); t0, p, v, rmax, rms = fit(t[s], x[s], y[s])
         if (rmax > tl[s]).any(): continue
         for _ in range(4):                                             # gather everything on the line, refit, and grow outward one window at a time
             k = np.nonzero((t >= t[s].min() - LINK_H) & (t <= t[s].max() + LINK_H))[0]
@@ -220,6 +223,7 @@ def link(E, D, field, times=None):
         rate = float(np.hypot(*v)); span = t[s].max() - t[s].min(); fb = [np.median(fl[s][bo[s] == bb]) for bb in np.unique(bo[s])]
         if max(fb) > FLUX_RATIO * min(fb): continue                    # one object: its bursts may differ in brightness, but not wildly
         if (rmax > tl[s]).any() or len(s) < 3 or not RATE_MIN <= rate <= RATE_MAX or rate * span < MOVE_MIN: continue
+        if len(s) < FAINT_N and D['snr'][o[s]].mean() < FAINT_SNR: continue   # two faint pairs line up by chance too often
         need = [i for i in range(len(E)) if t[s].min() - 1e-6 <= (te[i] - te.min()) * 24 <= t[s].max() + 1e-6]   # photos that should show it
         pr, pd = untan(p[0] + v[0] * ((te[need] - te.min()) * 24 - t0), p[1] + v[1] * ((te[need] - te.min()) * 24 - t0), ra0, dec0)
         px_, py_ = tan(pr, pd, ra0, dec0); cover = []
@@ -346,7 +350,9 @@ def strip(path, title, panels):
 def track_strip(path, title, k, E, D, field, extra=0):
     """Evidence strip for a track: each photo that should show it (up to 10), the predicted spot ringed, D4 below."""
     t = np.array([e['t'] for e in E]); hit = {int(D['e'][q]): q for q in k['idx']}; ts = t[sorted(hit)]
-    need = [i for i in range(len(E)) if ts.min() - 1e-6 <= t[i] <= ts.max() + 1e-6][:10]; ra, dec = predict(k, t[need], field); panels, d4s = [], []
+    need = [i for i in range(len(E)) if ts.min() - 1e-6 <= t[i] <= ts.max() + 1e-6]; ra, dec = predict(k, t[need], field)
+    need = [i for i, r, d in zip(need, ra, dec) if i in hit or sample(E[i], r, d)[1][0]]                # only photos that contain the spot
+    need = sorted(sorted(need, key=lambda i: i not in hit)[:10]); ra, dec = predict(k, t[need], field)   # at most 10, detections first
     def one(a):
         i, r, d = a; _, _, x, y = sample(E[i], np.array([r]), np.array([d])); c4 = d4_cut(field, E[i]['obs'], r, d)
         return (f"{E[i]['obs'][-9:]}\n+{(t[i] - ts.min()) * 24:.2f} h", cut(E[i], x[0], y[0]), c4[0] if c4 else None, (x[0] - np.round(x[0]), y[0] - np.round(y[0])), i in hit), (c4[1] if c4 else None, i in hit)
