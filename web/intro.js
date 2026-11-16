@@ -62,6 +62,7 @@ async function run() {
 // and its keyframes are still written in that cut's seconds: w() turns film time into them, wi() turns them back.
 async function film(root, signal, done) {
 const THREE = await import(THREE_URL);
+if (signal.aborted) return { dispose() {} };   // skipped while three.js was loading: nothing was made yet
 
 const Q = new URLSearchParams(location.search);
 const $ = id => root.querySelector('#intro-' + id);
@@ -149,12 +150,19 @@ function resize() {
 }
 resize();
 
-const [S, tileBuf, skyTex, PH, picTex] = await Promise.all([
-  fetch('data/intro/scene.json').then(r => r.json()), fetch('data/intro/tiles.bin').then(r => r.arrayBuffer()),
-  new THREE.TextureLoader().loadAsync('data/intro/sky.jpg'), fetch('data/intro/photo.json').then(r => r.json()),
-  new THREE.TextureLoader().loadAsync('data/intro/photo.jpg'), document.fonts.load('17px "Space Mono"'),
-]);
-if (signal.aborted) { dispose(); return { dispose }; }   // skipped while the data was loading
+// every load stops when the film is skipped (Skip, Escape, the load timeout): the renderer is let go at once, not after a stalled request
+const gone = new Promise((_, no) => { if (signal.aborted) no(signal.reason); else signal.addEventListener('abort', () => no(signal.reason), { once: true }); });
+const tex = url => new THREE.TextureLoader().loadAsync(url);   // image loads cannot take a signal; the race below stops waiting for them
+let loaded;
+try {
+  loaded = await Promise.race([gone, Promise.all([
+    fetch('data/intro/scene.json', { signal }).then(r => r.json()), fetch('data/intro/tiles.bin', { signal }).then(r => r.arrayBuffer()),
+    tex('data/intro/sky.jpg'), fetch('data/intro/photo.json', { signal }).then(r => r.json()),
+    tex('data/intro/photo.jpg'), document.fonts.load('17px "Space Mono"'),
+  ])]);
+} catch (err) { if (signal.aborted) { dispose(); return { dispose }; } throw err; }   // skipped while the data was loading
+if (signal.aborted) { dispose(); return { dispose }; }
+const [S, tileBuf, skyTex, PH, picTex] = loaded;
 skyTex.colorSpace = THREE.NoColorSpace; skyTex.wrapS = THREE.RepeatWrapping; skyTex.anisotropy = 8;
 picTex.colorSpace = THREE.NoColorSpace; picTex.flipY = false; picTex.anisotropy = 8;   // row 0 of photo.jpg is the top of the tile's square
 const STEP = S.step, NDAY = S.days;
@@ -483,8 +491,8 @@ for (const b of beads) label(`${b.ours ? 'star' : b.name} · ${b.dist}`, o => o.
 for (const m of MARKS) label(() => wide() ? m.text.replace('\n', ' ') : m.text, o => o.copy(m.pos), T => sideA(T) * clamp01((pulseAt(T) - m.f) * 30), 'mark', () => wide() ? [0, 5, -.5, 0] : [-8, 0, -1, -.5]);
 label(T => T < 26.9 ? 'one star' : `one star · ${STAR_UM[Math.round(stepAt(T))].toFixed(2)} microns`, o => o.copy(star.pos), T => K(T, [[21.6, 0], [22.4, 1], [X, 1], [X + .6, 0]]), 'accent', () => [13, -13, 0, -1]);
 const stripeA = T => K(T, [[23.2, 0], [23.8, 1], [25.8, 1], [26.4, 0]]);
-label(`${BAND[0]} microns`, o => photoPoint(-1, 1, o), stripeA, '', () => [0, 8, 0, 0]);
-label(`${BAND[1]} microns`, o => photoPoint(1, 1, o), stripeA, '', () => [0, 8, -1, 0]);
+label(`about ${BAND[0]} microns`, o => photoPoint(-1, 1, o), stripeA, '', () => [0, 8, 0, 0]);
+label(`about ${BAND[1]} microns`, o => photoPoint(1, 1, o), stripeA, '', () => [0, 8, -1, 0]);
 label('helium glow', o => photoPoint(PH.lam.bright_band_u, -1, o), stripeA, '', () => [0, -8, -.5, -1]);
 let T_now = 0;
 function placeLabels(T) {
@@ -584,7 +592,8 @@ function render(T) {
   tileU.uNow.value = day;
   tileU.uFresh.value = Math.max(.0009, .13 * speed);
   tileU.uFill.value = K(t, [[18.2, 1], [19.6, 0]]); tileU.uFront.value = K(t, [[9, .85], [12.6, 0]]); tileU.uSeam.value = K(t, [[6, .4], [10, .1], [12.5, 0]]);
-  tileU.uAlpha.value = sys * (T < 5.9 ? 1 : K(T, [[5.9, 1], [6.4, 0], [X + .4, 0], [X + 1.5, 1]])); tiles.visible = tileU.uAlpha.value > 0;   // not under the real photo: up close the all-sky picture is a blur uLift.value = K(t, [[19, 1], [21.5, 0]]);
+  tileU.uAlpha.value = sys * (T < 5.9 ? 1 : K(T, [[5.9, 1], [6.4, 0], [X + .4, 0], [X + 1.5, 1]])); tiles.visible = tileU.uAlpha.value > 0;   // not under the real photo: up close the all-sky picture is a blur
+  uLift.value = K(t, [[19, 1], [21.5, 0]]);
 
   // the first photo on its tile; the stripes are the filter of the photo being taken now (the first, then the three steps)
   const pa = photoU.uAlpha.value = K(T, [[4.9, 0], [5.9, 1], [X + .5, 1], [X + 1.9, 0]]); photo.visible = pa > 0;
