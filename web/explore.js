@@ -283,7 +283,7 @@ const exploredLoaded = getJson('/api/explored').then(({ cells, suggest }) => {
   place(card, suggest.ra, suggest.dec);
   card.classList.toggle('left', right);
   card.querySelector('[data-f=where]').textContent = `RA ${suggest.ra.toFixed(1)}  Dec ${suggest.dec >= 0 ? '+' : ''}${suggest.dec.toFixed(1)}`;
-  card.querySelector('[data-f=open]').href = url;
+  card.href = url;
 }).catch(err => console.warn('explored unavailable', err));
 
 // ---- phones: names placed without collisions, the first view centred on 3I/ATLAS (explore-phone.js) ----

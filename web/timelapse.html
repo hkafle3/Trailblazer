@@ -22,7 +22,7 @@
 
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
-  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
+  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
 </header>
 
 <!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Spectral, Layers, Others. Middle: the patch.
@@ -172,6 +172,7 @@ import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
 import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
 import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Undiscovered, and Discovered for reported dots
 import { MJD0 } from './skymap.js';
+import * as candTrack from './live/candtrack.js';   // &cand=: a detector candidate's track and votes
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -479,7 +480,8 @@ function draw() {
 
   const toPx = (x, y) => [(x - ox + 0.5) * sx, (G - 1 - y - oy + 0.5) * sy];   // FITS x,y (bottom origin) -> canvas
   const predPx = fr => toPx((G - 1) / 2 - fr.pred_east / m.arcsec_per_pixel, (G - 1) / 2 + fr.pred_north / m.arcsec_per_pixel);
-  const shown = m.frames.slice(0, state.i + 1).filter(fr => fr.x != null);
+  // a detector candidate open (&cand=): its own track only, not the baked target's dots and ring, so it never reads as that star
+  const shown = candTrack.on() ? [] : m.frames.slice(0, state.i + 1).filter(fr => fr.x != null);
   // the arrow claims real motion, so draw it only when Gaia or a published motion says the target moves (R Draconis does not)
   const moves = (m.gaia && m.gaia.total > 1) || m.ref;
   if (moves && shown.length > 1) {   // arrow from the first measured position toward the current one
@@ -500,7 +502,7 @@ function draw() {
     else { ctx.shadowBlur = 0; ctx.fillStyle = `rgba(127,184,255,${Math.max(0.35, 0.95 - 0.2 * (age - 1))})`; }
     ctx.fill(); ctx.shadowBlur = 0;
   });
-  if (f.pred_east != null) {   // predicted position for this date (Gaia, or a published motion)
+  if (f.pred_east != null && !candTrack.on()) {   // predicted position for this date (Gaia, or a published motion)
     const [gx, gy] = predPx(f);
     for (const [color, width] of [['rgba(0,0,0,.85)', 5], ['#ffffff', 2]]) {   // dark outline keeps it visible on a white star
       ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.arc(gx, gy, 15, 0, 7); ctx.stroke();
@@ -514,7 +516,7 @@ function draw() {
     ctx.font = `400 ${Math.round(H / 34)}px "Space Mono", ui-monospace, monospace`; ctx.textBaseline = 'middle';
     // what a name must not cover: the measured positions and the predicted ring (boxes), then each name placed so far
     const taken = shown.map(fr => { const [x, y] = toPx(fr.x, fr.y); return [x - 12, y - 12, x + 12, y + 12]; });
-    if (f.pred_east != null) { const [gx, gy] = predPx(f); taken.push([gx - 19, gy - 19, gx + 19, gy + 19]); }
+    if (f.pred_east != null && !candTrack.on()) { const [gx, gy] = predPx(f); taken.push([gx - 19, gy - 19, gx + 19, gy + 19]); }
     if (document.body.classList.contains('busy')) {   // and the loading caption in its corner, while it shows
       const L = document.getElementById('loading'), q = W / patch.clientWidth;
       taken.push([L.offsetLeft * q, L.offsetTop * q, (L.offsetLeft + L.offsetWidth) * q, (L.offsetTop + L.offsetHeight) * q]);
@@ -548,12 +550,13 @@ function draw() {
     window.__labels = { rings: taken.slice(0, rings), names: taken.slice(rings) };
   }
   specRing(toPx, f);
+  candTrack.draw(ctx, m, f, toPx, offset);
   knownList(f);
   drawMini(m, f, v);
   showVisit(m, f);
   moreBelow();
   talk?.frame();
-  patch.setAttribute('aria-label', `SPHEREx image of ${m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
+  patch.setAttribute('aria-label', `SPHEREx image of ${candTrack.title() ?? m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
 }
 
 // ---------- mini-map: the whole region, the big frame's part outlined, the target ringed ----------
@@ -718,7 +721,7 @@ function show(m, query, opts = {}) {
   Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.day != null ? nearestVisit(m, opts.day) : opts.diff ? m.frames.length - 1 : opts.t != null ? Math.max(0, m.frames.findIndex(f => f.at_t)) : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
-  document.getElementById('pv-name').textContent = m.key.startsWith('live') ? 'Sky spot' : m.name;   // the phone's title row
+  document.getElementById('pv-name').textContent = candTrack.title() ?? (m.key.startsWith('live') ? 'Sky spot' : m.name);   // the phone's title row
   document.getElementById('pv-radec').textContent = `RA ${m.ra.toFixed(2)} Dec ${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(2)}`;
   panel(m); draw(); photo();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
@@ -1408,7 +1411,7 @@ if (P.has('ra') && P.has('dec')) {
   const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
   search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
-} else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1' });
+} else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1', ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends it when a dive is likely ('dive-go')
   setMode('lapse');
   addEventListener('message', e => {

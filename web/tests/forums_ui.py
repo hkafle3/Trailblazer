@@ -7,7 +7,7 @@ from playwright.async_api import async_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 NOW, DAY = int(time.time() * 1000), 864e5
 say = lambda author, body, ago, tag=None: {"author": author, "tag": tag, "body": body, "created_at": int(NOW - ago * DAY)}
-NO = {"comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0}
+NO = {"comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0}
 # newest activity first, as the Worker sends them. North; south; on the Milky Way's centre (south too), a year old
 THREADS = [
     {"id": "C-0001", "kind": "comet", "ra": 10, "dec": 40, "day": 1, "real": False, "tags": {**NO, "comet": 2}, "last": int(NOW - 2 * DAY),

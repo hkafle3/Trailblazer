@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Candidates · Trailblazer</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="header.css">
+<link rel="stylesheet" href="search.css">
+<link rel="stylesheet" href="candidates.css">
+<link rel="icon" href="data:,">
+</head>
+<body class="page">
+
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
+  <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a><a class="on" href="candidates.html">Candidates</a></nav>
+</header>
+
+<!-- Moving dots the detector found (candidates.js, data/candidates.json). Cards in the Comets list's tile style. -->
+<main class="shell comets cands">
+  <h1>Candidates</h1>
+  <p class="lede">Moving objects the detector found in SPHEREx photos. Open one to see it move, then say what you think it is.</p>
+  <p class="c-sample" id="c-sample" hidden>Sample data. These candidates are made up to show the page. The detector has not run yet.</p>
+  <p class="c-sample c-test" id="c-test" hidden></p>
+  <p class="c-empty" id="c-empty" hidden>The detector has not run yet. Candidates will show here once it has.</p>
+  <section class="c-check" id="c-check" hidden aria-label="How the detector was checked"></section>
+  <div id="c-groups"></div>   <!-- one group per verdict, headed as the Comets list's groups (styles.css .sec) -->
+</main>
+
+<script type="module" src="candidates.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

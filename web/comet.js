@@ -18,10 +18,10 @@ function ago(ms) {
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
 function talk(c) {
-  const t = c.tags, n = t.comet + t.asteroid + t.glitch + t.unsure;
+  const t = c.tags, n = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0);
   $('t-head').textContent = n ? `${t.comet} of ${n} say comet` : 'No tags yet';
   if (c.kind === 'comet' && n) { $('c-verdict').textContent = t.comet / n >= .6 ? 'Likely comet' : 'Undecided'; $('c-verdict').hidden = false; }
-  for (const k of ['comet', 'asteroid', 'glitch', 'unsure']) document.querySelector(`[data-t=${k}]`).textContent = t[k];
+  for (const k of ['comet', 'asteroid', 'glitch', 'unsure', 'star']) document.querySelector(`[data-t=${k}]`).textContent = t[k] ?? 0;
   const list = $('t-list');
   list.replaceChildren();
   for (const m of c.comments.filter(m => m.body)) list.append(comment(m));   // tags without text still count as votes

@@ -9,7 +9,7 @@ const id = new URLSearchParams(location.search).get('id');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const visitDate = s => `${MONTH[+s.slice(5, 7) - 1]} ${+s.slice(8, 10)}, ${s.slice(0, 4)}`;
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const TAG_NAME = { comet: 'comet', asteroid: 'asteroid', glitch: 'glitch', unsure: 'not sure' };
+const TAG_NAME = { comet: 'comet', asteroid: 'asteroid', glitch: 'glitch', unsure: 'not sure', star: 'star' };
 const CROP = 25;   // grid pixels (5 arcsec each) around the spot: about 2 arcmin
 function ago(ms) {
   const m = (Date.now() - ms) / 6e4;
@@ -19,7 +19,7 @@ function ago(ms) {
   return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 // Explore's rule (explore.js): unsettled until at least 5 tags and 60% of them say comet
-const settled = t => { const n = t.comet + t.asteroid + t.glitch + t.unsure; return n >= 5 && t.comet / n >= 0.6; };
+const settled = t => { const n = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0); return n >= 5 && t.comet / n >= 0.6; };
 
 function head(c) {
   document.title = `${c.id} · Trailblazer`;
@@ -37,7 +37,7 @@ function head(c) {
 }
 
 function talk(c) {
-  for (const [k, n] of Object.entries(c.tags)) document.querySelector(`[data-t=${k}]`).textContent = n;
+  for (const [k, n] of Object.entries(c.tags)) { const e = document.querySelector(`[data-t=${k}]`); if (e) e.textContent = n; }   // a tag this page has no row for is skipped
   $('c-status').textContent = settled(c.tags) ? 'Likely comet' : 'Candidate';
   const said = c.comments.filter(m => m.body);   // a tag alone is a vote: counted above, no box
   $('c-talk').replaceChildren(...said.map(m => {

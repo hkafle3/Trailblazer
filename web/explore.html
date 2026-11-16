@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="search.css">
 <link rel="stylesheet" href="explore-search.css">
 <link rel="stylesheet" href="explore-3d.css">
+<link rel="stylesheet" href="candidates.css">   <!-- the Investigate layer's markers -->
 <link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
 <link rel="preload" as="image" href="data/visits.png">
 <link rel="preload" as="fetch" href="data/coverage.json" crossorigin>
@@ -62,11 +63,12 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
       <span class="when" data-f="when"></span>
       <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
     </a>
-    <div class="mapcard glass" id="card-patch">
+    <!-- the unexplored suggestion: the same panel as the featured comet's card, the whole card opens the patch -->
+    <a class="mapcard" id="card-patch" aria-label="Open this unexplored patch">
       <h3>Nobody has looked here</h3>
-      <p class="mono" data-f="where"></p>
-      <a class="btn small" data-f="open">Open patch <svg class="ic"><use href="icons.svg#arrow"/></svg></a>
-    </div>
+      <span class="when" data-f="where"></span>
+      <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>
+    </a>
   </div>
 </div>
 
@@ -87,7 +89,7 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
 
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
-  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
+  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
 </header>
 
 <!-- Examples: the five baked targets (they open instantly in the patch viewer). Sits above Layers and opens upward the same way;
@@ -174,6 +176,7 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
 <div class="dive" id="dive" hidden><canvas id="dive-cv" width="2" height="2"></canvas></div>
 
 <script type="module" src="explore.js"></script>
+<script type="module" src="explore-candidates.js"></script>
 <script src="ui.js"></script>
 </body>
 </html>

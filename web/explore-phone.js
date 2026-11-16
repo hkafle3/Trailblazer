@@ -158,20 +158,24 @@ function fill() {
     what = c.candidate ? (m.classList.contains('open') ? 'Candidate' : 'Likely comet') : 'Found by people';
     hot = true; kind = c.candidate ? 'Reported dot' : 'Comet found by people';
   } else if (m.classList.contains('patch')) { what = 'Nobody has looked here'; hot = true; }
-  else what = 'SPHEREx photographs here most often';
+  else what = m.dataset.what ?? 'SPHEREx photographs here most often';   // an Investigate marker (explore-candidates.js) says what it is
   q('name').textContent = name;
   q('what').textContent = what; q('what').classList.toggle('hot', hot);
-  q('when').textContent = c?.track?.length ? `Position on ${fmt(d)}` : pos ? radec(...pos) : '';
+  q('when').textContent = m.cand ? `${m.dataset.photos} · ${m.dataset.rate}` : c?.track?.length ? `Position on ${fmt(d)}` : pos ? radec(...pos) : '';
   q('go').href = m.href; q('go').setAttribute('aria-label', c ? `Open ${name}` : 'Open this patch');
   const img = q('thumb');
-  if (c?.thumb) img.src = c.thumb; else img.removeAttribute('src');
+  const k = m.cand;   // an Investigate marker: its evidence strip and the card's facts (explore-candidates.js)
+  const src = c?.thumb ?? k?.strip;
+  if (src) img.src = src; else img.removeAttribute('src');
+  img.classList.toggle('strip', !!k);
   const facts = [];
+  if (k) facts.push(['Photos', m.dataset.photos], ['Motion', m.dataset.motion]);
   if (kind) facts.push(['Kind', kind]);
   if (pos) facts.push([c?.track?.length ? fmt(d) : 'Where', radec(...pos)]);
   if (c?.photos) facts.push(['Photos', `${c.photos} SPHEREx visits`]);
   q('facts').replaceChildren(...facts.flatMap(([k, v]) => [Object.assign(document.createElement('dt'), { textContent: k }), Object.assign(document.createElement('dd'), { textContent: v })]));
   q('pathrow').hidden = !c?.track?.length;
-  q('open').href = m.href; q('openlabel').textContent = c?.kind === 'known' ? 'Open comet page' : c?.candidate ? 'Open its page' : 'Open this patch';
+  q('open').href = m.href; q('openlabel').textContent = m.dataset.open ?? (c?.kind === 'known' ? 'Open comet page' : c?.candidate ? 'Open its page' : 'Open this patch');
   q('patch').hidden = !pos || !c;
   if (pos) { q('patch').href = patchUrl(...pos); q('patchlabel').textContent = c?.track?.length ? `See this patch on ${fmt(d, { month: 'short', day: 'numeric' })}` : 'See this patch'; }
   drawPath();
