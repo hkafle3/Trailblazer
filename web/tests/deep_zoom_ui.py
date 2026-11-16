@@ -228,6 +228,29 @@ async def reference(b, w, h, view):   # the tile picture of a view, loaded fresh
     await go(pg, "Barnard", 3000); await pg.evaluate("([x, y, w]) => __dz().then(({ v }) => v.set(w, x, y))", [view["X"], view["Y"], view["W"]])
     await settled(pg); px = await crop(pg); ids = (await pg.evaluate(STATE))["tiles"]; await pg.context.close(); return px, set(ids)
 
+async def deadline(b):
+    for body in (False, True):
+        async def stall(pg):
+            await pg.add_init_script("""{
+              const realFetch = window.fetch; window.__stallTiles = true;
+              window.fetch = (url, opts) => {
+                if (!__stallTiles || !String(url).includes('/hips/')) return realFetch(url, opts);
+                const wait = () => new Promise((resolve, reject) => opts.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }));
+                return BODY ? Promise.resolve({ ok: true, blob: wait }) : wait();
+              };
+            }""".replace("BODY", str(body).lower()))
+        pg = await open_page(b, before=stall)
+        await go(pg, "Barnard"); await pg.wait_for_timeout(500)
+        await go(pg, "Orion"); await pg.wait_for_timeout(500)
+        check((await pg.evaluate(STATE))["failed"] == 0, "moving aborts quietly", f"body={body}")
+        await pg.wait_for_function("__dz().then(({ d }) => d.stats.failed > 0 && !d.state().pending && !d.state().queued)", timeout=20000)
+        s = await pg.evaluate(STATE)
+        check(s["failed"] > 0, "stalled requests release pending slots", f"body={body}, failed={s['failed']}")
+        await pg.evaluate("window.__stallTiles = false")
+        s = await settled(pg, 40000)
+        check(not s.get("timeout") and s["covered"] >= .95, "timed out tiles retry without a gesture", f"body={body}")
+        await pg.context.close()
+
 async def late_replies(b):
     held = []; hold = True
     async def gate(route):
@@ -367,6 +390,8 @@ async def overlays(b):
     await go(pg, "Barnard", 3000)
     v = await pg.evaluate("([u, vv]) => __dz().then(({ v }) => { v.set(v.MAXW, ...v.place(u, vv, 700, 500, v.MAXW)); return { W: v.W }; })", [d0["u"], d0["v"]])
     d1 = await pg.evaluate(DOT)
+    await pg.emulate_media(reduced_motion="no-preference")
+    check(await pg.evaluate("document.querySelector('.map-wrap').classList.contains('straight') && getComputedStyle(document.querySelector('.map-wrap')).transitionDuration === '0s'"), "straightening has no transition")
     check(abs(d1["x"] - 700) <= 1 and abs(d1["y"] - 500) <= 1 and abs(d1["w"] - d0["w"]) < .01, "marker at the deepest zoom", f"at {round(v['W'])} CSS px the featured comet's dot is {abs(d1['x'] - 700):.2f}, {abs(d1['y'] - 500):.2f} px from its place and still {d1['w']:.0f} px wide")
     held = await pg.evaluate("__dz().then(({ v }) => v.skyAt(400, 300))")
     await pg.mouse.move(400, 300); await pg.mouse.down(); await pg.mouse.move(340, 270, steps=4); await pg.mouse.move(280, 240, steps=4); await pg.mouse.up()
@@ -393,7 +418,7 @@ async def pin(b):
     check(worst <= 2, "pin on a star", f"at {round(v['W'])} CSS px the pin lands {', '.join(rows)} px from the star in the picture")
     check(not pg.errs, "no page errors (pin)", str(pg.errs[:3])); await pg.context.close()
 
-ALL = dict(alignment=alignment, still=still_rule, backoff=backoff, late=late_replies, fallback=fallback, handoff=handoff, regression=regression, overlays=overlays, pin=pin)
+ALL = dict(alignment=alignment, still=still_rule, backoff=backoff, deadline=deadline, late=late_replies, fallback=fallback, handoff=handoff, regression=regression, overlays=overlays, pin=pin)
 async def main():
     async with async_playwright() as p:
         b = await launch(p)

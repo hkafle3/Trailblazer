@@ -138,6 +138,11 @@ async def desktop(browser):
     check("the time-lapse fills the window and takes the pointer", r["width"] == 1440 and r["height"] == 900 and await pg.evaluate("document.elementFromPoint(700, 450).className") == "dive-frame on")
     check("the map underneath takes no input", await pg.evaluate("document.querySelector('.xstage').inert && document.querySelector('.topbar').inert"))
 
+    # The embedded viewer reports its URL after re-centring. Keep that spot and unrelated history fields for Forward.
+    at = (round((at[0] + .01) % 360, 4), round(at[1] + (.01 if at[1] < 89 else -.01), 4), at[2])
+    await pg.evaluate("history.replaceState({ ...history.state, kept: 1, dive: { ...history.state.dive, kept: 2 } }, '')")
+    await fr.locator("body").evaluate("(_, [ra, dec, det]) => history.replaceState(null, '', `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}`)", at)
+    check("viewer URL updates the saved dive and preserves other state", await until(pg, f"history.state.dive.ra === {at[0]} && history.state.dive.dec === {at[1]} && history.state.kept === 1 && history.state.dive.kept === 2"))
     await pg.go_back()
     check("back closes the time-lapse", await until(pg, f"{DIVE} === null") and "/explore" in pg.url and await pg.locator("iframe.dive-frame").count() == 0, pg.url)
     await same_view(pg, before, "back shows the map where it was")
@@ -146,6 +151,7 @@ async def desktop(browser):
     check("forward dives again at the same spot", await until(pg, f"{DIVE}?.phase === 'open'") and spot(pg.url) == at, pg.url)
     await pg.go_back()
     await until(pg, f"{DIVE} === null")
+    before = await pg.evaluate(VIEW)
 
     # Dive in, with a time-lapse that loaded ahead: no heat-map check until it is on screen
     await asyncio.sleep(0.5); posts.clear()   # the dives above were on screen: theirs count
@@ -154,8 +160,11 @@ async def desktop(browser):
     check("the time-lapse builds ahead of the dive (needs the image search to answer)", built)
     await asyncio.sleep(0.3)
     check("a time-lapse loaded ahead counts no check", len(posts) == 0, str(len(posts)))
+    day = await pg.evaluate("document.querySelector('iframe.dive-frame').contentWindow.__lapse.state.i === 0 ? 529 : 0")
+    await pg.evaluate("day => { document.getElementById('time').value = day; document.getElementById('time').dispatchEvent(new Event('input', { bubbles: true })); }", day)
     await pg.locator("#dive-go").click()
     check("Dive in dives", await until(pg, f"{DIVE}?.phase === 'open'") and spot(pg.url) is not None, pg.url)
+    check("a prepared dive opens on the timeline's current day", await fr.locator("body").evaluate("async (_, day) => { const { MJD0 } = await import('./skymap.js'), { m, i } = __lapse.state; return i === m.frames.reduce((best, f, n) => Math.abs(f.mjd - MJD0 - day) < Math.abs(m.frames[best].mjd - MJD0 - day) ? n : best, 0); }", day))
     await asyncio.sleep(0.5)
     check("on screen it counts one check", len(posts) == 1, str(len(posts)))
     if await until(pg, "window.__diveSky(0.2, 8) && window.__diveShot()", 20000):
@@ -175,6 +184,7 @@ async def desktop(browser):
     await scroll(pg, 6, 100)
     check("a new scroll out goes back to the map", await until(pg, f"{DIVE} === null") and "/explore" in pg.url, pg.url)
     await same_view(pg, before, "and the map is where it was")
+    await pg.evaluate("document.getElementById('time').value = 400; document.getElementById('time').dispatchEvent(new Event('input', { bubbles: true }))")
 
     # the time-lapse's address on its own, and back from it
     await pg.locator("#dive-go").click()

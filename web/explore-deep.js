@@ -144,6 +144,8 @@ function plan() {
 function pump() {
   while (pending.size < FLIGHT && queue.length) {
     const id = queue.shift(), ctl = new AbortController();
+    let timeout = false;
+    const timer = setTimeout(() => { if (!ctl.signal.aborted) { timeout = true; ctl.abort(); } }, 15000);
     pending.set(id, ctl); stats.requested++;
     const wanted = () => pending.get(id) === ctl && shown && !lost && wants().ids.has(id);
     fetch(url(id), { signal: ctl.signal })
@@ -152,9 +154,9 @@ function pump() {
       .then(bmp => { if (!wanted()) { bmp.close(); throw DROP; } ready.push({ id, bmp }); frame(); })
       .catch(e => {
         if (e === DROP) stats.dropped++;
-        else if (e.name !== 'AbortError') { stats.failed++; failed.set(id, performance.now()); if (!retry) retry = setTimeout(replan, BACKOFF + 50); }
+        else if (timeout || e.name !== 'AbortError') { stats.failed++; failed.set(id, performance.now()); if (!retry) retry = setTimeout(replan, BACKOFF + 50); }
       })
-      .finally(() => { if (pending.get(id) === ctl) pending.delete(id); pump(); });
+      .finally(() => { clearTimeout(timer); if (pending.get(id) === ctl) pending.delete(id); pump(); });
   }
 }
 // arrivals: put on the GPU a few per frame (about 3 ms of work), then draw the view of this moment

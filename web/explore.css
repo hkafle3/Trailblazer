@@ -255,6 +255,7 @@ html[data-intro="wait"] body::before { content: ""; position: fixed; inset: 0; z
 .aim-go:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .aim-go svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 body.explore .map-wrap { transition: transform .2s var(--ease); }   /* the lean toward a dive, and its spring back */
+body.explore .map-wrap.straight { transition: none; }
 body.diving .map-wrap { transition: none; will-change: transform, opacity; }
 body.diving .aim { visibility: hidden; }
 .dive { position: fixed; z-index: 22; left: 0; top: 0; overflow: hidden; border-radius: 4px; box-shadow: 0 0 0 1.5px #fff, 0 0 60px rgba(127, 184, 255, .2); pointer-events: none; will-change: transform, width, height; }
