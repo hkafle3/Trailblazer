@@ -3,7 +3,8 @@ Seen (SNR 5 or more), centred on the comet. Built by web/live/cutout.js itself, 
 thumbnail is the same crop, stretch and verdict the comet's page shows (visitShots, knownPhoto, paint): one photo per
 visit, the highest SNR among the Seen ones. Comets with no Seen visit get no thumbnail. Each comet's visit tally is kept in
 bake/cache/known_thumbs_tried.json: a second run measures only the comets with no thumbnail whose last try had a photo
-that failed to load (a network error), so it finishes what an interrupted run left.
+that failed to load (a network error), so it finishes what an interrupted run left (a comet already baked is measured again too, in case the visit that failed
+was its clearest).
 Writes web/data/comets/thumbs/<slug>.png (96x96 grey) and web/data/comets/thumbs/index.json
 ({ id: { file, snr, obs, day } }), which the Worker merges into GET /api/comets `thumb` (worker/src/index.js).
 Run with the app up (npm run dev):
@@ -34,10 +35,10 @@ BEST = """async ([shots]) => {
 async def main():
     comets = json.load(urllib.request.urlopen(BASE + "/api/comets"))["comets"]
     tally = json.loads(TRIED.read_text()) if TRIED.exists() else {}
-    todo = [c["id"] for c in comets if c["kind"] == "known" and c["real"] and not c.get("thumb") and tally.get(c["id"], {"error": 1}).get("error")]
     OUT.mkdir(parents=True, exist_ok=True); TRIED.parent.mkdir(exist_ok=True)
-    # a second run bakes only the comets still without a thumbnail (the Worker already serves the first run's)
     index, tried = json.loads((OUT / "index.json").read_text()) if (OUT / "index.json").exists() else {}, set()
+    # not the measured comets (their thumbnail is their brightest measured photo); a baked one again if a visit failed
+    todo = [c["id"] for c in comets if c["kind"] == "known" and c["real"] and (not c.get("thumb") or c["id"] in index) and tally.get(c["id"], {"error": 1}).get("error")]
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
         pg = await b.new_page()

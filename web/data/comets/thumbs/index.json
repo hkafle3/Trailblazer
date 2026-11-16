@@ -64,5 +64,131 @@
   "snr": 41.6,
   "obs": "2025W34_1B_0087_1",
   "day": 116.4224
+ },
+ "C/2023 C2 (ATLAS)": {
+  "file": "c-2023-c2-atlas.png",
+  "snr": 32.5,
+  "obs": "2025W26_2A_0578_2",
+  "day": 66.4316
+ },
+ "C/2023 H1 (PANSTARRS)": {
+  "file": "c-2023-h1-panstarrs.png",
+  "snr": 5.7,
+  "obs": "2025W39_2A_0510_4",
+  "day": 157.0729
+ },
+ "C/2023 H5 (Lemmon)": {
+  "file": "c-2023-h5-lemmon.png",
+  "snr": 22.1,
+  "obs": "2025W17_4B_0011_2",
+  "day": 0.8166
+ },
+ "C/2023 R1-B (PANSTARRS)": {
+  "file": "c-2023-r1-b-panstarrs.png",
+  "snr": 34.9,
+  "obs": "2026W31_2A_0041_3",
+  "day": 462.733
+ },
+ "C/2023 T3 (Fuls)": {
+  "file": "c-2023-t3-fuls.png",
+  "snr": 10.0,
+  "obs": "2025W28_1B_0073_4",
+  "day": 74.3407
+ },
+ "C/2024 E1 (Wierzchos)": {
+  "file": "c-2024-e1-wierzchos.png",
+  "snr": 60.5,
+  "obs": "2025W33_2C_0545_1",
+  "day": 114.6796
+ },
+ "C/2024 J2 (Wierzchos)": {
+  "file": "c-2024-j2-wierzchos.png",
+  "snr": 12.1,
+  "obs": "2025W30_1B_0580_4",
+  "day": 91.2192
+ },
+ "C/2024 J3 (ATLAS)": {
+  "file": "c-2024-j3-atlas.png",
+  "snr": 77.2,
+  "obs": "2026W38_2A_0602_2",
+  "day": 514.3769
+ },
+ "C/2024 L5 (ATLAS)": {
+  "file": "c-2024-l5-atlas.png",
+  "snr": 11.1,
+  "obs": "2025W24_1A_0003_1",
+  "day": 46.0055
+ },
+ "C/2024 R4 (PANSTARRS)": {
+  "file": "c-2024-r4-panstarrs.png",
+  "snr": 21.8,
+  "obs": "2026W23_1A_0147_3",
+  "day": 403.8535
+ },
+ "C/2024 X2 (ATLAS)": {
+  "file": "c-2024-x2-atlas.png",
+  "snr": 5.3,
+  "obs": "2025W18_2B_0081_2",
+  "day": 8.0411
+ },
+ "C/2025 A6 (Lemmon)": {
+  "file": "c-2025-a6-lemmon.png",
+  "snr": 45.0,
+  "obs": "2026W10_1A_0029_1",
+  "day": 312.1188
+ },
+ "C/2025 J1 (Borisov)": {
+  "file": "c-2025-j1-borisov.png",
+  "snr": 8.0,
+  "obs": "2026W09_1A_0378_1",
+  "day": 306.9283
+ },
+ "C/2025 K1-B (ATLAS)": {
+  "file": "c-2025-k1-b-atlas.png",
+  "snr": 16.2,
+  "obs": "2025W52_2A_0500_2",
+  "day": 247.9955
+ },
+ "C/2025 K1-C (ATLAS)": {
+  "file": "c-2025-k1-c-atlas.png",
+  "snr": 19.7,
+  "obs": "2025W52_2A_0500_2",
+  "day": 247.9955
+ },
+ "C/2025 K1-D (ATLAS)": {
+  "file": "c-2025-k1-d-atlas.png",
+  "snr": 14.2,
+  "obs": "2025W52_2A_0500_2",
+  "day": 247.9955
+ },
+ "C/2025 L2 (MAPS)": {
+  "file": "c-2025-l2-maps.png",
+  "snr": 8.8,
+  "obs": "2025W39_2A_0391_4",
+  "day": 156.4713
+ },
+ "C/2025 Q3 (ATLAS)": {
+  "file": "c-2025-q3-atlas.png",
+  "snr": 25.7,
+  "obs": "2026W03_1A_0283_3",
+  "day": 264.2996
+ },
+ "C/2025 Y1 (ATLAS)": {
+  "file": "c-2025-y1-atlas.png",
+  "snr": 11.2,
+  "obs": "2026W23_1A_0502_3",
+  "day": 405.8459
+ },
+ "C/2026 A1 (MAPS)": {
+  "file": "c-2026-a1-maps.png",
+  "snr": 6.0,
+  "obs": "2026W06_2A_0369_3",
+  "day": 289.3575
+ },
+ "C/2026 AZ17 (Bok)": {
+  "file": "c-2026-az17-bok.png",
+  "snr": 6.5,
+  "obs": "2026W30_2A_0646_1",
+  "day": 458.5817
  }
 }
