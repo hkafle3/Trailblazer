@@ -1,0 +1,364 @@
+{
+ "sample": true,
+ "note": "SAMPLE DATA for building the app. The movers are made up; the exposure times, places and photos are real SPHEREx data.",
+ "generated": "2026-11-15T00:00:00Z",
+ "detector_version": "sample-0",
+ "regions": [
+  {
+   "name": "Barnard's Star",
+   "ra": 269.4463,
+   "dec": 4.7671,
+   "radius_deg": 0.1
+  },
+  {
+   "name": "Epsilon Indi B",
+   "ra": 331.096,
+   "dec": -56.801,
+   "radius_deg": 0.1
+  },
+  {
+   "name": "R Draconis",
+   "ra": 248.1674,
+   "dec": 66.7552,
+   "radius_deg": 0.1
+  },
+  {
+   "name": "WISE 0855-0714",
+   "ra": 133.7587,
+   "dec": -7.2421,
+   "radius_deg": 0.1
+  },
+  {
+   "name": "RW Aurigae",
+   "ra": 76.9563,
+   "dec": 30.4013,
+   "radius_deg": 0.1
+  }
+ ],
+ "validation": {
+  "known_recovered": 41,
+  "known_expected": 47,
+  "planted_found": 92,
+  "false_per_sqdeg": 0.8
+ },
+ "candidates": [
+  {
+   "id": "K-0001",
+   "score": 0.91,
+   "verdict": "worth_reporting",
+   "known_name": null,
+   "detections": [
+    {
+     "t": 60915.431134,
+     "ra": 269.43515,
+     "dec": 4.775433,
+     "det": "D1",
+     "flux_mjy": 0.0655,
+     "snr": 14.5,
+     "obs": "2025W35_1A_0658_1"
+    },
+    {
+     "t": 60915.434118,
+     "ra": 269.435224,
+     "dec": 4.775394,
+     "det": "D1",
+     "flux_mjy": 0.0655,
+     "snr": 15.5,
+     "obs": "2025W35_1A_0658_3"
+    },
+    {
+     "t": 60916.72197,
+     "ra": 269.467174,
+     "dec": 4.758465,
+     "det": "D1",
+     "flux_mjy": 0.0655,
+     "snr": 16.5,
+     "obs": "2025W35_2A_0233_1"
+    },
+    {
+     "t": 60916.72348,
+     "ra": 269.467211,
+     "dec": 4.758445,
+     "det": "D1",
+     "flux_mjy": 0.0655,
+     "snr": 14.5,
+     "obs": "2025W35_2A_0233_2"
+    },
+    {
+     "t": 60916.726464,
+     "ra": 269.467285,
+     "dec": 4.758406,
+     "det": "D1",
+     "flux_mjy": 0.0655,
+     "snr": 15.5,
+     "obs": "2025W35_2A_0233_4"
+    }
+   ],
+   "track": {
+    "rate_arcsec_hr": 4.2,
+    "pa_deg": 118,
+    "rms_arcsec": 0.78,
+    "distance_guess": "beyond Jupiter"
+   },
+   "checks": {
+    "n_photos": 5,
+    "n_total": 12,
+    "other_detector": true,
+    "flagged": false,
+    "skybot_match": false
+   },
+   "strip": "data/candidates/sample/K-0001.png",
+   "region": "Barnard's Star"
+  },
+  {
+   "id": "K-0002",
+   "score": 0.84,
+   "verdict": "known",
+   "known_name": "Sample asteroid A",
+   "detections": [
+    {
+     "t": 60915.431134,
+     "ra": 269.463024,
+     "dec": 4.753211,
+     "det": "D1",
+     "flux_mjy": 0.062,
+     "snr": 14.0,
+     "obs": "2025W35_1A_0658_1"
+    },
+    {
+     "t": 60915.432626,
+     "ra": 269.462733,
+     "dec": 4.753105,
+     "det": "D1",
+     "flux_mjy": 0.062,
+     "snr": 15.0,
+     "obs": "2025W35_1A_0658_2"
+    },
+    {
+     "t": 60915.434118,
+     "ra": 269.462443,
+     "dec": 4.753,
+     "det": "D1",
+     "flux_mjy": 0.062,
+     "snr": 16.0,
+     "obs": "2025W35_1A_0658_3"
+    },
+    {
+     "t": 60915.435611,
+     "ra": 269.462152,
+     "dec": 4.752894,
+     "det": "D1",
+     "flux_mjy": 0.062,
+     "snr": 14.0,
+     "obs": "2025W35_1A_0658_4"
+    }
+   ],
+   "track": {
+    "rate_arcsec_hr": 31.0,
+    "pa_deg": 250,
+    "rms_arcsec": 0.92,
+    "distance_guess": "main belt"
+   },
+   "checks": {
+    "n_photos": 4,
+    "n_total": 12,
+    "other_detector": true,
+    "flagged": false,
+    "skybot_match": true
+   },
+   "strip": "data/candidates/sample/K-0002.png",
+   "region": "Barnard's Star"
+  },
+  {
+   "id": "K-0003",
+   "score": 0.78,
+   "verdict": "worth_reporting",
+   "known_name": null,
+   "detections": [
+    {
+     "t": 60789.855522,
+     "ra": 331.111215,
+     "dec": -56.789888,
+     "det": "D5",
+     "flux_mjy": 0.059,
+     "snr": 13.7,
+     "obs": "2025W17_4B_0017_1"
+    },
+    {
+     "t": 60789.857014,
+     "ra": 331.110979,
+     "dec": -56.790243,
+     "det": "D5",
+     "flux_mjy": 0.059,
+     "snr": 14.7,
+     "obs": "2025W17_4B_0017_2"
+    },
+    {
+     "t": 60789.923597,
+     "ra": 331.100448,
+     "dec": -56.806094,
+     "det": "D5",
+     "flux_mjy": 0.059,
+     "snr": 15.7,
+     "obs": "2025W17_4B_0027_3"
+    },
+    {
+     "t": 60789.925089,
+     "ra": 331.100212,
+     "dec": -56.80645,
+     "det": "D5",
+     "flux_mjy": 0.059,
+     "snr": 13.7,
+     "obs": "2025W17_4B_0027_4"
+    }
+   ],
+   "track": {
+    "rate_arcsec_hr": 38.0,
+    "pa_deg": 200,
+    "rms_arcsec": 1.04,
+    "distance_guess": "main belt"
+   },
+   "checks": {
+    "n_photos": 4,
+    "n_total": 4,
+    "other_detector": true,
+    "flagged": false,
+    "skybot_match": false
+   },
+   "strip": "data/candidates/sample/K-0003.png",
+   "region": "Epsilon Indi B"
+  },
+  {
+   "id": "K-0004",
+   "score": 0.66,
+   "verdict": "worth_reporting",
+   "known_name": null,
+   "detections": [
+    {
+     "t": 60851.56823,
+     "ra": 248.153328,
+     "dec": 66.746866,
+     "det": "D2",
+     "flux_mjy": 0.053,
+     "snr": 13.0,
+     "obs": "2025W26_1A_0506_1"
+    },
+    {
+     "t": 60851.571214,
+     "ra": 248.160142,
+     "dec": 66.747587,
+     "det": "D2",
+     "flux_mjy": 0.053,
+     "snr": 14.0,
+     "obs": "2025W26_1A_0506_3"
+    },
+    {
+     "t": 60851.572707,
+     "ra": 248.163551,
+     "dec": 66.747948,
+     "det": "D2",
+     "flux_mjy": 0.053,
+     "snr": 15.0,
+     "obs": "2025W26_1A_0506_4"
+    }
+   ],
+   "track": {
+    "rate_arcsec_hr": 140.0,
+    "pa_deg": 75,
+    "rms_arcsec": 1.28,
+    "distance_guess": "near-Earth"
+   },
+   "checks": {
+    "n_photos": 3,
+    "n_total": 12,
+    "other_detector": true,
+    "flagged": false,
+    "skybot_match": false
+   },
+   "strip": "data/candidates/sample/K-0004.png",
+   "region": "R Draconis"
+  },
+  {
+   "id": "K-0005",
+   "score": 0.22,
+   "verdict": "glitch",
+   "known_name": null,
+   "detections": [
+    {
+     "t": 60800.700028,
+     "ra": 133.7713,
+     "dec": -7.239322,
+     "det": "D6",
+     "flux_mjy": 0.031,
+     "snr": 10.3,
+     "obs": "2025W19_1B_0116_1"
+    }
+   ],
+   "track": {
+    "rate_arcsec_hr": null,
+    "pa_deg": null,
+    "rms_arcsec": null,
+    "distance_guess": null
+   },
+   "checks": {
+    "n_photos": 1,
+    "n_total": 3,
+    "other_detector": null,
+    "flagged": true,
+    "skybot_match": false
+   },
+   "strip": "data/candidates/sample/K-0005.png",
+   "region": "WISE 0855-0714"
+  },
+  {
+   "id": "K-0006",
+   "score": 0.12,
+   "verdict": "star",
+   "known_name": null,
+   "detections": [
+    {
+     "t": 60926.275136,
+     "ra": 76.945027,
+     "dec": 30.408244,
+     "det": "D2",
+     "flux_mjy": 0.026,
+     "snr": 9.7,
+     "obs": "2025W37_1A_0068_1"
+    },
+    {
+     "t": 60926.279612,
+     "ra": 76.945028,
+     "dec": 30.408247,
+     "det": "D2",
+     "flux_mjy": 0.026,
+     "snr": 10.7,
+     "obs": "2025W37_1A_0068_4"
+    },
+    {
+     "t": 60926.552713,
+     "ra": 76.945064,
+     "dec": 30.408426,
+     "det": "D2",
+     "flux_mjy": 0.026,
+     "snr": 11.7,
+     "obs": "2025W37_1A_0124_3"
+    }
+   ],
+   "track": {
+    "rate_arcsec_hr": 0.1,
+    "pa_deg": 10,
+    "rms_arcsec": 2.36,
+    "distance_guess": null
+   },
+   "checks": {
+    "n_photos": 3,
+    "n_total": 7,
+    "other_detector": false,
+    "flagged": false,
+    "skybot_match": false
+   },
+   "strip": "data/candidates/sample/K-0006.png",
+   "region": "RW Aurigae"
+  }
+ ]
+}

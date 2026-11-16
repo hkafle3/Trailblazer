@@ -1,0 +1,75 @@
+/* Candidates (candidates.html), Explore's Investigate markers and the time-lapse's vote box. Ming's parts as on the
+   Comets list (styles.css #c-list): black, white outlines, Space Mono, straight top rules, tiles with a corner badge. */
+.cands { --v: #fff; }
+.cands h1 { font: 400 28px/1.1 var(--panel-font); letter-spacing: 0; }
+.cands .lede { margin-top: 10px; max-width: 640px; color: #cfd6e4; font-size: 13px; line-height: 1.6; }
+.cands .c-sample { margin-top: 18px; padding: 12px 14px; border: 1.5px solid var(--comet); border-radius: 6px; color: var(--comet); font-size: 13px; }
+.cands .c-empty, .cands .c-none { margin-top: 26px; padding-top: 14px; border-top: 1.5px solid #fff; color: #cfd6e4; font-size: 14px; }
+
+/* how the detector was checked: one straight-ruled band, three numbers */
+.c-check { margin-top: 26px; padding-top: 12px; border-top: 1.5px solid #fff; }
+.c-check h2 { font: 400 12px var(--panel-font); letter-spacing: .04em; }
+.c-check dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin-top: 12px; }
+.c-check dt { font-size: 11.5px; color: #b5b5b5; }
+.c-check dd { margin: 4px 0 0; font: 400 18px/1.2 var(--panel-font); color: #fff; }
+.c-check .by { margin-top: 10px; font-size: 11.5px; color: #b5b5b5; }
+
+/* filters: outlined buttons, the chosen one filled */
+.c-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+.c-filters button { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 1.5px solid #fff; border-radius: 6px; background: #000; color: #fff; font: 400 13px var(--panel-font); cursor: pointer; }
+.c-filters button .n { color: #b5b5b5; }
+.c-filters button[aria-pressed="true"] { background: #fff; color: #000; }
+.c-filters button[aria-pressed="true"] .n { color: #444; }
+.c-filters button:focus-visible, .cv-b:focus-visible, .cd-open:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* the cards: the evidence strip as the tile, its verdict in the corner, the facts under it */
+.c-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; margin-top: 20px; }
+.c-grid[hidden], .cd[hidden] { display: none; }
+.cd { min-width: 0; }
+.cd.v-worth_reporting { --v: var(--comet); }
+.cd.v-known { --v: var(--known); }
+.cd.v-glitch { --v: var(--glitch); }
+.cd-open { display: block; color: #fff; }
+.cd .ph { position: relative; display: block; aspect-ratio: 4 / 1; border: 1.5px solid var(--v); border-radius: 8px; overflow: hidden; background: #000; }
+.cd .ph img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; filter: brightness(1.25) contrast(1.1); }
+.cd .badge { position: absolute; left: 6px; top: 6px; padding: 3px 7px; border-radius: 4px; background: rgba(0, 0, 0, .75); color: var(--v); font-size: 10.5px; }
+.cd .t { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 9px; }
+.cd .t b { font: 700 14px/1.3 var(--panel-font); }
+.cd .score { font-size: 11.5px; color: #b5b5b5; font-variant-numeric: tabular-nums; }
+.cd .s { display: block; margin-top: 3px; font-size: 11.5px; color: #b5b5b5; overflow-wrap: anywhere; }
+.cd-open:hover .ph { box-shadow: 0 0 0 3px rgba(255, 255, 255, .15); }
+
+/* votes: three outlined buttons, the one chosen filled (cards and the time-lapse) */
+.cvote { margin-top: 10px; }
+.cv-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.cv-b { height: 34px; padding: 0 6px; border: 1.5px solid #fff; border-radius: 6px; background: #000; color: #fff; font: 400 12px var(--panel-font); cursor: pointer; white-space: nowrap; }
+.cv-b:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
+.cv-b.on { background: #fff; color: #000; }
+.cv-b:disabled { opacity: .5; cursor: default; }
+.cv-nick { width: 100%; height: 34px; margin-top: 6px; padding: 0 10px; border: 1.5px solid #fff; border-radius: 6px; background: #000; color: #fff; font: 400 13px var(--panel-font); }
+.cv-nick[hidden] { display: none; }
+.cv-note { min-height: 1em; margin-top: 6px; font-size: 11.5px; color: #b5b5b5; }
+.cv-note.err { color: var(--glitch); }
+.cv-note:empty { display: none; }
+body > .cf-turnstile { position: fixed; right: 12px; bottom: 12px; z-index: 30; }
+
+@media (max-width: 1100px) { .c-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* phones: one card a row, every control 44 px to tap */
+@media (max-width: 640px) {
+  .cands h1 { font-size: 22px; }
+  .c-check dl { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .c-check dd { font-size: 15px; }
+  .c-filters { gap: 6px; }
+  .c-filters button { height: 44px; padding: 0 11px; font-size: 12px; }
+  .c-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .cv-b, .cv-nick { height: 44px; }
+}
+
+/* Explore: the Investigate layer's markers (explore-candidates.js), an orange diamond, and its card */
+.mk.cand i { left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 1px; transform: rotate(45deg); background: #000; box-shadow: inset 0 0 0 2px var(--comet), 0 0 10px rgba(255, 154, 77, .7); }
+.mk.cand b { color: #ffd2b0; }
+@media (min-width: 641px) { .mk.cand i::before { content: ""; position: absolute; inset: -8px; } }
+body:has(#ly-cand:not(:checked)) :is(.mk.cand, #card-cand) { display: none; }
+#card-cand { z-index: 3; }
+#card-cand .x { position: absolute; right: 8px; top: 8px; width: 30px; height: 30px; border: 0; background: none; color: #fff; font-size: 20px; cursor: pointer; }
+#card-cand .tag { color: var(--comet); }

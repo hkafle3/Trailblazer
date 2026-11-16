@@ -4,7 +4,7 @@
    Markup:
      <header class="topbar">
        <a class="brand" href="./"><span class="brand-mark"></span><span class="brand-name">Trailblazer</span></a>
-       <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
+       <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
      </header>
    ui.js adds the account button (.authbox) on the right. */
 @import url("https://fonts.googleapis.com/css2?family=Sansation:wght@300;400&display=swap");
@@ -35,6 +35,7 @@ body.page .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba
   font: 300 calc(40 * var(--u)) / 1 var(--head-font); color: #fff; opacity: .92; transition: opacity .2s;
 }
 .topbar nav a:nth-child(2) { width: calc(430 * var(--u)); }
+.topbar nav a:nth-child(4) { width: calc(370 * var(--u)); }   /* Candidates: the fourth cell ends clear of the account circle */
 .topbar nav a + a { border-left: max(1px, calc(3 * var(--u))) solid #fff; }
 .topbar nav a:hover, .topbar nav a.on { opacity: 1; }
 .topbar nav a::after {
@@ -56,7 +57,7 @@ body.page .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba
 .topbar .av.on { background: #e6e6e6; color: #0a0a0a; border-color: transparent; font-weight: 400; }
 .topbar .authbox .menu-pop { top: calc(100% + 12px); right: 0; font-family: var(--body); }
 
-/* phones: one compact row (comet mark, three links, account) */
+/* phones: one compact row (comet mark, four links, account) */
 @media (max-width: 760px) {
   .topbar { display: flex; align-items: center; gap: 6px; height: 60px; padding: 0 12px 0 16px; box-sizing: border-box; background: linear-gradient(180deg, rgba(0, 0, 0, .9), rgba(0, 0, 0, .55) 70%, transparent); }
   .topbar .brand, .topbar nav, .topbar .authbox { position: static; transform: none; }
@@ -64,7 +65,7 @@ body.page .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba
   .topbar .brand-name { display: none; }
   .topbar .brand-mark { font-size: 26px; }
   .topbar nav { flex: 1; justify-content: center; height: 26px; }
-  .topbar nav a, .topbar nav a:nth-child(2) { width: auto; padding: 0 clamp(8px, 3.4vw, 18px); font-size: 15px; }
+  .topbar nav a, .topbar nav a:nth-child(2), .topbar nav a:nth-child(4) { width: auto; padding: 0 clamp(6px, 2.2vw, 18px); font-size: clamp(12px, 3.4vw, 15px); }
   .topbar nav a + a { border-left-width: 1px; }
   .topbar nav a::after { top: auto; bottom: -8px; width: 24px; margin-left: -12px; height: 1.5px; }
   .topbar .av { width: 36px; height: 36px; font-size: 13px; border-width: 1.5px; }

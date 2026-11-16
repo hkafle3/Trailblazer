@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="explore.css">
 <link rel="stylesheet" href="search.css">
 <link rel="stylesheet" href="explore-search.css">
+<link rel="stylesheet" href="candidates.css">   <!-- the Investigate layer's markers -->
 <link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
 <link rel="preload" as="image" href="data/visits.png">
 <link rel="preload" as="fetch" href="data/coverage.json" crossorigin>
@@ -80,7 +81,7 @@
 
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
-  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
+  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
 </header>
 
 <!-- Examples: the five baked targets (they open instantly in the patch viewer). Sits above Layers and opens upward the same way;
@@ -158,6 +159,7 @@
 <div class="dive" id="dive" hidden><canvas id="dive-cv" width="2" height="2"></canvas></div>
 
 <script type="module" src="explore.js"></script>
+<script type="module" src="explore-candidates.js"></script>
 <script src="ui.js"></script>
 </body>
 </html>

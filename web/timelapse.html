@@ -22,7 +22,7 @@
 
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
-  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a></nav>
+  <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
 </header>
 
 <!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Spectral, Layers, Others. Middle: the patch.
@@ -172,6 +172,7 @@ import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
 import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
 import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Undiscovered, and Discovered for reported dots
 import { MJD0 } from './skymap.js';
+import * as candTrack from './live/candtrack.js';   // &cand=: a detector candidate's track and votes
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -548,6 +549,7 @@ function draw() {
     window.__labels = { rings: taken.slice(0, rings), names: taken.slice(rings) };
   }
   specRing(toPx, f);
+  candTrack.draw(ctx, m, f, toPx, offset);
   knownList(f);
   drawMini(m, f, v);
   showVisit(m, f);
@@ -1408,7 +1410,7 @@ if (P.has('ra') && P.has('dec')) {
   const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
   search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
-} else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1' });
+} else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1', ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends it when a dive is likely ('dive-go')
   setMode('lapse');
   addEventListener('message', e => {

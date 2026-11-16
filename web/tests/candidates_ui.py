@@ -1,0 +1,154 @@
+"""Browser check for the detector's moving-object candidates: the Candidates page, Explore's Investigate layer, the
+track on the time-lapse and the votes, in Chrome at 1440x900 and as a phone (390x844, touch). Needs the app up
+(npx wrangler dev --config worker/wrangler.toml) with no web/data/candidates.json (the detector not run yet).
+Expected values come from web/data/candidates.sample.json and skymap.js, never from the page.
+Run: uv run -q --with playwright python web/tests/candidates_ui.py [base url] [screenshot dir]   (default http://127.0.0.1:8787)"""
+import asyncio, json, math, pathlib, sys, urllib.request, urllib.error, urllib.parse
+from playwright.async_api import async_playwright
+
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
+SHOTS = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else None
+SAMPLE = json.loads((pathlib.Path(__file__).parent.parent / "data/candidates.sample.json").read_text())
+CANDS = SAMPLE["candidates"]
+WORTH = [c for c in CANDS if c["verdict"] == "worth_reporting"]
+VERDICTS = {"worth_reporting", "known", "glitch", "star"}
+D = math.pi / 180
+
+def offset(ra0, dec0, ra, dec):   # east, north arcsec on the patch's TAN plane
+    d0, d, da = dec0 * D, dec * D, (ra - ra0) * D
+    c = math.sin(d0) * math.sin(d) + math.cos(d0) * math.cos(d) * math.cos(da)
+    return math.cos(d) * math.sin(da) / c / D * 3600, (math.cos(d0) * math.sin(d) - math.sin(d0) * math.cos(d) * math.cos(da)) / c / D * 3600
+
+def mjd(s): return (__import__("datetime").date.fromisoformat(s) - __import__("datetime").date(1858, 11, 17)).days
+
+SIDEWAYS = "() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth"
+
+async def no_fake(pg, path):
+    await pg.goto(BASE + path); await pg.wait_for_load_state("networkidle")
+    body = await pg.text_content("body")
+    leaked = [c["id"] for c in CANDS if c["id"] in body]
+    assert not leaked, f"{path}: sample candidates shown without ?sample=1: {leaked}"
+
+async def run(p, name, ctx_args):
+    b = await p.chromium.launch(channel="chrome")
+    ctx = await b.new_context(**ctx_args)
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'cand tester' })) } catch {}")
+    pg = await ctx.new_page()
+    errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+    phone = ctx_args["viewport"]["width"] < 641
+    shot = lambda n: pg.screenshot(path=str(SHOTS / f"{name}-{n}.png"), full_page=False) if SHOTS else asyncio.sleep(0)
+
+    # ---- the detector not run yet: said plainly, nothing made up anywhere ----
+    await pg.goto(BASE + "/candidates.html"); await pg.wait_for_selector("#c-empty:not([hidden])")
+    assert await pg.locator(".cd").count() == 0 and await pg.is_hidden("#c-check") and await pg.is_hidden("#c-sample")
+    assert "not run yet" in await pg.text_content("#c-empty")
+    assert await pg.evaluate(SIDEWAYS) <= 0, "sideways scroll on the empty page"
+    await shot("empty")
+    await no_fake(pg, "/candidates.html")
+    await no_fake(pg, "/explore.html"); assert await pg.locator(".mk.cand, #ly-cand").count() == 0, "Investigate layer without data"
+    await no_fake(pg, "/timelapse.html?target=barnard&cand=K-0001")
+    assert await pg.evaluate("window.__cand?.ring") is None, "a track drawn without data"
+
+    # ---- sample: every verdict, the filters, the check banner ----
+    await pg.goto(BASE + "/candidates.html?sample=1"); await pg.wait_for_selector(".cd")
+    assert await pg.is_visible("#c-sample"), "sample data is not labelled"
+    ids = await pg.eval_on_selector_all(".cd", "e => e.map(x => [x.dataset.id, x.dataset.verdict])")
+    assert ids == [[c["id"], c["verdict"]] for c in CANDS], f"cards {ids}"
+    assert {v for _, v in ids} == VERDICTS
+    shown = lambda: pg.eval_on_selector_all(".cd", "e => e.filter(x => x.getBoundingClientRect().height).map(x => x.dataset.id)")
+    assert await shown() == [c["id"] for c in WORTH], "default filter is not Worth reporting"
+    for f in ["known", "glitch", "star", "all", "worth_reporting"]:
+        await pg.click(f".c-filters [data-f={f}]")
+        want = [c["id"] for c in CANDS if f == "all" or c["verdict"] == f]
+        assert await shown() == want, f"filter {f}: {await shown()} != {want}"
+    v = SAMPLE["validation"]; check = await pg.text_content("#c-check")
+    assert f"{v['known_recovered']} of {v['known_expected']}" in check and f"{v['planted_found']}%" in check and str(v["false_per_sqdeg"]) in check, check
+    c0 = CANDS[0]; card = await pg.text_content(f".cd[data-id='{c0['id']}']")
+    assert f"{c0['checks']['n_photos']} of {c0['checks']['n_total']} photos" in card and c0["track"]["distance_guess"] in card, card
+    assert await pg.evaluate(f"document.querySelector(\".cd[data-id='{c0['id']}'] img\").naturalWidth") > 0, "strip did not load"
+    assert await pg.evaluate(SIDEWAYS) <= 0, "sideways scroll on the Candidates page"
+    if phone:
+        small = await pg.evaluate("""() => [...document.querySelectorAll('.c-filters button, .cd:not([hidden]) .cv-b, .cd:not([hidden]) .cd-open')]
+          .filter(e => { const r = e.getBoundingClientRect(); return r.height < 44 || r.width < 44; }).map(e => e.textContent.trim().slice(0, 20))""")
+        assert not small, f"tap targets under 44 px: {small}"
+    await pg.evaluate("scrollTo(0, 0)"); await shot("sample")
+    await pg.locator("#c-grid").scroll_into_view_if_needed(); await pg.wait_for_timeout(900); await shot("sample-cards")
+
+    # ---- votes post locally (Turnstile's test key passes) ----
+    await pg.wait_for_function("document.querySelector('[name=cf-turnstile-response]')?.value", timeout=20000)
+    await pg.click(f".cd[data-id='{c0['id']}'] .cv-b[data-tag=asteroid]")
+    await pg.wait_for_function(f"document.querySelector(\".cd[data-id='{c0['id']}'] .cvote\").dataset.voted", timeout=10000)
+    thread = await pg.evaluate(f"document.querySelector(\".cd[data-id='{c0['id']}'] .cvote\").dataset.voted")
+    got = json.load(urllib.request.urlopen(f"{BASE}/api/comets/{thread}"))
+    assert any(m["tag"] == "asteroid" and c0["id"] in m["body"] and m["author"] == "cand tester" for m in got["comments"]), got["comments"][-3:]
+
+    # ---- Explore: one marker per worth-reporting candidate at its first detection ----
+    await pg.goto(BASE + "/explore.html?sample=1"); await pg.wait_for_selector(".mk.cand i")
+    await pg.wait_for_timeout(1200)   # the map's scale-in
+    places = await pg.evaluate("""async () => { const { fwd } = await import('/skymap.js'), w = document.querySelector('.map-wrap').getBoundingClientRect();
+      return [...document.querySelectorAll('.mk.cand')].map(m => { const r = m.querySelector('i').getBoundingClientRect();
+        return [m.dataset.cand, (r.left + r.width / 2 - w.left) / w.width, (r.top + r.height / 2 - w.top) / w.height]; }); }""")
+    assert [p_[0] for p_ in places] == [c["id"] for c in WORTH], places
+    for cid, u, vv in places:
+        d = next(c for c in WORTH if c["id"] == cid)["detections"][0]
+        eu, ev = await pg.evaluate(f"import('/skymap.js').then(m => m.fwd({d['ra']}, {d['dec']}))")
+        assert abs(u - eu) < .01 and abs(vv - ev) < .01, f"{cid} at {u:.4f},{vv:.4f}, fwd says {eu:.4f},{ev:.4f}"
+    await pg.evaluate("document.getElementById('ly-cand').click()")
+    assert await pg.locator(".mk.cand i:visible").count() == 0, "Layers toggle does not hide the markers"
+    await pg.evaluate("document.getElementById('ly-cand').click()")
+    mk = pg.locator(f".mk.cand[data-cand='{c0['id']}'] i")
+    if phone:
+        await mk.tap(force=True); await pg.wait_for_selector("#csheet:not([hidden])")
+        assert await pg.text_content("#csheet [data-f=name]") == c0["id"] and await pg.text_content("#csheet [data-f=openlabel]") == "Investigate"
+        go = await pg.get_attribute("#csheet [data-f=open]", "href")
+    else:
+        await mk.click(force=True); await pg.wait_for_selector("#card-cand:not([hidden])")
+        assert await pg.text_content("#card-cand [data-f=id]") == c0["id"]
+        go = await pg.get_attribute("#card-cand [data-f=go]", "href")
+    await shot("explore")
+    assert f"cand={c0['id']}" in go and "sample=1" in go, go
+
+    # ---- the time-lapse: the track, and the ring on this visit's detection ----
+    go = urllib.parse.urljoin(BASE + "/", go)
+    await pg.goto(go)
+    await pg.wait_for_function("window.__cand?.ring && window.__lapse?.state.m", timeout=20000)
+    s = await pg.evaluate("""() => { const st = window.__lapse.state, m = st.m, f = m.frames[st.i], c = document.getElementById('patch');
+      return { ra: m.ra, dec: m.dec, G: m.grid, a: m.arcsec_per_pixel, fov: st.fov, W: c.width, H: c.height, cw: c.getBoundingClientRect().width,
+        start: f.start, end: f.end || f.start, mjd: f.mjd, ring: window.__cand.ring, n: window.__cand.track.length }; }""")
+    assert s["n"] == len(c0["detections"]), "not every detection is on the track"
+    t0, t1 = mjd(s["start"]), mjd(s["end"]) + 1
+    near = sorted([d for d in c0["detections"] if t0 <= d["t"] < t1], key=lambda d: abs(d["t"] - s["mjd"]))
+    assert near, f"the visit on screen ({s['start']}) has none of the candidate's detections"
+    G, a = s["G"], s["a"]; cw = min(G, max(2, round(s["fov"] * 60 / a))); ch = min(G, max(2, round(cw * s["H"] / s["W"])))
+    e, n = offset(s["ra"], s["dec"], near[0]["ra"], near[0]["dec"])
+    x, y = (G - 1) / 2 - e / a, (G - 1) / 2 + n / a
+    ex, ey = (x - (G - cw) / 2 + .5) * s["W"] / cw, (G - 1 - y - (G - ch) / 2 + .5) * s["H"] / ch
+    k = s["cw"] / s["W"]   # canvas pixels to CSS pixels
+    off = math.hypot(s["ring"][0] - ex, s["ring"][1] - ey) * k
+    assert off <= 1, f"ring {off:.2f} px from the detection"
+    rgb = await pg.evaluate(f"[...document.getElementById('patch').getContext('2d').getImageData({round(s['ring'][0] + 13)}, {round(s['ring'][1])}, 1, 1).data]")
+    assert rgb[0] > 180 and 100 < rgb[1] < 200 and rgb[2] < 140, f"no orange ring drawn there: {rgb}"
+    await pg.locator(".cand-info").scroll_into_view_if_needed()
+    await shot("timelapse")
+    # and a vote from the time-lapse
+    await pg.wait_for_function("document.querySelector('[name=cf-turnstile-response]')?.value", timeout=20000)
+    await pg.click(".cvote .cv-b[data-tag=glitch]")
+    await pg.wait_for_function("document.querySelector('.cvote').dataset.voted", timeout=10000)
+    for path in [go, BASE + "/explore.html?sample=1"]:
+        await pg.goto(path); await pg.wait_for_timeout(800)
+        assert await pg.evaluate(SIDEWAYS) <= 0, f"sideways scroll on {path}"
+    assert not errs, errs
+    await b.close()
+    print(f"{name}: ok (ring {off:.2f} px off)")
+
+async def main():
+    try:
+        urllib.request.urlopen(BASE + "/data/candidates.json"); sys.exit("web/data/candidates.json exists: this check needs the detector not run yet")
+    except urllib.error.HTTPError as e: assert e.code == 404
+    if SHOTS: SHOTS.mkdir(parents=True, exist_ok=True)
+    async with async_playwright() as p:
+        await run(p, "desktop", {"viewport": {"width": 1440, "height": 900}})
+        await run(p, "phone", {"viewport": {"width": 390, "height": 844}, "has_touch": True, "is_mobile": True, "device_scale_factor": 3})
+    print("candidates_ui: all checks passed")
+
+asyncio.run(main())
