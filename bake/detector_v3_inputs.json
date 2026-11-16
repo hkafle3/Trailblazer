@@ -1,0 +1,2388 @@
+{
+ "note": "summary of cache/<field>/manifest.json; a field without a manifest is INVALID",
+ "fields": {
+  "dev_0435": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "7bf16ad3763cc9d83718c89d06e4e7077c85d095d0dc64416d9e1c08851c4287",
+   "retrieved": "2026-11-16T17:35:45+00:00",
+   "exposures": 625,
+   "listed": 647,
+   "off_patch": 22,
+   "by_det": {
+    "D1": 90,
+    "D2": 110,
+    "D3": 114,
+    "D4": 90,
+    "D5": 106,
+    "D6": 115
+   },
+   "by_coll": {
+    "spherex_dr1": 422,
+    "spherex_qr3": 203
+   },
+   "versions": [
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-216",
+    "l2b-v27-2026-218",
+    "l2b-v27-2026-219",
+    "l2b-v27-2026-220",
+    "l2b-v27-2026-221",
+    "l2b-v27-2026-222",
+    "l2b-v27-2026-223",
+    "l2b-v27-2026-224",
+    "l2b-v27-2026-225",
+    "l2b-v27-2026-226",
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-240",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-254",
+    "l2b_retry-v27-2026-218",
+    "l2b_retry-v27-2026-220",
+    "l2b_retry-v27-2026-225"
+   ],
+   "mjd_range": [
+    60882.389087,
+    61287.811625500006
+   ],
+   "d6_passes": [
+    45,
+    22,
+    48
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 20909,
+     "sha256": "b415e3b80bae113afa2913c67054b0711b0212cc4bb247daeed69cc47338121f"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10387,
+     "sha256": "b671c7fc539ce8e0908964dee911787bd000416d3e902d17110f668532615785"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1272,
+     "sha256": "7115b577d5f0d66083a0a320ddf0c48c142e6721e3fb67654e5c86d99acce55e"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1428,
+     "sha256": "d5e90a1748a08334a6de34ed545a9e483397972b11e2d0f5148270eb925427c9"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 213,
+     "sha256": "d769b90b02d81a2d23684f52cba9d0bf872561b7ea8becd7a170722cc544e4cd"
+    }
+   }
+  },
+  "dev_1114": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "440fa814ae267bf55a9ee395bb1933debcda297d04e4dcb68e230c466d4ba791",
+   "retrieved": "2026-11-16T17:33:57+00:00",
+   "exposures": 608,
+   "listed": 617,
+   "off_patch": 9,
+   "by_det": {
+    "D1": 110,
+    "D2": 72,
+    "D3": 123,
+    "D4": 108,
+    "D5": 71,
+    "D6": 124
+   },
+   "by_coll": {
+    "spherex_dr1": 424,
+    "spherex_qr3": 184
+   },
+   "versions": [
+    "l2b-v27-2026-197",
+    "l2b-v27-2026-198",
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-202",
+    "l2b-v27-2026-210",
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-214",
+    "l2b-v27-2026-267",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-273",
+    "l2b_retry-v27-2026-214",
+    "l2b_retry-v27-2026-268",
+    "l2b_retry-v27-2026-274"
+   ],
+   "mjd_range": [
+    60797.713505499996,
+    61214.536186
+   ],
+   "d6_passes": [
+    52,
+    25,
+    47
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 23218,
+     "sha256": "7495587b9e0be9cea7971930a775a7d7b33ae1f813b3784522732573c0a17033"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10915,
+     "sha256": "aab50b232713689bad39ceb6ed6a45189cea6bb5ab7d04274c8f2687436385ff"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 2271,
+     "sha256": "f30318dcb4a4899209e79bc4fd3f17bf0d040f2a0140c686072fd6f3b5892c2b"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 3598,
+     "sha256": "97d5a5cd7dff5f902af492e7f3f604ebd9cc7d427eb379c7ba2bc3dfd31a8165"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 114,
+     "sha256": "b2aea8f66ceb81a67308a7e5a2eae9f1b6a1009b5b4de04360924eaf9b16cc98"
+    }
+   }
+  },
+  "dev_0415": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "18ecfef85576a9152537a4e5e6fddbde58a5b5cc2022bd6f59a5b7caa109fc85",
+   "retrieved": "2026-11-16T17:33:19+00:00",
+   "exposures": 507,
+   "listed": 553,
+   "off_patch": 46,
+   "by_det": {
+    "D1": 70,
+    "D2": 114,
+    "D3": 70,
+    "D4": 69,
+    "D5": 114,
+    "D6": 70
+   },
+   "by_coll": {
+    "spherex_dr1": 337,
+    "spherex_qr3": 170
+   },
+   "versions": [
+    "l2b-v27-2026-222",
+    "l2b-v27-2026-225",
+    "l2b-v27-2026-226",
+    "l2b-v27-2026-227",
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-229",
+    "l2b-v27-2026-232",
+    "l2b-v27-2026-234",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-240",
+    "l2b-v27-2026-241",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-252",
+    "l2b-v27-2026-254",
+    "l2b-v27-2026-264",
+    "l2b_retry-v27-2026-227",
+    "l2b_retry-v27-2026-236",
+    "l2b_retry-v27-2026-242"
+   ],
+   "mjd_range": [
+    60899.232895,
+    61303.623043
+   ],
+   "d6_passes": [
+    25,
+    22,
+    23
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 24071,
+     "sha256": "a95b839082c8602b311bc569f7a5f3bfa0a7f0e237282a7ce7143ff08d8a0ea1"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 11117,
+     "sha256": "1b30d9e88632822ec192ed9832d207a31e8ccd915ed487877ba1798fd82be4e2"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1479,
+     "sha256": "77c0f0079fc60dd03eec96ff287da2375b6fdf642891814a1d28b8cf5a072e65"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1825,
+     "sha256": "32db52e1b1d8552642c5546e07ba4583d3e0e68103a3eb4ec70b8fac88723db3"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 106,
+     "sha256": "f21bea23a011b74c7c681a38c115166a3e4fe0fa7dbb3b63fdca5bee9382f41b"
+    }
+   }
+  },
+  "dev_0937": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "6510ad4e1bba320e4d6c5e4ea895ce2a08849f2f3b3b2375ca0d10895409bca0",
+   "retrieved": "2026-11-16T17:43:14+00:00",
+   "exposures": 396,
+   "listed": 410,
+   "off_patch": 14,
+   "by_det": {
+    "D1": 70,
+    "D2": 52,
+    "D3": 74,
+    "D4": 74,
+    "D5": 52,
+    "D6": 74
+   },
+   "by_coll": {
+    "spherex_dr1": 396,
+    "spherex_qr3": 0
+   },
+   "versions": [
+    "l2b-v27-2026-196",
+    "l2b-v27-2026-197",
+    "l2b-v27-2026-207",
+    "l2b-v27-2026-208",
+    "l2b-v27-2026-242",
+    "l2b-v27-2026-244",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-247",
+    "l2b_retry-v27-2026-247"
+   ],
+   "mjd_range": [
+    60793.561381499996,
+    61174.340095
+   ],
+   "d6_passes": [
+    1,
+    34,
+    39
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 20463,
+     "sha256": "32a2325d386635322593770fa551bce95151f2aaff3854c9e85461db40d9b82c"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 9522,
+     "sha256": "528d70e2154d6bcf593cc4dda0363bb58ff05466fabcf41ef50c2010a97e1e02"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1111,
+     "sha256": "7ea27d2f744c5c7e1ed4ad319e8194fec0c4aae532948b8ea2116cd2f0aafe2e"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1328,
+     "sha256": "519b60d0d33d0203d2daf5b57c1f0be342fbcf9d52908af696dcf7ccaebacf29"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 387,
+     "sha256": "ad9f5e7f44e5d42beba562df19c82542db9809d47039633aeb1887ecfe6f369c"
+    }
+   }
+  },
+  "dev_0727": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "cbb4c164f732e7d2e18918252cf6895fbf2709b255702c336254222661e83d58",
+   "retrieved": "2026-11-16T17:42:50+00:00",
+   "exposures": 350,
+   "listed": 364,
+   "off_patch": 14,
+   "by_det": {
+    "D1": 67,
+    "D2": 44,
+    "D3": 65,
+    "D4": 65,
+    "D5": 44,
+    "D6": 65
+   },
+   "by_coll": {
+    "spherex_dr1": 350,
+    "spherex_qr3": 0
+   },
+   "versions": [
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-238",
+    "l2b-v27-2026-239",
+    "l2b-v27-2026-240",
+    "l2b-v27-2026-241",
+    "l2b-v27-2026-242",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-244"
+   ],
+   "mjd_range": [
+    60953.786851,
+    61143.04989549999
+   ],
+   "d6_passes": [
+    44,
+    21
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 29272,
+     "sha256": "a7b4f710903897b12cd159224c0052a93977c850f1d230dba4e8863fdf49501b"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 12669,
+     "sha256": "43caf0264b49c336a53bb5880ec7ee5e7d86f0586b2da0e22aa69f6e8b6f244b"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 4652,
+     "sha256": "25408701b11ab23c259db011c803f02e79d75c977962cd4b007e148695ab982c"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 7862,
+     "sha256": "3d2a1656eef7b8f7c9cdbafcea76060f89dd8fd3e3ea5866ded7ae771419b801"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 163,
+     "sha256": "cc921cd25f0b34b8b59413313226db4c49d33bcad109b2357d30f1e113b4581d"
+    }
+   }
+  },
+  "dev_1503": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "c8cd1f4889645e9817479adcf9f576619d8a7765fc04ec4b923dbb9368dafcd8",
+   "retrieved": "2026-11-16T17:49:48+00:00",
+   "exposures": 673,
+   "listed": 719,
+   "off_patch": 46,
+   "by_det": {
+    "D1": 95,
+    "D2": 135,
+    "D3": 107,
+    "D4": 94,
+    "D5": 136,
+    "D6": 106
+   },
+   "by_coll": {
+    "spherex_dr1": 425,
+    "spherex_qr3": 248
+   },
+   "versions": [
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-214",
+    "l2b-v27-2026-216",
+    "l2b-v27-2026-218",
+    "l2b-v27-2026-219",
+    "l2b-v27-2026-220",
+    "l2b-v27-2026-222",
+    "l2b-v27-2026-223",
+    "l2b-v27-2026-224",
+    "l2b-v27-2026-225",
+    "l2b-v27-2026-226",
+    "l2b-v27-2026-273",
+    "l2b-v27-2026-274",
+    "l2b-v27-2026-275",
+    "l2b_retry-v27-2026-224",
+    "l2b_retry-v27-2026-274",
+    "l2b_retry-v27-2026-275"
+   ],
+   "mjd_range": [
+    60846.138212,
+    61259.6037085
+   ],
+   "d6_passes": [
+    38,
+    23,
+    45
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 23741,
+     "sha256": "3bf303dd9deec64f8ca55c7b93d23cd2a413971ad17c6ab2438b042332752eb6"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 11483,
+     "sha256": "97ff63415b82458dfb822ee8d847e41e86a35c3eb4ad5579689b3eb6e3c00827"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1134,
+     "sha256": "d5d3a5f43bde4425006064387ca9684141cb09bb04dce24210edd006e1cc10cb"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1615,
+     "sha256": "91fb5a83a743f32107661d22b23d04abcae3b91c94ed709b960306092930742e"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 264,
+     "sha256": "3d448d7234287383b04b45cd73e04cacd8bc8b8eebbd2b7db8f73cd49817a7c7"
+    }
+   }
+  },
+  "dev_0243": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "5c02c4ae581274b4f2f86ec878f153cafef35f93ffdb818b6b2e5a7984bfa396",
+   "retrieved": "2026-11-16T17:55:41+00:00",
+   "exposures": 557,
+   "listed": 603,
+   "off_patch": 46,
+   "by_det": {
+    "D1": 99,
+    "D2": 85,
+    "D3": 96,
+    "D4": 96,
+    "D5": 86,
+    "D6": 95
+   },
+   "by_coll": {
+    "spherex_dr1": 379,
+    "spherex_qr3": 178
+   },
+   "versions": [
+    "l2b-v27-2026-212",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-214",
+    "l2b-v27-2026-216",
+    "l2b-v27-2026-217",
+    "l2b-v27-2026-218",
+    "l2b-v27-2026-219",
+    "l2b-v27-2026-220",
+    "l2b-v27-2026-222",
+    "l2b-v27-2026-223",
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-254",
+    "l2b-v27-2026-275",
+    "l2b-v27-2026-276",
+    "l2b-v27-2026-277",
+    "l2b_retry-v27-2026-216",
+    "l2b_retry-v27-2026-217",
+    "l2b_retry-v27-2026-218",
+    "l2b_retry-v27-2026-220",
+    "l2b_retry-v27-2026-277"
+   ],
+   "mjd_range": [
+    60867.033962,
+    61287.8057275
+   ],
+   "d6_passes": [
+    44,
+    23,
+    28
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 21677,
+     "sha256": "192ac9225acb0ec0ace6eb73708e783f5836b5e0fdd97c6be828043990caf73e"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 11878,
+     "sha256": "9a7a0086aad65bc88624acda8bbb23ba06deea5ab9284fb3c7498265416a5530"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 926,
+     "sha256": "db4339c6c9637647935937a65cd4cac5d1337a0f3245074477f3881dbf9f7d4c"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1126,
+     "sha256": "4ea36a71a59cac1b52e0913598e9fe35aaec656478a67e9c4739183b0a54b9a2"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 90,
+     "sha256": "a3d960a79b5326b7fbeded015de02c094cc21cd3d058cf3c14cabef2c976ae76"
+    }
+   }
+  },
+  "dev_0049": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "0b2aa13fb7863129fa3acc7d2765f70abaa84e7bc02f8431be0976630a1e2dbc",
+   "retrieved": "2026-11-16T17:55:40+00:00",
+   "exposures": 398,
+   "listed": 409,
+   "off_patch": 11,
+   "by_det": {
+    "D1": 67,
+    "D2": 66,
+    "D3": 66,
+    "D4": 67,
+    "D5": 66,
+    "D6": 66
+   },
+   "by_coll": {
+    "spherex_dr1": 266,
+    "spherex_qr3": 132
+   },
+   "versions": [
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-212",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-215",
+    "l2b-v27-2026-216",
+    "l2b-v27-2026-217",
+    "l2b-v27-2026-275",
+    "l2b-v27-2026-276",
+    "l2b-v27-2026-277",
+    "l2b_retry-v27-2026-215"
+   ],
+   "mjd_range": [
+    60860.454646,
+    61239.617849
+   ],
+   "d6_passes": [
+    22,
+    22,
+    22
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 21974,
+     "sha256": "93963a6d3777e245536dba731fd5f9d2807b6c7d235d2de5f10d233c3350fbfd"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10845,
+     "sha256": "b0c4837da5888f0c5aa7b36979d2926e4608e8597e8911a221f1b0063a4d79e5"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1469,
+     "sha256": "3611d010187859631d9b496f400729e1cf8bf16766b8a02fc7729fb2eae7f384"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1890,
+     "sha256": "21ef274a9153c11d7a3adf838ac6dd73386a41f1e3a237491d11175fa5318a48"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 148,
+     "sha256": "15dc6a8ebbec2b4a2ddc3927a40f68063ec3777c4ae3c1350b31f4bb9422c1df"
+    }
+   }
+  },
+  "dev_barnard": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "e9c661c03a2eb602eecca88e5e3c34510e79bbb0cb96831b6af67adb52d44135",
+   "retrieved": "2026-11-16T17:58:26+00:00",
+   "exposures": 468,
+   "listed": 562,
+   "off_patch": 94,
+   "by_det": {
+    "D1": 76,
+    "D2": 80,
+    "D3": 78,
+    "D4": 75,
+    "D5": 82,
+    "D6": 77
+   },
+   "by_coll": {
+    "spherex_dr1": 319,
+    "spherex_qr3": 149
+   },
+   "versions": [
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-229",
+    "l2b-v27-2026-230",
+    "l2b-v27-2026-231",
+    "l2b-v27-2026-232",
+    "l2b-v27-2026-234",
+    "l2b-v27-2026-235",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-239",
+    "l2b-v27-2026-240",
+    "l2b-v27-2026-241",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-252",
+    "l2b-v27-2026-264",
+    "l2b-v27-2026-268",
+    "l2b_retry-v27-2026-230"
+   ],
+   "mjd_range": [
+    60902.865381,
+    61305.628687
+   ],
+   "d6_passes": [
+    25,
+    27,
+    25
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 49855,
+     "sha256": "68a1c953010e6481630a5eae0d1c2565a8aab375e5b9b46d72f071d7e86d75cf"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 16565,
+     "sha256": "1edfc5597f32f212c739756ef04a7b4abbbd1158da2f579d7c70abd3e35b3575"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 12379,
+     "sha256": "81fc0fe73a3125c7504f700adb72ae326f7045eb0cb7e3f39c5646b9bacba62a"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 33746,
+     "sha256": "e08a151875e7a1b7dc472adb3034abfdbf7f8a950109bbe37c10237c8d1992fa"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 331,
+     "sha256": "21bcd60f62738286b429d2ae275a6adb6e88998f9037e1aadba51d3c4b1a8198"
+    }
+   }
+  },
+  "dev_m1": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "bbbd9588d801ea2428fba938414575939a80c86b476653699c3b43f3ad980f31",
+   "retrieved": "2026-11-16T17:34:03+00:00",
+   "exposures": 416,
+   "listed": 423,
+   "off_patch": 7,
+   "by_det": {
+    "D1": 71,
+    "D2": 67,
+    "D3": 72,
+    "D4": 70,
+    "D5": 67,
+    "D6": 69
+   },
+   "by_coll": {
+    "spherex_dr1": 269,
+    "spherex_qr3": 147
+   },
+   "versions": [
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-202",
+    "l2b-v27-2026-208",
+    "l2b-v27-2026-209",
+    "l2b-v27-2026-210",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-272",
+    "l2b-v27-2026-273",
+    "l2b-v27-2026-275",
+    "l2b_retry-v27-2026-201",
+    "l2b_retry-v27-2026-271"
+   ],
+   "mjd_range": [
+    60831.510842,
+    61229.6435275
+   ],
+   "d6_passes": [
+    23,
+    22,
+    24
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 22084,
+     "sha256": "1918eb1b6a8b813da3dbce089970030fb993dd9b771c81c7c9ee92fe266c15ca"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10071,
+     "sha256": "b386df6ded2a1e76d3f615e1837b6271d44808ab7b9d94eea1ced1a680273b16"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 2008,
+     "sha256": "e31d9c3465e4fd16401dd5411bcbadb94025b679f652cf73d059fedc6b654bb9"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 2426,
+     "sha256": "3a52cc4bc5b71746d196afa39985273f5408160eed9b61cea412b191b8b541bd"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 405,
+     "sha256": "ee1c81e1a3488293174630ff01dadc9a2b3e474787875804c3efc15bba611ec1"
+    }
+   }
+  },
+  "dev_m2": {
+   "set": "dev",
+   "status": "complete",
+   "manifest_sha256": "22ebd08a1decce659eaf43292ed55bf9d624cbb2b39e937d28e48c992538fb4b",
+   "retrieved": "2026-11-16T17:37:02+00:00",
+   "exposures": 410,
+   "listed": 417,
+   "off_patch": 7,
+   "by_det": {
+    "D1": 84,
+    "D2": 50,
+    "D3": 73,
+    "D4": 82,
+    "D5": 50,
+    "D6": 71
+   },
+   "by_coll": {
+    "spherex_dr1": 378,
+    "spherex_qr3": 32
+   },
+   "versions": [
+    "l2b-v27-2026-196",
+    "l2b-v27-2026-197",
+    "l2b-v27-2026-198",
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-206",
+    "l2b-v27-2026-207",
+    "l2b-v27-2026-208",
+    "l2b-v27-2026-209",
+    "l2b-v27-2026-210",
+    "l2b-v27-2026-244",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b_retry-v27-2026-197",
+    "l2b_retry-v27-2026-198",
+    "l2b_retry-v27-2026-207",
+    "l2b_retry-v27-2026-209",
+    "l2b_retry-v27-2026-244"
+   ],
+   "mjd_range": [
+    60790.634078,
+    61185.27486
+   ],
+   "d6_passes": [
+    3,
+    44,
+    24
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 20352,
+     "sha256": "e0a20e7a58e8cd856ab9ecd41b74d324445171fec1db53ac0702592cfab55716"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 9731,
+     "sha256": "e5ebdd607c52542357d7fe84c1746ac4118edb2e98d2286c7ff23a577225921b"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 877,
+     "sha256": "9b7db83abd1d86033a3e94e2864f77802a8e22029e0ddc3caa3eb90aa6717c20"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1007,
+     "sha256": "07ca9d617a35a0e041ca6d1be75699e8b48c4ecd70542009b3d7bbfd893d7f32"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 307,
+     "sha256": "ce7f031a599e5c9267e7ade8cd816d137a1e3332fb922a37c77f449749ab5649"
+    }
+   }
+  },
+  "f01": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "c3a6aaa9f68193ea994bdad6901f820631e86f75e54b76c673007cccd64a44b8",
+   "retrieved": "2026-11-16T17:47:51+00:00",
+   "exposures": 742,
+   "listed": 748,
+   "off_patch": 6,
+   "by_det": {
+    "D1": 149,
+    "D2": 123,
+    "D3": 107,
+    "D4": 142,
+    "D5": 120,
+    "D6": 101
+   },
+   "by_coll": {
+    "spherex_dr1": 535,
+    "spherex_qr3": 207
+   },
+   "versions": [
+    "l2b-v27-2026-235",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-238",
+    "l2b-v27-2026-239",
+    "l2b-v27-2026-240",
+    "l2b-v27-2026-241",
+    "l2b-v27-2026-242",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-244",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-247",
+    "l2b-v27-2026-259",
+    "l2b-v27-2026-261",
+    "l2b-v27-2026-264",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-271",
+    "l2b_retry-v27-2026-240",
+    "l2b_retry-v27-2026-261",
+    "l2b_retry-v27-2026-265"
+   ],
+   "mjd_range": [
+    60928.8992035,
+    61308.558036500006
+   ],
+   "d6_passes": [
+    24,
+    54,
+    23
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 28592,
+     "sha256": "36916abf68bcadccd7784b3a868441dedd798e0b58192f227fefadd9a5472a78"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 12687,
+     "sha256": "be11259402f56cadf34636fcc9116a126f3e3b3d555ed497d65bb999e1d76dba"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 2887,
+     "sha256": "565367b907fa0e8b9e29887568ced61ca0bba8dc0dd88197f5147ceb95e6d798"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 4431,
+     "sha256": "cf867bcdf44da4cd5beb393a1005a84b566fab3efe823f757cd9c1e45d1c8fba"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 235,
+     "sha256": "d67f2413a9da6d4fafc268282398e9df354d3e7094f37958d7c862c740008017"
+    }
+   }
+  },
+  "f02": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "1d22cef8033cd17dfd8c4b3091a4e7c58ea8bbec6ba6a4d3beb399dca1df65ba",
+   "retrieved": "2026-11-16T17:46:48+00:00",
+   "exposures": 490,
+   "listed": 516,
+   "off_patch": 26,
+   "by_det": {
+    "D1": 79,
+    "D2": 71,
+    "D3": 95,
+    "D4": 79,
+    "D5": 71,
+    "D6": 95
+   },
+   "by_coll": {
+    "spherex_dr1": 292,
+    "spherex_qr3": 198
+   },
+   "versions": [
+    "l2b-v27-2026-215",
+    "l2b-v27-2026-216",
+    "l2b-v27-2026-217",
+    "l2b-v27-2026-219",
+    "l2b-v27-2026-220",
+    "l2b-v27-2026-221",
+    "l2b-v27-2026-222",
+    "l2b-v27-2026-225",
+    "l2b-v27-2026-226",
+    "l2b-v27-2026-227",
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-275",
+    "l2b-v27-2026-276",
+    "l2b-v27-2026-277",
+    "l2b_retry-v27-2026-220",
+    "l2b_retry-v27-2026-225",
+    "l2b_retry-v27-2026-275",
+    "l2b_retry-v27-2026-276"
+   ],
+   "mjd_range": [
+    60862.853428,
+    61275.488033500005
+   ],
+   "d6_passes": [
+    29,
+    22,
+    44
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 24176,
+     "sha256": "566b55477eff0a0e4522b3cb84462b13ca13043e4f5cd6ec4439969e24166a38"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10776,
+     "sha256": "06f3686a16cacb24e868d5e5a37bc4017fe4c614dd1a70b310bedf0cda510ecb"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1957,
+     "sha256": "2d528bd39054567d65ac4125481f737afc7a368bd8164a489e2aa0fbc3c74c4a"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 2931,
+     "sha256": "1e67b655ed0ab9a2c91a2bdcdd271e025e2eb837b14beddb5ba34004b25a8d4d"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 284,
+     "sha256": "d94a3d48e8148528af654a801b788d5e4ada62cce0850760a64ff846d09d755f"
+    }
+   }
+  },
+  "f03": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "2179873d9757ef3850f5f2071a19685fbcd525ae72ded4881021c33a315fa1f8",
+   "retrieved": "2026-11-16T17:47:34+00:00",
+   "exposures": 409,
+   "listed": 423,
+   "off_patch": 14,
+   "by_det": {
+    "D1": 71,
+    "D2": 67,
+    "D3": 67,
+    "D4": 70,
+    "D5": 67,
+    "D6": 67
+   },
+   "by_coll": {
+    "spherex_dr1": 274,
+    "spherex_qr3": 135
+   },
+   "versions": [
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-212",
+    "l2b-v27-2026-214",
+    "l2b-v27-2026-215",
+    "l2b-v27-2026-219",
+    "l2b-v27-2026-223",
+    "l2b-v27-2026-274",
+    "l2b-v27-2026-275",
+    "l2b-v27-2026-276",
+    "l2b_retry-v27-2026-211",
+    "l2b_retry-v27-2026-212",
+    "l2b_retry-v27-2026-214",
+    "l2b_retry-v27-2026-215",
+    "l2b_retry-v27-2026-275"
+   ],
+   "mjd_range": [
+    60855.696789,
+    61258.693948
+   ],
+   "d6_passes": [
+    23,
+    22,
+    22
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 19063,
+     "sha256": "c505d27259ae2e934a38d0d4afc5935076775d353f7cf1bdcdc90d71a76b2b0b"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 8768,
+     "sha256": "dd1693572e951a89ee2572dfd0ea5ec55d79e044a4d9d54e7af98509c840aadc"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1264,
+     "sha256": "3efc150ac5850add9fa1e8a8650106114421a643a39e2351dd10ebfb31a77ad2"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1589,
+     "sha256": "9a29a1d84d9373864abd3ac335facee858fa7f125815866d6f1c893a984b6931"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 171,
+     "sha256": "33df3dff3347b68b8f3d80533299b50eb7ab7403f9f341661bbc6f2fe083c18e"
+    }
+   }
+  },
+  "f04": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "b62fb02c16b0e673c1773f151b9c1fc1a3203e36a70ddee5103c7607e21df0be",
+   "retrieved": "2026-11-16T17:57:56+00:00",
+   "exposures": 555,
+   "listed": 622,
+   "off_patch": 67,
+   "by_det": {
+    "D1": 75,
+    "D2": 133,
+    "D3": 70,
+    "D4": 73,
+    "D5": 134,
+    "D6": 70
+   },
+   "by_coll": {
+    "spherex_dr1": 379,
+    "spherex_qr3": 176
+   },
+   "versions": [
+    "l2b-v27-2026-231",
+    "l2b-v27-2026-232",
+    "l2b-v27-2026-234",
+    "l2b-v27-2026-235",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-238",
+    "l2b-v27-2026-239",
+    "l2b-v27-2026-244",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-252",
+    "l2b-v27-2026-254",
+    "l2b-v27-2026-255",
+    "l2b-v27-2026-259",
+    "l2b-v27-2026-261",
+    "l2b-v27-2026-264",
+    "l2b_retry-v27-2026-254",
+    "l2b_retry-v27-2026-257"
+   ],
+   "mjd_range": [
+    60915.634445,
+    61303.857185
+   ],
+   "d6_passes": [
+    22,
+    26,
+    22
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 44226,
+     "sha256": "09e2af4cccfedc0bab2deb4d72ebc49f93ce7bf4812bca9a5468bbc33fbd25e6"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 15073,
+     "sha256": "7319e290408c0d6fd666469cd8e911182e244551268b4e16f9ba08e81ad6f70c"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 9345,
+     "sha256": "dc14d971f61d2500a963ff8d1a5ad8cd3df64acaf31d382fb67585efa5c3dabb"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 18543,
+     "sha256": "460f30bf7f5cbe3b202ef6803bbb6baf4a89ca38e5b63db4fdfa72e167534ac6"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 204,
+     "sha256": "423e90acf825c5310be09db43126395ea02004f9204f2cb78f6dd8c4ea0fc439"
+    }
+   }
+  },
+  "f05": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "232ddec156269d672058143a7ab5129fad3070830773206c2116df933454febf",
+   "retrieved": "2026-11-16T17:59:01+00:00",
+   "exposures": 679,
+   "listed": 714,
+   "off_patch": 35,
+   "by_det": {
+    "D1": 115,
+    "D2": 130,
+    "D3": 96,
+    "D4": 112,
+    "D5": 130,
+    "D6": 96
+   },
+   "by_coll": {
+    "spherex_dr1": 458,
+    "spherex_qr3": 221
+   },
+   "versions": [
+    "l2b-v27-2026-227",
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-229",
+    "l2b-v27-2026-230",
+    "l2b-v27-2026-231",
+    "l2b-v27-2026-232",
+    "l2b-v27-2026-234",
+    "l2b-v27-2026-235",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-241",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-252",
+    "l2b-v27-2026-254",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-285",
+    "l2b_retry-v27-2026-229",
+    "l2b_retry-v27-2026-230",
+    "l2b_retry-v27-2026-231",
+    "l2b_retry-v27-2026-256"
+   ],
+   "mjd_range": [
+    60910.646743,
+    61317.334856
+   ],
+   "d6_passes": [
+    26,
+    39,
+    31
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 22843,
+     "sha256": "7e4438c0a41069923f1a28256f814b166c425b97727353150f64ab5305562362"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10478,
+     "sha256": "4b22989ee0bac3168aead2b660a5b29c0371940db8930ffa69b3ead4ff0c7828"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1874,
+     "sha256": "20fd862393bbd813b85fa262b501b75a7379b198f0b9f45c09642af5df5a0062"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 2648,
+     "sha256": "f7b630178e05ba28a9df12f61b57b908141f39da7e7d315111970b221beafc20"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 177,
+     "sha256": "afe1e4f4c22561e5dfbb1492ebae14e60abe2c27707eed75153e0f4eb703f504"
+    }
+   }
+  },
+  "f06": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "ad740c405fc1d32ba5f1c69fbed4f7fc0ae6ed328afe1ab10f81a191a74f7155",
+   "retrieved": "2026-11-16T17:58:20+00:00",
+   "exposures": 502,
+   "listed": 518,
+   "off_patch": 16,
+   "by_det": {
+    "D1": 81,
+    "D2": 90,
+    "D3": 80,
+    "D4": 82,
+    "D5": 88,
+    "D6": 81
+   },
+   "by_coll": {
+    "spherex_dr1": 333,
+    "spherex_qr3": 169
+   },
+   "versions": [
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-212",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-214",
+    "l2b-v27-2026-215",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-272",
+    "l2b-v27-2026-273",
+    "l2b_retry-v27-2026-211"
+   ],
+   "mjd_range": [
+    60817.676107,
+    61216.2288825
+   ],
+   "d6_passes": [
+    24,
+    29,
+    28
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 19700,
+     "sha256": "96f098083d8eb43d9473256161a4f4e812ab1506fa71051500b82ccc3f56c554"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10006,
+     "sha256": "867b6b42205c9bc72aedd6dcf0297787b81592cf114b41fc39da7756d76c17ad"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1040,
+     "sha256": "44a45d46a68c27366226fb5783a52cd8f2675073ad2ed135e41a378259a8c64b"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1141,
+     "sha256": "6ca9acddc75356ca07abfb3aea7b25c840a6acdcf5b8ca0b8d5ded54cb719779"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 365,
+     "sha256": "b5e7e51ddc199281f65ea096581e6f24807e22d26c639e4e044053e4606b48a7"
+    }
+   }
+  },
+  "f07": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "5fed21f1b9e1f1287f459deca31bc46d278f09317fcdccfc35badfa748288aab",
+   "retrieved": "2026-11-16T18:05:01+00:00",
+   "exposures": 392,
+   "listed": 401,
+   "off_patch": 9,
+   "by_det": {
+    "D1": 79,
+    "D2": 53,
+    "D3": 66,
+    "D4": 77,
+    "D5": 53,
+    "D6": 64
+   },
+   "by_coll": {
+    "spherex_dr1": 376,
+    "spherex_qr3": 16
+   },
+   "versions": [
+    "l2b-v27-2026-196",
+    "l2b-v27-2026-197",
+    "l2b-v27-2026-198",
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-206",
+    "l2b-v27-2026-207",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-244",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-267",
+    "l2b-v27-2026-268",
+    "l2b_retry-v27-2026-198"
+   ],
+   "mjd_range": [
+    60795.5646785,
+    61184.765983
+   ],
+   "d6_passes": [
+    21,
+    38,
+    5
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 22412,
+     "sha256": "60a79065be137a2a808065334a8c2877975962215f090269ca90a434f72ad012"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10427,
+     "sha256": "6bf5a31ab74c791a49cfeb330c71e97d7af496d9f4a83320ce2bddd73f2a59ef"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1467,
+     "sha256": "9d9e89bddc0bfd46a08244842a60503463bf76bc3694b86e14b08f3500daec3e"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 2377,
+     "sha256": "1d7ce5967d3a385662857e5a1748a81ec33e52af5fa4e2cbcb8a3969c85f78bb"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 132,
+     "sha256": "f36ad4290d4792664ae974e685c63783875fdfa821470065755b02c6c34a4d63"
+    }
+   }
+  },
+  "f08": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "e6f12615636777c0b3ba7287edd42d5baa960c8ce004bdc764b501a88e6374ef",
+   "retrieved": "2026-11-16T18:06:25+00:00",
+   "exposures": 648,
+   "listed": 669,
+   "off_patch": 21,
+   "by_det": {
+    "D1": 104,
+    "D2": 133,
+    "D3": 88,
+    "D4": 103,
+    "D5": 131,
+    "D6": 89
+   },
+   "by_coll": {
+    "spherex_dr1": 415,
+    "spherex_qr3": 233
+   },
+   "versions": [
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-202",
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-212",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-214",
+    "l2b-v27-2026-219",
+    "l2b-v27-2026-225",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-272",
+    "l2b-v27-2026-273",
+    "l2b-v27-2026-274",
+    "l2b-v27-2026-275",
+    "l2b-v27-2026-277"
+   ],
+   "mjd_range": [
+    60818.2314565,
+    61238.5754555
+   ],
+   "d6_passes": [
+    26,
+    33,
+    30
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 23371,
+     "sha256": "92eeaa539803ef8481e21a67c4f3eb3b8f1a4366b69209aa1296a028d23e14c8"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 11734,
+     "sha256": "621ce939bb0f20c392a0b560e9b1e2cbe8a89c6492eff852ee7f80071b5519a4"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 2213,
+     "sha256": "b2bc34d34936a3bea40dd4ec326cc9f86fe03eb5fdc566957e6a78ed4d942857"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 4017,
+     "sha256": "8397f87de1706cf58360850dea413bdb1ba65f75b2fc19f515f8821f1b888f6a"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 177,
+     "sha256": "46b4002c8d937fca83f0c8612c89251776df7fedd036f8ceb74fc3b22488a5db"
+    }
+   }
+  },
+  "f09": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "a6b4aed838ce72ce2b093a3b8034915c69f74746263359d422953330aaa385d8",
+   "retrieved": "2026-11-16T18:06:35+00:00",
+   "exposures": 482,
+   "listed": 504,
+   "off_patch": 22,
+   "by_det": {
+    "D1": 84,
+    "D2": 64,
+    "D3": 93,
+    "D4": 84,
+    "D5": 64,
+    "D6": 93
+   },
+   "by_coll": {
+    "spherex_dr1": 296,
+    "spherex_qr3": 186
+   },
+   "versions": [
+    "l2b-v27-2026-220",
+    "l2b-v27-2026-221",
+    "l2b-v27-2026-222",
+    "l2b-v27-2026-223",
+    "l2b-v27-2026-224",
+    "l2b-v27-2026-225",
+    "l2b-v27-2026-227",
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-229",
+    "l2b-v27-2026-231",
+    "l2b-v27-2026-232",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-254",
+    "l2b_retry-v27-2026-222",
+    "l2b_retry-v27-2026-223",
+    "l2b_retry-v27-2026-228"
+   ],
+   "mjd_range": [
+    60877.461146,
+    61288.592483500004
+   ],
+   "d6_passes": [
+    23,
+    29,
+    41
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 28371,
+     "sha256": "c934cd40e1239410dcf5999f75aa68a7af5f47f33dc3a33909e5670ad4f722ee"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 12416,
+     "sha256": "753bd95f897070e6fe757cd4625d831b1db09e9286d401e3c5f52278e1a35085"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 3673,
+     "sha256": "e6a5897f1d73c35a9ca48f4b7c67c870febed06cb970d8ab40091b3092cbfcce"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 6410,
+     "sha256": "3572f931c3586a58f8556eaed6aa144f1195facecc14623e57279c579865a3af"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 194,
+     "sha256": "d87c58fba1c3b669b11bd9dad0bdf212f4bcaa5a3cf9aa6fb601020e9672333a"
+    }
+   }
+  },
+  "f10": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "19b8a2ba00ced29241c1995a6ad4e1709ccbb09a18c6653a71c16d7dbeb52c32",
+   "retrieved": "2026-11-16T18:12:23+00:00",
+   "exposures": 554,
+   "listed": 569,
+   "off_patch": 15,
+   "by_det": {
+    "D1": 80,
+    "D2": 81,
+    "D3": 116,
+    "D4": 80,
+    "D5": 80,
+    "D6": 117
+   },
+   "by_coll": {
+    "spherex_dr1": 352,
+    "spherex_qr3": 202
+   },
+   "versions": [
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-202",
+    "l2b-v27-2026-210",
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-212",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-215",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-273",
+    "l2b-v27-2026-275",
+    "l2b_retry-v27-2026-199",
+    "l2b_retry-v27-2026-200",
+    "l2b_retry-v27-2026-269"
+   ],
+   "mjd_range": [
+    60815.701927,
+    61229.804602
+   ],
+   "d6_passes": [
+    32,
+    32,
+    53
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 23541,
+     "sha256": "8f386c4a5b59e25b6f4881e971a39264df710140471be1428f996bbccd899451"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 11313,
+     "sha256": "cb659be331b988663af5caef67785eb520b43c3018706f9e4b4fb37cadfd1b11"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1165,
+     "sha256": "84e6dc2763346b7b4e69598c900dfbb60500c1723bed7eda88a4f604de648864"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1136,
+     "sha256": "e91d8d8976ea1ef5e98b6a89933505de98a7aab260b012336a9fed7902e72f2e"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 351,
+     "sha256": "1ac1c6d95f28ad3fef4e9b0fdbc876121ad945a0aa62a95a55007c488ac38fa8"
+    }
+   }
+  },
+  "f11": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "f3376f3c76cb0b94e496c7ecd65a0593e164d0afe4aa3abed875dec2dadefadd",
+   "retrieved": "2026-11-16T18:21:33+00:00",
+   "exposures": 932,
+   "listed": 957,
+   "off_patch": 25,
+   "by_det": {
+    "D1": 168,
+    "D2": 193,
+    "D3": 112,
+    "D4": 161,
+    "D5": 187,
+    "D6": 111
+   },
+   "by_coll": {
+    "spherex_dr1": 627,
+    "spherex_qr3": 305
+   },
+   "versions": [
+    "l2b-v27-2026-197",
+    "l2b-v27-2026-198",
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-202",
+    "l2b-v27-2026-206",
+    "l2b-v27-2026-207",
+    "l2b-v27-2026-208",
+    "l2b-v27-2026-209",
+    "l2b-v27-2026-210",
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-212",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-214",
+    "l2b-v27-2026-215",
+    "l2b-v27-2026-216",
+    "l2b-v27-2026-217",
+    "l2b-v27-2026-218",
+    "l2b-v27-2026-219",
+    "l2b-v27-2026-224",
+    "l2b-v27-2026-244",
+    "l2b-v27-2026-267",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-272",
+    "l2b-v27-2026-273",
+    "l2b-v27-2026-274",
+    "l2b-v27-2026-275",
+    "l2b-v27-2026-276",
+    "l2b-v27-2026-277",
+    "l2b_retry-v27-2026-198",
+    "l2b_retry-v27-2026-269",
+    "l2b_retry-v27-2026-271"
+   ],
+   "mjd_range": [
+    60802.000625,
+    61250.1174435
+   ],
+   "d6_passes": [
+    36,
+    43,
+    32
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 44403,
+     "sha256": "764fd21f4baaf06bf1d8ae3b0a6e0746135fc5ff1311a65eee85a1b85e794fe1"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 15258,
+     "sha256": "6f2c14ea10f113c5eedd402b302b15b62bf01c8deebd99744e8878fa705514bd"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 8269,
+     "sha256": "531d084675d6ff3b41c5f5413b5ecbe1b0b109aec015eb51678680eaa2e34a86"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 15045,
+     "sha256": "1a96da4c3be29d45a5b07ba56088973d86580d4c9ef7abced8626fba817969f6"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 256,
+     "sha256": "4720eb7b3fcd71dae5c375c0251be3547d572a20e1170075217df8ba3013923f"
+    }
+   }
+  },
+  "f12": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "246f7e2c9930b3497b1e74c7b62963e1699b1e60f21bf8760d846458bd938d0d",
+   "retrieved": "2026-11-16T18:13:02+00:00",
+   "exposures": 419,
+   "listed": 431,
+   "off_patch": 12,
+   "by_det": {
+    "D1": 71,
+    "D2": 72,
+    "D3": 66,
+    "D4": 71,
+    "D5": 73,
+    "D6": 66
+   },
+   "by_coll": {
+    "spherex_dr1": 385,
+    "spherex_qr3": 34
+   },
+   "versions": [
+    "l2b-v27-2026-196",
+    "l2b-v27-2026-197",
+    "l2b-v27-2026-198",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-208",
+    "l2b-v27-2026-209",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-267",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b_retry-v27-2026-210"
+   ],
+   "mjd_range": [
+    60790.364709,
+    61187.584852500004
+   ],
+   "d6_passes": [
+    22,
+    23,
+    21
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 20278,
+     "sha256": "5feff841d854151444fb2ab7e92fd4848296df0c41e4ce194b8eaacba4bf093c"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 9728,
+     "sha256": "528ca4e3fed1d6a87c3b5f7219016ccb413677a17662467a08ea07ed8d7bd331"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 955,
+     "sha256": "bd12609fafff8195cdba4b2786d3d20c4dddd19c77a78fef168a19e0baed68f5"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1106,
+     "sha256": "3de5c0d5a3ed7af9dcb8e983030b7fb933955e46016ff49930d4abb100d514b5"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 189,
+     "sha256": "4bfb5131a9684e3fd44f87a51f8737babe8c62494f593bfb26781534afbb894a"
+    }
+   }
+  },
+  "f13": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "3606022a3a3b8f6486b5f29d0fb5e9947ca2ca04b9c7fb85e97c594535991856",
+   "retrieved": "2026-11-16T18:21:46+00:00",
+   "exposures": 690,
+   "listed": 697,
+   "off_patch": 7,
+   "by_det": {
+    "D1": 118,
+    "D2": 139,
+    "D3": 89,
+    "D4": 116,
+    "D5": 138,
+    "D6": 90
+   },
+   "by_coll": {
+    "spherex_dr1": 465,
+    "spherex_qr3": 225
+   },
+   "versions": [
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-208",
+    "l2b-v27-2026-209",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-272",
+    "l2b-v27-2026-273",
+    "l2b-v27-2026-275",
+    "l2b_retry-v27-2026-208",
+    "l2b_retry-v27-2026-209",
+    "l2b_retry-v27-2026-210"
+   ],
+   "mjd_range": [
+    60822.3369655,
+    61229.7747925
+   ],
+   "d6_passes": [
+    22,
+    44,
+    24
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 20447,
+     "sha256": "032d265621b0e2ae0b04fefda71cabe469b8a078700ce164545747bf06d9d633"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 9536,
+     "sha256": "06b459030cd072a9dd5adee3a7ab7ac99424156d5a110ee3192098806c4b0b97"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1203,
+     "sha256": "00fa5b93582139ffbac2f51d83458c0afc5db30bdd86e1da41703b4de7082820"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1496,
+     "sha256": "167af57b4d421a21d58f87123bef2935b385cc04c8a2b7e4194b45edccac4e05"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 141,
+     "sha256": "68e3f78f7f42cc206a8fe7d7ae038dbcfba3ca01693598ca88324ec1100c8ab5"
+    }
+   }
+  },
+  "f14": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "989e733abb1c2a7c13f9b7e35535769a228648f2aa2ddd12419a2755fa389003",
+   "retrieved": "2026-11-16T18:21:34+00:00",
+   "exposures": 524,
+   "listed": 535,
+   "off_patch": 11,
+   "by_det": {
+    "D1": 79,
+    "D2": 101,
+    "D3": 82,
+    "D4": 78,
+    "D5": 101,
+    "D6": 83
+   },
+   "by_coll": {
+    "spherex_dr1": 362,
+    "spherex_qr3": 162
+   },
+   "versions": [
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-211",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-273",
+    "l2b_retry-v27-2026-199",
+    "l2b_retry-v27-2026-211"
+   ],
+   "mjd_range": [
+    60815.232436,
+    61216.160434
+   ],
+   "d6_passes": [
+    35,
+    22,
+    26
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 19591,
+     "sha256": "ca2ecc0941610268bcf2261fec1f893538b2e453b5047c14d80d05432fce3e71"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 9193,
+     "sha256": "5ab44deba4ff92f973d0ef11eece71c6050adc901f5a5fc2c4d1259aa709f8ca"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 861,
+     "sha256": "d62c41486286064ee8b860ff943cfbd71f17a74c1a025bf9123fafbbf3cbd3bf"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1297,
+     "sha256": "770bb036dd5bdaf79c263724b8294b22148c0fa30f14560fdbcb995d01867dd1"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 386,
+     "sha256": "75a938471dafe90891a2d4c208a1b2a34bbda1d7ebe6991e8e983c0acaa5ffb7"
+    }
+   }
+  },
+  "f15": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "995f581f5f69f18e45ad88c4b27217cfa9bafc049b880a1b62bc92e6d6fbe34f",
+   "retrieved": "2026-11-16T18:29:55+00:00",
+   "exposures": 506,
+   "listed": 522,
+   "off_patch": 16,
+   "by_det": {
+    "D1": 79,
+    "D2": 65,
+    "D3": 107,
+    "D4": 84,
+    "D5": 65,
+    "D6": 106
+   },
+   "by_coll": {
+    "spherex_dr1": 358,
+    "spherex_qr3": 148
+   },
+   "versions": [
+    "l2b-v27-2026-196",
+    "l2b-v27-2026-197",
+    "l2b-v27-2026-198",
+    "l2b-v27-2026-199",
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-209",
+    "l2b-v27-2026-210",
+    "l2b-v27-2026-267",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-269",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-272",
+    "l2b_retry-v27-2026-198"
+   ],
+   "mjd_range": [
+    60796.274014,
+    61206.993139
+   ],
+   "d6_passes": [
+    52,
+    23,
+    31
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 22862,
+     "sha256": "92588e9b76d2b2a01dd6a705b21f186dfe6b4d5ba76baff6ce50149bcfcbf019"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10155,
+     "sha256": "41f8c8c448a534ad0e20c2a3db1fdf35df95fe2584998fbccce87bcf13981b9e"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1015,
+     "sha256": "e1b74c9659e71d9e9abbfccb919ce455916faecdd1d79965baf68d0a133f5b3e"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 968,
+     "sha256": "394dddca3f9e793d15abbbb4a7973925b6b72a4a9945749f305847cb666e88ef"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 345,
+     "sha256": "77f207efca3a5032943ba3c8ccfd505b25dd008bfc4e661be243e60fb00a5acc"
+    }
+   }
+  },
+  "f16": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "989a8f43b0cc7df8e1908bf3a1c78172f87621bf968727c6d96efc198413dc43",
+   "retrieved": "2026-11-16T18:29:25+00:00",
+   "exposures": 397,
+   "listed": 415,
+   "off_patch": 18,
+   "by_det": {
+    "D1": 66,
+    "D2": 65,
+    "D3": 67,
+    "D4": 66,
+    "D5": 66,
+    "D6": 67
+   },
+   "by_coll": {
+    "spherex_dr1": 264,
+    "spherex_qr3": 133
+   },
+   "versions": [
+    "l2b-v27-2026-218",
+    "l2b-v27-2026-226",
+    "l2b-v27-2026-227",
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-229",
+    "l2b-v27-2026-230",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-246"
+   ],
+   "mjd_range": [
+    60907.660102,
+    61280.005569
+   ],
+   "d6_passes": [
+    22,
+    22,
+    23
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 21738,
+     "sha256": "9bcd5da2e3f01bc86a9bd65780d05a11fe70d19880278185d19469165f2c4988"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 9923,
+     "sha256": "e1f988586a436d2815d041d4f381f82bae67cc57a47701885c3ef6462355a977"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 2300,
+     "sha256": "f1f4586d775727925c5fc524e68ed0b3a50e9a148b529139467643c76b058f6b"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 2667,
+     "sha256": "8467da456e5865d13f8b72dbae2d1c74b4aefd32aee1b0376257566396f14335"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 88,
+     "sha256": "929c26806eb8a99e3f7f6a7cd71ba048f7ea9484a28f24a4892d55dde5d0601a"
+    }
+   }
+  },
+  "f17": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "9fe019df99c506ccbf31656762eec273826164325f80c5eb4760651ab4e02dc9",
+   "retrieved": "2026-11-16T18:30:10+00:00",
+   "exposures": 561,
+   "listed": 565,
+   "off_patch": 4,
+   "by_det": {
+    "D1": 121,
+    "D2": 68,
+    "D3": 92,
+    "D4": 119,
+    "D5": 67,
+    "D6": 94
+   },
+   "by_coll": {
+    "spherex_dr1": 362,
+    "spherex_qr3": 199
+   },
+   "versions": [
+    "l2b-v27-2026-200",
+    "l2b-v27-2026-201",
+    "l2b-v27-2026-202",
+    "l2b-v27-2026-208",
+    "l2b-v27-2026-209",
+    "l2b-v27-2026-210",
+    "l2b-v27-2026-213",
+    "l2b-v27-2026-270",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-272",
+    "l2b-v27-2026-273",
+    "l2b-v27-2026-275",
+    "l2b_retry-v27-2026-200",
+    "l2b_retry-v27-2026-271"
+   ],
+   "mjd_range": [
+    60826.612254,
+    61229.161742
+   ],
+   "d6_passes": [
+    22,
+    48,
+    24
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 20360,
+     "sha256": "35ff86a852106f93da86edac5bb481840974dbd7307bd88b80bef81a5f1626cf"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 9837,
+     "sha256": "0276ce83f9e7ed03e28b6b2b9747fa8a6679c74f34fb2a1cb3eff190b57efaad"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 1011,
+     "sha256": "07de513d93911c15fa46ffcbf2fcca15408fd3081ecd79fbe517e43bfb5d41e8"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 1160,
+     "sha256": "27b8970bc21612b436f6cc928871931594d3ef74be92b646bacee64a64f070c0"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 230,
+     "sha256": "78b60ea9bb2766652af7073f89da720ea276bcbbc6a16535a8b72b1372f0da0e"
+    }
+   }
+  },
+  "f18": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "3c0dd490aa70b917a75cb114fec21c3f38469463fdf755e8721caa94fd5532e4",
+   "retrieved": "2026-11-16T18:37:55+00:00",
+   "exposures": 568,
+   "listed": 600,
+   "off_patch": 32,
+   "by_det": {
+    "D1": 107,
+    "D2": 73,
+    "D3": 105,
+    "D4": 106,
+    "D5": 73,
+    "D6": 104
+   },
+   "by_coll": {
+    "spherex_dr1": 370,
+    "spherex_qr3": 198
+   },
+   "versions": [
+    "l2b-v27-2026-228",
+    "l2b-v27-2026-229",
+    "l2b-v27-2026-231",
+    "l2b-v27-2026-232",
+    "l2b-v27-2026-234",
+    "l2b-v27-2026-235",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-252",
+    "l2b-v27-2026-254",
+    "l2b-v27-2026-255",
+    "l2b-v27-2026-259",
+    "l2b-v27-2026-285",
+    "l2b_retry-v27-2026-254",
+    "l2b_retry-v27-2026-256",
+    "l2b_retry-v27-2026-257"
+   ],
+   "mjd_range": [
+    60917.0311065,
+    61317.539438
+   ],
+   "d6_passes": [
+    35,
+    31,
+    38
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 25931,
+     "sha256": "0ce61b5cba9455badc487c97f7080c17088247eee83a5989979e515884f168a8"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 10703,
+     "sha256": "4f76472ac6b597bb728c521506a363d25cf4d56ff342b74eb26eede8a2791dd4"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 2975,
+     "sha256": "17d06d60ea693f8d37f5321f3d7a59c16d911296738a105a4b5f6576b31a5ca1"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 4163,
+     "sha256": "7bb566151f16862967ce44b34efb6b405b71e1b8e65f52602f6eb1aeaec3e6ef"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 111,
+     "sha256": "34988d8f9b7bbdddd93b6d36d852356b4e9e819aa4862027284429f7634e9912"
+    }
+   }
+  },
+  "f19": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "496b743d854af1a5e6162e5cac59d95ffa6a66499302309a94ae76735d3baad0",
+   "retrieved": "2026-11-16T18:43:32+00:00",
+   "exposures": 766,
+   "listed": 783,
+   "off_patch": 17,
+   "by_det": {
+    "D1": 121,
+    "D2": 142,
+    "D3": 126,
+    "D4": 120,
+    "D5": 137,
+    "D6": 120
+   },
+   "by_coll": {
+    "spherex_dr1": 583,
+    "spherex_qr3": 183
+   },
+   "versions": [
+    "l2b-v27-2026-232",
+    "l2b-v27-2026-234",
+    "l2b-v27-2026-235",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-238",
+    "l2b-v27-2026-239",
+    "l2b-v27-2026-240",
+    "l2b-v27-2026-241",
+    "l2b-v27-2026-242",
+    "l2b-v27-2026-243",
+    "l2b-v27-2026-244",
+    "l2b-v27-2026-245",
+    "l2b-v27-2026-246",
+    "l2b-v27-2026-252",
+    "l2b-v27-2026-254",
+    "l2b-v27-2026-255",
+    "l2b-v27-2026-259",
+    "l2b-v27-2026-261",
+    "l2b-v27-2026-264",
+    "l2b-v27-2026-285",
+    "l2b_retry-v27-2026-237",
+    "l2b_retry-v27-2026-261",
+    "l2b_retry-v27-2026-265"
+   ],
+   "mjd_range": [
+    60920.545988,
+    61317.922435500004
+   ],
+   "d6_passes": [
+    31,
+    65,
+    24
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 29830,
+     "sha256": "dfb35e1a89b7ef1a61a1adc3b169f3cad5e7dee9d91e0245d840ab766b93ba0d"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 13337,
+     "sha256": "64288eec019bee7a4381a12edf7958866c1f7ce074ad6d87099e9b596d7009aa"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 3603,
+     "sha256": "705f6f80368c69c4481d2aee2b0816e427455179ea724f3c5729ebe8e774b9cb"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 6203,
+     "sha256": "a72a7e202afc410ab79e661893b1809de382efdad08030cff9e0c5ed754eead0"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 109,
+     "sha256": "35a2d601a6d1fa468895d872b0130071c46f0b5ebaee2e43158fc6f28c788562"
+    }
+   }
+  },
+  "f20": {
+   "set": "final",
+   "status": "complete",
+   "manifest_sha256": "3375a23c9aa8f1b20affc71ca4e72f1fb77ec2e75099aad063f306e3d7ede370",
+   "retrieved": "2026-11-16T18:38:57+00:00",
+   "exposures": 543,
+   "listed": 584,
+   "off_patch": 41,
+   "by_det": {
+    "D1": 99,
+    "D2": 97,
+    "D3": 76,
+    "D4": 99,
+    "D5": 97,
+    "D6": 75
+   },
+   "by_coll": {
+    "spherex_dr1": 397,
+    "spherex_qr3": 146
+   },
+   "versions": [
+    "l2b-v27-2026-206",
+    "l2b-v27-2026-234",
+    "l2b-v27-2026-235",
+    "l2b-v27-2026-236",
+    "l2b-v27-2026-237",
+    "l2b-v27-2026-238",
+    "l2b-v27-2026-239",
+    "l2b-v27-2026-241",
+    "l2b-v27-2026-242",
+    "l2b-v27-2026-268",
+    "l2b-v27-2026-271",
+    "l2b-v27-2026-276",
+    "l2b_retry-v27-2026-237",
+    "l2b_retry-v27-2026-238",
+    "l2b_retry-v27-2026-272"
+   ],
+   "mjd_range": [
+    60942.2386465,
+    61314.489661
+   ],
+   "d6_passes": [
+    32,
+    33,
+    10
+   ],
+   "catalogues": {
+    "catwise": {
+     "source": "CatWISE2020 (IRSA catwise_2020)",
+     "rows": 29816,
+     "sha256": "468261c69eb874e28581189dc1877682a2e1471da9d3a1a572a0260c30ca323f"
+    },
+    "allwise": {
+     "source": "AllWISE source catalog (IRSA allwise_p3as_psd)",
+     "rows": 12065,
+     "sha256": "ea3ba4e89aaf32d0135c8bbd1c6e9fe491fd34b7faa62b62d9add5b544cb00d2"
+    },
+    "twomass": {
+     "source": "2MASS PSC (IRSA fp_psc)",
+     "rows": 4488,
+     "sha256": "48f569495227ea3212fe9c92d063799f930fa9333be5a53771e11c860bf767b1"
+    },
+    "gaia": {
+     "source": "Gaia DR3 via gaia.aip.de gaiadr3.gaia_source",
+     "rows": 7589,
+     "sha256": "4407c1aa81014a9495f546c1c4f4b831ede7d67969b4705f48068d6541d909b0"
+    },
+    "simbad": {
+     "source": "SIMBAD via simbad.harvard.edu (identity only, read after scoring)",
+     "rows": 194,
+     "sha256": "1836f4d8d33ce00db27d3c849b76720a9889a62b659329745f52dd58fef00992"
+    }
+   }
+  }
+ },
+ "epsf": {
+  "D1": {
+   "key": "dr1/level2/2025W19_1B/l2b-v27-2026-197/1/level2_2025W19_1B_0116_1D1_spx_l2b-v27-2026-197.fits",
+   "calibration": [
+    "Calibration source file: epsf_1_20260507.fits"
+   ],
+   "sha256": "abc587e1861bff587eb84df7321c1555a3294be75328a1c98b4aceb365a355cb"
+  },
+  "D2": {
+   "key": "dr1/level2/2025W19_1B/l2b-v27-2026-197/2/level2_2025W19_1B_0116_1D2_spx_l2b-v27-2026-197.fits",
+   "calibration": [
+    "Calibration source file: epsf_2_20260507.fits"
+   ],
+   "sha256": "0ec54594c468e22c683ba019cc8cc0eb1592ac8c67199e1c7c0705fe252e8fe4"
+  },
+  "D3": {
+   "key": "dr1/level2/2025W19_1B/l2b-v27-2026-197/3/level2_2025W19_1B_0116_1D3_spx_l2b-v27-2026-197.fits",
+   "calibration": [],
+   "sha256": "74f8f96d32ad7a203f35d35788982602cfe01406e34e5390e49932ad08a0fb83"
+  },
+  "D4": {
+   "key": "dr1/level2/2025W19_1B/l2b-v27-2026-197/4/level2_2025W19_1B_0116_1D4_spx_l2b-v27-2026-197.fits",
+   "calibration": [
+    "Calibration source file: epsf_4_20260507.fits"
+   ],
+   "sha256": "e119dba3ef64963f87cb3e0f9f7461f7c3df18eae7639b38e3dae1bbd0166133"
+  },
+  "D5": {
+   "key": "dr1/level2/2025W19_1B/l2b-v27-2026-197/5/level2_2025W19_1B_0116_1D5_spx_l2b-v27-2026-197.fits",
+   "calibration": [
+    "Calibration source file: epsf_5_20260507.fits"
+   ],
+   "sha256": "eb43ad90e126f9eaf4937c2851d65de31824c5c750dff556970ead1e779c365a"
+  },
+  "D6": {
+   "key": "dr1/level2/2025W19_1B/l2b-v27-2026-197/6/level2_2025W19_1B_0116_1D6_spx_l2b-v27-2026-197.fits",
+   "calibration": [
+    "Calibration source file: epsf_6_20260507.fits"
+   ],
+   "sha256": "b1dacbfcc1ce28d0a89d087580eba64471ef58409506bd5a484a142e22cf7787"
+  }
+ },
+ "ultracoolsheet": {
+  "UltracoolSheet-Main.csv": "2307303072ebf729be6e7af6ec67c0a9feed6c2ab6f0adb35444bfab5724a184"
+ }
+}
