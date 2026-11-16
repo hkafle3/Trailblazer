@@ -92,10 +92,10 @@ async function rows(e, y0, y1, signal) {
 
 // one exposure -> GRID x GRID normalized frame (FITS row order, bottom row first), bilinear like reproject_interp:
 // raw, and clean, where a pixel that counts (any of the four with weight, as cutout.js readCells) has a MASK bit is NaN.
-// MASK is cutout.js BAD (bake/comet_spectrum.py's: 0 TRANSIENT, 1 OVERFLOW, 2 SUR_ERROR, 6 NONFUNC, 9 MISSING_DATA,
-// 10 HOT, 11 COLD, 15 NONLINEAR, 17 PERSIST) plus artefacts that look like sources: 25 STREAK, 27 SNOWBALL, 28 HALO,
+// MASK is cutout.js BAD: 0 TRANSIENT, 1 OVERFLOW, 2 SUR_ERROR, 6 NONFUNC, 9 MISSING_DATA,
+// 10 HOT, 11 COLD, 15 NONLINEAR, 17 PERSIST, plus artefacts that look like sources: 25 STREAK, 27 SNOWBALL, 28 HALO,
 // 29 SAT_HALO (names from the MSKN cards of the FLAGS header). Never 19 OUTLIER (a new comet is one) or 21 SOURCE.
-const MASK = BAD | [25, 27, 28, 29].reduce((m, b) => m | (1 << b), 0);
+const MASK = BAD;
 async function reproject(e, ra, dec, signal) {
   signal.throwIfAborted();   // a replaced build's queued exposures stop here, before their 20736 sky positions
   const map = [];
@@ -124,7 +124,7 @@ async function reproject(e, ra, dec, signal) {
 // A visit's frame from its exposures (normalized: the sky's noise is about 1), pixel by pixel.
 // A flash in one exposure (2026W01_2A_0524_3 at RA 7.6335, Dec +15.7080: 170 times the sky, every cell of it flagged
 // TRANSIENT and SUR_ERROR) must not survive, and a moving object must not be erased:
-// - the values whose quality bits are clean when 2 or more are, else all of them: a bright star is flagged TRANSIENT and
+// - the values whose quality bits are clean when any are, else all of them: a bright star is flagged TRANSIENT and
 //   SUR_ERROR across its whole image in every exposure (Barnard's Star), so a flag alone cannot mean "gap";
 // - 3 or more: their median. A flash in one is the top value and drops out. Known limit, as before this rule: a mover
 //   in only one of them drops out too.
@@ -143,7 +143,7 @@ async function reproject(e, ra, dec, signal) {
 const CLIP = 4, SAME = 10 / 1440;
 function stackOf(arrs) {
   return new Float32Array(GRID * GRID).map((_, k) => {
-    const c = arrs.filter(a => Number.isFinite(a.clean[k])), use = c.length >= 2 ? c : arrs.filter(a => Number.isFinite(a.raw[k]));
+    const c = arrs.filter(a => Number.isFinite(a.clean[k])), use = c.length ? c : arrs.filter(a => Number.isFinite(a.raw[k]));
     const val = a => use === c ? a.clean[k] : a.raw[k];
     if (use.length !== 2) return median(use.map(val));
     const [lo, hi] = val(use[0]) <= val(use[1]) ? use : [use[1], use[0]];

@@ -235,6 +235,8 @@ async def main():
         await touch("touchStart", [(0, cx, cy)])
         for k in range(1, 6): await touch("touchMove", [(0, cx - 20 * k, cy)])
         await touch("touchStart", [(0, cx - 100, cy), (1, cx + 150, cy + 100)])
+        await touch("touchMove", [(0, cx - 100, cy), (1, cx + 151, cy + 100)])
+        check(await pg.evaluate("__lapse.state.fov") >= 5.9, "fingers: a 1 px move after the second finger lands does not jump the zoom")
         for k in range(1, 6): await touch("touchMove", [(0, cx - 100, cy), (1, cx + 150 + 16 * k, cy + 100 + 16 * k)])
         await touch("touchEnd"); await pg.wait_for_timeout(500)
         fov, pinched = await pg.evaluate("__lapse.state.fov"), await view()

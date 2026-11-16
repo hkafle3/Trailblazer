@@ -32,7 +32,7 @@ async function gator(cat, ra, dec, r, cols) {
     .sort((a, b) => +a.dist - +b.dist);
 }
 
-let fail = 0;
+let fail = 0, judged = 0;
 const table = [];
 for (const [name, ra, dec] of STARS) {
   const tm = await gator('fp_psc', ra, dec, ISO, 'ra,dec,j_m,h_m,k_m,ph_qual');
@@ -48,17 +48,19 @@ for (const [name, ra, dec] of STARS) {
   const r = await spectrum(ra, dec, { api: BASE, maps }).catch(e => { console.log(`SKIP ${name}: ${e.message}`); return null; });
   if (!r) continue;
   const row = [name, `neighbours ${(100 * others).toFixed(1)}%${bright.length ? `, Ks ${(+bright[0].k_m).toFixed(1)} star ${Math.round(+bright[0].dist)}" away (not judged)` : others < 0.1 ? '' : ' (crowded: not judged)'}`];
+  const isolated = others < 0.1 && !bright.length;
+  let finite = true;
   for (const [b, lam, zp] of BANDS) {
     const near = r.points.filter(p => !p.doubt && Math.abs(p.lam / lam - 1) <= 0.04).map(p => p.flux).sort((x, y) => x - y);
     const ours = near.length ? near[near.length >> 1] : NaN, theirs = cat[b] ? zp * 1000 * 10 ** (-0.4 * +cat[b]) : NaN;
     const ratio = ours / theirs, ok = Math.abs(ratio - 1) <= 0.3;
-    const judged = others < 0.1 && !bright.length;   // isolated: 2MASS neighbours within 25" add under 10% of its Ks light
-    if (judged && Number.isFinite(ratio) && !ok) fail++;
-    row.push(`${b} ${ours.toFixed(1)} vs ${theirs.toFixed(1)} mJy (${Number.isFinite(ratio) ? ratio.toFixed(2) : 'n/a'}, n=${near.length})${judged && Number.isFinite(ratio) && !ok ? ' FAIL' : ''}`);
+    finite &&= Number.isFinite(ratio);
+    if (isolated && !ok) fail++;
+    row.push(`${b} ${ours.toFixed(1)} vs ${theirs.toFixed(1)} mJy (${Number.isFinite(ratio) ? ratio.toFixed(2) : 'n/a'}, n=${near.length})${isolated && !ok ? ' FAIL' : ''}`);
   }
+  if (isolated && finite) judged++;
   table.push(row);
   console.log(row.join(' | '));
 }
-const judged = table.filter(r => !r[1].includes('not judged')).length;
-console.log(fail ? `FAIL ${fail} band(s) of isolated stars more than 30% off` : `PASS every band within 30% for the ${judged} isolated stars`);
+console.log(fail ? `FAIL ${fail} band(s) of isolated stars missing or more than 30% off` : judged < 3 ? `FAIL only ${judged} isolated stars with finite comparisons (need 3)` : `PASS every band within 30% for the ${judged} isolated stars`);
 process.exit(fail || judged < 3 ? 1 : 0);

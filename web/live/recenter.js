@@ -79,8 +79,8 @@ export function recenterable(el, { scale, moved, commit, idle = () => {}, zoom =
     el.setPointerCapture(e.pointerId);
   });
   el.addEventListener('pointermove', e => {
+    if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
     if (spread && fingers.has(e.pointerId)) {
-      fingers.set(e.pointerId, [e.clientX, e.clientY]);
       const d = apart(); if (d > 0) { zoom(spread / d); spread = d; }
       return;
     }

@@ -44,10 +44,12 @@ export async function spectrum(ra, dec, { api = '', maps, signal, progress = () 
   done = 0;
   const want = chans.filter(x => x.todo.length).length;
   await pool(chans, 6, async ({ c, todo }) => {
-    let why = 'no exposure at this wavelength here';
-    for (const e of todo.slice(0, 2)) {   // the best one, and the next when it cannot be measured
-      const m = await starLight(e, ...at(e.t), signal).catch(err => { if (signal?.aborted) throw err; return { gap: `could not read the exposure (${err.message})` }; });
-      if (m.gap) { why = m.gap; continue; }
+    let why = 'no exposure at this wavelength here', gapsTried = 0;
+    for (const e of todo.slice(0, 4)) {   // at most two measurement gaps; download errors only count toward the four attempts
+      let m;
+      try { m = await starLight(e, ...at(e.t), signal); }
+      catch (err) { if (signal?.aborted) throw err; why = `could not read the exposure (${err.message})`; continue; }
+      if (m.gap) { why = m.gap; if (++gapsTried === 2) break; continue; }
       points.push({ lam: e.lam, bw: e.bw, det: e.det, ch: c.n + 1, flux: m.flux * MJY, err: m.noise * MJY, doubt: m.doubt, obs: e.obs, t: e.t, x: m.x, y: m.y });
       why = null; break;
     }

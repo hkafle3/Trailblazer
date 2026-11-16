@@ -23,8 +23,8 @@ const median = a => { const s = a.filter(Number.isFinite).sort((x, y) => x - y);
 // ---------- measuring: the spot's light now minus the same spot's light when the comet was elsewhere ----------
 // Pixels whose quality bits say not to trust them are left out everywhere: the circle, the sky ring and the reference
 // photos. The bits are bake/comet_spectrum.py's BAD (transient, overflow, saturated, nonlinear, hot, cold, nonfunctional,
-// persistence, missing data and the like).
-export const BAD = [0, 1, 2, 6, 9, 10, 11, 15, 17].reduce((m, b) => m | (1 << b), 0);
+// persistence, missing data and the like), plus streak, snowball, halo and saturated halo artifacts.
+export const BAD = [0, 1, 2, 6, 9, 10, 11, 15, 17, 25, 27, 28, 29].reduce((m, b) => m | (1 << b), 0);
 export const mask = (v, flag) => (flag & BAD ? NaN : v);
 const HALF = R_OUT + 1, W = 2 * HALF + 1;   // the measuring window: W x W of the photo's own pixels about the spot
 
@@ -96,7 +96,7 @@ export function diffMeasure(t, refs, cx, cy) {
 // flagged or missing pixels in the circle count as the circle's average, and the noise is the VARIANCE of the circle's
 // pixels plus the error of the sky level. Returns { flux, noise } in image units (MJy/sr summed over pixels), or
 // { gap } with the reason when the circle or the ring is too damaged to measure. doubt: why the value may be off.
-const BIT_NAMES = { 0: 'transient', 1: 'overflow (saturated)', 2: 'onboard processing error', 6: 'dead', 9: 'missing data', 10: 'hot', 11: 'cold', 15: 'nonlinear', 17: 'persistence' };
+const BIT_NAMES = { 0: 'transient', 1: 'overflow (saturated)', 2: 'onboard processing error', 6: 'dead', 9: 'missing data', 10: 'hot', 11: 'cold', 15: 'nonlinear', 17: 'persistence', 25: 'streak', 27: 'snowball', 28: 'halo', 29: 'saturated halo' };
 const bitsOf = f => Object.keys(BIT_NAMES).filter(b => f & (1 << b)).map(b => BIT_NAMES[b]);
 export function starMeasure(t, { flag, var: vr }, cx, cy) {
   const ap = [], ring = [], near = [];

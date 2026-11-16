@@ -277,7 +277,8 @@ function knownPhotos(c, picks) {
       : `SPHEREx could not see it in ${faint < n ? `${faint} of ${n} visits` : n === 1 ? 'this visit' : 'any visit'}${ms.length ? ` (JPL magnitude ${lo === hi ? lo : `${lo} to ${hi}`})` : ''}. The ring shows where JPL says it was.`;
     // the player opens on the clearest photo: the highest SNR where it is seen, else where JPL has it brightest
     const best = (v, f) => items.reduce((b, it) => (it.fig.dataset.verdict === v && (b < 0 || f(it) > f(items[b])) ? items.indexOf(it) : b), -1);
-    pl.open(seen ? best('seen', it => +it.fig.dataset.snr) : best('faint', it => -(it.mag ?? 99)));
+    const first = seen ? best('seen', it => +it.fig.dataset.snr) : best('faint', it => -(it.mag ?? 99));
+    pl.open(first < 0 ? items.findIndex(it => it.fig.dataset.verdict !== 'error') : first);
   }).observe(panel);
 }
 
