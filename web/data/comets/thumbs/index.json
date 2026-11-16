@@ -1,1 +1,68 @@
-{}
+{
+ "161P/Hartley-IRAS": {
+  "file": "161p-hartley-iras.png",
+  "snr": 13.5,
+  "obs": "2026W32_2A_0181_1",
+  "day": 470.2328
+ },
+ "235P/LINEAR": {
+  "file": "235p-linear.png",
+  "snr": 59.8,
+  "obs": "2026W09_2A_0108_1",
+  "day": 309.0055
+ },
+ "240P/NEAT": {
+  "file": "240p-neat.png",
+  "snr": 56.1,
+  "obs": "2025W31_1A_0394_3",
+  "day": 97.0605
+ },
+ "240P/NEAT-B": {
+  "file": "240p-neat-b.png",
+  "snr": 15.1,
+  "obs": "2025W31_1A_0394_4",
+  "day": 97.0619
+ },
+ "302P/Lemmon-PANSTARRS": {
+  "file": "302p-lemmon-panstarrs.png",
+  "snr": 8.7,
+  "obs": "2025W27_1A_0266_2",
+  "day": 68.3245
+ },
+ "47P/Ashbrook-Jackson": {
+  "file": "47p-ashbrook-jackson.png",
+  "snr": 7.9,
+  "obs": "2025W47_2A_0553_2",
+  "day": 213.0299
+ },
+ "493P/LONEOS": {
+  "file": "493p-loneos.png",
+  "snr": 6.5,
+  "obs": "2026W08_1A_0321_4",
+  "day": 299.6638
+ },
+ "C/2021 G2 (ATLAS)": {
+  "file": "c-2021-g2-atlas.png",
+  "snr": 55.9,
+  "obs": "2025W28_2A_0093_4",
+  "day": 78.0038
+ },
+ "C/2021 S3 (PANSTARRS)": {
+  "file": "c-2021-s3-panstarrs.png",
+  "snr": 5.3,
+  "obs": "2025W26_2A_0673_2",
+  "day": 66.9746
+ },
+ "C/2022 E2 (ATLAS)": {
+  "file": "c-2022-e2-atlas.png",
+  "snr": 15.4,
+  "obs": "2025W31_1A_0112_2",
+  "day": 95.5775
+ },
+ "C/2022 N2 (PANSTARRS)": {
+  "file": "c-2022-n2-panstarrs.png",
+  "snr": 41.6,
+  "obs": "2025W34_1B_0087_1",
+  "day": 116.4224
+ }
+}
