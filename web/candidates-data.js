@@ -30,8 +30,10 @@ export function lapseUrl(c) {
 }
 export const photos = c => `${c.checks.n_photos} of ${c.checks.n_total} photos`;
 export function motion(c) {
-  const r = c.track?.rate_arcsec_hr, d = c.track?.distance_guess;
-  return [r != null ? `${r < 10 ? r.toFixed(1) : Math.round(r)}″/hr` : null, d].filter(Boolean).join(' · ') || 'No motion measured';
+  // Cold slow movers report per-year motion (their per-hour rate rounds to 0.0).
+  const y = c.checks?.motion_arcsec_yr, r = c.track?.rate_arcsec_hr, d = c.track?.distance_guess;
+  const speed = y != null ? `${y.toFixed(1)}″/yr` : r != null ? `${r < 10 ? r.toFixed(1) : Math.round(r)}″/hr` : null;
+  return [speed, d].filter(Boolean).join(' · ') || 'No motion measured';
 }
 
 // One Turnstile widget per page (interaction-only: unseen unless Cloudflare asks); each vote spends its token.
