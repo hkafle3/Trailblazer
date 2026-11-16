@@ -64,6 +64,6 @@ async def main():
     TRIED.write_text(json.dumps(tally, indent=1))
     (OUT / "index.json").write_text(json.dumps(dict(sorted(index.items())), indent=1) + "\n")
     if missed := [c for c in todo if c not in tried]: print("FAILED (run again):", missed)
-    print(f"{len(index)} of {len(todo)} comets seen: thumbnails in {OUT}")
+    print(f"{len(todo)} comets measured, {len([c for c in todo if c in index])} seen; {len(index)} baked thumbnails in {OUT}")
 
 asyncio.run(main())
