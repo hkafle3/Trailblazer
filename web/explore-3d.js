@@ -38,7 +38,8 @@ let root = null, made = null, live = null, patchUrl = null, deepAt = null;   // 
 let under = [];   // the flat map's controls under the 3D view, made inert while it is up
 
 // show(true, patchUrl) switches to 3D, show(false) back to Flat
-export function show(on, urlFor, deepFn) { if (urlFor) patchUrl = urlFor; if (deepFn) deepAt = deepFn; (on ? enter : leave)(); }
+export function show(on, urlFor, deepFn, target) { if (urlFor) patchUrl = urlFor; if (deepFn) deepAt = deepFn; aim = on ? target : null; (on ? enter : leave)(); }
+let aim = null;   // [ra, dec] to fly to once the scene is up ("View in 3D" from the time-lapse)
 const pressed = on => { $('view-3d').setAttribute('aria-pressed', on); $('view-flat').setAttribute('aria-pressed', !on); };
 
 function enter() {
@@ -52,7 +53,7 @@ function enter() {
   root.hidden = false;
   under = [...document.querySelectorAll('.xbtns, .zoomctl, .csheet, #dive-aim')].filter(el => !el.inert); under.forEach(el => { el.inert = true; });
   addEventListener('keydown', onKey, true);
-  (made ??= make()).then(s => { live = s; if (page.dataset.view === '3d') s.start(); },
+  (made ??= make()).then(s => { live = s; if (page.dataset.view === '3d') { s.start(); if (aim) { s.goTo(...aim); aim = null; } } },
     err => { console.warn('the 3D view could not load', err); made = null; leave(); });
 }
 function leave() {
@@ -548,6 +549,7 @@ const api = window.__x3d = {
 $('x3d-loading').remove();
 return {
   key,
+  goTo(ra, dec) { choose(eqDir(ra, dec)); },
   start() { onDay(); layout(); words(); lastDrawn = false; dirty = true; cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); },
   stop() { cancelAnimationFrame(raf); lastDrawn = false; pts.clear(); press = null; },
 };

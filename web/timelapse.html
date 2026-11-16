@@ -68,6 +68,22 @@
   <div class="pv-tabs" role="group" aria-label="Tools"><button type="button" data-t="options" aria-pressed="true">Options</button><button type="button" data-t="spectral" aria-pressed="false">Spectral</button><button type="button" data-t="layers" aria-pressed="false">Layers</button><button type="button" data-t="others" aria-pressed="false">Others</button><button type="button" data-t="info" aria-pressed="false">Info</button></div>
 
   <a class="pv-state" id="state" href="forums.html"><span id="state-label">Undiscovered</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+  <!-- "View in 3D": the same spot on Explore's 3D sky (explore-3d.js flies to it). Desktop only for now; needs ra/dec in the address -->
+  <a class="pv-state pv-3d" id="view3d" hidden><span>View in 3D</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+  <style>.pv-3d { left: calc(89 * var(--e)); top: calc(1340 * var(--e)); width: calc(452 * var(--e)); } @media (max-width: 640px) { .pv-3d { display: none !important; } } body.cand .pv-3d { display: none !important; }</style>
+  <script>
+  (function () {
+    var a = document.getElementById('view3d');
+    function aim() {
+      var q = new URLSearchParams(location.search), ra = parseFloat(q.get('ra')), dec = parseFloat(q.get('dec'));
+      if (!isFinite(ra) || !isFinite(dec)) { a.hidden = true; return; }
+      var day = q.get('day');
+      a.href = 'explore.html?view=3d&ra=' + ra.toFixed(4) + '&dec=' + dec.toFixed(4) + '&day=' + (day && /^\d+$/.test(day) ? day : '0');
+      a.hidden = false;
+    }
+    aim(); a.addEventListener('pointerenter', aim); a.addEventListener('focus', aim); a.addEventListener('click', aim);
+  })();
+  </script>
   <!-- the whole region SPHEREx cut out for this spot; the white box is the part in the big frame, the ring is the target -->
   <div class="pv-mini"><canvas id="mini" width="868" height="594" role="img" aria-label="The whole region, with the part on screen outlined"></canvas></div>
 
