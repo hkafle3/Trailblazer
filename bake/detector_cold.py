@@ -347,23 +347,23 @@ def run(name, ra=None, dec=None, size=None, label=None):
           'movers', len(out['movers']), 'candidates', [(m['id'], round(m['mu'], 2), round(m['pa']), round(m['ratio_vs_stars'], 1), m['known_name']) for m in out['candidates']], out['note'], f'{time.time() - t0:.0f}s', flush=True)
     return out
 
-def publish(names):
+def publish(names, fname='candidates.json', sdir='candidates'):
     """web/data/candidates.json in the app's contract, from finished real runs. Planted objects never reach this file."""
-    cands, regions = [], []; os.makedirs(ROOT + '/web/data/candidates', exist_ok=True)
-    for f in os.listdir(ROOT + '/web/data/candidates'): os.remove(f'{ROOT}/web/data/candidates/{f}')
+    cands, regions = [], []; os.makedirs(f'{ROOT}/web/data/{sdir}', exist_ok=True)
+    for f in os.listdir(f'{ROOT}/web/data/{sdir}'): os.remove(f'{ROOT}/web/data/{sdir}/{f}')
     for name in names:
         o = json.load(open(f'{OUT}/cold_{name}.json')); regions.append(dict(name=o['label'], ra=o['ra'], dec=o['dec'], radius_deg=round(o['size'] / 2, 3)))
         for m in o['candidates']:
-            cid = f"{'K' if m['known_name'] else 'C'}-{len(cands) + 1:04d}"; shutil.copy(f"{OUT}/strips/{m['id']}.png", f'{ROOT}/web/data/candidates/{cid}.png')
+            cid = f"{'K' if m['known_name'] else 'C'}-{len(cands) + 1:04d}"; shutil.copy(f"{OUT}/strips/{m['id']}.png", f'{ROOT}/web/data/{sdir}/{cid}.png')
             cands.append(dict(id=cid, score=m['score'], verdict='known' if m['known_name'] else 'worth_reporting', known_name=m['known_name'], detections=m['detections'],
                               track=dict(rate_arcsec_hr=round(m['mu'] / 8766, 6), pa_deg=round(m['pa'], 1), rms_arcsec=round(m['rms'], 2), distance_guess='nearby (cold)'),
                               checks=dict(n_photos=m['n_seen'], n_total=m['n_looks'], other_detector=bool(m['f33_mjy'] and m['f33_mjy'] > 3 * m['e33_mjy']), flagged=False, skybot_match=False,
                                           colour_ratio=round(m['ratio_lo'], 2), colour_ratio_vs_stars=round(m['ratio_vs_stars'], 2), colour_is_lower_limit=True, flux_45_mjy=round(m['f45_mjy'], 3), flux_33_mjy=round(m['f33_mjy'], 3),
                                           motion_arcsec_yr=round(m['mu'], 2), motion_east=round(m['mu_east'], 2), motion_north=round(m['mu_north'], 2), motion_sigma=round(m['sigma'], 1)),
-                              strip=f'data/candidates/{cid}.png', region=o['label']))
+                              strip=f'data/{sdir}/{cid}.png', region=o['label']))
     val = json.load(open(f'{OUT}/eval.json'))['validation'] if os.path.exists(f'{OUT}/eval.json') else {}
     json.dump(dict(generated=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'), detector_version=VERSION, regions=regions, validation=val, candidates=cands),
-              open(ROOT + '/web/data/candidates.json', 'w'), indent=1)
+              open(f'{ROOT}/web/data/{fname}', 'w'), indent=1)
     print('wrote', len(cands), 'candidates')
 
 if __name__ == '__main__':
