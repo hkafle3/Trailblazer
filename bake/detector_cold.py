@@ -6,13 +6,14 @@ Method
   1. prep   : list the D6 (4.4 to 5.0 um) and D4 (2.4 to 3.8 um) exposures over the patch, read only the patch's pixels
               (S3 range reads), cache them.
   2. stack  : subtract each exposure's background, resample onto one north-up grid (3.08 arcsec pixels), and take the
-              per-pixel MEDIAN of all exposures of one survey pass (epoch). A median needs the source in most
-              exposures, so a flash or cosmic ray in one exposure cannot survive. Two stacks per epoch: "4.5" = all of
+              per-pixel clipped mean of all exposures of one survey pass (epoch): values far from the pixel's median
+              are dropped first, so a flash or cosmic ray in one exposure cannot survive. Two stacks per epoch: "4.5" = all of
               D6, "3.3" = D4 pixels whose wavelength is 3.1 to 3.6 um (each pixel's wavelength from web/data/wavemaps.json).
   3. find   : peaks of 5 sigma in the 4.5 stack of each epoch, sub-pixel centroids, positions tied to Gaia DR3
               (moved to the epoch with Gaia's own proper motions) by an affine fit; if Gaia cannot be reached, to epoch 1.
-  4. move   : pair the first and last epoch (closest pairs first, so a star pairs with itself), turn each shift into
-              arcsec per year with an error taken from the scatter of the patch's own stars, confirm in middle epochs.
+  4. move   : pair every two passes at least 0.4 yr apart (closest pairs first, so a star pairs with itself), turn each
+              shift into arcsec per year with an error taken from the scatter of the patch's own stars, confirm in the
+              other passes. A pair half a year apart also carries the parallax shift, so its speed is less certain.
   5. colour : forced photometry at 4.5 and 3.3; the ratio is compared with the patch's own stars. A candidate is
               a 5 sigma mover of 0.5 to 12 arcsec/yr whose lower-limit ratio is at least 1.5 times the stars'.
 Run: uv run -q --with astropy --with numpy --with scipy --with requests --with fsspec --with aiohttp --with matplotlib \
@@ -28,7 +29,7 @@ from scipy.spatial import cKDTree
 from scipy.interpolate import RegularGridInterpolator
 warnings.simplefilter('ignore')
 
-VERSION = 'cold-2026-11-15'
+VERSION = 'cold-2026-11-15b'
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S3 = 'https://nasa-irsa-spherex.s3.amazonaws.com/'
 API = 'https://comet-hunt.comet-hunt.workers.dev/api/images'
@@ -41,10 +42,10 @@ BAD = sum(1 << b for b in (0, 1, 2, 6, 9, 10, 11, 15, 17, 25, 27, 28, 29))   # a
 GROW = (1 << 1) | (1 << 26)                  # OVERFLOW and BLOOM, grown by 3 px
 BAND33 = (3.1, 3.6)                          # um, the methane band inside D4
 EPOCH_GAP, MIN_EXP, MIN_N = 60.0, 6, 3       # days that split survey passes; exposures a pass needs; looks a stack pixel needs
-BASE_MIN = 0.7                               # years between first and last epoch
+BASE_MIN = 0.4                               # years between two passes that are compared (was 0.7 and first-to-last only in run 1)
 AP = 3                                       # aperture radius, stack pixels (9.2 arcsec)
 SNR_MIN = 5.0
-MU_MIN, MU_MAX, SIG_MIN = 0.5, 12.0, 5.0     # arcsec/yr range of a candidate; significance of the shift
+MU_MIN, MU_MAX, SIG_MIN = 0.5, 12.0, float(os.environ.get('DET_COLD_SIG', 5.0))   # arcsec/yr range of a candidate; significance of the shift (the env override is for labelled what-if runs only)
 MU_LIST = 0.25                               # movers down to this are listed (not candidates) for the Gaia comparison
 FLUX_RATIO = 2.5                             # first/last epoch brightness may differ by this (stacks sample different wavelengths)
 COLOUR_MIN = 1.5                             # lower-limit 4.5/3.3 ratio, in units of the patch's stars
@@ -124,6 +125,13 @@ def resample(a):
     out = np.where(wt > 0.95, v / np.maximum(wt, 1e-6), np.nan).astype(np.float32)
     return out, wave(a['det'])(np.stack([y, x], 1)).reshape(N, N).astype(np.float32)
 
+def combine(cube):
+    """Per-pixel mean of the exposures after dropping any value far from the per-pixel median (4 sigma of that exposure's
+    noise plus half the median itself, since a real source changes with wavelength). Run 1 used the plain median, which
+    is about 20% noisier; a one-exposure flash or cosmic ray is still dropped."""
+    med = np.nanmedian(cube, 0); sd = np.array([1.4826 * np.nanmedian(np.abs(c - np.nanmedian(c))) for c in cube])[:, None, None]
+    return np.nanmean(np.where(np.abs(cube - med) <= 4 * sd + 0.5 * np.abs(med), cube, np.nan), 0)
+
 def stack(name, inj=None):
     """-> patch dict, epochs [dict(t, n, obs, s45, n45, s33, n33)] (stacks in MJy/sr, x east, y north)."""
     P = json.load(open(f'{CACHE}/{name}/patch.json')); N = int(round(P['size'] * 3600 / OPIX)); P['N'] = N; R = {}
@@ -141,8 +149,8 @@ def stack(name, inj=None):
         k4 = np.nonzero((t4 > min(t) - 30) & (t4 < max(t) + 30))[0]
         c4 = np.array([np.where((r4[i][1] >= BAND33[0]) & (r4[i][1] <= BAND33[1]), r4[i][0], np.nan) for i in k4]) if len(k4) else np.full((1, N, N), np.nan, np.float32)
         n33 = np.isfinite(c4).sum(0)
-        eps.append(dict(t=float(np.mean(t)), n=len(g), obs=E6[g[0]]['obs'], s45=np.where(n45 >= MIN_N, np.nanmedian(cube, 0), np.nan), n45=n45,
-                        s33=np.where(n33 >= MIN_N, np.nanmedian(c4, 0), np.nan), n33=n33))
+        eps.append(dict(t=float(np.mean(t)), n=len(g), obs=E6[g[0]]['obs'], s45=np.where(n45 >= MIN_N, combine(cube), np.nan), n45=n45,
+                        s33=np.where(n33 >= MIN_N, combine(c4), np.nan), n33=n33))
     return P, eps
 
 
@@ -237,12 +245,12 @@ def search(name, inj=None):
     P, eps = stack(name, inj); out = dict(name=name, label=P['label'], ra=P['ra'], dec=P['dec'], size=P['size'], version=VERSION, area_sqdeg=P['size'] ** 2,
                                           epochs=[dict(t=e['t'], year=float(year(e['t'])), exposures=e['n']) for e in eps], movers=[], candidates=[], note='')
     if len(eps) < 2 or year(eps[-1]['t']) - year(eps[0]['t']) < BASE_MIN:
-        out['note'] = 'fewer than two survey passes at least 0.7 yr apart'; return out, eps
+        out['note'] = 'fewer than two survey passes far enough apart'; return out, eps
     G = gaia(P); C = [catalogue(e) for e in eps]; out['anchor'] = []
     for i, (e, c) in enumerate(zip(eps, C)):
         ref = gaia_at(G, P, e['t']) if G else (C[0]['x'], C[0]['y']); n, rms = anchor(c, *ref) if (G or i) else (len(c['x']), 0.0)
         out['anchor'].append(dict(frame='Gaia DR3' if G else 'first epoch', stars=n, rms_arcsec=rms, sources=len(c['x'])))
-    yr = np.array([float(year(e['t'])) for e in eps]); dt = yr[-1] - yr[0]; a, b = C[0], C[-1]
+    yr = np.array([float(year(e['t'])) for e in eps]); dt = yr[-1] - yr[0]; a, b = C[0], C[-1]                      # first and last pass: the error model and the star colours
     I, J = pair(a, b, MU_MAX * dt + 3); dx, dy = b['x'][J] - a['x'][I], b['y'][J] - a['y'][I]; d = np.hypot(dx, dy); q = 1 / a['snr'][I] ** 2 + 1 / b['snr'][J] ** 2
     st = d < 2; mad = lambda v: 1.4826 * np.median(np.abs(v - np.median(v))) if len(v) > 20 else None                 # error model from the patch's own stars
     br = mad(np.r_[dx[st & (q < 2 / 50 ** 2)], dy[st & (q < 2 / 50 ** 2)]]); fa = st & (q > 1 / 12 ** 2); sf = mad(np.r_[dx[fa], dy[fa]])
@@ -258,31 +266,34 @@ def search(name, inj=None):
     f45, s45, f33, s33 = colour([a['x'][I]] * len(eps), [a['y'][I]] * len(eps)); ref = st & (f45 / s45 > 30) & (f33 / s33 > 10)
     rstar = float(np.median(f45[ref] / f33[ref])) if ref.sum() >= 10 else None; out['star_ratio'] = rstar; out['star_ratio_n'] = int(ref.sum())
     out['star_ratio_scatter'] = float(mad(np.log10(f45[ref] / f33[ref])) or 0) if rstar else None
-    for n in np.nonzero(d / np.sqrt(sig1(a['snr'][I]) ** 2 + sig1(b['snr'][J]) ** 2) >= SIG_MIN)[0]:
-        i, j = I[n], J[n]; pts = [(yr[0], a['x'][i], a['y'][i], a['snr'][i], a['f'][i], 0), (yr[-1], b['x'][j], b['y'][j], b['snr'][j], b['f'][j], len(eps) - 1)]; looks, ok = 2, True
-        for m in range(1, len(eps) - 1):                                # middle epochs: on the line (parallax allowed), or no look
-            fr = (yr[m] - yr[0]) / dt; px, py = a['x'][i] + fr * dx[n], a['y'][i] + fr * dy[n]; ff, fs = forced(eps[m], '45', px, py)
-            if not np.isfinite(ff[0]): continue
-            c = C[m]; r = np.hypot(c['x'] - px, c['y'] - py) if len(c['x']) else np.array([9e9]); k = int(np.argmin(r))
-            if r[k] <= 3 * sig1(c['snr'][k]) + 1.0: pts.append((yr[m], c['x'][k], c['y'][k], c['snr'][k], c['f'][k], m)); looks += 1
-            elif 0.5 * (a['f'][i] + b['f'][j]) / fs[0] >= 6: ok = False; looks += 1        # it should have been there
-        if not ok: continue
-        pts.sort(); t, x, y, s = (np.array([p[k] for p in pts]) for k in range(4)); w = 1 / sig1(s); M = np.c_[np.ones(len(t)), t - t.mean()] * w[:, None]
-        cx, cy = np.linalg.lstsq(M, x * w, rcond=None)[0], np.linalg.lstsq(M, y * w, rcond=None)[0]; mu = float(np.hypot(cx[1], cy[1]))
-        if mu < MU_LIST: continue
-        rms = float(np.sqrt(np.mean((cx[0] + cx[1] * (t - t.mean()) - x) ** 2 + (cy[0] + cy[1] * (t - t.mean()) - y) ** 2)))
-        ex, ey = [cx[0] + cx[1] * (v - t.mean()) for v in yr], [cy[0] + cy[1] * (v - t.mean()) for v in yr]; c45, e45, c33, e33 = (float(v[0]) for v in colour(ex, ey))
-        r_lo = c45 / (max(c33, 0) + 2 * e33) if np.isfinite(c33) and np.isfinite(e33) else None; vs = r_lo / rstar if r_lo is not None and rstar else None
-        ra, dec = untan(x, y, P['ra'], P['dec']); mv = dict(
-            mu=mu, mu_east=float(cx[1]), mu_north=float(cy[1]), pa=float(np.degrees(np.arctan2(cx[1], cy[1])) % 360), sigma=float(d[n] / np.sqrt(sig1(a['snr'][i]) ** 2 + sig1(b['snr'][j]) ** 2)),
-            shift_arcsec=float(d[n]), rms=rms, n_seen=len(pts), n_looks=looks, f45_mjy=c45 * MJY, e45_mjy=e45 * MJY, f33_mjy=None if r_lo is None else c33 * MJY, e33_mjy=None if r_lo is None else e33 * MJY,
-            ratio=(c45 / c33 if r_lo is not None and c33 > 0 else None), ratio_lo=r_lo, ratio_vs_stars=vs, cold=bool(vs is not None and vs >= COLOUR_MIN),
-            ra=float(ra[0]), dec=float(dec[0]), xy=[[float(u), float(v)] for u, v in zip(x, y)],
-            detections=[dict(t=eps[p[5]]['t'], ra=float(r_), dec=float(d_), det='D6', flux_mjy=float(p[4] * MJY), snr=float(p[3]), obs=eps[p[5]]['obs']) for p, r_, d_ in zip(pts, ra, dec)])
-        if G:                                                           # the Gaia star under the first-epoch position, if any
-            gx, gy = gaia_at(G, P, eps[0]['t']); r = np.hypot(gx - x[0], gy - y[0]); k = int(np.argmin(r))
-            if r[k] < 4: mv['gaia'] = dict(id=G['id'][k], pmra=float(G['pmra'][k]) / 1000, pmdec=float(G['pmdec'][k]) / 1000, g=float(G['phot_g_mean_mag'][k]))
-        mv['score'] = round(0.5 * min(mv['sigma'] / 15, 1) + 0.5 * min((vs or 0) / 6, 1), 3); out['movers'].append(mv)
+    used = set()                                                        # every pair of passes at least BASE_MIN apart, longest first; a detection joins one mover
+    for e0, e1 in sorted(((u, v) for u in range(len(eps)) for v in range(u + 1, len(eps)) if yr[v] - yr[u] >= BASE_MIN), key=lambda p: yr[p[0]] - yr[p[1]]):
+      a, b = C[e0], C[e1]; dt = yr[e1] - yr[e0]; I, J = pair(a, b, MU_MAX * dt + 3); dx, dy = b['x'][J] - a['x'][I], b['y'][J] - a['y'][I]; d = np.hypot(dx, dy)
+      for n in np.nonzero(d / np.sqrt(sig1(a['snr'][I]) ** 2 + sig1(b['snr'][J]) ** 2) >= SIG_MIN)[0]:
+          i, j = I[n], J[n]; pts = [(yr[e0], a['x'][i], a['y'][i], a['snr'][i], a['f'][i], e0, int(i)), (yr[e1], b['x'][j], b['y'][j], b['snr'][j], b['f'][j], e1, int(j))]; looks, ok = 2, True
+          for m in set(range(len(eps))) - {e0, e1}:                       # other passes: on the line (parallax allowed), or no look
+              fr = (yr[m] - yr[e0]) / dt; px, py = a['x'][i] + fr * dx[n], a['y'][i] + fr * dy[n]; ff, fs = forced(eps[m], '45', px, py)
+              if not np.isfinite(ff[0]): continue
+              c = C[m]; r = np.hypot(c['x'] - px, c['y'] - py) if len(c['x']) else np.array([9e9]); k = int(np.argmin(r))
+              if r[k] <= 3 * sig1(c['snr'][k]) + 1.0: pts.append((yr[m], c['x'][k], c['y'][k], c['snr'][k], c['f'][k], m, k)); looks += 1
+              elif 0.5 * (a['f'][i] + b['f'][j]) / fs[0] >= 6: ok = False; looks += 1        # it should have been there
+          if not ok or used & {(p[5], p[6]) for p in pts}: continue
+          pts.sort(); t, x, y, s = (np.array([p[k] for p in pts]) for k in range(4)); w = 1 / sig1(s); M = np.c_[np.ones(len(t)), t - t.mean()] * w[:, None]
+          cx, cy = np.linalg.lstsq(M, x * w, rcond=None)[0], np.linalg.lstsq(M, y * w, rcond=None)[0]; mu = float(np.hypot(cx[1], cy[1]))
+          if mu < MU_LIST: continue
+          rms = float(np.sqrt(np.mean((cx[0] + cx[1] * (t - t.mean()) - x) ** 2 + (cy[0] + cy[1] * (t - t.mean()) - y) ** 2)))
+          ex, ey = [cx[0] + cx[1] * (v - t.mean()) for v in yr], [cy[0] + cy[1] * (v - t.mean()) for v in yr]; c45, e45, c33, e33 = (float(v[0]) for v in colour(ex, ey))
+          r_lo = c45 / (max(c33, 0) + 2 * e33) if np.isfinite(c33) and np.isfinite(e33) else None; vs = r_lo / rstar if r_lo is not None and rstar else None
+          ra, dec = untan(x, y, P['ra'], P['dec']); mv = dict(
+              mu=mu, mu_east=float(cx[1]), mu_north=float(cy[1]), pa=float(np.degrees(np.arctan2(cx[1], cy[1])) % 360), sigma=float(d[n] / np.sqrt(sig1(a['snr'][i]) ** 2 + sig1(b['snr'][j]) ** 2)),
+              shift_arcsec=float(d[n]), rms=rms, n_seen=len(pts), n_looks=looks, f45_mjy=c45 * MJY, e45_mjy=e45 * MJY, f33_mjy=None if r_lo is None else c33 * MJY, e33_mjy=None if r_lo is None else e33 * MJY,
+              ratio=(c45 / c33 if r_lo is not None and c33 > 0 else None), ratio_lo=r_lo, ratio_vs_stars=vs, cold=bool(vs is not None and vs >= COLOUR_MIN),
+              baseline_yr=float(t.max() - t.min()), ep=[p[5] for p in pts], ra=float(ra[0]), dec=float(dec[0]), xy=[[float(u), float(v)] for u, v in zip(x, y)],
+              detections=[dict(t=eps[p[5]]['t'], ra=float(r_), dec=float(d_), det='D6', flux_mjy=float(p[4] * MJY), snr=float(p[3]), obs=eps[p[5]]['obs']) for p, r_, d_ in zip(pts, ra, dec)])
+          if G:                                                           # the Gaia star under the first-epoch position, if any
+              gx, gy = gaia_at(G, P, eps[pts[0][5]]['t']); r = np.hypot(gx - x[0], gy - y[0]); k = int(np.argmin(r))
+              if r[k] < 4: mv['gaia'] = dict(id=G['id'][k], pmra=float(G['pmra'][k]) / 1000, pmdec=float(G['pmdec'][k]) / 1000, g=float(G['phot_g_mean_mag'][k]))
+          mv['score'] = round(0.5 * min(mv['sigma'] / 15, 1) + 0.5 * min((vs or 0) / 6, 1), 3); out['movers'].append(mv); used |= {(p[5], p[6]) for p in pts}
     out['movers'].sort(key=lambda m: -m['score'])
     out['candidates'] = [m for m in out['movers'] if m['cold'] and MU_MIN <= m['mu'] <= MU_MAX]
     return out, eps
@@ -309,13 +320,13 @@ def simbad(m):
 def strip(path, m, P, eps):
     """Evidence: first and last 4.5 um stacks side by side with the shift marked, the 3.3 um stack, and the two fluxes."""
     import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
-    N = P['N']; H = 13; (xa, ya), (xb, yb) = m['xy'][0], m['xy'][-1]; px = lambda v: v / OPIX + (N - 1) / 2; cx, cy = int(round(px((xa + xb) / 2))), int(round(px((ya + yb) / 2)))
+    s33 = np.nanmean([e['s33'] for e in eps], 0); eps = [eps[k] for k in m['ep']]; N = P['N']; H = 13; (xa, ya), (xb, yb) = m['xy'][0], m['xy'][-1]; px = lambda v: v / OPIX + (N - 1) / 2; cx, cy = int(round(px((xa + xb) / 2))), int(round(px((ya + yb) / 2)))
     def cut(im):
         o = np.full((2 * H + 1, 2 * H + 1), np.nan); y0, y1, x0, x1 = max(cy - H, 0), min(cy + H + 1, N), max(cx - H, 0), min(cx + H + 1, N)
         o[y0 - cy + H:y1 - cy + H, x0 - cx + H:x1 - cx + H] = im[y0:y1, x0:x1]; return o
     fig, ax = plt.subplots(1, 4, figsize=(9.6, 2.9), facecolor='#0b0d12', gridspec_kw=dict(width_ratios=[1, 1, 1, 0.8]))
     ref = cut(eps[0]['s45']); s = 1.4826 * np.nanmedian(np.abs(ref - np.nanmedian(ref))) + 1e-9; vmax = max(8 * s, 0.9 * np.nanmax(cut(eps[-1]['s45'])[H - 3:H + 4, H - 3:H + 4]))
-    for q, (im, lab) in zip(ax, [(eps[0]['s45'], f"4.5 um, {year(eps[0]['t']):.2f}"), (eps[-1]['s45'], f"4.5 um, {year(eps[-1]['t']):.2f}"), (eps[-1]['s33'], f"3.3 um, {year(eps[-1]['t']):.2f}")]):
+    for q, (im, lab) in zip(ax, [(eps[0]['s45'], f"4.5 um, {year(eps[0]['t']):.2f}"), (eps[-1]['s45'], f"4.5 um, {year(eps[-1]['t']):.2f}"), (s33, '3.3 um, all passes')]):
         q.imshow(cut(im), origin='lower', cmap='gray', vmin=-2 * s, vmax=vmax, interpolation='nearest'); q.invert_xaxis(); q.set_xticks([]); q.set_yticks([]); q.set_title(lab, color='#ddd', fontsize=9)
         for (x, y), col in (((xa, ya), '#5fe0ad'), ((xb, yb), '#ffb000')): q.add_patch(plt.Circle((px(x) - cx + H, px(y) - cy + H), 2.2, fill=False, lw=1.1, color=col))
         q.annotate('', xy=(px(xb) - cx + H, px(yb) - cy + H), xytext=(px(xa) - cx + H, px(ya) - cy + H), arrowprops=dict(arrowstyle='->', color='#ffb000', lw=1))

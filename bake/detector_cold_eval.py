@@ -90,7 +90,8 @@ def main():
     rows.append(("Ed's flash is not a candidate", f'0 candidates or movers within {NEAR_FLASH:.0f} arcsec', f"{len(fl)} (patch has {len(R['flash']['movers'])} movers, {len(R['flash']['candidates'])} candidates)", not fl))
     inj, T = plant('flash'); out, _ = d.search('flash', inj); json.dump(out, open(f'{d.OUT}/planted_flash.json', 'w')); json.dump(T, open(f'{d.OUT}/truth_flash.json', 'w'))
     xy = lambda m: d.tan(m['ra'], m['dec'], T['ra'], T['dec']); near = lambda m, g: np.hypot(xy(m)[0] - g['x'], xy(m)[1] - g['y'])
-    gh = [m for m in out['candidates'] if any(near(m, g) <= NEAR_GLITCH for g in T['glitches'])]; gm = [m for m in out['movers'] if any(near(m, g) <= NEAR_GLITCH for g in T['glitches'])]
+    planted = lambda m: any(near(m, g) <= 15 and motion_ok(m, g['pm'])[0] for g in T['movers'])   # fixed after run 1: a planted mover that happens to sit near a glitch is not a glitch hit
+    gh = [m for m in out['candidates'] if not planted(m) and any(near(m, g) <= NEAR_GLITCH for g in T['glitches'])]; gm = [m for m in out['movers'] if not planted(m) and any(near(m, g) <= NEAR_GLITCH for g in T['glitches'])]
     rows.append(('Single-exposure glitches', f'0 candidates on {N_GLITCH} planted glitches', f'{len(gh)} candidates, {len(gm)} movers of any colour', not gh))
     found = []
     for g in T['movers']:
