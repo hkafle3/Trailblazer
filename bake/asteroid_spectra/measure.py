@@ -425,6 +425,17 @@ def run(pick):
 
     # keep: measured, not star-contaminated
     keep = [p for p in pts if p["ast"] is not None and not p["star_ast"]]
+    if not keep:   # nothing measurable (Vesta: every core masked): every bar fails
+        none = dict(a=dict(channels_snr5=0, refl_channels_snr5=0, channels_with_data=0, pass_=False),
+                    b=dict(null_channels=0, within3=0, broadband_z=[], pass_=False), c=None,
+                    d=dict(D=None, sD=None, slope=[float("nan")] * 2, call=None, expected=EXPECT[pick["cx"]], pass_=False),
+                    e=dict(single_snr_median=float("nan"), broadband_snr=float("nan"), **({"pass_": False} if pick["slot"] in ("F1", "F2") else {})),
+                    spectrum=[], nulls=[[], [], []], rotation={})
+        res = dict(slot=pick["slot"], num=num, name=pick["name"], cls=pick["cls"], src=pick["src"], cx=pick["cx"], pred_snr=pick["pred_snr"],
+                   n_img=len(ex), n_measured=0, n_star_rejected=0, n_used=0, frozen=none, chain=none)
+        (OUT / f"{pick['slot']}_{num}.json").write_text(json.dumps(res, indent=1))
+        print(f"{pick['slot']} ({num}): nothing measurable", flush=True)
+        return res
     G = float(pick["G"]) if pick.get("G") not in (None, "") else 0.15
     r0, d0, a0 = (float(np.median([p[k] for p in keep])) for k in ("r", "delta", "alpha"))
     SUN = sun()
