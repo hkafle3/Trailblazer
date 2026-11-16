@@ -13,11 +13,19 @@ function check(v, data) {
   box.append(el('h2', null, 'How the detector was checked'));
   const dl = el('dl');
   let failed = 0;
-  for (const [k, val, ok, bar] of [
+  // The cold detector (slow movers between six-month passes) has no 80% bars: its blind recoveries and planted movers are
+  // reported as counts, and only false alarms carry a pass/fail bar. ok === undefined means "reported, no bar".
+  const cold = String(data.detector_version || '').startsWith('cold');
+  const rows = cold ? [
+    ['Known cold brown dwarfs found blind', `${v.known_recovered} of ${v.known_expected}`, undefined],
+    ['Planted cold movers found', v.planted_found == null ? 'not tested' : pct(v.planted_found), undefined],
+    ['False alarms', `${v.false_per_sqdeg} per square degree`, v.false_per_sqdeg == null ? null : v.false_per_sqdeg < 1, 'needs under 1']
+  ] : [
     ['Known asteroids found', `${v.known_recovered} of ${v.known_expected}${known == null ? '' : ` (${pct(known)})`}`, known == null ? null : known >= 0.8, 'needs 80%'],
     ['Planted fake movers found', v.planted_found == null ? 'not tested' : pct(v.planted_found), v.planted_found == null ? null : v.planted_found >= 0.8, 'needs 80%'],
-    ['False alarms', `${v.false_per_sqdeg} per square degree`, v.false_per_sqdeg == null ? null : v.false_per_sqdeg < 1, 'needs under 1']]) {
-    const d = el('div'), dd = el('dd', null, val), verdict = el('span', `ok ${ok ? 'pass' : ok === false ? 'fail' : ''}`, ok ? 'Pass' : ok === false ? `Fail, ${bar}` : 'Not tested');
+    ['False alarms', `${v.false_per_sqdeg} per square degree`, v.false_per_sqdeg == null ? null : v.false_per_sqdeg < 1, 'needs under 1']];
+  for (const [k, val, ok, bar] of rows) {
+    const d = el('div'), dd = el('dd', null, val), verdict = el('span', `ok ${ok ? 'pass' : ok === false ? 'fail' : ''}`, ok ? 'Pass' : ok === false ? `Fail, ${bar}` : ok === undefined ? 'Reported' : 'Not tested');
     d.dataset.pass = ok; failed += ok === false;
     d.append(el('dt', null, k), dd, verdict); dl.append(d);
   }
@@ -35,7 +43,8 @@ function card(c) {
   ph.append(img, el('span', 'badge', VERDICT[c.verdict]));
   const t = el('span', 't');
   t.append(el('b', null, c.id), el('span', 'score', `score ${c.score.toFixed(2)}`));
-  link.append(ph, t, el('span', 's', c.known_name ? `${c.known_name} · ${photos(c)}` : photos(c)), el('span', 's', motion(c)));
+  const name = c.known_name?.replace(/^\*+\s*/, ''); // SIMBAD prefixes star names with '* '
+  link.append(ph, t, el('span', 's', name ? `${name} · ${photos(c)}` : photos(c)), el('span', 's', motion(c)));
   const vote = el('div');
   a.append(link, vote);
   voter(c, vote);
