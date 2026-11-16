@@ -1,0 +1,42 @@
+/* The map intro (intro.js), in Ming's Trailblazer look: black, thin white lines, Space Mono, one orange accent.
+   Loaded only when the film plays. Space Mono is already on the page (explore.css). */
+#intro { --ink: #fff; --ink2: rgba(255, 255, 255, .72); --ink3: rgba(255, 255, 255, .46); --accent: #ff9a4d; --mono: "Space Mono", ui-monospace, monospace;
+  position: fixed; inset: 0; z-index: 200; background: #010206; color: var(--ink); font: 400 14px/1.5 var(--mono); }
+#intro:focus { outline: 0; }
+#intro * { box-sizing: border-box; margin: 0; }
+#intro-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+#intro-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#intro .lbl { position: absolute; left: 0; top: 0; font: 400 11px/1 var(--mono); letter-spacing: .02em; color: var(--ink2); white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; will-change: transform, opacity; }
+#intro .lbl.accent { color: var(--accent); }
+
+#intro-hud { position: absolute; left: 28px; top: 26px; display: grid; gap: 4px; font: 400 12px/1.2 var(--mono); color: var(--ink2); }
+#intro-h-count { color: var(--ink3); }
+
+#intro button { font: 400 13px/1 var(--mono); color: var(--ink); background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .85); border-radius: 10px; min-height: 40px; padding: 0 18px; cursor: pointer; }
+#intro button:hover { background: rgba(255, 255, 255, .12); }
+#intro button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#intro-skip { position: absolute; right: 28px; top: 20px; }
+
+/* caption: one straight rule, the line of text under it; it owns the bottom band so it never sits on the subject */
+#intro-cap { position: absolute; left: 50%; bottom: max(34px, env(safe-area-inset-bottom)); width: min(700px, calc(100vw - 40px)); transform: translateX(-50%); }
+#intro .cap-top { display: flex; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, .85); font-size: 11px; color: var(--ink3); }
+#intro-cap-ticks { display: flex; gap: 5px; }
+#intro-cap-ticks i { width: 22px; height: 2px; background: rgba(255, 255, 255, .28); }
+#intro-cap-ticks i.on { background: var(--accent); }
+#intro #intro-next { margin-left: auto; min-height: 32px; }
+#intro-cap-text { margin-top: 14px; min-height: 3em; font-size: 17px; line-height: 1.5; color: var(--ink); text-wrap: balance; }
+#intro-cap-text b { font-weight: 400; color: var(--accent); }
+#intro-cap-note { margin-top: 6px; min-height: 1.5em; font-size: 11px; color: var(--ink3); }
+
+#intro-loading { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); font-size: 12px; color: var(--ink3); letter-spacing: .04em; }
+
+@media (max-width: 760px) {
+  #intro-hud { left: 16px; top: max(18px, env(safe-area-inset-top)); font-size: 11px; }
+  #intro-skip { right: 14px; top: max(12px, env(safe-area-inset-top)); min-height: 44px; }
+  #intro #intro-next { min-height: 44px; }
+  #intro-cap { bottom: max(22px, env(safe-area-inset-bottom)); }
+  #intro-cap-text { font-size: 14px; min-height: 4.5em; }
+  #intro-cap-note { font-size: 10px; min-height: 3em; }
+  #intro .lbl { font-size: 10px; }
+}
