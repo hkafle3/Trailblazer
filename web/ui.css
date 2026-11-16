@@ -46,7 +46,6 @@ body.page { background: #04060b; }
 .comet-head h1, .guide-grid h1 { background: linear-gradient(180deg, #fff, #b9c6e6); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 /* ---------- Top bar: see header.css ---------- */
-.brand-mark::before { animation: twinkle 3s ease-in-out infinite; }
 @keyframes twinkle { 50% { opacity: .55; transform: scale(.8); } }
 .btn:focus-visible, .iconbtn:focus-visible, .av:focus-visible, summary:focus-visible { outline: 2px solid var(--known); outline-offset: 3px; }
 
