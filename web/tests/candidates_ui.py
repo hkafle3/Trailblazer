@@ -38,7 +38,8 @@ async def run(p, name, ctx_args):
     phone = ctx_args["viewport"]["width"] < 641
     shot = lambda n: pg.screenshot(path=str(SHOTS / f"{name}-{n}.png"), full_page=False) if SHOTS else asyncio.sleep(0)
 
-    # ---- the detector not run yet: said plainly, nothing made up anywhere ----
+    # ---- the detector not run yet (its file answered 404 here): said plainly, nothing made up anywhere ----
+    await pg.route("**/data/candidates.json", lambda r: r.fulfill(status=404, body="not found"))
     await pg.goto(BASE + "/candidates.html"); await pg.wait_for_selector("#c-empty:not([hidden])")
     assert await pg.locator(".cd").count() == 0 and await pg.is_hidden("#c-check") and await pg.is_hidden("#c-sample")
     assert "not run yet" in await pg.text_content("#c-empty")
@@ -48,31 +49,54 @@ async def run(p, name, ctx_args):
     await no_fake(pg, "/explore.html"); assert await pg.locator(".mk.cand, #ly-cand").count() == 0, "Investigate layer without data"
     await no_fake(pg, "/timelapse.html?target=barnard&cand=K-0001")
     assert await pg.evaluate("window.__cand?.ring") is None, "a track drawn without data"
+    await pg.unroute("**/data/candidates.json")
 
-    # ---- sample: every verdict, the filters, the check banner ----
+    # ---- the real detector file: a test run, said so; each check pass or fail; Worth reporting empty, said so ----
+    REAL = json.load(urllib.request.urlopen(BASE + "/data/candidates.json"))
+    await pg.goto(BASE + "/candidates.html"); await pg.wait_for_selector(".c-group")
+    assert await pg.is_hidden("#c-sample"), "real data labelled as sample"
+    v = REAL["validation"]; fails = (v["known_recovered"] / v["known_expected"] < .8) + (v["planted_found"] < .8) + (v["false_per_sqdeg"] >= 1)
+    if fails:
+        t = await pg.text_content("#c-test")
+        assert await pg.is_visible("#c-test") and f"Test run on {len(REAL['regions'])} fields, detector still being tuned" in t, t
+    marks = await pg.eval_on_selector_all("#c-check dl > div", "e => e.map(d => [d.dataset.pass, d.querySelector('.ok').textContent])")
+    assert [m[0] for m in marks] == [str(v["known_recovered"] / v["known_expected"] >= .8).lower(), str(v["planted_found"] >= .8).lower(), str(v["false_per_sqdeg"] < 1).lower()], marks
+    assert all(m[1].startswith("Pass") if m[0] == "true" else m[1].startswith("Fail") for m in marks), marks
+    groups = await pg.eval_on_selector_all(".c-group", "e => e.map(g => [g.dataset.v, +g.querySelector('.sec .n').textContent, [...g.querySelectorAll('.cd')].map(c => c.dataset.id), g.querySelector('.c-none')?.textContent || ''])")
+    for gv, n, cids, none in groups:
+        want = [c["id"] for c in REAL["candidates"] if c["verdict"] == gv]
+        assert n == len(want) and cids == want, (gv, n, cids)
+        if gv == "worth_reporting" and not want: assert none.startswith("None yet"), none
+    assert groups[0][0] == "worth_reporting", "Worth reporting is not first"
+    assert await pg.evaluate(SIDEWAYS) <= 0, "sideways scroll on the real Candidates page"
+    await shot("real")
+
+    # ---- sample: every verdict in its group (the Comets list's headings, with counts), the check banner ----
     await pg.goto(BASE + "/candidates.html?sample=1"); await pg.wait_for_selector(".cd")
     assert await pg.is_visible("#c-sample"), "sample data is not labelled"
+    ORDER = ["worth_reporting", "known", "glitch", "star"]
     ids = await pg.eval_on_selector_all(".cd", "e => e.map(x => [x.dataset.id, x.dataset.verdict])")
-    assert ids == [[c["id"], c["verdict"]] for c in CANDS], f"cards {ids}"
+    assert ids == [[c["id"], c["verdict"]] for v in ORDER for c in CANDS if c["verdict"] == v], f"cards {ids}"
     assert {v for _, v in ids} == VERDICTS
-    shown = lambda: pg.eval_on_selector_all(".cd", "e => e.filter(x => x.getBoundingClientRect().height).map(x => x.dataset.id)")
-    assert await shown() == [c["id"] for c in WORTH], "default filter is not Worth reporting"
-    for f in ["known", "glitch", "star", "all", "worth_reporting"]:
-        await pg.click(f".c-filters [data-f={f}]")
-        want = [c["id"] for c in CANDS if f == "all" or c["verdict"] == f]
-        assert await shown() == want, f"filter {f}: {await shown()} != {want}"
+    groups = await pg.evaluate("""() => [...document.querySelectorAll('.c-group')].map(g => { const h = g.querySelector('.sec'), cs = getComputedStyle(h);
+        return [g.dataset.v, h.textContent, +h.querySelector('.n').textContent, g.querySelectorAll('.cd').length, cs.borderTopStyle, cs.borderTopColor, !!h.querySelector('i.g')]; })""")
+    names = {"worth_reporting": "Worth reporting", "known": "Known", "glitch": "Glitch", "star": "Star"}
+    want = [v for v in ORDER if any(c["verdict"] == v for c in CANDS)]
+    assert [g[0] for g in groups] == want, groups
+    for v, text, n, k, style, colour, dot in groups:
+        assert text.startswith(names[v]) and n == k == sum(c["verdict"] == v for c in CANDS) and style == "solid" and colour == "rgb(255, 255, 255)" and dot, (v, text, n, k, style, colour, dot)
     v = SAMPLE["validation"]; check = await pg.text_content("#c-check")
-    assert f"{v['known_recovered']} of {v['known_expected']}" in check and f"{v['planted_found']}%" in check and str(v["false_per_sqdeg"]) in check, check
+    assert f"{v['known_recovered']} of {v['known_expected']}" in check and f"{round(v['planted_found'] * 100)}%" in check and str(v["false_per_sqdeg"]) in check, check
     c0 = CANDS[0]; card = await pg.text_content(f".cd[data-id='{c0['id']}']")
     assert f"{c0['checks']['n_photos']} of {c0['checks']['n_total']} photos" in card and c0["track"]["distance_guess"] in card, card
     assert await pg.evaluate(f"document.querySelector(\".cd[data-id='{c0['id']}'] img\").naturalWidth") > 0, "strip did not load"
     assert await pg.evaluate(SIDEWAYS) <= 0, "sideways scroll on the Candidates page"
     if phone:
-        small = await pg.evaluate("""() => [...document.querySelectorAll('.c-filters button, .cd:not([hidden]) .cv-b, .cd:not([hidden]) .cd-open')]
+        small = await pg.evaluate("""() => [...document.querySelectorAll('.cd .cv-b, .cd .cd-open')]
           .filter(e => { const r = e.getBoundingClientRect(); return r.height < 44 || r.width < 44; }).map(e => e.textContent.trim().slice(0, 20))""")
         assert not small, f"tap targets under 44 px: {small}"
     await pg.evaluate("scrollTo(0, 0)"); await shot("sample")
-    await pg.locator("#c-grid").scroll_into_view_if_needed(); await pg.wait_for_timeout(900); await shot("sample-cards")
+    await pg.locator(".c-grid").first.scroll_into_view_if_needed(); await pg.wait_for_timeout(900); await shot("sample-cards")
 
     # ---- votes post locally (Turnstile's test key passes) ----
     await pg.wait_for_function("document.querySelector('[name=cf-turnstile-response]')?.value", timeout=20000)
@@ -132,8 +156,20 @@ async def run(p, name, ctx_args):
     await shot("timelapse")
     # and a vote from the time-lapse
     await pg.wait_for_function("document.querySelector('[name=cf-turnstile-response]')?.value", timeout=20000)
-    await pg.click(".cvote .cv-b[data-tag=glitch]")
+    # the address keeps the candidate, so a reload draws the track again
+    q = await pg.evaluate("location.search")
+    assert f"cand={c0['id']}" in q and "sample=1" in q, f"the address dropped the candidate: {q}"
+    # the votes show without scrolling: every button inside the viewport and outside Descriptions' scrolling text
+    hid = await pg.evaluate("""() => [...document.querySelectorAll('.cvote .cv-b')].filter(b => { const r = b.getBoundingClientRect();
+        return b.closest('.pv-scroll') || r.top < 0 || r.bottom > innerHeight || !r.height; }).map(b => b.textContent)""")
+    assert not hid, f"vote buttons need scrolling: {hid}"
+    # "Star" is stored as the tag star
+    await pg.click(".cvote .cv-b[data-tag=star]")
     await pg.wait_for_function("document.querySelector('.cvote').dataset.voted", timeout=10000)
+    thread = await pg.evaluate("document.querySelector('.cvote').dataset.voted")
+    got = json.load(urllib.request.urlopen(f"{BASE}/api/comets/{thread}"))
+    assert got["tags"]["star"] >= 1 and any(m["tag"] == "star" and m["author"] == "cand tester" for m in got["comments"]), got["tags"]
+    await pg.reload(); await pg.wait_for_function("window.__cand?.ring", timeout=20000)
     for path in [go, BASE + "/explore.html?sample=1"]:
         await pg.goto(path); await pg.wait_for_timeout(800)
         assert await pg.evaluate(SIDEWAYS) <= 0, f"sideways scroll on {path}"
@@ -142,9 +178,6 @@ async def run(p, name, ctx_args):
     print(f"{name}: ok (ring {off:.2f} px off)")
 
 async def main():
-    try:
-        urllib.request.urlopen(BASE + "/data/candidates.json"); sys.exit("web/data/candidates.json exists: this check needs the detector not run yet")
-    except urllib.error.HTTPError as e: assert e.code == 404
     if SHOTS: SHOTS.mkdir(parents=True, exist_ok=True)
     async with async_playwright() as p:
         await run(p, "desktop", {"viewport": {"width": 1440, "height": 900}})

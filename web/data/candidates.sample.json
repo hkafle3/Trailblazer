@@ -38,7 +38,7 @@
  "validation": {
   "known_recovered": 41,
   "known_expected": 47,
-  "planted_found": 92,
+  "planted_found": 0.92,
   "false_per_sqdeg": 0.8
  },
  "candidates": [

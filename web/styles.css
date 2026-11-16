@@ -22,6 +22,7 @@
   --asteroid: #d3bd97;
   --glitch: #f08aa2;
   --unsure: #9aa4b8;
+  --star: #e3d58f;
 
   --display: "Bricolage Grotesque", "Geist", system-ui, sans-serif;
   --body: "Geist", system-ui, sans-serif;
@@ -124,6 +125,7 @@ body.page::after {
 .tag.asteroid, .t-asteroid { --c: var(--asteroid); }
 .tag.glitch, .t-glitch { --c: var(--glitch); }
 .tag.unsure, .t-unsure { --c: var(--unsure); }
+.tag.star, .t-star { --c: var(--star); }
 /* Tag picker in the comment box: same pills, as radio buttons. */
 .tagpick { display: flex; flex-wrap: wrap; gap: 5px; }
 .tagpick input { position: absolute; opacity: 0; pointer-events: none; }
@@ -541,15 +543,15 @@ body:has(#ly-photos:not(:checked)) .mk.deep { display: none; }
 #c-list .chev { flex: none; width: 13px; height: 13px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 #c-list .sel .chev:first-child { opacity: .7; }
 /* the result glyphs: orange dot a CO2 glow, white dot no clear signal, ring could be measured, grey speck too faint */
-#c-list .g { flex: none; display: inline-block; width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; }
-#c-list .g-co2 { background: var(--comet); box-shadow: 0 0 0 3px rgba(255, 154, 77, .22), 0 0 10px var(--comet); }
-#c-list .g-flat { background: #fff; }
-#c-list .g-open { border: 1.5px solid #fff; }
-#c-list .g-faint { width: 5px; height: 5px; margin: 2px; background: #8a93a6; }
-#c-list .n { color: #b5b5b5; font-variant-numeric: tabular-nums; }
+:is(#c-list, .cands) .g { flex: none; display: inline-block; width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; }
+:is(#c-list, .cands) .g-co2 { background: var(--comet); box-shadow: 0 0 0 3px rgba(255, 154, 77, .22), 0 0 10px var(--comet); }
+:is(#c-list, .cands) .g-flat { background: #fff; }
+:is(#c-list, .cands) .g-open { border: 1.5px solid #fff; }
+:is(#c-list, .cands) .g-faint { width: 5px; height: 5px; margin: 2px; background: #8a93a6; }
+:is(#c-list, .cands) .n { color: #b5b5b5; font-variant-numeric: tabular-nums; }
 /* a group: a straight white top rule, its name on the left, its count on the right */
-#c-list .sec { display: flex; align-items: center; gap: 10px; margin: 26px 0 0; padding: 9px 0 4px; border-top: 1.5px solid #fff; font: 400 12px var(--panel-font); letter-spacing: .04em; }
-#c-list .sec .n { order: 9; margin-left: auto; }
+:is(#c-list, .cands) .sec { display: flex; align-items: center; gap: 10px; margin: 26px 0 0; padding: 9px 0 4px; border-top: 1.5px solid #fff; font: 400 12px var(--panel-font); letter-spacing: .04em; }
+:is(#c-list, .cands) .sec .n { order: 9; margin-left: auto; }
 #c-list summary.sec { list-style: none; cursor: pointer; }
 #c-list summary.sec::-webkit-details-marker { display: none; }
 #c-list summary .more { color: #b5b5b5; }

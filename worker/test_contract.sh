@@ -152,7 +152,7 @@ before = tags()
 for who, tag in [("tally a %d" % pid, "comet"), ("tally a %d" % pid, "asteroid"), ("tally b %d" % pid, "comet")]:
     call("/api/comments", {"comet_id": "3I/ATLAS", "tag": tag, "body": "", "author": who, "turnstile": "XXXX.DUMMY.TOKEN.XXXX.%x" % random.getrandbits(48)})
 after = tags()
-assert {k: after[k] - before[k] for k in after} == {"comet": 1, "asteroid": 1, "glitch": 0, "unsure": 0}, (before, after)
+assert {k: after[k] - before[k] for k in after} == {"comet": 1, "asteroid": 1, "glitch": 0, "unsure": 0, "star": 0}, (before, after)
 PY
     then echo "PASS tally counts each person once (their latest tag)"; else echo "FAIL tally counts each person once"; fails=$((fails + 1)); fi
     post "post on an id with a slash and spaces" "{\"comet_id\":\"C/2025 R2 (SWAN)\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"comet_id":"C/2025 R2 (SWAN)"'
@@ -161,7 +161,8 @@ PY
     long=$(python3 -c 'print("a" * 1001)')
     post "too-long body" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"$long\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"body"'
     post "a tag alone is a vote" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"unsure\",\"body\":\"\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 201 '"tag":"unsure","body":""'
-    post "bad tag" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"star\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"tag"'
+    post "star is a tag" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"star\",\"body\":\"\",\"author\":\"star $$\",\"turnstile\":\"$(tok)\"}" 201 '"tag":"star","body":""'
+    post "bad tag" "{\"comet_id\":\"3I/ATLAS\",\"tag\":\"planet\",\"body\":\"hi\",\"author\":\"$who\",\"turnstile\":\"$(tok)\"}" 400 '"field":"tag"'
     post "bad author name" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"<b>x</b>\",\"turnstile\":\"$(tok)\"}" 400 '"field":"author"'
     post "missing turnstile token" "{\"comet_id\":\"3I/ATLAS\",\"body\":\"hi\",\"author\":\"$who\"}" 400 '"field":"turnstile"'
     post "not JSON" "nope" 400 'body must be JSON'
@@ -236,12 +237,15 @@ cid = c["id"]
 _, g = call("/api/comets/" + cid)
 assert g["candidate"] and g["kind"] == "comet" and abs(g["ra"] - ra) < 1e-4 and abs(g["dec"] - dec) < 1e-4 and g["det"] == "D3" and g["visit"] == "2025-08-28", g
 assert g["detail"]["candidate"]["visit"]["exposures"] == 3 and g["detail"]["candidate"]["visit"]["epochs"] == [60917.0, 60918.2], g["detail"]
-assert g["tags"] == {"comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0} and g["author"] == "tester", g
+assert g["tags"] == {"comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0} and g["author"] == "tester", g
 # a second post 30 arcsec away in the same visit joins it: the same id, no new row, its tag added
 code, m = post("cand-b-%d" % pid, dec=round(dec + 30 / 3600, 6), tag="asteroid", author="second")
 assert code == 200 and m.get("merged") and m["id"] == cid, (code, m)
 assert count() == before + 1, "a merged post made a row"
 assert call("/api/comets/" + cid)[1]["tags"]["asteroid"] == 1
+# a "Star" vote from the time-lapse is its own tag
+code, m = post("cand-star-%d" % pid, tag="star", author="stargazer")
+assert code == 200 and m["id"] == cid and call("/api/comets/" + cid)[1]["tags"]["star"] == 1, (code, m)
 # the same visit seen at another channel and detector starts a day later: it shares a day, so it joins too
 code, m2 = post("cand-b2-%d" % pid, det="D1", channel=5, visit={**visit, "start": "2025-08-29", "epochs": [60917.0]})
 assert code == 200 and m2.get("merged") and m2["id"] == cid, (code, m2)
@@ -269,7 +273,7 @@ assert sorted(c for c, _ in out) == [200, 201] and out[0][1]["id"] == out[1][1][
 assert len(call("/api/candidates/near?ra=%s&dec=%s" % (ra2, dec))[1]["candidates"]) == 1
 # refusals: 400 with the field named, nothing written
 rows = count()
-for k, (field, change) in enumerate([("ra", {"ra": 400}), ("ra", {"ra": "12"}), ("dec", {"dec": -95}), ("det", {"det": "D9"}), ("tag", {"tag": "star"}), ("tag", {"tag": None}),
+for k, (field, change) in enumerate([("ra", {"ra": 400}), ("ra", {"ra": "12"}), ("dec", {"dec": -95}), ("det", {"det": "D9"}), ("tag", {"tag": "planet"}), ("tag", {"tag": None}),
                       ("visit", {"visit": {"start": "2025-8-28"}}), ("visit", {"visit": {**visit, "exposures": 0}}), ("visit", {"visit": {**visit, "mjd": 1}}),
                       ("visit", {"visit": {**visit, "start": "1900-01-01"}}), ("visit", {"visit": {**visit, "end": "9999-12-31"}}), ("visit", {"visit": {**visit, "mjd": 61110.4}}),
                       ("channel", {"channel": 200}), ("channel", {"channel": 5}), ("channel", {"channel": "5"}),

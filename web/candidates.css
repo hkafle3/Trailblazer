@@ -4,7 +4,7 @@
 .cands h1 { font: 400 28px/1.1 var(--panel-font); letter-spacing: 0; }
 .cands .lede { margin-top: 10px; max-width: 640px; color: #cfd6e4; font-size: 13px; line-height: 1.6; }
 .cands .c-sample { margin-top: 18px; padding: 12px 14px; border: 1.5px solid var(--comet); border-radius: 6px; color: var(--comet); font-size: 13px; }
-.cands .c-empty, .cands .c-none { margin-top: 26px; padding-top: 14px; border-top: 1.5px solid #fff; color: #cfd6e4; font-size: 14px; }
+.cands .c-empty { margin-top: 26px; padding-top: 14px; border-top: 1.5px solid #fff; color: #cfd6e4; font-size: 14px; }
 
 /* how the detector was checked: one straight-ruled band, three numbers */
 .c-check { margin-top: 26px; padding-top: 12px; border-top: 1.5px solid #fff; }
@@ -12,18 +12,17 @@
 .c-check dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin-top: 12px; }
 .c-check dt { font-size: 11.5px; color: #b5b5b5; }
 .c-check dd { margin: 4px 0 0; font: 400 18px/1.2 var(--panel-font); color: #fff; }
+.c-check .ok { display: block; margin-top: 4px; font-size: 11.5px; color: #b5b5b5; }
+.c-check .ok.pass { color: #8fd6a4; }
+.c-check .ok.fail { color: var(--glitch); }
+.c-group .c-none { margin: 10px 0 12px; color: #cfd6e4; font-size: 13px; }
 .c-check .by { margin-top: 10px; font-size: 11.5px; color: #b5b5b5; }
 
-/* filters: outlined buttons, the chosen one filled */
-.c-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
-.c-filters button { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 1.5px solid #fff; border-radius: 6px; background: #000; color: #fff; font: 400 13px var(--panel-font); cursor: pointer; }
-.c-filters button .n { color: #b5b5b5; }
-.c-filters button[aria-pressed="true"] { background: #fff; color: #000; }
-.c-filters button[aria-pressed="true"] .n { color: #444; }
-.c-filters button:focus-visible, .cv-b:focus-visible, .cd-open:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* groups: the Comets list's headings (styles.css .sec, .g, .n), a straight white rule with the name and count */
+.cv-b:focus-visible, .cd-open:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* the cards: the evidence strip as the tile, its verdict in the corner, the facts under it */
-.c-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; margin-top: 20px; }
+.c-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; margin: 14px 0 12px; }
 .c-grid[hidden], .cd[hidden] { display: none; }
 .cd { min-width: 0; }
 .cd.v-worth_reporting { --v: var(--comet); }
@@ -51,6 +50,12 @@
 .cv-note { min-height: 1em; margin-top: 6px; font-size: 11.5px; color: #b5b5b5; }
 .cv-note.err { color: var(--glitch); }
 .cv-note:empty { display: none; }
+/* the time-lapse: the votes sit under Descriptions' scrolling text, the same inset, always in view */
+.pv-desc > .cvote { margin-top: calc(14 * var(--e)); padding: calc(14 * var(--e)) calc(30 * var(--e)) 0 calc(28 * var(--e)); border-top: 1.5px solid #fff; }
+.pv-desc:has(> .cvote) .pv-scroll { max-height: calc(140 * var(--e)); }   /* the card still ends above the timeline */
+.pv-desc > .cvote .cv-b, .pv-desc > .cvote .cv-nick { height: calc(52 * var(--e)); min-height: 26px; font-size: 11px; padding: 0 4px; }
+.pv-desc > .cvote .cv-nick { padding: 0 8px; }
+.pv-desc > .cvote .cv-row { grid-template-columns: 1.4fr 1fr 1fr; }
 body > .cf-turnstile { position: fixed; right: 12px; bottom: 12px; z-index: 30; }
 
 @media (max-width: 1100px) { .c-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -59,10 +64,11 @@ body > .cf-turnstile { position: fixed; right: 12px; bottom: 12px; z-index: 30; 
   .cands h1 { font-size: 22px; }
   .c-check dl { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .c-check dd { font-size: 15px; }
-  .c-filters { gap: 6px; }
-  .c-filters button { height: 44px; padding: 0 11px; font-size: 12px; }
   .c-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
   .cv-b, .cv-nick { height: 44px; }
+  .pv-desc > .cvote { margin-top: 0; padding: 10px 22px 10px 0; }
+  .pv-desc > .cvote .cv-b, .pv-desc > .cvote .cv-nick { height: 44px; font-size: 12px; }
+  body.lapse:not(.sky) .pv-desc:has(> .cvote) { grid-template-rows: minmax(0, 1fr) auto; }
 }
 
 /* Explore: the Investigate layer's markers (explore-candidates.js), an orange diamond, and its card */

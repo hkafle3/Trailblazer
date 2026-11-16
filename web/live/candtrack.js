@@ -4,12 +4,21 @@
 // the same two the known-objects rings use, so the track sits where those would.
 import { load, VERDICT, photos, motion, voter } from '../candidates-data.js';
 
-const id = new URLSearchParams(location.search).get('cand');
+const P = new URLSearchParams(location.search), id = P.get('cand');
 let cand = null, sample = false;
 const dayOf = s => Date.parse(s) / 864e5 + 40587;   // 'YYYY-MM-DD' -> MJD at 0h
 
 // for tests: what was drawn last, in canvas pixels
 window.__cand = { id, ring: null, track: [] };
+// the page rewrites its address as the visit and channel change, naming only its own fields: keep &cand= (and &sample=, where it came from) in every rewrite
+// so a reload or a shared link still draws the track
+if (id) {
+  const replace = history.replaceState.bind(history);
+  history.replaceState = (state, title, url) => {
+    if (url != null) { const u = new URL(url, location.href); for (const k of ['cand', 'sample']) if (P.has(k) && !u.searchParams.has(k)) u.searchParams.set(k, P.get(k)); url = u; }
+    replace(state, title, url);
+  };
+}
 
 export function draw(ctx, m, f, toPx, offset) {
   if (!cand) return;
@@ -34,13 +43,14 @@ if (id) {
   cand = got?.data.candidates.find(c => c.id === id) ?? null;
   sample = !!got?.sample;
   if (cand) {
-    // under Descriptions: what the detector says, then the votes
+    // under Descriptions: what the detector says (it scrolls with the rest), then the votes, pinned below the scroll so
+    // they show without scrolling
     const host = document.getElementById('vKnown').closest('p');
     const box = document.createElement('div'), head = document.createElement('p');
     head.className = 'pv-info cand-info';
     head.append(Object.assign(document.createElement('b'), { textContent: `${cand.id}${sample ? ' (sample)' : ''}` }),
       ` ${VERDICT[cand.verdict]} · score ${cand.score.toFixed(2)} · ${photos(cand)} · ${motion(cand)}. The dotted line is its track; the ring is where it was in this visit.`);
-    host.after(head, box);
+    host.after(head); host.closest('.pv-scroll').after(box);
     voter(cand, box);
     // phones show one tool card at a time: open on Info, where this is (after the page has wired its tabs)
     if (matchMedia('(max-width: 640px)').matches) setTimeout(() => document.querySelector('.pv-tabs [data-t=info]')?.click());

@@ -13,7 +13,7 @@ Markers for the Explore map: comets people found (`kind: "comet"`) and known obj
 ```json
 { "comets": [
   { "id": "C-0175", "kind": "comet", "ra": 77.3, "dec": 27.4, "day": 120, "tail": -150, "real": true,
-    "tags": { "comet": 3, "asteroid": 1, "glitch": 0, "unsure": 0 }, "candidate": true, "det": "D1", "visit": "2025-08-22", "author": "orbit_owl", "created_at": 1763200000000 },
+    "tags": { "comet": 3, "asteroid": 1, "glitch": 0, "unsure": 0, "star": 0 }, "candidate": true, "det": "D1", "visit": "2025-08-22", "author": "orbit_owl", "created_at": 1763200000000 },
   { "id": "3I/ATLAS", "kind": "known", "ra": 247.109, "dec": -16.84, "day": 99, "real": true, "co2": "detected", "photos": 259 }
 ] }
 ```
@@ -29,7 +29,7 @@ Markers for the Explore map: comets people found (`kind: "comet"`) and known obj
 One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `detail` and `comments`, oldest first.
 
 ```json
-{ "id": "3I/ATLAS", "kind": "known", "real": true, "tags": { "comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0 },
+{ "id": "3I/ATLAS", "kind": "known", "real": true, "tags": { "comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0 },
   "detail": { "speed_arcsec_per_hour": 99.0, "direction": "west", "first_mjd": 60888.3334, "exposures": 259, "measured": 159,
     "photos": [ { "file": "2025W33_1B_0599_1_D5.png", "mjd": 60901.2413, "lam": 4.254, "flux": 95.58 } ],
     "spectrum": { "2025-08": [ { "lam": 4.254, "flux": 95.58, "err": 0.82 } ], "2025-12": [ { "lam": 4.277, "flux": 532.73, "err": 3.1 } ] } },
@@ -48,7 +48,7 @@ The Forums page's threads: every comet with at least one written comment, newest
 
 ```json
 { "threads": [ { "id": "3I/ATLAS", "kind": "known", "ra": 247.109, "dec": -16.84, "day": 99, "real": true,
-    "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 }, "last": 1763200000000,
+    "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0 }, "last": 1763200000000,
     "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The CO2 glow shows in the August photos.", "created_at": 1763200000000 } ] } ] }
 ```
 
@@ -66,7 +66,7 @@ Content-Type: application/json
 ```
 
 - `comet_id`: an existing comet id, as stored (no URL encoding in the body).
-- `tag`: optional, one of `comet`, `asteroid`, `glitch`, `unsure`.
+- `tag`: optional, one of `comet`, `asteroid`, `glitch`, `unsure`, `star` (`star`: added in migration 0015, the time-lapse's "Star" vote).
 - `body`: 1 to 1000 characters after trimming, or empty when there is a tag (a vote alone).
 - `author`: 1 to 24 letters, digits, spaces, `_`, `.` or `-`. The page takes it from the sign-in (`window.CH_USER.name` or localStorage `ch.user`), else asks for a nickname.
 - `turnstile`: the Cloudflare Turnstile token, checked with siteverify before anything touches the database.
@@ -75,7 +75,7 @@ Content-Type: application/json
 
 ```json
 { "comment": { "comet_id": "3I/ATLAS", "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun.", "created_at": 1763120000000 },
-  "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 } }
+  "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0 } }
 ```
 
 Refusals (JSON, CORS headers as above):
@@ -123,7 +123,7 @@ Content-Type: application/json
 - `det`: `D1` to `D6`.
 - `channel`: optional, the Spectral channel the time-lapse was built at, 1 to 102 as in `?ch=` (17 per detector, so it must be on `det`). Stored with `det` in `detail.candidate`; the candidate page rebuilds its frames at that channel (without one, at the detector's best-covered wavelength).
 - `visit`: the frame on screen (`live/pipeline.js`): `start` and `end` as `YYYY-MM-DD`, `mjd` within SPHEREx's mission, `exposures` 1 to 1000, `lam` 0.7 to 5.1 µm, `epochs` optional (at most 100 times, each within 30 days of `mjd`). Stored whole in `detail.candidate.visit`.
-- `tag`: required, one of `comet`, `asteroid`, `glitch`, `unsure`. It is the poster's first vote.
+- `tag`: required, one of `comet`, `asteroid`, `glitch`, `unsure`, `star` (`star`: added in migration 0015, the time-lapse's "Star" vote). It is the poster's first vote.
 - `body`: optional, at most 1000 characters after trimming.
 - `author`: as for comments. `turnstile`: as for comments (one token, one write).
 
@@ -158,7 +158,7 @@ a bad `visit` is `400 {"error":"visit must be YYYY-MM-DD"}`.
 
 ```json
 { "candidates": [ { "id": "C-0182", "ra": 269.4651, "dec": 4.7473, "det": "D1", "visit": "2026-08-23", "author": "mira_v",
-  "visit_end": "2026-08-24", "channel": 6, "created_at": 1763200000000, "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0 }, "sep": 0 } ] }
+  "visit_end": "2026-08-24", "channel": 6, "created_at": 1763200000000, "tags": { "comet": 1, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0 }, "sep": 0 } ] }
 ```
 
 ### POST /api/sightings

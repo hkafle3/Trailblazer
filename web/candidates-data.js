@@ -46,8 +46,8 @@ function human() {
 }
 const token = () => widget?.querySelector('[name=cf-turnstile-response]')?.value || window.turnstile?.getResponse?.(widget);
 
-// the tags the comments API knows: a real mover is an asteroid-like vote, a star is "not sure" with the word in the body
-const VOTES = [['asteroid', 'Real mover'], ['glitch', 'Glitch'], ['unsure', 'Star']];
+// the tags the comments API knows: a real mover is an asteroid-like vote, a star is its own tag (migration 0015)
+const VOTES = [['asteroid', 'Real mover'], ['glitch', 'Glitch'], ['star', 'Star']];
 const NAME = /^[A-Za-z0-9 _.-]{1,24}$/;
 function visit(c) {   // the visit as POST /api/candidates reads it: the detections' days, mean time and count
   const ts = c.detections.map(d => d.t), day = t => new Date((t - 40587) * 864e5).toISOString().slice(0, 10);

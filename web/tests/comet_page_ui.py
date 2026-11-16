@@ -57,7 +57,7 @@ async def main():
                 else:
                     assert g["id"] == cid and g["cat"], f"{why}: title {g['id']!r}, label {g['cat']!r}"
                     assert g["map"] == "Find on map" and g["where"].startswith("RA "), f"{why}: Where it is shows {g['map']!r}, {g['where']!r}"
-                    assert g["tags"] == [[k, c["tags"][k]] for k in ("comet", "asteroid", "glitch", "unsure")] and g["radios"] == 4, f"{why}: tags {g['tags']}, {g['radios']} tag rows in the form"
+                    assert g["tags"] == [[k, c["tags"][k]] for k in ("comet", "asteroid", "glitch", "unsure", "star")] and g["radios"] == 5, f"{why}: tags {g['tags']}, {g['radios']} tag rows in the form"
                     assert g["head"] and g["form"], f"{why}: no tally line or comment form"
                     assert g["posts"] == [m["body"] for m in c["comments"] if m["body"]], f"{why}: comments {g['posts']}"
                     d = c["detail"] or {}

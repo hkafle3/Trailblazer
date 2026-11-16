@@ -8,7 +8,7 @@
 const NEAR = 60;   // arcsec: the known-object match radius (the server uses the same 1 arcmin for duplicates)
 const D2R = Math.PI / 180, MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const NAME = /^[A-Za-z0-9 _.-]{1,24}$/;   // the API's rule for names (comet.js)
-const TAGS = [['comet', 'Comet'], ['asteroid', 'Asteroid'], ['glitch', 'Glitch'], ['unsure', 'Not sure']];
+const TAGS = [['comet', 'Comet'], ['asteroid', 'Asteroid'], ['glitch', 'Glitch'], ['unsure', 'Not sure'], ['star', 'Star']];
 const GO = '<span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span>';
 const ARROW = '<svg class="ic" aria-hidden="true"><use href="icons.svg#arrow"/></svg>';
 const visitDate = s => `${MONTH[+s.slice(5, 7) - 1]} ${+s.slice(8, 10)}, ${s.slice(0, 4)}`;
@@ -58,7 +58,7 @@ export function discuss(page) {
       if (page.found() !== c.id) page.setFound(c.id, page.spot(m.ra, m.dec));
       mine = c.id;
       stateBox.href = `candidate.html?id=${encodeURIComponent(c.id)}`;
-      const n = $('vName'), t = c.tags, votes = t.comet + t.asteroid + t.glitch + t.unsure;
+      const n = $('vName'), t = c.tags, votes = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0);
       n.querySelector('.by')?.remove();
       n.append(el('span', 'by', `${c.author}, ${ago(c.created_at)} · ${votes} tag${votes === 1 ? '' : 's'}`));
     } else if (!c && mine && page.found() === mine) { page.setFound(null); mine = null; }

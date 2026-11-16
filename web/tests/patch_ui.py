@@ -141,7 +141,9 @@ async def main():
             return order
         for tab, card in (("options", ["fov"]), ("spectral", ["sp-dial", "sp-on"]), ("others", ["still", "diff"]), ("info", ["coords", "det"])):
             await pg.click(f".pv-tabs [data-t={tab}]")
-            order = await tab_order()
+            # a card that scrolls is itself a Tab stop by design (timelapse.html moreBelow); whether it scrolls depends on the
+            # spot's data (a reported dot adds a "Found as" line), so that stop is not part of the order checked here
+            order = [x for x in await tab_order(11) if not x.startswith("pv-scroll")]
             want = ["play", "options", "spectral", "layers", "others", "info", "state", *card]
             assert order[:len(want)] == want, f"Tab order on a phone, {tab} open: {order}"
         print("PASS phone tab order: timeline, the five tabs, Discovered, then the open card (Zoom; the dial and its box; the toggles; Coordinates and Band)")

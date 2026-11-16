@@ -261,12 +261,12 @@ const TALLY_ONE = `SELECT tag, COUNT(*) AS n FROM comments c
 const tallies = async (db) => {
   const out = {};
   for (const { comet_id, tag, n } of (await db.prepare(TALLY).all()).results)
-    (out[comet_id] ??= { comet: 0, asteroid: 0, glitch: 0, unsure: 0 })[tag] = n;
+    (out[comet_id] ??= { comet: 0, asteroid: 0, glitch: 0, unsure: 0, star: 0 })[tag] = n;
   return out;
 };
 const cometRow = (c, tags) => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, tail: c.tail, real: !!c.real,
   ...(c.track ? { track: JSON.parse(c.track) } : {}),   // [[day, ra, dec], ...] every 10 days: where a known comet was
-  ...(c.kind === 'comet' ? { tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 } } : {}),
+  ...(c.kind === 'comet' ? { tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0, star: 0 } } : {}),
   ...(c.visit ? { candidate: true, det: c.det, visit: c.visit, author: c.author, created_at: c.created_at } : {}) });   // reported from a time-lapse
 
 // Comets people found plus known objects, for the map's markers
@@ -289,7 +289,7 @@ async function comet(id, env) {
   if (!c) return json({ error: `no comet ${id}` }, 404);
   const [tags, talk] = await Promise.all([tallies(env.DB),
     env.DB.prepare('SELECT author, tag, body, created_at FROM comments WHERE comet_id = ? ORDER BY created_at').bind(id).all()]);
-  return json({ ...cometRow(c, tags), tags: tags[id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 },
+  return json({ ...cometRow(c, tags), tags: tags[id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0, star: 0 },
     detail: c.detail ? JSON.parse(c.detail) : null, comments: talk.results });
 }
 
@@ -303,7 +303,7 @@ async function threads(env) {
   const by = {};
   for (const { comet_id, ...c } of talk.results) (by[comet_id] ??= []).push(c);
   const list = rows.results.map(c => ({ id: c.id, kind: c.kind, ra: c.ra, dec: c.dec, day: c.day, real: !!c.real,
-    tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0 }, last: by[c.id].at(-1).created_at, comments: by[c.id] }));
+    tags: tags[c.id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0, star: 0 }, last: by[c.id].at(-1).created_at, comments: by[c.id] }));
   return json({ threads: list.sort((a, b) => b.last - a.last) }, 200, { 'Cache-Control': 'no-store' });
 }
 
@@ -315,7 +315,7 @@ async function posts(env) {
 }
 
 // Post a comment (a tag makes it a vote). Turnstile first, so bots cost nothing below it.
-const TAGS = ['comet', 'asteroid', 'glitch', 'unsure'], AUTHOR = /^[A-Za-z0-9 _.-]{1,24}$/;
+const TAGS = ['comet', 'asteroid', 'glitch', 'unsure', 'star'], AUTHOR = /^[A-Za-z0-9 _.-]{1,24}$/;
 // Turnstile: { claim, hash } for a token that passed, or { refused: response }. Callers claim the hash in the same
 // batch as their write, so one token pays for one write.
 async function human(b, request, env) {
@@ -342,7 +342,7 @@ async function post(request, env) {
   const bad = (field, error) => json({ error, field }, 400);
   if (typeof b.comet_id !== 'string' || !b.comet_id) return bad('comet_id', 'comet_id is required');
   const tag = b.tag ?? null;
-  if (tag !== null && !TAGS.includes(tag)) return bad('tag', 'tag must be comet, asteroid, glitch or unsure');
+  if (tag !== null && !TAGS.includes(tag)) return bad('tag', 'tag must be comet, asteroid, glitch, unsure or star');
   const body = typeof b.body === 'string' ? b.body.trim() : '';
   // a tag alone is a vote (the candidate page's Tags card); without a tag there must be words
   if (body.length < (tag ? 0 : 1) || body.length > 1000) return bad('body', 'body must be 1 to 1000 characters');
@@ -370,7 +370,7 @@ async function post(request, env) {
     throw e;
   }
   if (res[0].meta.changes !== 1) return json({ error: 'too many comments, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
-  const tags = { comet: 0, asteroid: 0, glitch: 0, unsure: 0 };
+  const tags = { comet: 0, asteroid: 0, glitch: 0, unsure: 0, star: 0 };
   for (const { tag: t, n } of res[2].results) tags[t] = n;
   return json({ comment: { comet_id: b.comet_id, author, tag, body, created_at: now }, tags }, 201);
 }
@@ -379,7 +379,7 @@ async function post(request, env) {
 // One moving dot in one visit is one candidate. A report within 1 arcmin of a candidate in the same visit joins that
 // thread instead: the check runs inside the insert, in one D1 batch (one transaction), so two posts at once make one row.
 const NEAR_DEG = 1 / 60, MJD0 = 60789;   // MJD0: day 0 of Explore's timeline (web/skymap.js)
-const DATE = /^\d{4}-\d{2}-\d{2}$/, ZERO = () => ({ comet: 0, asteroid: 0, glitch: 0, unsure: 0 });
+const DATE = /^\d{4}-\d{2}-\d{2}$/, ZERO = () => ({ comet: 0, asteroid: 0, glitch: 0, unsure: 0, star: 0 });
 // candidates within NEAR_DEG of (?1 ra, ?2 dec) whose visit shares a day with ?3 to ?6 (first and last day; NULL: any
 // visit). A visit's days, not its first day alone: the exposures in a visit depend on the channel and detector it was
 // built at, so one dot seen in one visit can start a day apart. ?4 is cos(dec): flat sky is exact enough at 1 arcmin;
@@ -439,7 +439,7 @@ async function createCandidate(request, env) {
   const b = read.body, r = readSpot(b);
   if (r.refused) return r.refused;
   const s = r.spot;
-  if (!TAGS.includes(b.tag)) return json({ error: 'tag must be comet, asteroid, glitch or unsure', field: 'tag' }, 400);
+  if (!TAGS.includes(b.tag)) return json({ error: 'tag must be comet, asteroid, glitch, unsure or star', field: 'tag' }, 400);
   if (b.body !== undefined && typeof b.body !== 'string') return json({ error: 'body must be text', field: 'body' }, 400);
   const body = (b.body ?? '').trim();
   if (body.length > 1000) return json({ error: 'body must be at most 1000 characters', field: 'body' }, 400);

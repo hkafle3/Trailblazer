@@ -5,7 +5,7 @@
   const $ = id => document.getElementById(id);
   const list = $('threads'), count = $('count'), q = $('q'), region = $('region'), date = $('date'), known = $('known');
   const DAY = 864e5, RAD = Math.PI / 180, SHOW = 3;   // comments shown per thread before "more"
-  const VOTE = { comet: ['comet', 'var(--comet)'], asteroid: ['asteroid', 'var(--asteroid)'], glitch: ['glitch', 'var(--glitch)'], unsure: ['unsure', 'var(--unsure)'] };
+  const VOTE = { comet: ['comet', 'var(--comet)'], asteroid: ['asteroid', 'var(--asteroid)'], glitch: ['glitch', 'var(--glitch)'], unsure: ['unsure', 'var(--unsure)'], star: ['star', 'var(--star)'] };
   let threads = null;   // null until /api/threads answers: the filters leave "Loading" or a failed load on screen
 
   // ---- sky regions: north/south by Dec; near the ecliptic or the Milky Way by latitude within 15 degrees ----
