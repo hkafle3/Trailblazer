@@ -4,7 +4,7 @@
 // "Open time-lapse here": the same address a click on the flat map's "Look closer" opens (explore.js patchUrl).
 //
 // Nothing here is loaded until the switch is first pressed: explore.js imports this file, which then fetches three.js
-// and data/intro/ (the 3D intro's data, bake/intro_assets.py). The flat map is never touched: it is covered and hidden
+// and data/intro/ (the 3D intro's data, bake/intro_assets.py), and later the sharp sky tiles around a chosen photo. The flat map is never touched: it is covered and hidden
 // (explore-3d.css, body[data-view="3d"]) and every key and pointer event is kept away from it, so Flat shows it as it was.
 // The timeline stays and drives the 3D view too: the day sets where Earth and the comets are and which photos exist yet.
 //
@@ -303,7 +303,8 @@ label('3I/ATLAS', o => (atlasIn ? o.copy(atlasPos) : atlasSeen ? o.copy(atlasSky
 
 // ---------- the camera ----------
 // st.mode: 'overview', 'flying' or 'photo'. Overview: az, el and zoom (1 = the whole sphere in view) about Earth, eased
-// towards azT, elT and zoomT. Photo: on the line of sight st.spot, `out` AU from Earth, turned by yaw and pitch.
+// towards azT, elT and zoomT. Photo: on the line of sight st.spot, close enough that its photo (st.tile, half-width st.half)
+// fills part of the view, turned by yaw and pitch. st.sel runs 0 to 1 as the chosen photo's outline and ring come up.
 const st = { mode: 'overview', az: -.7, el: .3, zoom: 1, azT: -.7, elT: .3, zoomT: 1, spot: null, tile: -1, half: .0305, yaw: 0, pitch: 0, fly: null, sel: 0 };
 let W = 1, H = 1, VFOV = 40, area = { t: 0, b: 1 }, dirty = true;
 const ZOOM_MIN = .08;
