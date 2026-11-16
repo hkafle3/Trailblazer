@@ -355,22 +355,27 @@ function land(mode) { st.fly = null; st.mode = mode; st.sel = mode === 'photo' ?
 const f2 = x => (Math.abs(x) + 1e-9).toFixed(2);   // as the flat map's pin writes them
 function choose(n) {
   if (!n) return;   // a click in mid-flight starts the new flight from where the camera is
-  const day = +slider.value + 1, i = tileAt(n, day), [ra, dec] = dirEq(n);
   if (st.mode === 'overview') setCam(poseNow());   // the flight starts from here, whatever the card does to the room
   const shift0 = st.fly ? camera.view?.offsetY ?? shiftNow() : shiftNow();
   const from = { rel: camera.position.clone().sub(E), q: camera.quaternion.clone(), shift: shift0 };
-  st.spot = n.clone(); st.tile = i; st.where = { ra, dec, day: i < 0 ? null : tDay[i] };
-  st.half = i < 0 ? .0305 : Math.hypot(tE[3 * i], tE[3 * i + 1], tE[3 * i + 2]);
+  st.spot = n.clone(); describe();
+  st.half = st.tile < 0 ? .0305 : Math.hypot(tE[3 * st.tile], tE[3 * st.tile + 1], tE[3 * st.tile + 2]);   // the photo's size sets how close the camera comes
   skyU.uSpot.value.copy(n); sharpen(n);
+  card.classList.remove('in'); card.hidden = false; layout();
+  st.yaw = st.pitch = 0; skyU.uHov.value = 0; canvas.classList.remove('x3d-pick');
+  if (calm.matches) return land('photo');
+  st.fly = { to: 'photo', t0: null, ...from }; st.mode = 'flying'; words(); dirty = true;
+}
+// the chosen spot on the timeline's day: the newest photo that holds it (its outline and date), and the time-lapse's address
+function describe() {
+  const n = st.spot, i = st.tile = tileAt(n, +slider.value + 1), [ra, dec] = dirEq(n);
+  st.where = { ra, dec, day: i < 0 ? null : tDay[i] };
   if (i >= 0) { skyU.uSelC.value.fromArray(tC, 3 * i); skyU.uSelE.value.fromArray(tE, 3 * i); }
   $('x3d-what').textContent = i < 0 ? 'Patch of sky' : 'SPHEREx photo';
   $('x3d-when').textContent = i < 0 ? 'Not photographed yet' : dayDate(tDay[i], { day: 'numeric', month: 'short', year: 'numeric' });
   $('x3d-where').textContent = `RA ${f2(ra)}° Dec ${dec < 0 ? '-' : '+'}${f2(dec)}°`;
   $('x3d-open').href = patchUrl(ra, dec);
-  card.classList.remove('in'); card.hidden = false; layout();
-  st.yaw = st.pitch = 0; skyU.uHov.value = 0; canvas.classList.remove('x3d-pick');
-  if (calm.matches) return land('photo');
-  st.fly = { to: 'photo', t0: null, ...from }; st.mode = 'flying'; words(); dirty = true;
+  dirty = true;
 }
 function back() {
   if (st.mode !== 'photo') return;
@@ -401,8 +406,8 @@ function toScreen(n) {   // window point of a sky direction, or null when it is 
 
 // ---------- one frame ----------
 function render() {
-  const day = +slider.value;
-  seriesAt(S.earth, day, E); uCenter.value.copy(E); uNow.value = day + 1;   // the whole of the timeline's day
+  const day = lastDay;
+  uCenter.value.copy(E); uNow.value = day + 1;   // the whole of the timeline's day
   skyU.uSel.value = st.sel; skyU.uBox.value = st.tile < 0 ? 0 : st.sel;
   const s = tmp.copy(E).normalize().negate(); earthU.uSun.value.copy(s); earth.position.copy(E);
   const px = camera.position.distanceTo(E) * tanH() * 2 / H;   // world size of one CSS pixel at Earth's distance
@@ -432,10 +437,16 @@ function render() {
 }
 const perf = { frames: [] };
 let raf = 0, lastTs = 0, lastDrawn = false, lastDay = -1;
+// the timeline moved: Earth's place first (every camera pose is worked out from it), then the chosen spot's photo, which
+// may not have been taken yet on the new day
+function onDay() {
+  lastDay = +slider.value; seriesAt(S.earth, lastDay, E); dirty = true;
+  if (st.spot && st.mode !== 'overview' && tileAt(st.spot, lastDay + 1) !== st.tile) describe();
+}
 function tick(ts) {
   raf = requestAnimationFrame(tick);
   const dt = Math.min(100, ts - lastTs), f = st.fly;
-  if (+slider.value !== lastDay) { lastDay = +slider.value; dirty = true; }
+  if (+slider.value !== lastDay) onDay();
   if (f) {
     f.t0 ??= ts; const s = (ts - f.t0) / 1000, end = f.to === 'photo' ? T_IN + T_OUT : T_BACK;
     setCam(flightPose(f, Math.min(s, end))); dirty = true;
@@ -521,7 +532,7 @@ const api = window.__x3d = {
 $('x3d-loading').remove();
 return {
   key,
-  start() { layout(); words(); lastDrawn = false; dirty = true; cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); },
+  start() { onDay(); layout(); words(); lastDrawn = false; dirty = true; cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); },
   stop() { cancelAnimationFrame(raf); lastDrawn = false; pts.clear(); press = null; },
 };
 }
