@@ -1,0 +1,1344 @@
+{
+ "seed": "detector-v3-2026-11-16",
+ "mjd_ref": 61000.0,
+ "source": "UltracoolSheet v2.1.0 Main.csv, Zenodo 15802304",
+ "source_sha256": "2307303072ebf729be6e7af6ec67c0a9feed6c2ab6f0adb35444bfab5724a184",
+ "size": 0.56,
+ "dev": [
+  {
+   "field": "dev_0435",
+   "ra": 43.5005,
+   "dec": 2.2571,
+   "kind": "dwarf",
+   "target": {
+    "name": "PSO J043.5395+02.3995",
+    "ra": 43.55027503532995,
+    "dec": 2.400523794889345,
+    "pme": 2.5625999999999998,
+    "pmn": 0.22190000000000001,
+    "pm": 2.5721894117657818,
+    "w2": 12.74,
+    "w1": 15.75,
+    "spt": 28.0,
+    "spt_text": "T8",
+    "ref_pm": "Kirk19",
+    "plx_mas": 146.1,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -48.207292676556925,
+    "elat": -13.61495007851158,
+    "stratum": "fast-bright"
+   }
+  },
+  {
+   "field": "dev_1114",
+   "ra": 168.8252,
+   "dec": -26.2677,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASS J11145133-2618235",
+    "ra": 168.68883855644327,
+    "dec": -26.30944176705453,
+    "pme": -3.0215,
+    "pmn": -0.3895,
+    "pm": 3.046501682257865,
+    "w2": 12.304,
+    "w1": 15.256,
+    "spt": 27.5,
+    "spt_text": "T7.5",
+    "ref_pm": "Dupu12",
+    "plx_mas": 179.2,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN
+   }
+  },
+  {
+   "field": "dev_0415",
+   "ra": 63.9665,
+   "dec": -9.4517,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASSI J0415195-093506",
+    "ra": 63.848540804017105,
+    "dec": -9.581242534109059,
+    "pme": 2.2143,
+    "pmn": 0.5358999999999999,
+    "pm": 2.2782259106594327,
+    "w2": 12.305,
+    "w1": 15.148,
+    "spt": 28.0,
+    "spt_text": "T8",
+    "ref_pm": "Dupu12",
+    "plx_mas": 175.2,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -38.92492660582707,
+    "elat": -30.317272284733814,
+    "stratum": "fast-bright"
+   }
+  },
+  {
+   "field": "dev_0937",
+   "ra": 144.4712,
+   "dec": 29.6955,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASSI J0937347+293142",
+    "ra": 144.40311770762028,
+    "dec": 29.5186584745608,
+    "pme": 0.9552,
+    "pmn": -1.3197999999999999,
+    "pm": 1.629195838443003,
+    "w2": 11.674,
+    "w1": 14.093,
+    "spt": 26.0,
+    "spt_text": "T6 pec",
+    "ref_pm": "Schi09",
+    "plx_mas": 163.4,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 47.58536134396179,
+    "elat": 14.511069364114842,
+    "stratum": "fast-bright"
+   }
+  },
+  {
+   "field": "dev_0727",
+   "ra": 111.7379,
+   "dec": 17.0551,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASSI J0727182+171001",
+    "ra": 111.83441733540748,
+    "dec": 17.160918106548028,
+    "pme": 1.0455,
+    "pmn": -0.7637,
+    "pm": 1.2947231132562669,
+    "w2": 12.988,
+    "w1": 15.179,
+    "spt": 27.0,
+    "spt_text": "T7",
+    "ref_pm": "Dupu12",
+    "plx_mas": 112.5,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 15.497721551151958,
+    "elat": -4.708928987439308,
+    "stratum": "fast-bright"
+   }
+  },
+  {
+   "field": "dev_1503",
+   "ra": 225.7565,
+   "dec": 25.5941,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASS J15031961+2525196",
+    "ra": 225.8324103772633,
+    "dec": 25.426159814282457,
+    "pme": 0.0874,
+    "pmn": 0.5578,
+    "pm": 0.5646057031238704,
+    "w2": 11.714,
+    "w1": 13.325,
+    "spt": 25.0,
+    "spt_text": "T5",
+    "ref_pm": "Gaia23",
+    "plx_mas": 155.8,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 60.46928762270099,
+    "elat": 40.663033563213396,
+    "stratum": "slow-bright"
+   }
+  },
+  {
+   "field": "dev_0243",
+   "ra": 40.6212,
+   "dec": -24.888,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASSI J0243137-245329",
+    "ra": 40.804765953988635,
+    "dec": -24.893122250741502,
+    "pme": -0.288,
+    "pmn": -0.2075,
+    "pm": 0.3549651391334084,
+    "w2": 12.968,
+    "w1": 14.666,
+    "spt": 26.0,
+    "spt_text": "T6",
+    "ref_pm": "Vrba04",
+    "plx_mas": 94.0,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -64.83729148704356,
+    "elat": -38.461149281806385,
+    "stratum": "slow-bright"
+   }
+  },
+  {
+   "field": "dev_0049",
+   "ra": 12.5908,
+   "dec": 21.76,
+   "kind": "dwarf",
+   "target": {
+    "name": "WISE J004945.61+215120.0",
+    "ra": 12.437744611867345,
+    "dec": 21.855194209445585,
+    "pme": -0.4794,
+    "pmn": -0.054,
+    "pm": 0.4824317153753472,
+    "w2": 13.059,
+    "w1": 16.068,
+    "spt": 28.5,
+    "spt_text": "T8.5",
+    "ref_pm": "Kirk21",
+    "plx_mas": 140.4,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -41.01485420610657,
+    "elat": 15.190462467571082,
+    "stratum": "slow-bright"
+   }
+  },
+  {
+   "field": "dev_barnard",
+   "ra": 269.55,
+   "dec": 4.85,
+   "kind": "barnard",
+   "target": {
+    "name": "Barnard's Star",
+    "ra": 269.4463,
+    "dec": 4.7671,
+    "pme": -0.802,
+    "pmn": 10.362
+   }
+  },
+  {
+   "field": "dev_m1",
+   "ra": 345.5845,
+   "dec": 16.4476,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 2816946561275274880",
+    "ra": 345.67027389573036,
+    "dec": 16.39757257306354,
+    "pme": 0.2963284461850521,
+    "pmn": 0.07444385966940618,
+    "pm": 0.30553630923496733,
+    "g": 17.8651,
+    "bp_rp": 3.8598137,
+    "plx_mas": 12.931795720099394,
+    "coverage": {
+     "d6_per_pass": [
+      18,
+      18,
+      21
+     ],
+     "pass_years": [
+      2025.45,
+      2025.91,
+      2026.46
+     ],
+     "d4": 59,
+     "n": 348,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.097,
+     "pmra": 0.31057,
+     "pmdec": 0.06523
+    }
+   }
+  },
+  {
+   "field": "dev_m2",
+   "ra": 164.3761,
+   "dec": 38.0561,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 775305922653299328",
+    "ra": 164.42626327393756,
+    "dec": 38.19816393861601,
+    "pme": -0.24966315646280826,
+    "pmn": -0.17420577236468143,
+    "pm": 0.30443282152249596,
+    "g": 18.400158,
+    "bp_rp": 3.876955,
+    "plx_mas": 11.767149174414222,
+    "coverage": {
+     "d6_per_pass": [
+      22,
+      19
+     ],
+     "pass_years": [
+      2025.9,
+      2026.33
+     ],
+     "d4": 44,
+     "n": 254,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.545,
+     "pmra": -0.27452,
+     "pmdec": -0.19477
+    }
+   }
+  }
+ ],
+ "final": [
+  {
+   "ra": 323.3097,
+   "dec": -71.6604,
+   "kind": "dwarf",
+   "target": {
+    "name": "WISEPA J213456.73-713743.6",
+    "ra": 323.75476376925087,
+    "dec": -71.63002391284508,
+    "pme": 1.363,
+    "pmn": -0.223,
+    "pm": 1.3811220076445092,
+    "w2": 13.955,
+    "w1": 17.58,
+    "spt": 29.0,
+    "spt_text": "T9 pec",
+    "ref_pm": "Tinn14",
+    "plx_mas": 110.0,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -38.051722555407004,
+    "elat": -52.80760886149936,
+    "stratum": "fast-faint",
+    "coverage": {
+     "d6_per_pass": [
+      20,
+      24,
+      19
+     ],
+     "pass_years": [
+      2025.71,
+      2026.3,
+      2026.71
+     ],
+     "d4": 90,
+     "n": 502,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 15.173,
+     "pmra": 1.40021,
+     "pmdec": -0.2141
+    }
+   },
+   "field": "f01"
+  },
+  {
+   "ra": 238.3721,
+   "dec": 15.4297,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASSI J1553022+153236",
+    "ra": 238.25625704784426,
+    "dec": 15.544817822039699,
+    "pme": -0.38589999999999997,
+    "pmn": 0.1662,
+    "pm": 0.42016812111344193,
+    "w2": 13.092,
+    "w1": 15.232,
+    "spt": 27.0,
+    "spt_text": "T7",
+    "ref_pm": "Dupu12",
+    "plx_mas": 75.1,
+    "unresolved_multiple": "Y: Burg06e",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 46.40929869670391,
+    "elat": 34.87428565236536,
+    "stratum": "slow-bright",
+    "coverage": {
+     "d6_per_pass": [
+      21,
+      18,
+      21
+     ],
+     "pass_years": [
+      2025.54,
+      2026.11,
+      2026.53
+     ],
+     "d4": 62,
+     "n": 360,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.092,
+     "pmra": -0.37694,
+     "pmdec": 0.15483
+    }
+   },
+   "field": "f02"
+  },
+  {
+   "ra": 7.75,
+   "dec": 15.6,
+   "kind": "flash",
+   "flash": {
+    "ra": 7.6317,
+    "dec": 15.704,
+    "obs": "2026W01_2A_0524_3",
+    "det": "D1"
+   },
+   "field": "f03"
+  },
+  {
+   "ra": 280.8671,
+   "dec": 30.6109,
+   "kind": "plane",
+   "l": 60,
+   "b": 15.0,
+   "coverage": {
+    "d6_per_pass": [
+     18,
+     22,
+     19
+    ],
+    "pass_years": [
+     2025.66,
+     2026.28,
+     2026.66
+    ],
+    "d4": 56,
+    "n": 427,
+    "colls": [
+     "spherex_dr1",
+     "spherex_qr3"
+    ]
+   },
+   "field": "f04"
+  },
+  {
+   "ra": 75.0684,
+   "dec": -12.5314,
+   "kind": "dwarf",
+   "target": {
+    "name": "WISEPA J050003.05-122343.2",
+    "ra": 75.01074163511032,
+    "dec": -12.393447134382843,
+    "pme": -0.5316000000000001,
+    "pmn": 0.493,
+    "pm": 0.725015558453748,
+    "w2": 14.1,
+    "w1": 16.974,
+    "spt": 28.0,
+    "spt_text": "T8",
+    "ref_pm": "Kirk21",
+    "plx_mas": 84.6,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -30.25999767239489,
+    "elat": -34.903898208315674,
+    "stratum": "slow-faint",
+    "coverage": {
+     "d6_per_pass": [
+      22,
+      18,
+      24
+     ],
+     "pass_years": [
+      2025.68,
+      2026.14,
+      2026.69
+     ],
+     "d4": 65,
+     "n": 373,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 14.913,
+     "pmra": -0.65484,
+     "pmdec": 0.583
+    }
+   },
+   "field": "f05"
+  },
+  {
+   "ra": 189.3698,
+   "dec": 13.3033,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 3931845716842542080",
+    "ra": 189.51294771439257,
+    "dec": 13.33272999913866,
+    "pme": -0.3392341639229013,
+    "pmn": 0.050331042795235814,
+    "pm": 0.3429475642737906,
+    "g": 15.846359,
+    "bp_rp": 3.4538975,
+    "plx_mas": 23.447883388079898,
+    "coverage": {
+     "d6_per_pass": [
+      19,
+      19,
+      21
+     ],
+     "pass_years": [
+      2025.39,
+      2025.99,
+      2026.42
+     ],
+     "d4": 60,
+     "n": 365,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 11.221,
+     "pmra": -0.34948,
+     "pmdec": 0.03214
+    }
+   },
+   "field": "f06"
+  },
+  {
+   "ra": 332.4741,
+   "dec": -37.0412,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 6574918563022096384",
+    "ra": 332.3143975147922,
+    "dec": -37.135999323394145,
+    "pme": -0.12563633372303157,
+    "pmn": -0.4227782939131321,
+    "pm": 0.4410509881583576,
+    "g": 17.24534,
+    "bp_rp": 4.2644987,
+    "plx_mas": 24.883495427455223,
+    "coverage": {
+     "d6_per_pass": [
+      17,
+      33,
+      5
+     ],
+     "pass_years": [
+      2025.36,
+      2025.81,
+      2026.37
+     ],
+     "d4": 65,
+     "n": 329,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 12.024,
+     "pmra": -0.103,
+     "pmdec": -0.4527
+    }
+   },
+   "field": "f07"
+  },
+  {
+   "ra": 186.4093,
+   "dec": -27.7559,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASS J12255432-2739466",
+    "ra": 186.47984661480427,
+    "dec": -27.66816736344969,
+    "pme": 0.385,
+    "pmn": -0.6282000000000001,
+    "pm": 0.7367904993958595,
+    "w2": 12.87,
+    "w1": 14.743,
+    "spt": 26.0,
+    "spt_text": "T6",
+    "ref_pm": "Tinn03b",
+    "plx_mas": 76.0,
+    "unresolved_multiple": "Y: Burg03b",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 34.862035705785495,
+    "elat": -22.72293793562024,
+    "stratum": "slow-bright",
+    "coverage": {
+     "d6_per_pass": [
+      19,
+      23,
+      26
+     ],
+     "pass_years": [
+      2025.43,
+      2026.04,
+      2026.44
+     ],
+     "d4": 62,
+     "n": 440,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.676,
+     "pmra": -0.04044,
+     "pmdec": -0.84266
+    }
+   },
+   "field": "f08"
+  },
+  {
+   "ra": 246.1637,
+   "dec": 0.3797,
+   "kind": "dwarf",
+   "target": {
+    "name": "SDSSp J162414.37+002915.6",
+    "ra": 246.05706001155673,
+    "dec": 0.4875990241843486,
+    "pme": -0.37289999999999995,
+    "pmn": -0.0091,
+    "pm": 0.3730110186040085,
+    "w2": 13.126,
+    "w1": 15.15,
+    "spt": 26.0,
+    "spt_text": "T6",
+    "ref_pm": "Tinn03b",
+    "plx_mas": 91.8,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 32.48067349006736,
+    "elat": 21.7984712693131,
+    "stratum": "slow-bright",
+    "coverage": {
+     "d6_per_pass": [
+      18,
+      19,
+      18
+     ],
+     "pass_years": [
+      2025.56,
+      2026.16,
+      2026.56
+     ],
+     "d4": 60,
+     "n": 340,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.126,
+     "pmra": -0.37658,
+     "pmdec": -0.00749
+    }
+   },
+   "field": "f09"
+  },
+  {
+   "ra": 205.737,
+   "dec": 36.9492,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 1472282460851209984",
+    "ra": 205.96891679933023,
+    "dec": 36.87748430480958,
+    "pme": -0.30054665465424923,
+    "pmn": 0.06922696311333872,
+    "pm": 0.308416380962095,
+    "g": 16.78308,
+    "bp_rp": 3.4236393,
+    "plx_mas": 17.12099378863319,
+    "coverage": {
+     "d6_per_pass": [
+      21,
+      19,
+      20
+     ],
+     "pass_years": [
+      2025.39,
+      2025.99,
+      2026.39
+     ],
+     "d4": 62,
+     "n": 378,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 12.255,
+     "pmra": -0.33004,
+     "pmdec": 0.05665
+    }
+   },
+   "field": "f10"
+  },
+  {
+   "ra": 124.1743,
+   "dec": -61.8767,
+   "kind": "dwarf",
+   "target": {
+    "name": "DENIS J081730.0-615520",
+    "ra": 124.37256435519002,
+    "dec": -61.913082108601415,
+    "pme": -0.1565,
+    "pmn": 1.0994000000000002,
+    "pm": 1.1104830525496552,
+    "w2": 11.282,
+    "w1": 12.972,
+    "spt": 26.0,
+    "spt_text": "T6",
+    "ref_pm": "Gaia23",
+    "plx_mas": 191.8,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -14.396208762279848,
+    "elat": -74.58161764875459,
+    "stratum": "fast-bright",
+    "coverage": {
+     "d6_per_pass": [
+      20,
+      27,
+      24
+     ],
+     "pass_years": [
+      2025.4,
+      2026.0,
+      2026.4
+     ],
+     "d4": 87,
+     "n": 583,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 11.282,
+     "pmra": -0.16526,
+     "pmdec": 1.13
+    }
+   },
+   "field": "f11"
+  },
+  {
+   "ra": 162.0374,
+   "dec": 21.3461,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASSI J1047538+212423",
+    "ra": 161.96060731201646,
+    "dec": 21.402646383755418,
+    "pme": -1.673,
+    "pmn": -0.5,
+    "pm": 1.7461182663267687,
+    "w2": 13.001,
+    "w1": 15.35,
+    "spt": 26.5,
+    "spt_text": "T6.5",
+    "ref_pm": "Best18",
+    "plx_mas": 95.0,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 61.331509430141445,
+    "elat": 12.716208539403477,
+    "stratum": "fast-bright",
+    "coverage": {
+     "d6_per_pass": [
+      12,
+      18,
+      17
+     ],
+     "pass_years": [
+      2025.33,
+      2025.91,
+      2026.34
+     ],
+     "d4": 53,
+     "n": 306,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.001,
+     "pmra": -1.70283,
+     "pmdec": -0.49762
+    }
+   },
+   "field": "f12"
+  },
+  {
+   "ra": 349.547,
+   "dec": -12.9621,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASS J23185497-1301106",
+    "ra": 349.7231122800386,
+    "dec": -13.021526700889801,
+    "pme": -0.797,
+    "pmn": -0.249,
+    "pm": 0.8349910179157618,
+    "w2": 13.809,
+    "w1": 15.093,
+    "spt": 25.0,
+    "spt_text": "T5",
+    "ref_pm": "Best20",
+    "plx_mas": 67.0,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -64.17178725484803,
+    "elat": -7.908057688706618,
+    "stratum": "slow-faint",
+    "coverage": {
+     "d6_per_pass": [
+      19,
+      19,
+      19
+     ],
+     "pass_years": [
+      2025.44,
+      2025.89,
+      2026.46
+     ],
+     "d4": 69,
+     "n": 371,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.809,
+     "pmra": -0.82755,
+     "pmdec": -0.2745
+    }
+   },
+   "field": "f13"
+  },
+  {
+   "ra": 187.8241,
+   "dec": 8.857,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASS J12314753+0847331",
+    "ra": 187.9396721046478,
+    "dec": 8.784888049281314,
+    "pme": -1.1787,
+    "pmn": -1.044,
+    "pm": 1.5745696840724452,
+    "w2": 13.083,
+    "w1": 15.066,
+    "spt": 25.5,
+    "spt_text": "T5.5",
+    "ref_pm": "Kirk21",
+    "plx_mas": 70.0,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": 71.07555112369278,
+    "elat": 11.211031960447546,
+    "stratum": "fast-bright",
+    "coverage": {
+     "d6_per_pass": [
+      19,
+      19,
+      21
+     ],
+     "pass_years": [
+      2025.39,
+      2025.99,
+      2026.41
+     ],
+     "d4": 55,
+     "n": 340,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.083,
+     "pmra": -1.18258,
+     "pmdec": -1.0662
+    }
+   },
+   "field": "f14"
+  },
+  {
+   "ra": 178.4326,
+   "dec": 27.4728,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 4007508575148453248",
+    "ra": 178.5534381116564,
+    "dec": 27.570655456451213,
+    "pme": -0.11837723621060085,
+    "pmn": -0.3106509453113074,
+    "pm": 0.33244124274173514,
+    "g": 15.905191,
+    "bp_rp": 2.7818012,
+    "plx_mas": 12.063763935322454,
+    "coverage": {
+     "d6_per_pass": [
+      23,
+      18,
+      19
+     ],
+     "pass_years": [
+      2025.39,
+      2025.94,
+      2026.39
+     ],
+     "d4": 55,
+     "n": 335,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 11.958,
+     "pmra": -0.13838,
+     "pmdec": -0.31179
+    }
+   },
+   "field": "f15"
+  },
+  {
+   "ra": 62.4584,
+   "dec": 14.9364,
+   "kind": "dwarf",
+   "target": {
+    "name": "WISEPA J041022.71+150248.5",
+    "ra": 62.59900657886399,
+    "dec": 15.037162070408396,
+    "pme": 0.95987,
+    "pmn": -2.21882,
+    "pm": 2.41754267993349,
+    "w2": 14.104,
+    "w1": 18.018,
+    "spt": 30.0,
+    "spt_text": "Y0",
+    "ref_pm": "Font25",
+    "plx_mas": 153.0,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -25.923379665181955,
+    "elat": -5.913112737724381,
+    "stratum": "fast-faint",
+    "coverage": {
+     "d6_per_pass": [
+      19,
+      18,
+      18
+     ],
+     "pass_years": [
+      2025.65,
+      2026.11,
+      2026.65
+     ],
+     "d4": 55,
+     "n": 330,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 15.023,
+     "pmra": 0.77855,
+     "pmdec": -1.55
+    }
+   },
+   "field": "f16"
+  },
+  {
+   "ra": 6.0703,
+   "dec": -31.0718,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 2316780542865925760",
+    "ra": 6.091387354502705,
+    "dec": -31.175459187360108,
+    "pme": 0.32124901966311087,
+    "pmn": -0.0683699383468126,
+    "pm": 0.3284438781649869,
+    "g": 17.242685,
+    "bp_rp": 3.093111,
+    "plx_mas": 12.752328375234335,
+    "coverage": {
+     "d6_per_pass": [
+      19,
+      29,
+      19
+     ],
+     "pass_years": [
+      2025.46,
+      2025.91,
+      2026.45
+     ],
+     "d4": 77,
+     "n": 400,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 12.985,
+     "pmra": 0.33946,
+     "pmdec": -0.08961
+    }
+   },
+   "field": "f17"
+  },
+  {
+   "ra": 78.8874,
+   "dec": -4.6758,
+   "kind": "dwarf",
+   "target": {
+    "name": "2MASS J05160945-0445499",
+    "ra": 79.03757611180745,
+    "dec": -4.765521725302305,
+    "pme": -0.222,
+    "pmn": -0.2026,
+    "pm": 0.3005507611036778,
+    "w2": 13.677,
+    "w1": 15.476,
+    "spt": 25.5,
+    "spt_text": "T5.5",
+    "ref_pm": "Best20",
+    "plx_mas": 47.8,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -23.334683535757744,
+    "elat": -27.735540406327498,
+    "stratum": "slow-faint",
+    "coverage": {
+     "d6_per_pass": [
+      20,
+      26,
+      34
+     ],
+     "pass_years": [
+      2025.69,
+      2026.16,
+      2026.7
+     ],
+     "d4": 80,
+     "n": 449,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.677,
+     "pmra": -0.22529,
+     "pmdec": -0.185
+    }
+   },
+   "field": "f18"
+  },
+  {
+   "ra": 304.6624,
+   "dec": -74.2641,
+   "kind": "dwarf",
+   "target": {
+    "name": "WISEPA J201824.96-742325.9",
+    "ra": 304.6088226593845,
+    "dec": -74.39530813324207,
+    "pme": 0.3077,
+    "pmn": -1.0084,
+    "pm": 1.054300644977513,
+    "w2": 13.598,
+    "w1": 16.465,
+    "spt": 27.0,
+    "spt_text": "T7",
+    "ref_pm": "Kirk19",
+    "plx_mas": 83.2,
+    "unresolved_multiple": "N",
+    "companion": "N",
+    "companion_sep": NaN,
+    "glat": -31.862831837458014,
+    "elat": -52.71166024151355,
+    "stratum": "fast-faint",
+    "coverage": {
+     "d6_per_pass": [
+      24,
+      24,
+      21
+     ],
+     "pass_years": [
+      2025.7,
+      2026.28,
+      2026.69
+     ],
+     "d4": 80,
+     "n": 431,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 13.598,
+     "pmra": 0.33344,
+     "pmdec": -1.04
+    }
+   },
+   "field": "f19"
+  },
+  {
+   "ra": 102.0574,
+   "dec": 37.4012,
+   "kind": "mdwarf",
+   "target": {
+    "name": "Gaia DR3 943755192838705792",
+    "ra": 101.8468923785248,
+    "dec": 37.32420342108511,
+    "pme": 0.15165582901833238,
+    "pmn": -0.2909260275962432,
+    "pm": 0.32808145940934813,
+    "g": 15.145595,
+    "bp_rp": 2.8363514,
+    "plx_mas": 18.347278880483703,
+    "coverage": {
+     "d6_per_pass": [
+      19,
+      18,
+      7
+     ],
+     "pass_years": [
+      2025.76,
+      2026.2,
+      2026.75
+     ],
+     "d4": 63,
+     "n": 331,
+     "colls": [
+      "spherex_dr1",
+      "spherex_qr3"
+     ]
+    },
+    "catwise_own": {
+     "w2": 11.064,
+     "pmra": 0.14694,
+     "pmdec": -0.311
+    }
+   },
+   "field": "f20"
+  }
+ ],
+ "excluded": [
+  {
+   "name": "WISE J004945.61+215120.0",
+   "stratum": "slow-bright",
+   "excluded": "E5 development or v2 object or within 2 deg of one"
+  },
+  {
+   "name": "2MASSI J0243137-245329",
+   "stratum": "slow-bright",
+   "excluded": "E5 development or v2 object or within 2 deg of one"
+  },
+  {
+   "name": "PSO J043.5395+02.3995",
+   "stratum": "fast-bright",
+   "excluded": "E5 development or v2 object or within 2 deg of one"
+  },
+  {
+   "name": "UGPS J03553200+4743588",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "2MASSI J0415195-093506",
+   "stratum": "fast-bright",
+   "excluded": "E5 development or v2 object or within 2 deg of one"
+  },
+  {
+   "name": "WISE J043052.92+463331.6",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "UGPS J052127.27+364048.6",
+   "stratum": "fast-bright",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "CWISEP J060132.96-592227.3",
+   "stratum": "slow-faint",
+   "excluded": "E4 ecliptic latitude"
+  },
+  {
+   "name": "WISE J061437.73+095135.0",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "WISEPA J062309.94-045624.6",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "WISE J071322.55-291751.9",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "UGPS J072227.51-054031.2",
+   "stratum": "slow-bright",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "2MASSI J0727182+171001",
+   "stratum": "fast-bright",
+   "excluded": "E5 development or v2 object or within 2 deg of one"
+  },
+  {
+   "name": "WISEPC J075946.98-490454.0",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "CWISE J084506.51-330532.7",
+   "stratum": "fast-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "2MASSI J0937347+293142",
+   "stratum": "fast-bright",
+   "excluded": "E5 development or v2 object or within 2 deg of one"
+  },
+  {
+   "name": "ULAS J095047.28+011734.3",
+   "stratum": "slow-faint",
+   "excluded": "E6 higher-mass companion within 120 arcsec"
+  },
+  {
+   "name": "2MASS J10073369-4555147",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "Ross 458C",
+   "stratum": "slow-faint",
+   "excluded": "E6 higher-mass companion within 120 arcsec"
+  },
+  {
+   "name": "LHS 2803B",
+   "stratum": "slow-faint",
+   "excluded": "E6 higher-mass companion within 120 arcsec"
+  },
+  {
+   "name": "2MASS J15031961+2525196",
+   "stratum": "slow-bright",
+   "excluded": "E5 development or v2 object or within 2 deg of one"
+  },
+  {
+   "name": "WISEPA J184124.74+700038.0",
+   "stratum": "slow-faint",
+   "excluded": "E4 ecliptic latitude"
+  },
+  {
+   "name": "WISE J192841.35+235604.9",
+   "stratum": "slow-bright",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "WISENF J193656.08+040801.2",
+   "stratum": "fast-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "WISE J200050.19+362950.1",
+   "stratum": "slow-bright",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "Wolf 940B",
+   "stratum": "slow-faint",
+   "excluded": "E6 higher-mass companion within 120 arcsec"
+  },
+  {
+   "name": "2MASS J21543318+5942187",
+   "stratum": "slow-faint",
+   "excluded": "E4 galactic latitude"
+  },
+  {
+   "name": "WISE J223617.59+510551.9",
+   "stratum": "slow-bright",
+   "excluded": "E4 galactic latitude"
+  }
+ ],
+ "pool": {
+  "e1_e3": 128,
+  "after_cheap_rules": 100,
+  "by_stratum": {
+   "slow-bright": 11,
+   "slow-faint": 65,
+   "fast-bright": 12,
+   "fast-faint": 12
+  }
+ },
+ "control_source": {
+  "file": "gaia_mdwarf_movers.csv",
+  "sha256": "0c4effb366f3dc329829c9c09754afd764e3999a838135e0fef43e4925ee80ea",
+  "rows": 3520
+ },
+ "control_excluded": [
+  {
+   "name": "Gaia DR3 6603446319916932864",
+   "excluded": "E6 CatWISE neighbour W2 11.698 within 12 arcsec"
+  },
+  {
+   "name": "Gaia DR3 5673602319993218560",
+   "excluded": "flux: own CatWISE W2 10.574 outside 11.0 to 14.5"
+  },
+  {
+   "name": "Gaia DR3 4564041194596534400",
+   "excluded": "flux: own CatWISE W2 10.975 outside 11.0 to 14.5"
+  }
+ ]
+}
