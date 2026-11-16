@@ -57,6 +57,7 @@ function drop() {   // end a press without a click
 }
 stage.addEventListener('pointerdown', e => {
   if (!desk() || e.button || e.target.closest('.tl, .pincard')) return;
+  if (press) { if (e.pointerType === 'touch') drop(); return; }
   press = { id: e.pointerId, x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, drag: false };
   if (e.target.closest('#map')) map.focus({ preventScroll: true });   // so the keys work after a click on the sky
 });

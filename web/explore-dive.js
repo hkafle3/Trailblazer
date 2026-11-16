@@ -216,6 +216,8 @@ async function start(pushEntry = true, spot = here()) {
   const d = target(spot);
   if (d.ra == null || d.phase !== 'ready') return;
   d.phase = 'in';
+  const day = +$('time').value;
+  d.ready.then(() => { if (dive === d) d.f.contentWindow.postMessage({ type: 'dive-go', ra: d.ra, dec: d.dec, det: DET, day }, location.origin); });
   clearTimeout(pushT); clearTimeout(saveQ);
   // the map lets go of any finger or button still held, so it cannot move underneath
   for (const id of [...fingers.keys(), 1]) dispatchEvent(new PointerEvent('pointercancel', { pointerId: id }));
@@ -360,7 +362,10 @@ addEventListener('message', e => {
   const m = e.data, d = dive;
   if (m.type === 'dive-ready') d.ok();
   else if (m.type === 'dive-frame' && !d.shot) { const c = frameCanvas(m.px); if (c) d.shot = { cv: c, deg: 12 / 60, degH: 12 / 60 }; }
-  else if (m.type === 'dive-url' && d.phase !== 'ready' && history.state?.dive) history.replaceState(history.state, '', 'timelapse.html' + m.search);
+  else if (m.type === 'dive-url' && d.phase !== 'ready' && history.state?.dive) {
+    const q = new URLSearchParams(m.search);
+    history.replaceState({ ...history.state, dive: { ...history.state.dive, ra: +q.get('ra'), dec: +q.get('dec') } }, '', 'timelapse.html' + m.search);
+  }
   else if (m.type === 'dive-out' && d.phase === 'open') history.back();
 });
 // back closes it; forward opens it again at the same spot

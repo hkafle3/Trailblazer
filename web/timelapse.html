@@ -1430,11 +1430,15 @@ if (P.has('ra') && P.has('dec')) {
 } else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1', ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends it when a dive is likely ('dive-go')
   setMode('lapse');
+  const opts = {};
   addEventListener('message', e => {
     const m = e.data;
-    if (e.origin !== location.origin || e.source !== parent || m?.type !== 'dive-go' || state.m || job) return;
+    if (e.origin !== location.origin || e.source !== parent || m?.type !== 'dive-go') return;
+    opts.day = m.day;
+    if (state.m) { state.i = nearestVisit(state.m, m.day); draw(); return; }
+    if (job) return;
     document.getElementById('coords').value = `${m.ra.toFixed(4)} ${m.dec.toFixed(4)}`; document.getElementById('det').value = m.det;
-    search(m.ra, m.dec, m.det, { day: m.day });
+    search(m.ra, m.dec, m.det, opts);
   });
 } else setMode('sky');   // the whiteboard flow starts at the whole sky
 // &spec=ra,dec: the Spectrum card opens on that spot (its 2026.0 place) as soon as the page shows a patch

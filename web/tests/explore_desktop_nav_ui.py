@@ -235,6 +235,24 @@ async def main():
         assert st == ["", False, False, True, True], f"back from a phone width the map and buttons kept {st}"
         print("PASS resize: the zoom is kept across a resize; a phone width and back returns the whole oval and resets the buttons")
 
+        # A landscape phone uses the desktop handlers. A second touch ends the drag and neither finger takes it over.
+        await pg.set_viewport_size({"width": 844, "height": 390}); await pg.click("#zoom-in"); await settle(pg)
+        cdp = await ctx.new_cdp_session(pg)
+        async def touch(kind, pts):
+            await cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"id": i, "x": x, "y": y} for i, (x, y) in enumerate(pts)]})
+        for dragging in (False, True):
+            await touch("touchStart", [(400, 180)])
+            if dragging:
+                await touch("touchMove", [(380, 180)])
+                assert await pg.evaluate("document.body.classList.contains('grabbing')"), "the first touch did not start a drag"
+            await touch("touchStart", [(380 if dragging else 400, 180), (500, 180)])
+            held = await pg.evaluate(WRAP)
+            assert not await pg.evaluate("document.body.classList.contains('grabbing')"), "the second touch did not cancel the drag"
+            await touch("touchMove", [(350, 180), (530, 180)])
+            assert await pg.evaluate(WRAP) == held, "a second touch hijacked the press"
+            await touch("touchEnd", [])
+        print("PASS landscape touch: a second finger cancels a press or drag without taking it over")
+
         # ---- less motion: no glides, a double click lands at once ----
         rm = await b.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
         await rm.add_init_script("localStorage.setItem('ch.tour','1')")
