@@ -18,6 +18,12 @@
 @view-transition { navigation: auto; }
 @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
 </style>
+<!-- A first visit opens with the 3D intro "How this map was made" (intro.js, loaded by explore.js only when it plays), then
+     the tour (ui.js). Not on a link to a day, a comet, a search or a sample, and not once the intro or the tour has been
+     seen. ?intro=1 plays it anyway. Decided here, before anything is drawn, so the map never flashes under it (explore.css). -->
+<script>
+try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|sample)=/.test(s) && !history.state?.view && !localStorage.getItem('ch.intro') && !localStorage.getItem('ch.tour'))) document.documentElement.dataset.intro = 'wait'; } catch (e) { /* no storage: no intro */ }
+</script>
 </head>
 <body class="explore">
 
@@ -87,6 +93,8 @@
      it comes first in the page so an open Layers panel draws over its button. -->
 <!-- phones: the two buttons and the whole-sky button float in one row above the timeline; on a desktop this wrapper does nothing (display: contents) -->
 <div class="xbtns">
+<!-- replays the 3D intro over the map (intro.js). First in the page, so the open Examples and Layers panels draw over it -->
+<button class="how" id="how" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 6v12l9.5-6z"/></svg>How this map was made</button>
 <details class="layers examples" id="examples">
   <summary>Examples<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></summary>
   <div class="layers-body" aria-label="Example targets">

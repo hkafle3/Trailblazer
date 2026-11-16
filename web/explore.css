@@ -94,6 +94,15 @@ body.explore .examples .example:hover { color: #fff; }
 body.explore .examples .example:hover .ic { opacity: 1; transform: translateX(3px); }
 body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 3px; }
 
+/* "How this map was made": replays the 3D intro (intro.js). Same button look, one more step up the stack */
+.how { position: fixed; left: 28px; bottom: 140px; z-index: 5; display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 18px; border-radius: 10px;
+  border: 1.5px solid rgba(255, 255, 255, .85); background: rgba(0, 0, 0, .55); color: #fff; font: 400 15px var(--panel-font); cursor: pointer; }
+.how:hover { background: rgba(255, 255, 255, .08); }
+.how:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.how svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+/* a first visit: black until the intro is up, so the map does not flash under it (explore.html sets data-intro) */
+html[data-intro="wait"] body::before { content: ""; position: fixed; inset: 0; z-index: 200; background: #010206; }
+
 /* ---------- phones (direction A, "full-screen map"): the map is the page and the page never scrolls ----------
    explore-phone.js pans and zooms by setting .map-wrap's width, left and top; every layer is placed in percent of it,
    so dots and names keep their pixel size at any zoom. Everything below is phone only; the parts it adds to the page
@@ -132,6 +141,7 @@ body.explore .examples .example:focus-visible { outline: 2px solid #fff; outline
   /* Examples, Layers and the whole-sky button float in one row above the timeline */
   .xbtns { position: fixed; z-index: 5; left: 12px; right: 12px; bottom: calc(var(--bar) + 12px); display: flex; align-items: flex-end; gap: 10px; pointer-events: none; }
   .xbtns > * { pointer-events: auto; }
+  .how { position: absolute; left: 0; bottom: 56px; padding: 0 14px; gap: 8px; font-size: 14px; background: rgba(0, 0, 0, .6); }   /* its own row, above Examples */
   body.explore .layers, body.explore .layers.examples { position: static; order: 0; display: block; left: auto; bottom: auto; }
   body.explore .layers > summary { width: auto; height: 44px; padding: 0 14px; gap: 8px; justify-content: center; border-radius: 10px; font-size: 14px; background: rgba(0, 0, 0, .6); }
   body.explore .layers .ly-ic { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }

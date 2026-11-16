@@ -215,6 +215,17 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
 // The link is read at the click: the replay is paused and later clicks wait, so the page that opens is the one clicked.
 // Clicks with a modifier key and middle clicks are left to the browser (new tab or window).
 let leaving = false, stopReplay = () => {};
+
+// ---- "How this map was made": the 3D intro. intro.js, three.js and its data load only when it plays ----
+// explore.html starts it on a first visit (data-intro on <html>); the button replays it over the map as it is now, and
+// it lands back on that view. While data-intro is set the tour waits (ui.js).
+const page = document.documentElement;
+function playIntro() {
+  stopReplay(); page.dataset.intro ||= 'on';
+  return import('./intro.js').then(m => m.play()).catch(err => console.warn('intro unavailable', err)).finally(() => { delete page.dataset.intro; });
+}
+$('how').addEventListener('click', playIntro);
+if (page.dataset.intro) playIntro();
 phoneUI.hooks.stop = () => stopReplay();
 $('marks').addEventListener('click', e => {
   if (phoneUI.tap(e)) return;   // phones: a peek sheet first, the page stays
@@ -415,7 +426,7 @@ let showByDay = () => {};
     timer = setInterval(() => { setDay(+slider.value + 2); if (+slider.value >= meta.days) stop(); }, 40);
   };
   // Ed: the replay plays every time Explore opens. A link to a day (?day=, Find on map) or a search (?q=) lands on that day instead,
-  // and reduced motion starts still on the last day.
-  if (!kept && !['day', 'q'].some(k => new URLSearchParams(location.search).has(k)) && !matchMedia('(prefers-reduced-motion: reduce)').matches) { setDay(0); timeline.onPress(); }
+  // and reduced motion starts still on the last day. So does a first visit: the intro has just shown the sky filling in, and it lands on the whole sky.
+  if (!kept && !page.dataset.intro && !['day', 'q'].some(k => new URLSearchParams(location.search).has(k)) && !matchMedia('(prefers-reduced-motion: reduce)').matches) { setDay(0); timeline.onPress(); }
   document.body.dataset.ready = '1';
 })();

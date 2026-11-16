@@ -288,7 +288,9 @@
   if (/[?&]guide=1/.test(location.search)) openGuide();
   new MutationObserver(() => scanButtons()).observe(document.body, { childList: true, subtree: true });
   if (isExplore && (!store.get('ch.tour') || /[?&]tour=1/.test(location.search))) {
-    const wait = setInterval(() => { if (document.body.dataset.ready) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);
-    setTimeout(() => clearInterval(wait), 15000);
+    // a first visit plays the 3D intro first (explore.html sets data-intro on <html>, explore.js clears it): the tour follows it
+    const intro = () => document.documentElement.dataset.intro;
+    const wait = setInterval(() => { if (document.body.dataset.ready && !intro()) { clearInterval(wait); setTimeout(startTour, 900); } }, 300);
+    setTimeout(() => { if (!intro()) clearInterval(wait); }, 15000);
   }
 })();
