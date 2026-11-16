@@ -149,3 +149,21 @@ Known flaw in the rule, noticed on reading this list and before measuring: V1 an
 picked (4) Vesta (predicted 5 Jy) and (16) Psyche (116 mJy), far brighter than the level at which Iris's core was
 flagged. They stay in the counted set as chosen. Replacements under the 20 mJy ceiling (slots V1b, X1b, same rule plus
 that ceiling) are measured and reported separately and do not count toward the pass.
+
+## Added after step 1, before step 2 (reported, never counted)
+
+Step 1 on (60) Echo showed the frozen rotation step (7) fails: Echo's lightcurve is large at this geometry (SPHEREx
+alone recovers its 25.21 h period, amplitude about 0.6 mag in one season) and its mean level differs by about 1.7x
+between seasons. With about 1.3 images per channel, step 7's leave-one-burst-out reference is too sparse and the
+factors erase the 1 um band (frozen D = -0.04, slope +0.41 per um against Gaia's -0.24). A 2-harmonic lightcurve
+model at the SBDB period was tried and also left steps between bursts.
+
+Second method, "burst chain", frozen here and run on the confirmation set alongside the frozen method: one free factor
+per burst (a burst is one rotation instant), fitted jointly with a log spectrum over the 102 channels on images with
+SNR at least 5, tied together only by a smoothness term on the spectrum's second difference across adjacent channels
+(sigma 0.01 in ln reflectance; a 1 um band costs about 0.004 per channel, a 10% step between bursts about 0.1), with
+the factors summing to zero in log. Bursts with no SNR 5 image keep factor 1 and get the spread of the factors as a
+fractional error. Everything else (photometry, masks, stars, geometry, solar spectrum, channels, stack, nulls, bars) is
+unchanged. On Echo it gives D = 0.092 +- 0.032 (S-like) and slope -0.22 +- 0.24 against Gaia's -0.24. The sigma 0.01
+was set on a priori grounds and not tuned on Echo; it stays fixed for step 2. Only the frozen method counts toward the
+pass.

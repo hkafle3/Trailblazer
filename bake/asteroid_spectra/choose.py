@@ -117,13 +117,19 @@ SLOTS = [  # name, complexes, snr lo, snr hi, flux lo, flux hi, gaia ('req', 'pr
     ("F2", "SCVX", 1, 3, 0, 1e9, None, 100, True, None),
 ]
 
+# --extra: the 20 mJy ceiling V1 and X1 lacked (test.md, noted before measuring); reported, never counted
+EXTRA = [("V1b", "V", 10, 1e9, 0, 20, "pref", 100, False, None), ("X1b", "X", 10, 1e9, 0, 20, "pref", 100, False, None)]
+
 
 def main():
     cands = pool()
     gaia = gaia_numbers([c["num"] for c in cands])
     print(f"pool {len(cands)} typed asteroids, {sum(c['num'] in gaia for c in cands)} with Gaia DR3 spectra", flush=True)
+    extra = "--extra" in sys.argv
     taken, picks = set(), []
-    for name, cxs, lo, hi, flo, fhi, g, nmin, mca, bus in SLOTS:
+    if extra:
+        taken = {p["num"] for p in json.loads((OUT / "selection.json").read_text())}
+    for name, cxs, lo, hi, flo, fhi, g, nmin, mca, bus in (EXTRA if extra else SLOTS):
         ok = [c for c in cands if c["cx"] in cxs and c["num"] not in taken and (c["orbit"] in ORBITS or (mca and c["orbit"] == "MCA"))
               and (bus is None or (c["src"].startswith("Bus") and c["cls"] == bus)) and (g != "req" or c["num"] in gaia)]
         if g == "pref":
@@ -142,7 +148,7 @@ def main():
         if pick:
             taken.add(pick["num"])
             picks.append(pick)
-    (OUT / "selection.json").write_text(json.dumps(picks, indent=1))
+    (OUT / ("selection_extra.json" if extra else "selection.json")).write_text(json.dumps(picks, indent=1))
 
 
 if __name__ == "__main__":
