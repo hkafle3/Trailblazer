@@ -737,6 +737,7 @@ function show(m, query, opts = {}) {
   Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.day != null ? nearestVisit(m, opts.day) : opts.diff ? m.frames.length - 1 : opts.t != null ? Math.max(0, m.frames.findIndex(f => f.at_t)) : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
+  candTrack.commit(query);
   document.getElementById('pv-name').textContent = candTrack.title() ?? (m.key.startsWith('live') ? 'Sky spot' : m.name);   // the phone's title row
   document.getElementById('pv-radec').textContent = `RA ${m.ra.toFixed(2)} Dec ${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(2)}`;
   panel(m); draw(); photo();

@@ -13,22 +13,25 @@ window.__cand = { id, ring: null, track: [] };
 // the page rewrites its address as the visit and channel change, naming only its own fields: keep &cand= (and &sample=, where it came from) in every rewrite
 // so a reload or a shared link still draws the track, but only while the view is still the candidate's (same target, or same ra/dec);
 // a move to another spot drops &cand= and takes the candidate's title, track and votes off the page
-let leave = () => {};
+let leave = () => {}, here = true;
 const near = (a, b) => a != null && b != null && Math.abs(+a - +b) < 1e-3;
 const same = u => (P.has('target') ? u.get('target') === P.get('target') : near(u.get('ra'), P.get('ra')) && near(u.get('dec'), P.get('dec')));
 if (id) {
   const replace = history.replaceState.bind(history);
-  let here = true;
   history.replaceState = (state, title, url) => {
     if (url != null) {
       const u = new URL(url, location.href);
-      if (here && !same(u.searchParams)) { here = false; leave(); }
       for (const k of here ? ['cand', 'sample'] : ['sample']) if (P.has(k) && !u.searchParams.has(k)) u.searchParams.set(k, P.get(k));
       if (!here) u.searchParams.delete('cand');
       url = u;
     }
     replace(state, title, url);
   };
+}
+
+// A tentative URL change can roll back after a failed search. Leave only when its frames are shown.
+export function commit(url) {
+  if (here && !same(new URL(url, location.href).searchParams)) { here = false; leave(); }
 }
 
 // the page's title while a candidate is open: a sample one says so, never the baked target's real name

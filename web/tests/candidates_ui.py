@@ -215,8 +215,17 @@ async def run(p, name, ctx_args):
     got = json.load(urllib.request.urlopen(f"{BASE}/api/comets/{thread}"))
     assert got["tags"]["star"] >= 1 and any(m["tag"] == "star" and m["author"] == "cand tester" for m in got["comments"]), got["tags"]
     await pg.reload(); await pg.wait_for_function("window.__cand?.ring", timeout=20000)
-    # moving to another spot drops the candidate: no &cand=, no title, track or votes, and a reload stays off it
+    # a failed re-centre restores the candidate along with its photo and address
+    await pg.route("**/api/images*", lambda r: r.fulfill(status=502, content_type="application/json", body='{"error":"test failure"}'))
+    await pg.evaluate("window.__was = __lapse.state.m; __lapse.recenter([-4 * 3600 / __lapse.state.m.arcsec_per_pixel, 0])")
+    await pg.wait_for_function("document.getElementById('status').className === 'err'", timeout=60000)
+    assert await pg.evaluate("__lapse.state.m === window.__was && !!window.__cand.ring && !!document.querySelector('.cand-info, .cvote') && document.body.classList.contains('cand')"), "failed search removed the candidate"
+    assert f"cand={c0['id']}" in await pg.evaluate("location.search"), "rollback dropped cand from the address"
+    await pg.unroute("**/api/images*")
+    # a URL rewrite alone keeps the candidate; committing another spot removes it
     await pg.evaluate("history.replaceState(null, '', '?ra=10.0000&dec=-5.0000&det=1')")
+    assert await pg.evaluate("!!window.__cand.ring && location.search.includes('cand=')"), "tentative URL removed the candidate"
+    await pg.evaluate("import('/live/candtrack.js').then(t => { t.commit(location.href); history.replaceState(null, '', location.href); })")
     left = await pg.evaluate("[location.search, document.querySelector('.cand-info, .cvote') == null, window.__cand.track.length, document.body.classList.contains('cand')]")
     assert "cand=" not in left[0] and left[1] and left[2] == 0 and not left[3], left
     for path in [go, BASE + "/explore.html?sample=1"]:
