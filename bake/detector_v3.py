@@ -14,9 +14,10 @@ Stages (the last one reached is recorded for every mover)
              CatWISE motion itself, and the CatWISE-to-SPHEREx displacement, and they must agree. A Gaia star at the
              spot whose own motion disagrees is the static/blend explanation and wins. AllWISE is only reported.
   C spectrum forced aperture photometry in every exposure of all six detectors along the fitted track, binned in
-             wavelength. Frozen templates (detector_v3_templates.json): methane dwarfs against everything smooth
-             (field stars by colour with a free brightness per pass, blackbodies, power laws, any non-negative mix).
-             cold = dwarf fit better by D_MIN in chi-square, acceptable in absolute terms, with real data in the methane
+             wavelength, single-exposure outliers dropped. Frozen templates (detector_v3_templates.json). Nested test:
+             everything smooth (field stars by colour with a free brightness per pass, blackbodies, power laws, any
+             non-negative mix) against the same plus methane dwarfs. cold = the dwarfs lower chi-square by D_MIN, carry
+             at least half the 4 to 5 um light, the fit is acceptable in absolute terms, with real data in the methane
              trough and on the 4 to 5 um peak. Missing data are missing, never low.
 Run: python -I bake/detector_v3.py run <field_dir> <out.json>
      python -I bake/detector_v3.py templates          (development fields only; writes detector_v3_templates.json)
@@ -54,7 +55,9 @@ K_CW, K_DISP, P_MIN = 4.0, 3.5, 1e-3          # CatWISE motion significance; dis
 LINK_R, BLEND_R, BLEND_FLUX = 6.0, 9.0, 0.3
 FLUX_LO, FLUX_HI = 0.35, 2.8                  # SPHEREx 4.5 um flux over the CatWISE W2 flux
 D_MIN, Q_MAX, SN_MIN = 30.0, 5.0, 8.0         # spectrum: chi-square margin, dwarf chi-square per bin, total signal to noise
-CAL_FLOOR = 0.15                              # fractional flux error added per bin (calibration, template mismatch)
+SHARE_MIN = 0.5                               # the dwarf templates must carry at least this share of the modelled 4 to 5 um light
+CLIP = 8.0                                    # single-sample outlier cut, sigma (dropped samples are counted)
+CAL_FLOOR = 0.15                             # fractional flux error added per bin (calibration, template mismatch)
 LAMT = np.round(np.concatenate([np.arange(0.775, 2.40, 0.05), np.arange(2.45, 3.80, 0.10), np.arange(3.85, 5.0, 0.075)]), 4)
 EDGES = np.r_[0.75, (LAMT[1:] + LAMT[:-1]) / 2, 5.0]
 fl = lambda v: float(v) if v not in ('', 'null', 'NaN', None) else float('nan')
@@ -293,6 +296,20 @@ def spectrum(X, P, track, plx):
         if np.isfinite(f): out.append((lam_at(a, x, y), f, s, a['t']))
     return np.array(out).reshape(-1, 4)
 
+def clean(sm, k=CLIP):
+    """Drop single-exposure outliers (cosmic rays, glitches): a sample further than k sigma from the median of the other
+    samples within 0.05 um (or the 4 nearest within 0.15 um where sampling is sparse), sigma = its own error plus
+    CAL_FLOOR of that median. Samples with fewer than 3 such neighbours are kept. -> (kept samples, number dropped)"""
+    if len(sm) < 4: return sm, 0
+    o = np.argsort(sm[:, 0]); s = sm[o]; keep = np.ones(len(s), bool)
+    lo, hi = np.searchsorted(s[:, 0], s[:, 0] - 0.05), np.searchsorted(s[:, 0], s[:, 0] + 0.05, 'right')
+    for i in range(len(s)):
+        nb = np.r_[s[lo[i]:i, 1], s[i + 1:hi[i], 1]]
+        if len(nb) < 4:                                                  # sparse wavelengths: the 4 nearest samples within 0.15 um
+            j = np.argsort(np.abs(s[:, 0] - s[i, 0]))[1:5]; nb = s[j[np.abs(s[j, 0] - s[i, 0]) <= 0.15], 1]
+        if len(nb) >= 3: m = np.median(nb); keep[i] = abs(s[i, 1] - m) <= k * np.hypot(s[i, 2], CAL_FLOOR * m)
+    return s[keep], int((~keep).sum())
+
 def binned(sm, tsplit=None):
     """Samples -> per-bin weighted mean flux and sigma on LAMT, aperture-corrected (nan where a bin has no sample)."""
     T = templates(); apc = np.array(T['apcor']); f = np.full(len(LAMT), np.nan); s = np.full(len(LAMT), np.nan); b = np.digitize(sm[:, 0], EDGES) - 1
@@ -305,9 +322,13 @@ def bb(T_, lam):
     x = 14387.8 / (lam * T_); return lam ** -3 / np.expm1(np.clip(x, 1e-6, 500))
 
 def classify(sm, pass_t):
-    """Template stage. -> dict(verdict, spectrum_valid, dchi2, chi2_dwarf, ...). cold needs the dwarf library to beat every
-    smooth alternative by D_MIN with an acceptable fit and real data in the trough and on the peak."""
+    """Template stage. -> dict(verdict, spectrum_valid, dchi2, chi2_dwarf, ...). Nested test: the alternative is every smooth
+    explanation (field stars with a free brightness per pass, blackbodies, power laws, any non-negative mix); the dwarf model is
+    the same plus the methane-dwarf templates (a dwarf blended with a star is still a dwarf). cold needs the dwarf templates to
+    lower chi-square by D_MIN, carry at least SHARE_MIN of the 4 to 5 um light, fit acceptably, with real data in the trough,
+    on the peak and short of 2.4 um."""
     T = templates(); res = dict(verdict='insufficient', spectrum_valid=False, n_samples=int(len(sm)))
+    sm, res['clipped'] = clean(sm)
     if len(sm) < 20: res['why'] = 'fewer than 20 samples'; return res
     # bins per pass (so a star may change brightness between passes), then stacked into one data vector
     pid = np.argmin(np.abs(sm[:, 3][:, None] - np.array(pass_t)[None, :]), 1); fs, ss, col = [], [], []
@@ -326,10 +347,12 @@ def classify(sm, pass_t):
     dw = [np.array(t)[idx] for t in T['dwarf'].values()]; st = [np.array(t)[idx] for t in T['star'].values()]
     smooth = [bb(t_, lam) / bb(t_, 4.5) for t_ in (600, 800, 1000, 1300, 1700, 2200, 3000, 5000)] + [(lam / 4.5) ** a_ for a_ in (-2, -1, 0, 1, 2, 3)]
     var = [np.where(pj == j, t, 0) for t in st for j in sorted(set(pj))]
-    c_d, a_d, m_d = fit(dw); c_a, a_a, m_a = fit(var + smooth); c_s, _, _ = fit(st)
-    res.update(chi2_dwarf=float(c_d), chi2_alt=float(c_a), chi2_star=float(c_s), dchi2=float(c_a - c_d), q_dwarf=float(c_d / max(len(f) - len(dw), 1)), dwarf_mix=dict(zip(T['dwarf'].keys(), [float(v) for v in a_d])),
+    nd = len(dw); c_d, a_d, m_d = fit(dw + var + smooth); c_a, a_a, m_a = fit(var + smooth); c_s, _, _ = fit(st)
+    share = float((np.array(dw).T[peak] @ a_d[:nd]).sum() / max(m_d[peak].sum(), 1e-30)); res['dwarf_share_45'] = share
+    res.update(chi2_dwarf=float(c_d), chi2_alt=float(c_a), chi2_star=float(c_s), dchi2=float(c_a - c_d), q_dwarf=float(c_d / max(len(f) - int((a_d > 0).sum()), 1)), dwarf_mix=dict(zip(T['dwarf'].keys(), [float(v) for v in a_d[:nd]])),
                trough_over_peak=float(np.average(f[trough], weights=1 / s[trough] ** 2) / np.average(f[peak], weights=1 / s[peak] ** 2)), spectrum_valid=True,
                model_dwarf=[[float(l), float(v)] for l, v in zip(lam, m_d)], model_alt=[[float(l), float(v)] for l, v in zip(lam, m_a)])
+    if share < SHARE_MIN: res['verdict'] = 'not_cold'; res['why'] = 'dwarf light under half of the 4 to 5 um flux'; return res
     res['verdict'] = 'cold' if (res['dchi2'] >= D_MIN and res['q_dwarf'] <= Q_MAX) else 'not_cold' if (res['dchi2'] <= 0 or res['q_dwarf'] > Q_MAX) else 'insufficient'
     return res
 
@@ -352,7 +375,7 @@ def build_templates():
             for a in X:
                 ra, dec = F.track(t['ra'], t['dec'], t['pme'], t['pmn'], (t['plx_mas'] if np.isfinite(t.get('plx_mas', np.nan)) else 0) / 1000, a['t'], MJD_REF); x, y = world2pix(a, ra[0], dec[0]); v, e_ = phot(a, x, y)
                 if np.isfinite(v): sm.append((lam_at(a, x, y), v, e_, a['t']))
-            dwarf[t['name']] = raw(np.array(sm)); print(f['field'], t['name'], len(sm), 'samples', flush=True)
+            dwarf[t['name']] = raw(clean(np.array(sm))[0]); print(f['field'], t['name'], len(sm), 'samples', flush=True)
         tree = cKDTree(np.c_[F.tan(G[:, 0], G[:, 1], P['ra'], P['dec'])]); gx, gy = F.tan(G[:, 0], G[:, 1], P['ra'], P['dec']); n = 0
         for q in np.nonzero((G[:, 4] > 11.5) & (G[:, 4] < np.clip(15.5 + 1.5 * (G[:, 5] - 1.5), 15.5, 19.0)) & (np.hypot(G[:, 2], G[:, 3]) < 100) & np.isfinite(G[:, 5]) & (np.hypot(gx, gy) < P['size'] * 1500))[0][np.argsort(-G[(G[:, 4] > 11.5) & (G[:, 4] < np.clip(15.5 + 1.5 * (G[:, 5] - 1.5), 15.5, 19.0)) & (np.hypot(G[:, 2], G[:, 3]) < 100) & np.isfinite(G[:, 5]) & (np.hypot(gx, gy) < P['size'] * 1500), 5])]:      # reddest first, so the rare M stars are not crowded out
             if len(tree.query_ball_point([gx[q], gy[q]], 20.0)) > 1: continue
@@ -363,7 +386,7 @@ def build_templates():
                     l = lam_at(a, x, y); sm.append((l, v, e_, a['t'])); v3, _ = phot(a, x, y, 3.0)
                     if v > 30 * e_ and np.isfinite(v3): big.append((l, v3 / v))
             if len(sm) < 150: continue
-            r = raw(np.array(sm)); pk = np.nanmean(r[(LAMT >= 4.0) & (LAMT <= 5.0)])
+            r = raw(clean(np.array(sm))[0]); pk = np.nanmean(r[(LAMT >= 4.0) & (LAMT <= 5.0)])
             if not np.isfinite(pk) or pk <= 0.3 or np.isfinite(r).mean() < 0.9: continue
             c = next(c for c in STAR_CLASSES if c[0] <= G[q, 5] < c[1]); stars[c].append(r / pk); apc += big; n += 1
             if n >= 60: break
