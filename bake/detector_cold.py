@@ -29,7 +29,7 @@ from scipy.spatial import cKDTree
 from scipy.interpolate import RegularGridInterpolator
 warnings.simplefilter('ignore')
 
-VERSION = 'cold-2026-11-15b'
+VERSION = 'cold-2026-11-15c'
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S3 = 'https://nasa-irsa-spherex.s3.amazonaws.com/'
 API = 'https://comet-hunt.comet-hunt.workers.dev/api/images'
@@ -149,7 +149,7 @@ def stack(name, inj=None):
         k4 = np.nonzero((t4 > min(t) - 30) & (t4 < max(t) + 30))[0]
         c4 = np.array([np.where((r4[i][1] >= BAND33[0]) & (r4[i][1] <= BAND33[1]), r4[i][0], np.nan) for i in k4]) if len(k4) else np.full((1, N, N), np.nan, np.float32)
         n33 = np.isfinite(c4).sum(0)
-        eps.append(dict(t=float(np.mean(t)), n=len(g), obs=E6[g[0]]['obs'], s45=np.where(n45 >= MIN_N, combine(cube), np.nan), n45=n45,
+        eps.append(dict(t=float(np.mean(t)), n=len(g), obs=E6[g[0]]['obs'], obs_all=[E6[i]['obs'] for i in g], t0=float(min(t)), t1=float(max(t)), s45=np.where(n45 >= MIN_N, combine(cube), np.nan), n45=n45,
                         s33=np.where(n33 >= MIN_N, combine(c4), np.nan), n33=n33))
     return P, eps
 
@@ -187,7 +187,7 @@ def forced(ep, band, x, y):
     """Aperture flux and its sigma (MJy/sr sums) at tangent-plane positions (arcsec)."""
     N = ep['ap45'].shape[0]; c = [np.atleast_1d(y) / OPIX + (N - 1) / 2, np.atleast_1d(x) / OPIX + (N - 1) / 2]
     f = ndi.map_coordinates(np.nan_to_num(ep['ap' + band], nan=0), c, order=1, cval=0); s = ndi.map_coordinates(ep['sd' + band], c, order=1, mode='nearest')
-    ok = ndi.map_coordinates(np.isfinite(ep['ap' + band]).astype(np.float32), c, order=0, cval=0) > 0
+    ok = ndi.map_coordinates(np.isfinite(ep['ap' + band]).astype(np.float32), c, order=1, cval=0) > 0.999   # all four pixels it interpolates between (review of 4ddce47: zero-filled mask edges faked a low flux)
     return np.where(ok, f, np.nan), np.where(ok, s, np.nan)
 
 def gaia(P):
@@ -250,6 +250,10 @@ def search(name, inj=None):
     for i, (e, c) in enumerate(zip(eps, C)):
         ref = gaia_at(G, P, e['t']) if G else (C[0]['x'], C[0]['y']); n, rms = anchor(c, *ref) if (G or i) else (len(c['x']), 0.0)
         out['anchor'].append(dict(frame='Gaia DR3' if G else 'first epoch', stars=n, rms_arcsec=rms, sources=len(c['x'])))
+    good = [i for i, q in enumerate(out['anchor']) if q['stars'] > 0]; eps, C = [eps[i] for i in good], [C[i] for i in good]      # a pass that could not be tied to the frame is not used
+    for i, q in enumerate(out['anchor']): out['epochs'][i]['used'] = i in good
+    if len(eps) < 2 or year(eps[-1]['t']) - year(eps[0]['t']) < BASE_MIN:
+        out['note'] = 'fewer than two registered survey passes far enough apart'; return out, eps
     yr = np.array([float(year(e['t'])) for e in eps]); dt = yr[-1] - yr[0]; a, b = C[0], C[-1]                      # first and last pass: the error model and the star colours
     I, J = pair(a, b, MU_MAX * dt + 3); dx, dy = b['x'][J] - a['x'][I], b['y'][J] - a['y'][I]; d = np.hypot(dx, dy); q = 1 / a['snr'][I] ** 2 + 1 / b['snr'][J] ** 2
     st = d < 2; mad = lambda v: 1.4826 * np.median(np.abs(v - np.median(v))) if len(v) > 20 else None                 # error model from the patch's own stars
@@ -280,16 +284,17 @@ def search(name, inj=None):
           if not ok or used & {(p[5], p[6]) for p in pts}: continue
           pts.sort(); t, x, y, s = (np.array([p[k] for p in pts]) for k in range(4)); w = 1 / sig1(s); M = np.c_[np.ones(len(t)), t - t.mean()] * w[:, None]
           cx, cy = np.linalg.lstsq(M, x * w, rcond=None)[0], np.linalg.lstsq(M, y * w, rcond=None)[0]; mu = float(np.hypot(cx[1], cy[1]))
-          if mu < MU_LIST: continue
+          tw = (t * w ** 2).sum() / (w ** 2).sum(); sfit = float(mu * np.sqrt((w ** 2 * (t - tw) ** 2).sum()))      # speed over its own error, from every pass in the fit
+          if mu < MU_LIST or sfit < SIG_MIN: continue
           rms = float(np.sqrt(np.mean((cx[0] + cx[1] * (t - t.mean()) - x) ** 2 + (cy[0] + cy[1] * (t - t.mean()) - y) ** 2)))
           ex, ey = [cx[0] + cx[1] * (v - t.mean()) for v in yr], [cy[0] + cy[1] * (v - t.mean()) for v in yr]; c45, e45, c33, e33 = (float(v[0]) for v in colour(ex, ey))
           r_lo = c45 / (max(c33, 0) + 2 * e33) if np.isfinite(c33) and np.isfinite(e33) else None; vs = r_lo / rstar if r_lo is not None and rstar else None
           ra, dec = untan(x, y, P['ra'], P['dec']); mv = dict(
-              mu=mu, mu_east=float(cx[1]), mu_north=float(cy[1]), pa=float(np.degrees(np.arctan2(cx[1], cy[1])) % 360), sigma=float(d[n] / np.sqrt(sig1(a['snr'][i]) ** 2 + sig1(b['snr'][j]) ** 2)),
+              mu=mu, mu_east=float(cx[1]), mu_north=float(cy[1]), pa=float(np.degrees(np.arctan2(cx[1], cy[1])) % 360), sigma=sfit, pair_sigma=float(d[n] / np.sqrt(sig1(a['snr'][i]) ** 2 + sig1(b['snr'][j]) ** 2)),
               shift_arcsec=float(d[n]), rms=rms, n_seen=len(pts), n_looks=looks, f45_mjy=c45 * MJY, e45_mjy=e45 * MJY, f33_mjy=None if r_lo is None else c33 * MJY, e33_mjy=None if r_lo is None else e33 * MJY,
               ratio=(c45 / c33 if r_lo is not None and c33 > 0 else None), ratio_lo=r_lo, ratio_vs_stars=vs, cold=bool(vs is not None and vs >= COLOUR_MIN),
               baseline_yr=float(t.max() - t.min()), ep=[p[5] for p in pts], ra=float(ra[0]), dec=float(dec[0]), xy=[[float(u), float(v)] for u, v in zip(x, y)],
-              detections=[dict(t=eps[p[5]]['t'], ra=float(r_), dec=float(d_), det='D6', flux_mjy=float(p[4] * MJY), snr=float(p[3]), obs=eps[p[5]]['obs']) for p, r_, d_ in zip(pts, ra, dec)])
+              detections=[dict(t=eps[p[5]]['t'], ra=float(r_), dec=float(d_), det='D6', flux_mjy=float(p[4] * MJY), snr=float(p[3]), obs=eps[p[5]]['obs'], stacked=eps[p[5]]['n'], t_first=eps[p[5]]['t0'], t_last=eps[p[5]]['t1'], exposures=eps[p[5]]['obs_all']) for p, r_, d_ in zip(pts, ra, dec)])
           if G:                                                           # the Gaia star under the first-epoch position, if any
               gx, gy = gaia_at(G, P, eps[pts[0][5]]['t']); r = np.hypot(gx - x[0], gy - y[0]); k = int(np.argmin(r))
               if r[k] < 4: mv['gaia'] = dict(id=G['id'][k], pmra=float(G['pmra'][k]) / 1000, pmdec=float(G['pmdec'][k]) / 1000, g=float(G['phot_g_mean_mag'][k]))
