@@ -233,6 +233,11 @@ if (page.dataset.intro) playIntro();
 const deepAt = (ra, dec) => { const w = Math.min(MAXW, 40000); if (desktop()) deskFly(ra, dec, w / (viewA?.min || mapWrap.offsetWidth)); if (viewA) viewFly(ra, dec, w, 1); };
 const view3d = on => import('./explore-3d.js').then(m => m.show(on, patchUrl, deepAt)).catch(err => console.warn('3D view unavailable', err));
 $('view-3d').addEventListener('click', () => view3d(true));
+{ // ?view=3d&ra=&dec= ("View in 3D" on the time-lapse): open 3D and fly to that photo
+  const q = new URLSearchParams(location.search), ra = +q.get('ra'), dec = +q.get('dec');
+  if (q.get('view') === '3d' && q.has('ra') && Number.isFinite(ra) && Number.isFinite(dec) && Math.abs(dec) <= 90)
+    import('./explore-3d.js').then(m => m.show(true, patchUrl, deepAt, [((ra % 360) + 360) % 360, dec])).catch(err => console.warn('3D view unavailable', err));
+}
 $('view-flat').addEventListener('click', () => { if (document.body.dataset.view === '3d') view3d(false); });
 phoneUI.hooks.stop = () => stopReplay();
 $('marks').addEventListener('click', e => {
