@@ -243,13 +243,13 @@ async def deadline(b):
         await go(pg, "Barnard"); await pg.wait_for_timeout(500)
         await go(pg, "Orion"); await pg.wait_for_timeout(500)
         check((await pg.evaluate(STATE))["failed"] == 0, "moving aborts quietly", f"body={body}")
-        for _ in range(40):   # wait_for_function does not await a Promise, so poll: the 15 s deadline has to fire first
+        for _ in range(100):   # wait_for_function does not await a Promise, so poll: every wave of stalled tiles (24 in flight) has to hit the 15 s deadline
             s = await pg.evaluate(STATE)
             if s["failed"] > 0 and not s.get("pending") and not s.get("queued"): break
             await pg.wait_for_timeout(500)
         check(s["failed"] > 0, "stalled requests release pending slots", f"body={body}, failed={s['failed']}")
         await pg.evaluate("window.__stallTiles = false")
-        s = await settled(pg, 40000)
+        s = await settled(pg, 75000)   # a failed tile is not asked for again for 30 s (BACKOFF), then loads
         check(not s.get("timeout") and s["covered"] >= .95, "timed out tiles retry without a gesture", f"body={body}")
         await pg.context.close()
 
