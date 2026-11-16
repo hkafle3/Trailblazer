@@ -11,11 +11,22 @@ const dayOf = s => Date.parse(s) / 864e5 + 40587;   // 'YYYY-MM-DD' -> MJD at 0h
 // for tests: what was drawn last, in canvas pixels
 window.__cand = { id, ring: null, track: [] };
 // the page rewrites its address as the visit and channel change, naming only its own fields: keep &cand= (and &sample=, where it came from) in every rewrite
-// so a reload or a shared link still draws the track
+// so a reload or a shared link still draws the track, but only while the view is still the candidate's (same target, or same ra/dec);
+// a move to another spot drops &cand= and takes the candidate's title, track and votes off the page
+let leave = () => {};
+const near = (a, b) => a != null && b != null && Math.abs(+a - +b) < 1e-3;
+const same = u => (P.has('target') ? u.get('target') === P.get('target') : near(u.get('ra'), P.get('ra')) && near(u.get('dec'), P.get('dec')));
 if (id) {
   const replace = history.replaceState.bind(history);
+  let here = true;
   history.replaceState = (state, title, url) => {
-    if (url != null) { const u = new URL(url, location.href); for (const k of ['cand', 'sample']) if (P.has(k) && !u.searchParams.has(k)) u.searchParams.set(k, P.get(k)); url = u; }
+    if (url != null) {
+      const u = new URL(url, location.href);
+      if (here && !same(u.searchParams)) { here = false; leave(); }
+      for (const k of here ? ['cand', 'sample'] : ['sample']) if (P.has(k) && !u.searchParams.has(k)) u.searchParams.set(k, P.get(k));
+      if (!here) u.searchParams.delete('cand');
+      url = u;
+    }
     replace(state, title, url);
   };
 }
@@ -56,6 +67,7 @@ if (id) {
       ` ${VERDICT[cand.verdict]} · score ${cand.score.toFixed(2)} · ${photos(cand)} · ${motion(cand)}. The dotted line is its track; the ring is where it was in this visit.`);
     scroll.prepend(head, box);
     voter(cand, box);
+    leave = () => { cand = null; head.remove(); box.remove(); document.body.classList.remove('cand', 'cand-sample'); Object.assign(window.__cand, { id: null, ring: null, track: [] }); };
     document.body.classList.add('cand', ...(sample ? ['cand-sample'] : []));
     document.title = `${title()} · Trailblazer`;
     for (const a of document.querySelectorAll('.topbar nav a')) a.classList.toggle('on', a.getAttribute('href') === 'candidates.html');

@@ -38,7 +38,7 @@ const sel = new Map();   // selector -> { top, sides, tl, tr, where }
 for (const [where, css] of sources) {
   const flat = css.replace(/\/\*[\s\S]*?\*\//g, '');
   for (const [, selectors, body] of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    for (const s of selectors.split(',').map(x => x.trim()).filter(Boolean)) {
+    for (const s of selectors.split(/,(?![^()]*\))/).map(x => x.trim()).filter(Boolean)) {   // commas inside :is() stay in their selector
       const r = sel.get(s) ?? { top: false, sides: false, tl: '0', tr: '0', where };
       for (const d of body.split(';')) {
         const i = d.indexOf(':'); if (i < 0) continue;

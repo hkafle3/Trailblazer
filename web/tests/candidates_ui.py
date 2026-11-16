@@ -58,13 +58,19 @@ async def run(p, name, ctx_args):
     if REAL is not None:
         await pg.goto(BASE + "/candidates.html"); await pg.wait_for_selector(".c-group")
         assert await pg.is_hidden("#c-sample"), "real data labelled as sample"
-        v = REAL["validation"]; fails = (v["known_recovered"] / v["known_expected"] < .8) + (v["planted_found"] < .8) + (v["false_per_sqdeg"] >= 1)
+        v = REAL["validation"]; cold = str(REAL.get("detector_version", "")).startswith("cold")
+        # the cold detector reports its blind recoveries and planted movers (no bar); only false alarms pass or fail
+        want_pass = [None, None, v["false_per_sqdeg"] < 1] if cold else [v["known_recovered"] / v["known_expected"] >= .8, v["planted_found"] >= .8, v["false_per_sqdeg"] < 1]
+        fails = sum(x is False for x in want_pass)
         if fails:
             t = await pg.text_content("#c-test")
             assert await pg.is_visible("#c-test") and f"Test run on {len(REAL['regions'])} fields, detector still being tuned" in t, t
         marks = await pg.eval_on_selector_all("#c-check dl > div", "e => e.map(d => [d.dataset.pass, d.querySelector('.ok').textContent])")
-        assert [m[0] for m in marks] == [str(v["known_recovered"] / v["known_expected"] >= .8).lower(), str(v["planted_found"] >= .8).lower(), str(v["false_per_sqdeg"] < 1).lower()], marks
-        assert all(m[1].startswith("Pass") if m[0] == "true" else m[1].startswith("Fail") for m in marks), marks
+        assert [m[0] for m in marks] == ["undefined" if x is None else str(x).lower() for x in want_pass], marks
+        assert all(m[1] == "Reported" if m[0] == "undefined" else m[1].startswith("Pass") if m[0] == "true" else m[1].startswith("Fail") for m in marks), marks
+        if cold:
+            labels = await pg.eval_on_selector_all("#c-check dt", "e => e.map(d => d.textContent)")
+            assert labels == ["Known cold brown dwarfs found blind", "Planted cold movers found", "False alarms"], labels
         groups = await pg.eval_on_selector_all(".c-group", "e => e.map(g => [g.dataset.v, +g.querySelector('.sec .n').textContent, [...g.querySelectorAll('.cd')].map(c => c.dataset.id), g.querySelector('.c-none')?.textContent || ''])")
         for gv, n, cids, none in groups:
             want = [c["id"] for c in REAL["candidates"] if c["verdict"] == gv]
@@ -123,6 +129,9 @@ async def run(p, name, ctx_args):
       return [...document.querySelectorAll('.mk.cand')].map(m => { const r = m.querySelector('i').getBoundingClientRect();
         return [m.dataset.cand, (r.left + r.width / 2 - w.left) / w.width, (r.top + r.height / 2 - w.top) / w.height]; }); }""")
     assert [p_[0] for p_ in places] == [c["id"] for c in WORTH], places
+    # sample markers say so on the map itself
+    labels = await pg.eval_on_selector_all(".mk.cand b", "e => e.map(b => b.textContent)")
+    assert labels == [f"Sample {c['id']}" for c in WORTH], labels
     for cid, u, vv in places:
         d = next(c for c in WORTH if c["id"] == cid)["detections"][0]
         eu, ev = await pg.evaluate(f"import('/skymap.js').then(m => m.fwd({d['ra']}, {d['dec']}))")
@@ -133,7 +142,7 @@ async def run(p, name, ctx_args):
     mk = pg.locator(f".mk.cand[data-cand='{c0['id']}'] i")
     if phone:
         await mk.tap(force=True); await pg.wait_for_selector("#csheet:not([hidden])")
-        assert await pg.text_content("#csheet [data-f=name]") == c0["id"] and await pg.text_content("#csheet [data-f=openlabel]") == "Investigate"
+        assert await pg.text_content("#csheet [data-f=name]") == f"Sample {c0['id']}" and await pg.text_content("#csheet [data-f=openlabel]") == "Investigate"
         when = await pg.text_content("#csheet [data-f=when]")
         assert f"{c0['checks']['n_photos']} of {c0['checks']['n_total']} photos" in when, when
         full = await pg.text_content("#csheet [data-f=facts]")
@@ -151,12 +160,15 @@ async def run(p, name, ctx_args):
         # opening a candidate's card closes the comet card
         await pg.evaluate("document.getElementById('card-comet').hidden = false")
         await mk.click(force=True); await pg.wait_for_selector("#card-cand:not([hidden])")
-        assert await pg.text_content("#card-cand [data-f=id]") == c0["id"]
+        assert await pg.text_content("#card-cand [data-f=id]") == f"Sample {c0['id']}"
         assert await pg.evaluate("document.getElementById('card-comet').hidden"), "the comet card stayed open under the candidate's card"
         # square, opaque: no rounded corners, a solid background behind Investigate
         cs = await pg.evaluate("(() => { const c = getComputedStyle(document.getElementById('card-cand')), b = getComputedStyle(document.querySelector('#card-cand .btn')); return [c.borderTopLeftRadius, c.borderBottomRightRadius, b.backgroundColor, b.borderTopLeftRadius]; })()")
         assert cs == ["0px", "0px", "rgb(0, 0, 0)", "0px"], cs
         go = await pg.get_attribute("#card-cand [data-f=go]", "href")
+        # closing it brings back the card it covered
+        await pg.click("#card-cand .x"); assert not await pg.evaluate("document.getElementById('card-comet').hidden"), "the comet card did not come back"
+        await pg.evaluate("document.getElementById('card-comet').hidden = true")
     await shot("explore")
     assert f"cand={c0['id']}" in go and "sample=1" in go, go
 
@@ -203,6 +215,10 @@ async def run(p, name, ctx_args):
     got = json.load(urllib.request.urlopen(f"{BASE}/api/comets/{thread}"))
     assert got["tags"]["star"] >= 1 and any(m["tag"] == "star" and m["author"] == "cand tester" for m in got["comments"]), got["tags"]
     await pg.reload(); await pg.wait_for_function("window.__cand?.ring", timeout=20000)
+    # moving to another spot drops the candidate: no &cand=, no title, track or votes, and a reload stays off it
+    await pg.evaluate("history.replaceState(null, '', '?ra=10.0000&dec=-5.0000&det=1')")
+    left = await pg.evaluate("[location.search, document.querySelector('.cand-info, .cvote') == null, window.__cand.track.length, document.body.classList.contains('cand')]")
+    assert "cand=" not in left[0] and left[1] and left[2] == 0 and not left[3], left
     for path in [go, BASE + "/explore.html?sample=1"]:
         await pg.goto(path); await pg.wait_for_timeout(800)
         assert await pg.evaluate(SIDEWAYS) <= 0, f"sideways scroll on {path}"

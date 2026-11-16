@@ -16,16 +16,18 @@ if (list.length) {
   $('ly-known').closest('label').insertAdjacentHTML('afterend', `<label class="layer" style="--c:var(--comet)"><input class="cbx" type="checkbox" id="ly-cand" checked><span>Investigate${got.sample ? ' (sample)' : ''}</span></label>`);
   const card = Object.assign(document.createElement('div'), { className: 'mapcard', id: 'card-cand', hidden: true });
   card.innerHTML = '<button class="x" type="button" aria-label="Close">&times;</button><h3 data-f="id"></h3><span class="tag" data-f="what"></span><p class="mono" data-f="facts"></p><a class="btn small" data-f="go">Investigate <svg class="ic"><use href="icons.svg#arrow"/></svg></a>';
-  card.querySelector('.x').addEventListener('click', () => { card.hidden = true; });
+  let hid = [];   // the cards this one covered: closing it shows them again
+  card.querySelector('.x').addEventListener('click', () => { card.hidden = true; hid.forEach(o => { o.hidden = false; }); hid = []; });
   marks.append(card);
+  const name = c => (got.sample ? `Sample ${c.id}` : c.id);   // a sample marker says so on the map and in its card
   const what = c => `${VERDICT[c.verdict]} · score ${c.score.toFixed(2)}${got.sample ? ' · sample' : ''}`;
   for (const c of list) {
     const d = c.detections[0], a = document.createElement('a');
     a.className = 'mk cand'; a.href = lapseUrl(c); a.dataset.cand = c.id;
     a.dataset.what = `${VERDICT[c.verdict]} · ${c.score.toFixed(2)}${got.sample ? ' · sample' : ''}`;   // the phone's peek line, short enough for one row
     a.dataset.rate = motion(c).split(' · ')[0]; a.dataset.open = 'Investigate'; a.dataset.photos = photos(c); a.dataset.motion = motion(c);
-    a.setAttribute('aria-label', `${c.id}, moving dot to investigate`);
-    a.innerHTML = '<i></i>'; a.append(Object.assign(document.createElement('b'), { textContent: c.id }));
+    a.setAttribute('aria-label', `${name(c)}, moving dot to investigate`);
+    a.innerHTML = '<i></i>'; a.append(Object.assign(document.createElement('b'), { textContent: name(c) }));
     if (place(a, d.ra, d.dec) > 0.88) a.classList.add('left');
     a.cand = c;
     marks.append(a);
@@ -36,9 +38,10 @@ if (list.length) {
     if (!a || phone.matches || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault(); e.stopPropagation();
     const c = a.cand, d = c.detections[0], q = f => card.querySelector(`[data-f=${f}]`);
-    q('id').textContent = c.id; q('what').textContent = what(c); q('facts').textContent = `${photos(c)} · ${motion(c)}`; q('go').href = a.href;
+    q('id').textContent = name(c); q('what').textContent = what(c); q('facts').textContent = `${photos(c)} · ${motion(c)}`; q('go').href = a.href;
     card.classList.toggle('left', place(card, d.ra, d.dec) > 0.75);
-    for (const id of ['card-comet', 'card-patch']) { const o = $(id); if (o) o.hidden = true; }   // one card open at a time
+    if (card.hidden) hid = ['card-comet', 'card-patch'].map($).filter(o => o && !o.hidden);
+    hid.forEach(o => { o.hidden = true; });   // one card open at a time
     card.hidden = false;
   }, true);
   // desktop: a candidate's name goes only where it covers no other name (deep fields, comets, the unexplored patch),
