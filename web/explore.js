@@ -3,8 +3,8 @@
 // Data: data/coverage.{png,json} (built by bake/sky_assets.py), /api/comets and /api/explored (worker/).
 import { RAD, wrap, fwdLon, fwd, inv, trackAt, dayParam, dayDate, LAST_DAY, MJD0 } from './skymap.js';
 import * as phoneUI from './explore-phone.js';   // phones: pan, pinch, names, sheets
-import './explore-desktop.js';   // desktops: drag, wheel, double click, zoom buttons and keys
-import { onView, straight, skyAt as viewSkyAt } from './explore-view.js';
+import { flyTo as deskFly } from './explore-desktop.js';   // desktops: drag, wheel, double click, zoom buttons and keys
+import { onView, straight, skyAt as viewSkyAt, flyTo as viewFly, A as viewA, MAXW } from './explore-view.js';
 import './explore-deep.js';   // sharp sky tiles when zoomed far in
 import * as search from './search.js';   // the search box: names, RA and Dec, star catalogs
 for (const [ra, dec] of [[0, 0], [77, 30.4], [266, -29], [181, 60], [179, -75]]) {   // projection round trip
@@ -228,7 +228,10 @@ $('how').addEventListener('click', playIntro);
 if (page.dataset.intro) playIntro();
 // ---- Flat / 3D: explore-3d.js, three.js and the 3D data load only when 3D is first pressed. The 3D view opens the same
 // time-lapse address a click on this map does (patchUrl), and leaves this map exactly as it was ----
-const view3d = on => import('./explore-3d.js').then(m => m.show(on, patchUrl)).catch(err => console.warn('3D view unavailable', err));
+// Zooming in past what 3D can show hands over to this map at the same spot, far enough in for its sharp sky tiles (explore-deep.js)
+// A cut, not a glide: the scroll that asked for it is still arriving, and on this map a scroll stops a glide part way.
+const deepAt = (ra, dec) => { const w = Math.min(MAXW, 40000); if (desktop()) deskFly(ra, dec, w / (viewA?.min || mapWrap.offsetWidth)); if (viewA) viewFly(ra, dec, w, 1); };
+const view3d = on => import('./explore-3d.js').then(m => m.show(on, patchUrl, deepAt)).catch(err => console.warn('3D view unavailable', err));
 $('view-3d').addEventListener('click', () => view3d(true));
 $('view-flat').addEventListener('click', () => { if (document.body.dataset.view === '3d') view3d(false); });
 phoneUI.hooks.stop = () => stopReplay();
