@@ -226,6 +226,11 @@ function playIntro() {
 }
 $('how').addEventListener('click', playIntro);
 if (page.dataset.intro) playIntro();
+// ---- Flat / 3D: explore-3d.js, three.js and the 3D data load only when 3D is first pressed. The 3D view opens the same
+// time-lapse address a click on this map does (patchUrl), and leaves this map exactly as it was ----
+const view3d = on => import('./explore-3d.js').then(m => m.show(on, patchUrl)).catch(err => console.warn('3D view unavailable', err));
+$('view-3d').addEventListener('click', () => view3d(true));
+$('view-flat').addEventListener('click', () => { if (document.body.dataset.view === '3d') view3d(false); });
 phoneUI.hooks.stop = () => stopReplay();
 $('marks').addEventListener('click', e => {
   if (phoneUI.tap(e)) return;   // phones: a peek sheet first, the page stays

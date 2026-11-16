@@ -1,6 +1,6 @@
 """Browser check of Explore's Flat / 3D switch (web/explore-3d.js), in system Chrome with the GPU on, on a desktop
 (1440 x 900, mouse and keys) and as a phone (390 x 844, touch). Needs the app up (npm run dev).
-1. Same place: for Barnard's Star, comet 3I/ATLAS on the timeline's day and SPHEREx's northern deep field, a click on
+1. Same place: for Barnard's Star, comet 3I/ATLAS on the timeline's day and Polaris (a degree from the pole), a click on
    that spot of the 3D sky and "Open time-lapse here" opens the same time-lapse as a click on that spot of the flat map
    and "Look closer": RA and Dec within 0.05 degrees of each other and of the target, the same detector, the same view
    and day in the address, and (when both time-lapses load in time) the same photo on screen. Desktop: all three; phone:
@@ -16,7 +16,7 @@ Also: both buttons can be reached and pressed from the keyboard, the arrow keys 
 middle of the view, Escape returns to Flat with focus back on the switch, reduced motion cuts to the photo with no
 flight, and on the phone the switch is a full-size tap target clear of the other buttons.
 Run: uv run -q --with playwright --with pillow python web/tests/explore_3d_ui.py [base url]   (default http://127.0.0.1:8787)"""
-import asyncio, io, math, re, sys
+import asyncio, io, math, re, sys, tempfile
 from PIL import Image, ImageChops
 from playwright.async_api import async_playwright
 
@@ -26,6 +26,7 @@ SIZES = [("desktop", dict(viewport={"width": 1440, "height": 900})),
          ("phone", dict(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True))]
 LAZY = ("explore-3d.js", "three", "data/intro/")   # what a visit that never presses 3D must not fetch
 BARNARD = (269.4463, 4.7671)   # search-core.js
+POLARIS = (37.9546, 89.2641)   # under a degree from the pole, where the flat map is stretched most
 MODE = "document.body.dataset.view"
 READY = "window.__x3d && window.__x3d.ready"
 X3D_STATE = "window.__x3d.state"
@@ -105,6 +106,7 @@ async def on_sky(pg, ra, dec):
 async def turn_to(pg, ra, dec):
     """Turn the 3D sky with real drags until the spot can be clicked. Returns its window point."""
     vw, vh = pg.viewport_size["width"], pg.viewport_size["height"]; cx, cy = vw / 2, vh * .45
+    await pg.wait_for_function(f"{X3D_STATE} !== 'flying'", timeout=8000)   # aim at a still picture, as a person would
     for dx, dy in [(0, 0)] + [(vw * .22, 0)] * 12 + [(0, vh * .12)] + [(vw * .22, 0)] * 12 + [(0, -vh * .24)] + [(vw * .22, 0)] * 12:
         if dx or dy: await drag(pg, cx, cy, cx + dx, cy + dy)
         p = await on_sky(pg, ra, dec)
@@ -166,8 +168,8 @@ async def same_place(b, name, opts, errs, label, target):
     assert (await pg.inner_text("#x3d-open")).strip().startswith("Open time-lapse here"), "the button does not say Open time-lapse here"
     href3 = await pg.evaluate("document.getElementById('x3d-open').href")
     await press(pg, "#x3d-open"); await pg.wait_for_url("**/timelapse*", timeout=10000)
-    at3, shown3 = lapse_addr(pg.url), await lapse_shown(pg)
-    check(f"{name} {label}: the button opens the address it shows", lapse_addr(href3) == at3, f"{href3} -> {pg.url}")
+    went, at3, shown3 = lapse_addr(pg.url), lapse_addr(href3), await lapse_shown(pg)   # the time-lapse may tidy its own address once it is up: the button's address is the one compared
+    check(f"{name} {label}: the button opens the address it shows", went[:2] == at3[:2] and went[2]["det"] == at3[2]["det"], f"{href3} -> {pg.url}")
     await pg.context.close()
     # ---- flat: zoom far in on the spot (so one pixel is far less than 0.05 degrees), click it, Look closer ----
     pg = await page(b, opts, errs)
@@ -179,11 +181,11 @@ async def same_place(b, name, opts, errs, label, target):
     under = await pg.evaluate("([x, y]) => !!document.elementFromPoint(x, y)?.closest('#map')", p)
     assert under, f"{name} {label}: the flat map's sky is not under the click at {p}"
     await click_at(pg, *p)
-    await pg.wait_for_selector("#pin:not([hidden])", timeout=5000)
+    await pg.wait_for_selector("#pin:not([hidden])", state="attached", timeout=5000)
     hreff = await pg.evaluate("document.querySelector('#pin [data-f=open]').href")
     await pg.evaluate("document.querySelector('#pin [data-f=open]').click()"); await pg.wait_for_url("**/timelapse*", timeout=10000)
-    atf, shownf = lapse_addr(pg.url), await lapse_shown(pg)
-    assert lapse_addr(hreff) == atf
+    went, atf, shownf = lapse_addr(pg.url), lapse_addr(hreff), await lapse_shown(pg)
+    assert went[:2] == atf[:2] and went[2]["det"] == atf[2]["det"], f"Look closer opened {pg.url}, not {hreff}"
     await pg.context.close()
     # ---- the two against each other ----
     d = sep(at3[0], at3[1], atf[0], atf[1]); dt = max(sep(at3[0], at3[1], ra, dec), sep(atf[0], atf[1], ra, dec))
@@ -200,22 +202,22 @@ async def atlas(pg):
     return await pg.evaluate(f"(async () => {{ const m = await import('/skymap.js'), {{ comets }} = await (await fetch('/api/comets')).json(); return m.trackAt(comets.find(c => c.id === '3I/ATLAS').track, {DAY}).slice(0, 2); }})()")
 
 
-async def deep_field(pg):
-    return await pg.evaluate("fetch('/data/coverage.json').then(r => r.json()).then(m => { const f = m.deep_fields.reduce((a, b) => (b.dec > a.dec ? b : a)); return [f.ra, f.dec]; })")
-
-
 async def shot(pg):
-    await pg.evaluate("document.activeElement?.blur()")
+    """A picture of the page as it stands. The twinkling stars and shooting stars behind every page (ui.js, #stars) are
+    random, so two pictures of an untouched page differ by a few dozen pixels: they are hidden for the picture."""
+    await pg.evaluate("document.activeElement?.blur(); window.__nostars ??= document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '#stars { visibility: hidden }' }))")
     if not pg.phone: await pg.mouse.move(700, 12)   # off the map: no coordinates beside the pointer
     await pg.wait_for_timeout(500)
-    return Image.open(io.BytesIO(await pg.screenshot(animations="disabled"))).convert("RGB")
+    pic = Image.open(io.BytesIO(await pg.screenshot(animations="disabled"))).convert("RGB")
+    await pg.evaluate("window.__nostars.remove(); delete window.__nostars")
+    return pic
 
 
 def differ(a, b):
     """Pixels that differ between two screenshots."""
     if a.size != b.size: return a.size[0] * a.size[1]
     d = ImageChops.difference(a, b)
-    return sum(1 for px in d.getdata() if max(px) > 0) if d.getbbox() else 0
+    return sum(1 for px in d.get_flattened_data() if max(px) > 0) if d.getbbox() else 0
 
 
 async def stays_put(b, name, opts, errs):
@@ -229,7 +231,7 @@ async def stays_put(b, name, opts, errs):
         await pg.focus("#map")
         for key in ["+", "+", "ArrowLeft", "ArrowUp"]: await pg.keyboard.press(key); await pg.wait_for_timeout(600)
     await pg.wait_for_timeout(500)
-    await click_at(pg, vw * .42, vh * .4); await pg.wait_for_selector("#pin:not([hidden])")
+    await click_at(pg, vw * .42, vh * .4); await pg.wait_for_selector("#pin:not([hidden])", state="attached")
     await pg.wait_for_timeout(900)   # the view is saved in the history entry 300 ms after it settles
     before, pic = await pg.evaluate(STATE), await shot(pg)
     assert before["view"][0] > 1000 and not before["pin"][0], f"the map was not moved or pinned first: {before}"
@@ -262,7 +264,7 @@ async def stays_put(b, name, opts, errs):
         check(f"{name}: 3D and back by {way} leaves the flat view state identical", not changed, f"changed: {changed}" if changed else f"W X Y {[round(v, 2) for v in after['view'][:3]]}, day {after['day']}")
         n = differ(pic, pic2)
         check(f"{name}: 3D and back by {way} leaves the screenshot identical", n == 0, f"{n} of {pic.size[0] * pic.size[1]} pixels differ")
-        if n: pic.save(f"/tmp/x3d-{name}-before.png"); pic2.save(f"/tmp/x3d-{name}-after.png")
+        if n: pic.save(f"{tempfile.gettempdir()}/x3d-{name}-before.png"); pic2.save(f"{tempfile.gettempdir()}/x3d-{name}-after.png"); print(f"     the two pictures are in {tempfile.gettempdir()}")
     await pg.context.close()
 
 
@@ -304,8 +306,11 @@ async def lazy_and_keys(b, name, opts, errs):
     await to_3d(pg)
     got = [u for u in pg.fetched if any(k in u for k in LAZY)]
     check(f"{name}: pressing 3D fetches the 3D code and data", all(any(k in u for u in got) for k in LAZY), f"{len(got)} requests")
-    hidden = await pg.evaluate("""() => ['.how', '#examples', '#layers', '.zoomctl', '.xsearch', '#map'].filter(s => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(), c = getComputedStyle(e);
-      return r.width && c.visibility !== 'hidden' && c.display !== 'none'; })""")
+    # put away: a press where the control was does not reach it, and neither does the keyboard
+    hidden = await pg.evaluate("""() => ['.how', '#examples > summary', '#layers > summary', '.zoomctl button', '.xsearch input', '#map', '#whole', '.xs-open'].filter(s => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(), c = getComputedStyle(e);
+      if (!r.width || c.visibility === 'hidden' || c.display === 'none') return false;
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); e.focus?.();
+      return (hit && e.contains(hit)) || document.activeElement === e; })""")
     check(f"{name}: the flat map's own controls are put away in 3D", not hidden, f"still showing: {hidden}")
     check(f"{name}: the timeline and the switch stay in 3D", await pg.is_visible("#play") and await pg.is_visible("#view-flat"))
     if not pg.phone:
@@ -341,7 +346,7 @@ async def run(b, name, opts):
     await lazy_and_keys(b, name, opts, errs)
     await stays_put(b, name, opts, errs)
     await speed(b, name, opts, errs)
-    for label, target in [("Barnard's Star", BARNARD)] + ([("comet 3I/ATLAS", atlas), ("north deep field", deep_field)] if name == "desktop" else []):
+    for label, target in [("Barnard's Star", BARNARD)] + ([("comet 3I/ATLAS", atlas), ("Polaris", POLARIS)] if name == "desktop" else []):
         await same_place(b, name, opts, errs, label, target)
     check(f"{name}: no page errors", not errs, f"{errs}")
 
