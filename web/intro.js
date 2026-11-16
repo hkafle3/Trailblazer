@@ -11,7 +11,9 @@
 import { win, straight } from './explore-view.js';
 
 const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';   // the version timelapse.html uses
-const SHELL = `<canvas id="intro-gl"></canvas>
+// the bare minimum to see the cover and Skip before intro.css arrives (zero specificity, so intro.css wins once it does)
+const SHELL = `<style>:where(#intro){position:fixed;inset:0;z-index:200;background:#010206;color:#fff}:where(#intro-skip){position:absolute;right:14px;top:12px;min-height:44px;padding:0 18px;color:#fff;background:#000;border:1px solid #fff}</style>
+  <canvas id="intro-gl"></canvas>
   <div id="intro-labels" aria-hidden="true"></div>
   <div id="intro-hud" aria-hidden="true"><span id="intro-h-date"></span><span id="intro-h-count"></span></div>
   <button id="intro-skip" type="button">Skip</button>
@@ -28,7 +30,6 @@ export const play = () => (running ??= run().finally(() => { running = null; }))
 async function run() {
   const html = document.documentElement, back = document.activeElement;
   try { localStorage.setItem('ch.intro', '1'); } catch { /* private mode: it plays again next time */ }
-  if (!document.querySelector('link[href="intro.css"]')) await new Promise(done => document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'intro.css', onload: done, onerror: done })));
   const root = Object.assign(document.createElement('div'), { id: 'intro', innerHTML: SHELL });
   root.setAttribute('role', 'region'); root.setAttribute('aria-label', 'How the sky map is made');
   const under = [...document.body.children].filter(el => !el.inert);   // the page underneath takes no clicks or keys meanwhile
@@ -40,7 +41,11 @@ async function run() {
   const skipBtn = root.querySelector('#intro-skip');
   skipBtn.onclick = () => skip(); root.tabIndex = -1; root.focus({ preventScroll: true });   // Tab goes to Skip next
   addEventListener('keydown', e => { if (e.key === 'Escape') skip(); }, { signal: off.signal });
-  film(root, off.signal, end).then(f => { made = f; if (off.signal.aborted) f.dispose(); else if (f.skip) skip = f.skip; },
+  // every load wait is bounded: a stalled intro.css, three.js or data/intro/ lands on the map instead of a black screen
+  const LOAD_MS = 8000, late = setTimeout(() => { if (!made) { console.warn('the map intro took too long to load'); end(); } }, LOAD_MS);
+  let over = false; ended.then(() => { over = true; clearTimeout(late); });
+  if (!document.querySelector('link[href="intro.css"]')) await Promise.race([ended, new Promise(done => document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'intro.css', onload: done, onerror: done })))]);
+  if (!over) film(root, off.signal, end).then(f => { made = f; if (off.signal.aborted) f.dispose(); else if (f.skip) skip = f.skip; },
     err => { console.warn('the map intro could not load', err); end(); });
   await ended;
   off.abort(); made?.dispose(); root.remove();

@@ -122,6 +122,22 @@ async def run(b, name, opts):
     print(f"{name}: Escape ends it, and Skip works before it has loaded")
     await pg.context.close()
 
+    # ---- a stalled load: Skip is visible and works without intro.css; a stalled film gives up after 8 s and lands on the map ----
+    async def stall(route): await asyncio.sleep(20); await route.abort()
+    pg = await page(b, opts, errs, seen_tour=True)
+    await pg.route("**/intro.css*", stall)
+    await pg.goto(BASE + "/explore"); await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_timeout(800)
+    await pg.evaluate("document.getElementById('how').click()"); await pg.wait_for_selector("#intro-skip", timeout=1000)
+    box = await pg.evaluate("(() => { const r = document.getElementById('intro-skip').getBoundingClientRect(), c = getComputedStyle(document.getElementById('intro')); return [r.width, r.height, r.right, c.position]; })()")
+    assert box[0] > 20 and box[1] >= 40 and box[2] <= opts["viewport"]["width"] and box[3] == "fixed", f"Skip not shown without intro.css: {box}"
+    await pg.click("#intro-skip"); await gone(pg, f"{name} Skip without intro.css")
+    await pg.unroute("**/intro.css*"); await pg.route("**/three.module.js*", stall)
+    await pg.evaluate("document.getElementById('how').click()"); await pg.wait_for_selector("#intro")
+    await gone(pg, f"{name} stalled film", 10000)
+    await pg.unroute("**/three.module.js*")
+    await pg.context.close()
+    print(f"{name}: a stalled intro.css still shows Skip, and a stalled film lands on the map within 10 s")
+
     # ---- reduced motion: stills with Next ----
     pg = await page(b, opts, errs, reduced_motion="reduce")
     await pg.goto(BASE + "/explore"); await film_up(pg)
