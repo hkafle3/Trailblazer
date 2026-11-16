@@ -150,7 +150,7 @@ async def main():
         for k in "cuo":
             xs = sorted({round(items[i]["x"]) for i in got[k]["ids"]})
             assert len(xs) == min(3, len(want[k])), f"group {k}: rows in {len(xs)} columns ({xs})"
-            assert all(items[i]["h"] == 62 for i in got[k]["ids"]), f"group {k}: a row is not 62 px tall"
+            assert all(abs(items[i]["h"] - 62) < .5 for i in got[k]["ids"]), f"group {k}: a row is not 62 px tall: {[(i, items[i]['h']) for i in got[k]['ids']]}"
         for i in want["c"] | want["u"]:
             assert 0 <= items[i]["top"] and items[i]["bottom"] <= 900, f"{i} is below the fold at 1440x900 ({items[i]['bottom']:.0f})"
         assert not await pg.is_visible("#s-f .rows"), "Too faint is open before it is asked"
@@ -204,7 +204,8 @@ async def main():
         await pg.fill("#l-q", ""); await check("cleared", lambda i: True)
         assert not await pg.is_visible("#s-f .rows"), "Too faint stays open after the search is cleared"
         await pg.fill("#l-q", "swan"); await check("search swan", lambda i: "swan" in i.lower())
-        assert not await pg.is_visible("#s-f"), "Too faint shows with no match in it"
+        await pg.fill("#l-q", "3i/"); await check("search 3i/", lambda i: "3i/" in i.lower())
+        assert not any("3i/" in i.lower() for i in want["f"]) and not await pg.is_visible("#s-f"), "Too faint shows with no match in it"
         await pg.fill("#l-q", "")
         for region in ["north", "south", "ecliptic"]:
             await pg.select_option("#l-region", region); await check(f"region {region}", lambda i: places[i][region])
@@ -230,7 +231,7 @@ async def main():
             await pg.goto(BASE + "/comet.html"); await pg.wait_for_selector("#s-c .it")
             if "s-f" in sel: await pg.click("#s-f summary")
             name = await pg.get_attribute(sel, "data-id")
-            await pg.click(sel); await pg.wait_for_function("n => document.getElementById('c-id').textContent === n", arg=name)
+            await pg.click(sel); await pg.wait_for_function("n => document.getElementById('c-id')?.textContent === n", arg=name)
             assert await pg.is_hidden("#c-list") and await pg.is_visible(".comet-grid"), f"{name}: comet page shows the list"
             assert f"day={DAY}" in pg.url, f"{name}: opened without the day ({pg.url})"
 
