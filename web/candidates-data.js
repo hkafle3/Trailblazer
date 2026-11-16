@@ -55,11 +55,26 @@ function visit(c) {   // the visit as POST /api/candidates reads it: the detecti
   const ch = CHANNELS.filter(x => x.detector === c.detections[0].det), lam = ch.reduce((a, x) => a + x.um, 0) / ch.length;
   return { start: day(Math.min(...ts)), end: day(Math.max(...ts)), mjd: +(ts.reduce((a, b) => a + b, 0) / ts.length).toFixed(5), exposures: ts.length, lam: +lam.toFixed(4), epochs: ts };
 }
+// one name field per page, shown once (above the list on the Candidates page, in the vote box on the time-lapse),
+// remembered in this browser; hidden while signed in
+let nick = null;
+function nameField(box) {
+  if (nick) return nick;
+  nick = Object.assign(document.createElement('input'), { className: 'cv-nick', id: 'cv-nick', placeholder: 'Your name to vote', maxLength: 24 });
+  nick.setAttribute('aria-label', 'Your name to vote');
+  try { nick.value = localStorage.getItem('ch.nick') || ''; } catch {}
+  nick.addEventListener('input', () => { try { localStorage.setItem('ch.nick', nick.value.trim()); } catch {} });
+  const list = document.getElementById('c-groups');
+  if (list) list.before(nick); else box.append(nick);
+  const sync = () => { nick.hidden = !!userName(); };
+  sync(); addEventListener('ch:user', sync);
+  return nick;
+}
 export function voter(c, box) {
   const off = SAMPLE && !LOCAL;   // sample candidates are made up: on the real site nobody votes on them
   box.classList.add('cvote');
-  box.innerHTML = '<div class="cv-row"></div><input class="cv-nick" placeholder="Your name to vote" maxlength="24" aria-label="Your name to vote" hidden><p class="cv-note" role="status" aria-live="polite"></p>';
-  const row = box.querySelector('.cv-row'), nick = box.querySelector('.cv-nick'), note = box.querySelector('.cv-note');
+  box.innerHTML = '<div class="cv-row"></div><p class="cv-note" role="status" aria-live="polite"></p>';
+  const row = box.querySelector('.cv-row'), note = box.querySelector('.cv-note');
   const say = (t, err) => { note.textContent = t; note.classList.toggle('err', !!err); };
   for (const [tag, label] of VOTES) {
     const b = Object.assign(document.createElement('button'), { type: 'button', className: 'cv-b', textContent: label, disabled: off });
@@ -69,8 +84,7 @@ export function voter(c, box) {
   }
   if (off) return say('Sample data: voting is off');
   human();
-  const sync = () => { nick.hidden = !!userName(); };
-  sync(); addEventListener('ch:user', sync);
+  const nick = nameField(box);
   async function send(tag, label, b) {
     const author = userName() || nick.value.trim();
     if (!NAME.test(author)) { nick.hidden = false; nick.focus(); return say('Add a name (letters and digits) to vote', true); }

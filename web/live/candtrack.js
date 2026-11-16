@@ -20,6 +20,10 @@ if (id) {
   };
 }
 
+// the page's title while a candidate is open: a sample one says so, never the baked target's real name
+export const title = () => (cand ? `${sample ? 'Sample candidate' : 'Candidate'} ${cand.id}` : null);
+export const on = () => !!cand;
+
 export function draw(ctx, m, f, toPx, offset) {
   if (!cand) return;
   const G = m.grid, a = m.arcsec_per_pixel;
@@ -43,15 +47,18 @@ if (id) {
   cand = got?.data.candidates.find(c => c.id === id) ?? null;
   sample = !!got?.sample;
   if (cand) {
-    // under Descriptions: what the detector says (it scrolls with the rest), then the votes, pinned below the scroll so
-    // they show without scrolling
-    const host = document.getElementById('vKnown').closest('p');
+    // at the top of Descriptions: what the detector says, then the votes, so neither waits behind a scroll
+    const scroll = document.querySelector('.pv-desc .pv-scroll');
     const box = document.createElement('div'), head = document.createElement('p');
     head.className = 'pv-info cand-info';
-    head.append(Object.assign(document.createElement('b'), { textContent: `${cand.id}${sample ? ' (sample)' : ''}` }),
+    if (sample) head.append(Object.assign(document.createElement('span'), { className: 'cand-sample', textContent: 'Sample data, made up to show the page. Not a real find.' }));
+    head.append(Object.assign(document.createElement('b'), { textContent: title() }),
       ` ${VERDICT[cand.verdict]} · score ${cand.score.toFixed(2)} · ${photos(cand)} · ${motion(cand)}. The dotted line is its track; the ring is where it was in this visit.`);
-    host.after(head); host.closest('.pv-scroll').after(box);
+    scroll.prepend(head, box);
     voter(cand, box);
+    document.body.classList.add('cand', ...(sample ? ['cand-sample'] : []));
+    document.title = `${title()} · Trailblazer`;
+    for (const a of document.querySelectorAll('.topbar nav a')) a.classList.toggle('on', a.getAttribute('href') === 'candidates.html');
     // phones show one tool card at a time: open on Info, where this is (after the page has wired its tabs)
     if (matchMedia('(max-width: 640px)').matches) setTimeout(() => document.querySelector('.pv-tabs [data-t=info]')?.click());
     if (!document.querySelector('link[href="candidates.css"]')) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'candidates.css' }));

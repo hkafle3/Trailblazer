@@ -30,7 +30,7 @@
 .cd.v-glitch { --v: var(--glitch); }
 .cd-open { display: block; color: #fff; }
 .cd .ph { position: relative; display: block; aspect-ratio: 4 / 1; border: 1.5px solid var(--v); border-radius: 8px; overflow: hidden; background: #000; }
-.cd .ph img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; filter: brightness(1.25) contrast(1.1); }
+.cd .ph img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; image-rendering: pixelated; filter: brightness(1.25) contrast(1.1); }
 .cd .badge { position: absolute; left: 6px; top: 6px; padding: 3px 7px; border-radius: 4px; background: rgba(0, 0, 0, .75); color: var(--v); font-size: 10.5px; }
 .cd .t { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 9px; }
 .cd .t b { font: 700 14px/1.3 var(--panel-font); }
@@ -50,12 +50,23 @@
 .cv-note { min-height: 1em; margin-top: 6px; font-size: 11.5px; color: #b5b5b5; }
 .cv-note.err { color: var(--glitch); }
 .cv-note:empty { display: none; }
-/* the time-lapse: the votes sit under Descriptions' scrolling text, the same inset, always in view */
-.pv-desc > .cvote { margin-top: calc(14 * var(--e)); padding: calc(14 * var(--e)) calc(30 * var(--e)) 0 calc(28 * var(--e)); border-top: 1.5px solid #fff; }
-.pv-desc:has(> .cvote) .pv-scroll { max-height: calc(140 * var(--e)); }   /* the card still ends above the timeline */
-.pv-desc > .cvote .cv-b, .pv-desc > .cvote .cv-nick { height: calc(52 * var(--e)); min-height: 26px; font-size: 11px; padding: 0 4px; }
-.pv-desc > .cvote .cv-nick { padding: 0 8px; }
-.pv-desc > .cvote .cv-row { grid-template-columns: 1.4fr 1fr 1fr; }
+/* the Candidates page: the one name field, above the groups */
+.cands > .cv-nick { max-width: 320px; margin-top: 22px; }
+/* the time-lapse: the candidate and its votes head Descriptions, which grows down to the page's foot for them */
+@media (min-width: 641px) {
+  body.cand .pv-mini { display: none; }   /* the region view rings the baked target: the candidate's room instead */
+  body.cand .pv-state { top: calc(332 * var(--e)); }
+  body.cand .pv-desc { top: calc(482 * var(--e)); }
+  body.cand-sample .pv-desc { top: calc(332 * var(--e)); }
+  body.cand .pv-desc .pv-scroll { max-height: calc(460 * var(--e)); }
+  body.cand-sample .pv-desc .pv-scroll { max-height: calc(610 * var(--e)); }
+}
+.cand-info .cand-sample { display: block; margin-bottom: 6px; color: var(--comet); }
+.pv-desc .cvote { margin: 0 0 calc(18 * var(--e)); padding-bottom: calc(18 * var(--e)); border-bottom: 1.5px solid #fff; }
+.pv-desc .cvote .cv-b, .pv-desc .cvote .cv-nick { height: 30px; font-size: 11px; padding: 0 4px; }
+.pv-desc .cvote .cv-nick { padding: 0 8px; }
+.pv-desc .cvote .cv-row { grid-template-columns: 1.4fr 1fr 1fr; }
+body.cand-sample .pv-state { display: none !important; }   /* no Discovered/Undiscovered claim on made-up data */
 body > .cf-turnstile { position: fixed; right: 12px; bottom: 12px; z-index: 30; }
 
 @media (max-width: 1100px) { .c-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -66,9 +77,9 @@ body > .cf-turnstile { position: fixed; right: 12px; bottom: 12px; z-index: 30; 
   .c-check dd { font-size: 15px; }
   .c-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
   .cv-b, .cv-nick { height: 44px; }
-  .pv-desc > .cvote { margin-top: 0; padding: 10px 22px 10px 0; }
-  .pv-desc > .cvote .cv-b, .pv-desc > .cvote .cv-nick { height: 44px; font-size: 12px; }
-  body.lapse:not(.sky) .pv-desc:has(> .cvote) { grid-template-rows: minmax(0, 1fr) auto; }
+  .pv-desc .cvote { padding: 0 22px 12px 0; }
+  .pv-desc .cvote .cv-b, .pv-desc .cvote .cv-nick { height: 44px; font-size: 12px; }
+  .cands > .cv-nick { max-width: none; }
 }
 
 /* Explore: the Investigate layer's markers (explore-candidates.js), an orange diamond, and its card */
@@ -76,6 +87,27 @@ body > .cf-turnstile { position: fixed; right: 12px; bottom: 12px; z-index: 30; 
 .mk.cand b { color: #ffd2b0; }
 @media (min-width: 641px) { .mk.cand i::before { content: ""; position: absolute; inset: -8px; } }
 body:has(#ly-cand:not(:checked)) :is(.mk.cand, #card-cand) { display: none; }
-#card-cand { z-index: 3; }
-#card-cand .x { position: absolute; right: 8px; top: 8px; width: 30px; height: 30px; border: 0; background: none; color: #fff; font-size: 20px; cursor: pointer; }
-#card-cand .tag { color: var(--comet); }
+/* the card: Ming's panel as the comet card (explore.css #card-comet), square, a straight white top rule, opaque. It hangs
+   below its diamond so the marker's name stays readable; near the map's right edge it hangs to the left */
+#card-cand { z-index: 10; width: 270px; box-sizing: border-box; margin: 16px 0 0 -12px; padding: 14px 16px 16px; gap: 8px; border: 0; border-top: 2px solid #fff; border-radius: 0; background: rgba(4, 6, 12, .97); box-shadow: 0 20px 50px -20px #000; font: 400 12.5px/1.35 var(--panel-font); color: #cfcfcf; }
+#card-cand.left { margin-left: -258px; }
+#card-cand > * { min-width: 0; }
+#card-cand::before { display: none; }
+#card-cand h3 { font: 400 19px/1.2 var(--panel-font); color: #fff; }
+#card-cand .x { position: absolute; right: 6px; top: 6px; width: 30px; height: 30px; border: 0; background: none; color: #fff; font-size: 20px; cursor: pointer; }
+#card-cand .tag { justify-self: start; height: auto; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; color: var(--comet); }
+#card-cand p { color: #cfcfcf; }
+#card-cand .btn { justify-content: center; height: 36px; border: 1.5px solid #fff; border-radius: 0; background: #000; box-shadow: none; font: 400 12.5px var(--panel-font); }
+#card-cand .btn:hover { background: #1a1a1a; transform: none; }
+#card-cand .btn .cb { display: none; }   /* the glass buttons' dotted ring: a plain opaque button here */
+/* desktop: names the Investigate diamonds would collide with move left of their dot or hide (explore-candidates.js) */
+@media (min-width: 641px) {
+  .mk.nm-off b { display: none; }
+  body.explore .mk.deep.left b { left: auto; right: 18px; }
+}
+#card-cand .tag { white-space: normal; }
+/* phones: the peek sheet of an Investigate marker shows its evidence strip across the sheet, the facts under it */
+@media (max-width: 640px) {
+  .csheet .facts:has(img.strip) { flex-direction: column; }
+  .csheet .facts img.strip { width: 100%; height: auto; aspect-ratio: 4 / 1; object-fit: contain; object-position: left center; background: #000; border-color: var(--comet); }
+}

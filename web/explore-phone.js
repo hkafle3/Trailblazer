@@ -161,11 +161,15 @@ function fill() {
   else what = m.dataset.what ?? 'SPHEREx photographs here most often';   // an Investigate marker (explore-candidates.js) says what it is
   q('name').textContent = name;
   q('what').textContent = what; q('what').classList.toggle('hot', hot);
-  q('when').textContent = c?.track?.length ? `Position on ${fmt(d)}` : pos ? radec(...pos) : '';
+  q('when').textContent = m.cand ? `${m.dataset.photos} · ${m.dataset.rate}` : c?.track?.length ? `Position on ${fmt(d)}` : pos ? radec(...pos) : '';
   q('go').href = m.href; q('go').setAttribute('aria-label', c ? `Open ${name}` : 'Open this patch');
   const img = q('thumb');
-  if (c?.thumb) img.src = c.thumb; else img.removeAttribute('src');
+  const k = m.cand;   // an Investigate marker: its evidence strip and the card's facts (explore-candidates.js)
+  const src = c?.thumb ?? k?.strip;
+  if (src) img.src = src; else img.removeAttribute('src');
+  img.classList.toggle('strip', !!k);
   const facts = [];
+  if (k) facts.push(['Photos', m.dataset.photos], ['Motion', m.dataset.motion]);
   if (kind) facts.push(['Kind', kind]);
   if (pos) facts.push([c?.track?.length ? fmt(d) : 'Where', radec(...pos)]);
   if (c?.photos) facts.push(['Photos', `${c.photos} SPHEREx visits`]);

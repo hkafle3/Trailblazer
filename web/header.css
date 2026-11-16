@@ -59,7 +59,7 @@ body.page .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba
 
 /* phones: one compact row (comet mark, four links, account) */
 @media (max-width: 760px) {
-  .topbar { display: flex; align-items: center; gap: 6px; height: 60px; padding: 0 12px 0 16px; box-sizing: border-box; background: linear-gradient(180deg, rgba(0, 0, 0, .9), rgba(0, 0, 0, .55) 70%, transparent); }
+  .topbar { display: flex; align-items: center; gap: 6px; height: 60px; padding: 0 12px 0 16px; box-sizing: border-box; background: var(--bg, #04060b); }   /* solid: cards never scroll visibly behind it */
   .topbar .brand, .topbar nav, .topbar .authbox { position: static; transform: none; }
   .topbar .brand { gap: 0; font-size: 0; }
   .topbar .brand-name { display: none; }
@@ -70,6 +70,7 @@ body.page .topbar { background: linear-gradient(180deg, rgba(0, 0, 0, .92), rgba
   .topbar nav a::after { top: auto; bottom: -8px; width: 24px; margin-left: -12px; height: 1.5px; }
   .topbar .av { width: 36px; height: 36px; font-size: 13px; border-width: 1.5px; }
   :root { --head-h: 60px; }
+  body.page .topbar { background: var(--bg, #04060b); }
 }
 
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

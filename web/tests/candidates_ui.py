@@ -99,6 +99,8 @@ async def run(p, name, ctx_args):
     assert f"{c0['checks']['n_photos']} of {c0['checks']['n_total']} photos" in card and c0["track"]["distance_guess"] in card, card
     assert await pg.evaluate(f"document.querySelector(\".cd[data-id='{c0['id']}'] img\").naturalWidth") > 0, "strip did not load"
     assert await pg.evaluate(SIDEWAYS) <= 0, "sideways scroll on the Candidates page"
+    # one name field for the whole page (hidden while signed in, as here), never one per card
+    assert await pg.locator(".cv-nick").count() == 1 and await pg.locator(".cd .cv-nick").count() == 0, "a name field per card"
     if phone:
         small = await pg.evaluate("""() => [...document.querySelectorAll('.cd .cv-b, .cd .cd-open')]
           .filter(e => { const r = e.getBoundingClientRect(); return r.height < 44 || r.width < 44; }).map(e => e.textContent.trim().slice(0, 20))""")
@@ -132,10 +134,28 @@ async def run(p, name, ctx_args):
     if phone:
         await mk.tap(force=True); await pg.wait_for_selector("#csheet:not([hidden])")
         assert await pg.text_content("#csheet [data-f=name]") == c0["id"] and await pg.text_content("#csheet [data-f=openlabel]") == "Investigate"
+        when = await pg.text_content("#csheet [data-f=when]")
+        assert f"{c0['checks']['n_photos']} of {c0['checks']['n_total']} photos" in when, when
+        full = await pg.text_content("#csheet [data-f=facts]")
+        assert c0["track"]["distance_guess"] in full, full
+        assert c0["strip"] in (await pg.get_attribute("#csheet [data-f=thumb]", "src") or ""), "the peek sheet lacks the evidence strip"
         go = await pg.get_attribute("#csheet [data-f=open]", "href")
     else:
+        # no candidate's name covers another name on the map (the declutter hides it instead)
+        await pg.wait_for_timeout(2200)
+        bad = await pg.evaluate("""() => { const box = b => b.getBoundingClientRect(), on = b => b.offsetParent && getComputedStyle(b).display !== 'none' && box(b).width;
+          const cand = [...document.querySelectorAll('.mk.cand b')].filter(on), rest = [...document.querySelectorAll('#marks .mk b')].filter(on);
+          return cand.flatMap(c => rest.filter(o => o !== c).filter(o => { const a = box(c), r = box(o); return a.left < r.right && r.left < a.right && a.top < r.bottom && r.top < a.bottom; })
+            .map(o => c.textContent + ' over ' + o.textContent)); }""")
+        assert not bad, f"candidate names overlap: {bad}"
+        # opening a candidate's card closes the comet card
+        await pg.evaluate("document.getElementById('card-comet').hidden = false")
         await mk.click(force=True); await pg.wait_for_selector("#card-cand:not([hidden])")
         assert await pg.text_content("#card-cand [data-f=id]") == c0["id"]
+        assert await pg.evaluate("document.getElementById('card-comet').hidden"), "the comet card stayed open under the candidate's card"
+        # square, opaque: no rounded corners, a solid background behind Investigate
+        cs = await pg.evaluate("(() => { const c = getComputedStyle(document.getElementById('card-cand')), b = getComputedStyle(document.querySelector('#card-cand .btn')); return [c.borderTopLeftRadius, c.borderBottomRightRadius, b.backgroundColor, b.borderTopLeftRadius]; })()")
+        assert cs == ["0px", "0px", "rgb(0, 0, 0)", "0px"], cs
         go = await pg.get_attribute("#card-cand [data-f=go]", "href")
     await shot("explore")
     assert f"cand={c0['id']}" in go and "sample=1" in go, go
@@ -148,6 +168,11 @@ async def run(p, name, ctx_args):
       return { ra: m.ra, dec: m.dec, G: m.grid, a: m.arcsec_per_pixel, fov: st.fov, W: c.width, H: c.height, cw: c.getBoundingClientRect().width,
         start: f.start, end: f.end || f.start, mjd: f.mjd, ring: window.__cand.ring, n: window.__cand.track.length }; }""")
     assert s["n"] == len(c0["detections"]), "not every detection is on the track"
+    # sample data says so: its own title, no Discovered/Undiscovered claim, the baked star's name nowhere; Candidates lit in the nav
+    head = await pg.evaluate("[document.getElementById('pv-name').textContent, document.title, document.querySelector('.cand-info').textContent, document.querySelector('.topbar nav a.on')?.textContent, getComputedStyle(document.getElementById('state')).display]")
+    assert head[0] == f"Sample candidate {c0['id']}" and head[1].startswith(f"Sample candidate {c0['id']}"), head
+    assert "Sample data" in head[2] and head[3] == "Candidates" and head[4] == "none", head
+    assert c0["region"] not in head[0] + head[1], head
     t0, t1 = mjd(s["start"]), mjd(s["end"]) + 1
     near = sorted([d for d in c0["detections"] if t0 <= d["t"] < t1], key=lambda d: abs(d["t"] - s["mjd"]))
     assert near, f"the visit on screen ({s['start']}) has none of the candidate's detections"
@@ -167,9 +192,9 @@ async def run(p, name, ctx_args):
     # the address keeps the candidate, so a reload draws the track again
     q = await pg.evaluate("location.search")
     assert f"cand={c0['id']}" in q and "sample=1" in q, f"the address dropped the candidate: {q}"
-    # the votes show without scrolling: every button inside the viewport and outside Descriptions' scrolling text
-    hid = await pg.evaluate("""() => [...document.querySelectorAll('.cvote .cv-b')].filter(b => { const r = b.getBoundingClientRect();
-        return b.closest('.pv-scroll') || r.top < 0 || r.bottom > innerHeight || !r.height; }).map(b => b.textContent)""")
+    # the candidate and its votes head Descriptions: every button in view without scrolling Descriptions
+    hid = await pg.evaluate("""() => [...document.querySelectorAll('.cvote .cv-b')].filter(b => { const r = b.getBoundingClientRect(), s = b.closest('.pv-scroll')?.getBoundingClientRect();
+        return r.top < 0 || r.bottom > innerHeight || !r.height || (s && (r.top < s.top || r.bottom > s.bottom)); }).map(b => b.textContent)""")
     assert not hid, f"vote buttons need scrolling: {hid}"
     # "Star" is stored as the tag star
     await pg.click(".cvote .cv-b[data-tag=star]")
