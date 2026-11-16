@@ -477,7 +477,7 @@ const turn = (dx, dy, now) => {   // by window pixels: the sky follows the point
 // position: it has the sharp tiles for a deep zoom. A scroll, pinch or + has to keep asking for a moment (push) first.
 let push = 0, pushT = 0;
 function handOff() {
-  const n = st.mode === 'photo' ? st.spot : skyAt(W / 2, (area.t + area.b) / 2);
+  const n = skyAt(W / 2, (area.t + area.b) / 2) ?? (st.mode === 'photo' ? st.spot : null);
   push = 0; if (!n || !deepAt || st.mode === 'flying') return;
   const [ra, dec] = dirEq(n); leave(); deepAt(ra, dec);
 }

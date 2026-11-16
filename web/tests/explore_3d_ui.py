@@ -348,6 +348,12 @@ async def deep_handoff(b, name, opts, errs):
     pg = await page(b, opts, errs)
     await to_3d(pg)
     spot = await fly_to(pg, *BARNARD, f"{name} deep zoom")
+    vw, vh = pg.viewport_size["width"], pg.viewport_size["height"]
+    await drag(pg, vw * .45, vh * .3, vw * .65, vh * .34)
+    centre = await pg.evaluate("""() => { const t = document.querySelector('.topbar').getBoundingClientRect().bottom + 34;
+      const b = matchMedia('(max-width: 640px)').matches ? document.getElementById('x3d-card').getBoundingClientRect().top - 12 : document.getElementById('tl-line').getBoundingClientRect().top - 56;
+      return window.__x3d.skyAt(innerWidth / 2, (t + Math.max(t + 120, b)) / 2); }""")
+    assert centre and sep(*centre, spot["ra"], spot["dec"]) > .05, "photo pan did not change the centre"
     if pg.phone: await press(pg, "#x3d-deep")
     else:
         await pg.mouse.move(pg.viewport_size["width"] * .4, pg.viewport_size["height"] * .3)
@@ -357,7 +363,7 @@ async def deep_handoff(b, name, opts, errs):
     await pg.wait_for_function(f"{MODE} !== '3d'", timeout=5000)
     await pg.wait_for_timeout(2500)
     v = await pg.evaluate("import('/explore-view.js').then(v => ({ W: v.W, sky: v.skyAt(v.A.w / 2, (v.A.t + v.A.b) / 2) }))")
-    off = sep(v["sky"][0], v["sky"][1], spot["ra"], spot["dec"]) if v["sky"] else 999
+    off = sep(v["sky"][0], v["sky"][1], *centre) if v["sky"] else 999
     sharp = [u for u in pg.fetched if "/hips/" in u and ("Norder4" in u or "Norder5" in u)]
     check(f"{name}: zooming in past 3D hands over to Flat at the same spot, deep", await pg.is_visible("#map") and off <= 0.05 and v["W"] >= 30000 and len(sharp) > 0, f"{off:.4f} deg from the 3D spot, map {v['W']:.0f} px wide, {len(sharp)} sharp tiles asked for")
     await pg.context.close()

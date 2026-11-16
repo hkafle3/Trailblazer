@@ -59,7 +59,7 @@ async function film(root, signal, done) {
 const THREE = await import(THREE_URL);
 
 const Q = new URLSearchParams(location.search);
-const $ = id => document.getElementById('intro-' + id);
+const $ = id => root.querySelector('#intro-' + id);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const EPS = 23.4392911 * Math.PI / 180, R2 = Math.SQRT2, TAU = 2 * Math.PI;
 const REC = Q.get('intro') === 'rec';   // ?intro=rec: nothing plays; a recorder draws frames with window.__intro.render(seconds)
@@ -114,6 +114,9 @@ const STILLS = [3.6, 7.6, 11, 15, 18.7, 22.9, 27.9, 33.2, 36];   // one frame pe
 // ---------- renderer ----------
 const canvas = $('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: REC });
+let playing = false, debug = null;
+function dispose() { playing = false; renderer.dispose(); renderer.forceContextLoss(); if (window.__intro === debug) delete window.__intro; }
+try {
 renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, .01, 100);
@@ -128,6 +131,7 @@ const [S, tileBuf, skyTex] = await Promise.all([
   fetch('data/intro/scene.json').then(r => r.json()), fetch('data/intro/tiles.bin').then(r => r.arrayBuffer()),
   new THREE.TextureLoader().loadAsync('data/intro/sky.jpg'), document.fonts.load('17px "Space Mono"'),
 ]);
+if (signal.aborted) { dispose(); return { dispose }; }   // skipped while the data was loading
 skyTex.colorSpace = THREE.NoColorSpace; skyTex.wrapS = THREE.RepeatWrapping; skyTex.anisotropy = 8;
 const STEP = S.step, NDAY = S.days;
 function seriesAt(arr, day, o) {   // flat xyz every STEP days from day 0 -> position on a day
@@ -506,7 +510,7 @@ function render(T) {
 
 // ---------- playing and skipping; stills for reduced motion ----------
 const perf = { frames: [] };
-let T0 = null, playing = false, Tnow = 0, still = 0;
+let T0 = null, Tnow = 0, still = 0;
 function finish() { playing = false; done(); }
 function tick(ts) {
   if (!playing) return;
@@ -525,9 +529,6 @@ function skip() {
 }
 $('next').onclick = () => (still < STILLS.length - 1 ? showStill(still + 1) : finish());
 addEventListener('resize', () => { resize(); if (!playing) render(REDUCED ? STILLS[still] : Tnow); }, { signal });
-function dispose() { playing = false; renderer.dispose(); renderer.forceContextLoss(); delete window.__intro; }
-if (signal.aborted) return { dispose };   // skipped while it was loading
-
 for (const t of [2, 9, 18.8, 27, 33]) render(t);   // warm up: compile every shader and upload the sky before the first real frame
 render(0);
 $('loading').remove();
@@ -541,8 +542,9 @@ function edges(x, y) {
   const [x0, x1] = span(row, w), [yb, yt] = span(col, h);   // readPixels counts rows from the bottom
   return { x0: x0 / k, x1: x1 / k, y0: (h - yt) / k, y1: (h - yb) / k };
 }
-window.__intro = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED };
+window.__intro = debug = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED };
 if (REC) { $('skip').hidden = true; return { dispose }; }   // a clean picture for the recorder; Escape still leaves
 if (REDUCED) { $('next').hidden = false; showStill(0); } else { playing = true; requestAnimationFrame(tick); }
 return { skip, dispose };
+} catch (err) { dispose(); throw err; }
 }

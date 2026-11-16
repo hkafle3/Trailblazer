@@ -138,6 +138,26 @@ async def run(b, name, opts):
     await pg.context.close()
     print(f"{name}: a stalled intro.css still shows Skip, and a stalled film lands on the map within 10 s")
 
+    # ---- data arriving after Skip or timeout releases its renderer and leaves a reopened film alone ----
+    for way in ("Skip", "timeout"):
+        pg = await page(b, opts, errs, seen_tour=True)
+        held, release = asyncio.Event(), asyncio.Event()
+        async def late_data(route):
+            held.set(); await release.wait(); await route.continue_()
+        await pg.route("**/data/intro/scene.json", late_data, times=1)
+        await pg.goto(BASE + "/explore"); await pg.wait_for_selector("body[data-ready='1']")
+        await pg.click("#how"); await asyncio.wait_for(held.wait(), timeout=10)
+        await pg.evaluate("window.__lost = false; document.getElementById('intro-gl').addEventListener('webglcontextlost', () => { window.__lost = true; })")
+        if way == "Skip": await pg.click("#intro-skip")
+        await gone(pg, f"{name} late data {way}", 10000)
+        await pg.click("#how"); await film_up(pg)
+        await pg.evaluate("window.__reopened = window.__intro")
+        release.set()
+        await pg.wait_for_function("window.__lost", timeout=10000)
+        assert await pg.evaluate("window.__intro === window.__reopened && !!document.getElementById('intro')"), "stale film touched the reopened intro"
+        await pg.keyboard.press("Escape"); await gone(pg, f"{name} reopened intro")
+        await pg.context.close()
+
     # ---- reduced motion: stills with Next ----
     pg = await page(b, opts, errs, reduced_motion="reduce")
     await pg.goto(BASE + "/explore"); await film_up(pg)

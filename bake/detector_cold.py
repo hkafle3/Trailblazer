@@ -187,7 +187,7 @@ def forced(ep, band, x, y):
     """Aperture flux and its sigma (MJy/sr sums) at tangent-plane positions (arcsec)."""
     N = ep['ap45'].shape[0]; c = [np.atleast_1d(y) / OPIX + (N - 1) / 2, np.atleast_1d(x) / OPIX + (N - 1) / 2]
     f = ndi.map_coordinates(np.nan_to_num(ep['ap' + band], nan=0), c, order=1, cval=0); s = ndi.map_coordinates(ep['sd' + band], c, order=1, mode='nearest')
-    ok = ndi.map_coordinates(np.isfinite(ep['ap' + band]).astype(np.float32), c, order=1, cval=0) > 0.999   # all four pixels it interpolates between (review of 4ddce47: zero-filled mask edges faked a low flux)
+    ok = ndi.map_coordinates((~np.isfinite(ep['ap' + band])).astype(np.float32), c, order=1, cval=1) == 0   # any masked contribution or position outside the image invalidates the flux
     return np.where(ok, f, np.nan), np.where(ok, s, np.nan)
 
 def gaia(P):
