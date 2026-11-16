@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="explore.css">
 <link rel="stylesheet" href="search.css">
 <link rel="stylesheet" href="explore-search.css">
+<link rel="stylesheet" href="explore-3d.css">
 <link rel="stylesheet" href="candidates.css">   <!-- the Investigate layer's markers -->
 <link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
 <link rel="preload" as="image" href="data/visits.png">
@@ -125,6 +126,13 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
   </div>
 </details>
 <button class="whole" id="whole" type="button" aria-label="Whole sky"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><path d="M12 6.5v11M2.5 12h19"/></svg></button>
+</div>
+
+<!-- Flat / 3D (explore-3d.js, loaded with three.js and its data only when 3D is first pressed): the same sky as a sphere, with Earth, the Sun and the comets inside it.
+     Outside .xbtns: in 3D that row is covered and inert, and the switch stays -->
+<div class="viewsw" role="group" aria-label="Map view">
+  <button id="view-flat" type="button" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="5.5"/></svg>Flat</button>
+  <button id="view-3d" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3.6"/></svg>3D</button>
 </div>
 
 <!-- desktops only (explore-desktop.js): zoom in, zoom out, the whole sky. Bottom right, clear of Layers, Examples and the timeline -->

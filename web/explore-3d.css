@@ -1,0 +1,62 @@
+/* Explore's Flat / 3D switch and the 3D view (explore-3d.js), in Ming's Trailblazer look: black boxes, thin white
+   lines, Space Mono. The switch is on the page from the start; everything under #x3d is made at the first press of 3D. */
+
+/* ---------- the switch: two halves of one outlined box, the pressed half white ---------- */
+.viewsw { position: fixed; right: 28px; top: 124px; z-index: 5; display: flex; border-radius: 10px; background: rgba(0, 0, 0, .55); pointer-events: auto; }
+.viewsw button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 52px; height: 44px; padding: 0 14px; border: 1.5px solid rgba(255, 255, 255, .85); background: none; color: #fff; font: 400 15px var(--panel-font); cursor: pointer; }
+.viewsw button:first-child { border-right: 0; border-radius: 10px 0 0 10px; }
+.viewsw button:last-child { border-left: 1px solid rgba(255, 255, 255, .45); border-radius: 0 10px 10px 0; }
+.viewsw button:hover { background: rgba(255, 255, 255, .08); }
+.viewsw button[aria-pressed="true"] { background: #fff; color: #000; }
+.viewsw button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; position: relative; }
+.viewsw svg { flex: none; width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+
+/* ---------- in 3D: #x3d covers the flat map and its buttons, which explore-3d.js also makes inert; the header, the switch and the
+   timeline stay above it. The buttons under the cover are left exactly as they are: hiding them made Chrome redraw their
+   rounded corners a shade differently afterwards. ---------- */
+body[data-view="3d"] :is(.map-wrap, .xsearch, .xs-panel, .readout) { visibility: hidden; }
+body[data-view="3d"] .xstage::after { visibility: hidden; }
+body[data-view="3d"] .xstage { z-index: 9; pointer-events: none; }   /* only the timeline is left on it, over the 3D sky */
+body[data-view="3d"] .tl { pointer-events: auto; }
+body[data-view="3d"] .viewsw { z-index: 10; }   /* on the flat map it sits with the other buttons, under the phone's sheets */
+
+#x3d { position: fixed; inset: 0; z-index: 8; background: radial-gradient(90% 80% at 50% 40%, #0b1120, #04060c 70%, #020308); color: #fff; font: 400 14px/1.5 var(--panel-font); }
+#x3d * { box-sizing: border-box; margin: 0; }
+#x3d-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: 0; }
+#x3d-gl.x3d-pick { cursor: pointer; }
+#x3d-gl.x3d-drag { cursor: grabbing; }
+#x3d-gl:focus-visible { outline: 2px solid rgba(255, 255, 255, .55); outline-offset: -2px; }
+#x3d-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#x3d .lbl { position: absolute; left: 0; top: 0; font: 400 11px/1 var(--panel-font); letter-spacing: .02em; color: rgba(255, 255, 255, .72); white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; will-change: transform, opacity; }
+#x3d .lbl.accent { color: #ff9a4d; }
+#x3d-hint, #x3d-loading { position: absolute; left: 50%; transform: translateX(-50%); font-size: 12px; letter-spacing: .04em; color: rgba(255, 255, 255, .6); white-space: nowrap; pointer-events: none; transition: opacity .3s; }
+#x3d-hint { top: calc(var(--head-h) + 8px); }
+#x3d-loading { top: 46%; }
+
+/* the photo's card: a straight white rule over a black box, as the map's cards have */
+#x3d-card { position: absolute; left: min(calc(50% + 190px), calc(100% - 306px)); top: 44%; width: 290px; transform: translateY(-50%); display: grid; gap: 8px; padding: 18px 20px 20px; border-top: 2px solid #fff; border-radius: 0 0 10px 10px; background: rgba(4, 6, 12, .92); }
+#x3d-card[hidden] { display: none; }
+#x3d-card { visibility: hidden; opacity: 0; transition: opacity .3s; }   /* filled and measured when a photo is chosen, shown when the camera arrives */
+#x3d-card.in { visibility: visible; opacity: 1; }
+#x3d-card .eyebrow { color: rgba(255, 255, 255, .6); }
+#x3d-card h3 { font: 400 19px/1.2 var(--panel-font); }
+#x3d-where { font-size: 13px; color: rgba(255, 255, 255, .72); }
+#x3d-open { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; height: 44px; margin-top: 8px; padding: 0 16px; border: 1.5px solid rgba(255, 255, 255, .85); border-radius: 10px; background: #fff; color: #000; font: 400 14px var(--panel-font); text-decoration: none; }
+#x3d-open:hover { background: rgba(255, 255, 255, .86); }
+#x3d-open:focus-visible, #x3d-back:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+#x3d-back { position: absolute; right: 6px; top: 6px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: rgba(255, 255, 255, .72); cursor: pointer; }
+#x3d-back:hover { color: #fff; }
+#x3d-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+
+@media (max-width: 640px) {
+  /* the switch shares the row of "How this map was made", at its right end */
+  .viewsw { right: 12px; top: auto; bottom: calc(var(--bar) + 68px); background: rgba(0, 0, 0, .6); }
+  .viewsw button { padding: 0 12px; font-size: 14px; }
+  .viewsw svg { display: none; }   /* words only: the row is shared */
+  #x3d-hint { font-size: 11px; }
+  #x3d .lbl { font-size: 10px; }
+  #x3d-card { left: 12px; right: 12px; top: auto; bottom: calc(var(--bar) + 124px); width: auto; transform: none; padding: 14px 16px 16px; gap: 6px; }
+  #x3d-card h3 { font-size: 17px; }
+}
+@media (max-width: 379px) { .viewsw button { min-width: 44px; padding: 0 8px; } }   /* ponytail: fits beside the How button down to 360 px; narrower phones overlap it by a few px */
+@media (prefers-reduced-motion: reduce) { #x3d-hint, #x3d-loading, #x3d-card { transition: none; } }
