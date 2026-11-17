@@ -222,7 +222,7 @@ async function scene(box, x) {
     const Pj = p => { const q = rot(p); return [ox + sc * q[0], oy + sc * q[1]]; };
     const line = (list, cls) => svg('polyline', { points: list.map(p => Pj(p).map(v => v.toFixed(1)).join(',')).join(' '), class: cls }, s);
     // labels are placed last, most important first, each moved up or down until it overlaps no earlier one, inside the box
-    const labels = [];
+    const labels = [], dots = [];   // dots: points a label must not cover
     const label = (x0, y0, text, cls, o = {}) => labels.push({ x0, y0, text, cls, ...o });
     for (const [name, r] of laps) {
       if (!r.length) continue;
@@ -242,7 +242,7 @@ async function scene(box, x) {
     for (const m of marks) {   // drop line to the planets' plane: how far above or below it the comet was
       const a = Pj(m.p), b2 = Pj([m.p[0], m.p[1], 0]);
       svg('line', { x1: a[0], y1: a[1], x2: b2[0], y2: b2[1], class: 'drop' }, s);
-      svg('circle', { cx: a[0], cy: a[1], r: m.kind === 'peri' ? 5 : 3.6, class: `mark ${m.kind}` }, s);
+      svg('circle', { cx: a[0], cy: a[1], r: m.kind === 'peri' ? 5 : 3.6, class: `mark ${m.kind}` }, s); dots.push(a);
       if (m.label) label(a[0], a[1], m.label, 'lab', { late: m.kind !== 'peri' });
     }
     if (earthNow) {
@@ -252,16 +252,17 @@ async function scene(box, x) {
         svg('line', { x1: e[0], y1: e[1], x2: c2[0], y2: c2[1], class: 'sight' }, s);
         label((e[0] + c2[0]) / 2, (e[1] + c2[1]) / 2, F.dist(x.now.delta), 'lab');
       }
-      svg('circle', { cx: e[0], cy: e[1], r: 5, class: 'earth' }, s);
+      svg('circle', { cx: e[0], cy: e[1], r: 5, class: 'earth' }, s); dots.push(e);
       label(e[0], e[1], 'Earth today', 'dim', { dy: 16 });
     }
     if (cometNow) {
       const c2 = Pj(cometNow);
       svg('circle', { cx: c2[0], cy: c2[1], r: 12, class: 'halo' }, s);
-      svg('circle', { cx: c2[0], cy: c2[1], r: 5.5, class: 'now' }, s);
+      svg('circle', { cx: c2[0], cy: c2[1], r: 5.5, class: 'now' }, s); dots.push(c2);
       label(c2[0], c2[1], 'Today', 'lab o', { dy: -10, first: true });
     }
-    const boxes = [];
+    // the Photo | Depth tabs sit over the top left corner; each drawn point keeps a small clear square
+    const boxes = [[0, 0, 200, 54], [o[0] - 6, o[1] - 6, o[0] + 6, o[1] + 6], ...dots.map(d => [d[0] - 6, d[1] - 6, d[0] + 6, d[1] + 6])];
     const order = [...labels.filter(l => l.first), ...labels.filter(l => !l.first && !l.late), ...labels.filter(l => l.late)];
     for (const l of order) {
       const w = l.text.length * 6.7 + 4, h = 13;
@@ -271,7 +272,7 @@ async function scene(box, x) {
       const bx = () => [left(), y0 - h + 2, left() + w, y0 + 3];
       const hit = b3 => boxes.some(c => b3[0] < c[2] && b3[2] > c[0] && b3[1] < c[3] && b3[3] > c[1]);
       const base = y0;
-      for (let k = 1; k <= 10 && hit(bx()); k++) y0 = base + (k % 2 ? 1 : -1) * 15 * Math.ceil(k / 2);
+      for (let k = 1; k <= 16 && hit(bx()); k++) y0 = base + (k % 2 ? 1 : -1) * 15 * Math.ceil(k / 2);
       y0 = Math.max(14, Math.min(H - 6, y0));
       const b3 = bx(); boxes.push(b3);
       svg('text', { x: b3[0], y: y0, class: l.cls }, s).textContent = l.text;
