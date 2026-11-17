@@ -420,7 +420,10 @@ function dynLines(max, into = scene, order = 7) {
   let n = 0; const P = g.attributes.position.array, C = g.attributes.color.array;
   return {
     line: l, begin() { n = 0; },
-    seg(a, b, col, ia = 1, ib = ia) { if (n >= max) return; a.toArray(P, 6 * n); b.toArray(P, 6 * n + 3); C.set([col[0], col[1], col[2], Math.min(1, ia), col[0], col[1], col[2], Math.min(1, ib)], 8 * n); n++; },
+    seg(a, b, col, ia = 1, ib = ia) {
+      if (n >= max) return; a.toArray(P, 6 * n); b.toArray(P, 6 * n + 3);
+      const c = 8 * n; C[c] = C[c + 4] = col[0]; C[c + 1] = C[c + 5] = col[1]; C[c + 2] = C[c + 6] = col[2]; C[c + 3] = Math.min(1, ia); C[c + 7] = Math.min(1, ib); n++;
+    },
     dash(a, b, col, ia, k = 12) { for (let i = 0; i < k; i += 2) this.seg(tmp.copy(a).lerp(b, i / k), tmp2.copy(a).lerp(b, (i + 1) / k), col, ia); },
     end() { g.setDrawRange(0, 2 * n); g.attributes.position.needsUpdate = g.attributes.color.needsUpdate = true; }
   };
@@ -553,7 +556,8 @@ const flyA = T => K(T, [[8.5, 0], [FLY0, 1], [FLY1, 1], [FLY1 + .7, 0]]);   // h
 let fl = null;
 function flightPath() {
   const L = photoPoint(0, 0, tmp).distanceTo(st.top), key = W + 'x' + H; if (fl?.key === key) return fl;
-  const lat = HALF * st.R * PHOTO_R / L, th = Math.tan(flyFov() / 2 * D2R), end = 1 - HALF * st.R / Math.min(th * .8, th * W / H * .9) / L;   // it ends where the photo fills most of the view
+  const lat = HALF * st.R * PHOTO_R / L, th = Math.tan(flyFov() / 2 * D2R), fitEnd = 1 - HALF * st.R / Math.min(th * .8, th * W / H * .9) / L;
+  const end = Math.max(fitEnd, ...beads.map(b => b.f + BODY[b.kind].hold * BODY[b.kind].pass * b.f * lat));   // pass every body even when a tall window needs a wider lens to frame the photo
   const way = [{ f: 0, e: .004, bf: 0, e0: .004, u: 0, v: 0 }, ...beads.map((b, i) => { const B = BODY[b.kind], sx = i % 2 ? -1 : 1, [dx, dy] = wide() ? [sx * .96, .28] : [sx * .3, .95];   // each body passes to one side (on a phone, overhead)
     const e0 = B.pass * b.f * lat; return { f: b.f - B.hold * e0, e: 1.6 * e0, bf: b.f, e0, u: b.u - dx * B.pass, v: b.v + dy * B.pass }; }), { f: end, e: .012, bf: end, e0: .012, u: 0, v: 0 }];   // bf, e0: the body's own place, and its passing distance as a share of the beam's length
   const t = [0], f = [0], sig = [0], phi = [0], sg = (e, s) => sm((Math.log(e) + FLY_P * Math.log(Math.cosh(s)) - SIG[0]) / (SIG[1] - SIG[0])), n = 200;
@@ -566,7 +570,7 @@ function flightPath() {
     for (let i = n - 1; i >= 0; i--) put(Math.pow(Math.cosh(sB * (i + .5) / n), 1 - FLY_P) * sB / n, B.f - B.e * Math.sinh(sB * i / n), sg(B.e, sB * i / n));
   }
   const k = FLY_S / t.at(-1); for (let i = 1; i < t.length; i++) { t[i] *= k; phi.push(phi[i - 1] + (sig[i] + sig[i - 1]) / 2 * (t[i] - t[i - 1])); }
-  return fl = { key, way, L, t, f, sig, phi, cu: pchip(way.map(q => [q.bf, q.u])), cv: pchip(way.map(q => [q.bf, q.v])) };
+  return fl = { key, way, L, t, f, sig, phi, fov: end > fitEnd ? fovFill(HALF * st.R, L * (1 - end), .8, .9) : flyFov(), cu: pchip(way.map(q => [q.bf, q.u])), cv: pchip(way.map(q => [q.bf, q.v])) };
 }
 function flyNow(T) {   // st.fly: how far down the beam (0 at the telescope, 1 at the photo); st.sig: how hard it is rushing, 0 to 1; st.phi: how far the speed lines have run
   if (T < 8) { st.fly = st.sig = st.phi = 0; return; }   // the telescope is still turning to its field: no path yet
@@ -813,7 +817,7 @@ const upPhoto = f0.clone().negate().normalize();   // with this up, the photo's 
 // through the telescope: from the top of SPHEREx, a long lens on the photo. Every line of sight is a point from here.
 function eyePose() { const C = photoPoint(0, 0), d = st.top.clone().sub(C), L = d.length(); return pose(C, d, L, upPhoto, wide() ? .07 : .15, fovFill(HALF * st.R, L, .62, .9)); }
 // The flight: from the telescope's mouth straight down the beam towards the photo, with a wide lens, so that what is in the
-// photo comes past one thing at a time in order of distance. It ends where the photo fills most of the view.
+// photo comes past one thing at a time in order of distance. After the last body, the lens frames the photo.
 const flyFov = () => wide() ? 55 : 80;
 const flyCam = (f, o) => o.copy(st.top).lerp(photoPoint(fl.cu(f), fl.cv(f), tmp), f);
 function flyPose() {
@@ -823,7 +827,8 @@ function flyPose() {
     if (g > 0) view.lerp(tmp2.copy(st.top).lerp(photoPoint(b.u, b.v, tmp), b.f).sub(pos).normalize(), g).normalize();
   }
   const D = F.L * (1 - f);
-  return pose(pos.addScaledVector(view, D), view.negate(), D, upPhoto, wide() ? .07 : .15, flyFov() + (wide() ? 16 : 10) * st.sig);   // the lens opens up in the rush
+  const framing = sm((f - F.way.at(-2).bf) / (F.way.at(-1).f - F.way.at(-2).bf));
+  return pose(pos.addScaledVector(view, D), view.negate(), D, upPhoto, wide() ? .07 : .15, flyFov() + (F.fov - flyFov()) * framing + (wide() ? 16 : 10) * st.sig);   // the lens opens up in the rush
 }
 // the beam from the side: the telescope on the left and the photo on the right (on a phone, bottom and top), Earth kept out of its way
 function sidePose(T) {
@@ -1112,7 +1117,7 @@ function look(U, pts, r = 2) {   // the brightness really drawn round each point
     let sum = 0, max = 0; const c = [0, 0, 0]; for (let i = 0; i < px.length; i += 4) { const v = (px[i] + px[i + 1] + px[i + 2]) / 3; sum += v; if (v > max) max = v; for (let j = 0; j < 3; j++) c[j] += px[i + j] / (n * n); } return [sum / (n * n), max, c]; });
 }
 window.__intro = debug = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED };
-if (REC) Object.assign(debug, { probe, look, marks: { SH_U, SH, DK_U, DK_END, DIP, D_LIT, FLY0, FLY1: FLY0 + FLY_S } });
+if (REC) Object.assign(debug, { probe, look, flightPath, marks: { SH_U, SH, DK_U, DK_END, DIP, D_LIT, FLY0, FLY1: FLY0 + FLY_S } });
 if (REC) { $('skip').hidden = true; return { dispose }; }   // a clean picture for the recorder; Escape still leaves
 if (REDUCED) { $('next').hidden = false; showStill(0); } else { playing = true; requestAnimationFrame(() => requestAnimationFrame(tick)); }   // the frame after next: the next one was timed before all of the above ran, and the film would start that much late
 return { skip, dispose };

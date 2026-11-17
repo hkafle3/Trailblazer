@@ -10,7 +10,8 @@ The "How this map was made" button replays it over a panned and zoomed map on an
 Skip works before the film has loaded. Reduced motion: sixteen stills with sixteen captions and a Next button, no animation.
 The film's own scenes are checked from the pixels it really draws (frame by frame through ?intro=rec): the flight down the
 beam passes two rocks, two stars and a galaxy as solid bodies in order of distance, asteroid Sheba's pixel is one lit square among dark ones, the deck of colors shows its sheets and the
-comet's blaze, and the cut back from the deck lands on the first photo. Leaving the page while it loads (pagehide, and a
+comet's blaze, and the cut back from the deck lands on the first photo. The flight also passes every body in order without
+time reversal at 320 x 1000 and 320 x 1280. Leaving the page while it loads (pagehide, and a
 real navigation away and back) takes the film off at once and it does not come back.
 Run: uv run -q --with playwright python web/tests/intro_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, sys
@@ -63,6 +64,24 @@ async def gone(pg, why, within=4000):
     assert await pg.evaluate("![...document.body.children].some(e => e.inert)"), f"{why}: the page is still inert"
 
 
+async def flight_samples(pg, name, m):
+    flight, progress = [], []
+    for i in range(221):
+        u = m["FLY0"] + (m["FLY1"] - m["FLY0"]) * i / 220
+        p = await pg.evaluate(f"window.__intro.probe({u})")
+        flight.append((u, sorted(p["flight"], key=lambda b: b["au"]), p["rush"]))
+        progress.append(p["fly"])
+    path = await pg.evaluate("""(() => { const p = window.__intro.flightPath();
+      return { way: p.way.map(q => q.f), bodies: p.way.map(q => q.bf), t: p.t, f: p.f }; })()""")
+    for key in ("way", "bodies", "t", "f"):
+        assert all(a < b for a, b in zip(path[key], path[key][1:])), f"{name}: flight {key} is not strictly increasing"
+    assert all(math.isfinite(f) for f in progress) and all(a < b for a, b in zip(progress, progress[1:])), f"{name}: the flight reverses or stops: {progress}"
+    assert progress[-1] > max(path["bodies"][1:-1]), f"{name}: the flight ends before passing every body"
+    passed = [next((u for u, bs, _ in flight if not bs[j]["front"]), None) for j in range(len(flight[0][1]))]
+    assert all(u is not None for u in passed) and all(a < b for a, b in zip(passed, passed[1:])), f"{name}: bodies are not passed in order: {passed}"
+    return flight
+
+
 async def run(b, name, opts):
     errs = []
     # ---- first visit ----
@@ -72,7 +91,7 @@ async def run(b, name, opts):
     await pg.wait_for_selector("#intro-skip"); await film_up(pg)
     assert await pg.evaluate("localStorage.getItem('ch.intro')") == "1", "the intro is not remembered as seen"
     assert not await pg.evaluate("window.__intro.reduced"), "the film should be moving here"
-    assert await pg.evaluate("['probe', 'look', 'marks'].every(k => !(k in window.__intro))"), "recording helpers are exposed during normal playback"
+    assert await pg.evaluate("['probe', 'look', 'flightPath', 'marks'].every(k => !(k in window.__intro))"), "recording helpers are exposed during normal playback"
     await pg.wait_for_selector("body[data-ready='1']")
     assert not await pg.evaluate("document.getElementById('play').classList.contains('on')"), "the sky replay started under the film"
     assert not await pg.evaluate(TOUR), "the tour opened over the film"
@@ -180,10 +199,7 @@ async def run(b, name, opts):
     # face (a ring would be empty in the middle) and stands out from the sky; a star is bright and warmer than white, the
     # cooler star the warmer of the two (their real Gaia colors); the galaxy's photo is bright at its heart and fades
     # to nothing at its edge. Between bodies the speed lines come on, and they are off while a body is held.
-    flight = []
-    for i in range(221):
-        u = m["FLY0"] + (m["FLY1"] - m["FLY0"]) * i / 220; p = await probe(u)
-        flight.append((u, sorted(p["flight"], key=lambda b: b["au"]), p["rush"]))
+    flight = await flight_samples(pg, name, m)
     assert [b["kind"] for b in flight[0][1]] == ["asteroid", "asteroid", "star", "star", "galaxy"], f"{name}: the flight's bodies: {flight[0][1]}"
     assert not any(b["ring"] for _, bs, _ in flight for b in bs), f"{name}: a ring is drawn during the flight"
     mean = lambda gs: sum(g[0] for g in gs) / len(gs)
@@ -300,6 +316,15 @@ async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(channel="chrome", args=["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"])
         for name, opts in SIZES: await run(b, name, opts)
+        for height in (1000, 1280):
+            name = f"tall phone 320x{height}"
+            errs = []
+            pg = await page(b, dict(viewport={"width": 320, "height": height}, device_scale_factor=2, has_touch=True, is_mobile=True), errs, seen_tour=True)
+            await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
+            await flight_samples(pg, name, await pg.evaluate("window.__intro.marks"))
+            assert not errs, f"{name}: page errors {errs}"
+            await pg.context.close()
+            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps")
         await b.close()
     print("intro_ui: all checks passed")
 
