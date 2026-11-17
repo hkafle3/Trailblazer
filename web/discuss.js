@@ -156,7 +156,7 @@ export function discuss(page) {
     q('.close').focus();
     // SkyBoT's answers for this visit come in after the frames (timelapse.html knownFor): wait for them, a little
     for (let t = 0; t < 40 && f.known?.left > 0 && openOn?.[1] === f; t++) await new Promise(r => setTimeout(r, 250));
-    if (openOn?.[1] !== f) return;
+    if (openOn?.[1] !== f || started()) return;   // a form the person has started stays as they left it
     if (offer(m, f)) q('[data-f=its]').focus();
   }
   // the thumbnail: the photo on screen around the target, ringed at the thumbnail's middle

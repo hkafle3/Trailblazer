@@ -651,6 +651,41 @@ async def main():
             except Exception as e: check(False, f"table row {case}: {type(e).__name__} {str(e)[:200]}")
             finally: await ctx.close()
 
+        # row 6d, a started form: the person opens Discuss while SkyBoT is still out, picks a tag and writes a comment; a
+        # match, then a closer one, arrive. The form stays as they left it (no offer covers it), and Post sends their tag
+        # and comment for the current target
+        ctx, pg = await page(b)
+        try:
+            first = []
+            async def known(route):
+                q = qs(route); ra0, dec0 = float(q["ra"]), float(q["dec"]); c = math.cos(math.radians(dec0))
+                if not first: first.append(1); await asyncio.sleep(4); e = -7
+                else: await asyncio.sleep(7); e = 2
+                try: await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": ra0 + e / 3600 / c, "dec": dec0, "mag": 19.0}]})
+                except Exception: pass
+            posted = []
+            async def candidates(route):
+                if route.request.method != "POST": return await route.continue_()
+                posted.append(json.loads(route.request.post_data)); await route.fulfill(status=201, json={"id": "C-9999"})
+            await pg.route("**/api/known**", known); await pg.route("**/api/candidates", candidates)
+            await pg.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2"); await pg.wait_for_function(READY, timeout=180000)
+            await pg.click("#state"); await pg.wait_for_selector("#talk .talk-form", state="visible")
+            await pg.click("#talk label.pv-row:has([value=asteroid])"); await pg.fill("#talk textarea", "Faint, moves east")
+            if await pg.locator("#talk .nick").is_visible(): await pg.fill("#talk .nick", "tester")
+            await pg.wait_for_function("__lapse.state.m.frames[__lapse.state.i].known?.left === 0", timeout=60000); await pg.wait_for_timeout(1500)
+            st = await pg.evaluate("""[document.querySelector('#talk .talk-form').hidden, document.querySelector('#talk .match').hidden,
+                  document.querySelector('#talk [name=tag]:checked')?.value ?? null, document.querySelector('#talk textarea').value,
+                  __lapse.targetAt(__lapse.state.m, __lapse.state.m.frames[__lapse.state.i]).id?.pass.match?.name ?? null]""")
+            check(not st[0] and st[1] and st[2] == "asteroid" and st[3] == "Faint, moves east" and st[4] == "2001 ZZ",
+                  f"table row 6d, a started form: it stays as left when a closer match arrives (form hidden {st[0]}, offer hidden {st[1]}, tag {st[2]}, comment {st[3]!r}, match {st[4]})")
+            await pg.wait_for_function("window.turnstile?.getResponse?.()", timeout=60000)
+            await pg.click("#talk .pv-post"); await pg.wait_for_timeout(1500)
+            body = posted[0] if posted else {}
+            check(body.get("tag") == "asteroid" and body.get("body") == "Faint, moves east" and abs(body.get("ra", 0) - 248.1674) < 1e-4 and abs(body.get("dec", 0) - 66.7552) < 1e-4,
+                  f"table row 6d, a started form: Post sends the tag and comment for the current target ({ {k: body.get(k) for k in ('tag', 'body', 'ra', 'dec')} })")
+        except Exception as e: check(False, f"table row 6d, a started form: {type(e).__name__} {str(e)[:200]}")
+        finally: await ctx.close()
+
         # ---------- 8: phone ----------
         ctx, pg = await page(b, phone=True)
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY); await pg.wait_for_timeout(300)
