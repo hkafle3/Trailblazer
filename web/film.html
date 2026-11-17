@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About the film · Trailblazer</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="header.css">
+<link rel="icon" href="favicon.ico">
+<style>
+  /* the credits of the intro film "How this map was made" (intro.js): what is real, what is drawn, and whose pictures it uses */
+  .film { max-width: 720px; padding-bottom: 80px; }
+  .film h1 { margin: 34px 0 12px; font-size: clamp(30px, 5vw, 44px); }
+  .film h2 { margin: 40px 0 10px; font-size: 20px; }
+  .film p, .film li { color: var(--ink-2); line-height: 1.6; }
+  .film ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+  .film b { color: var(--ink); font-weight: 600; }
+  .film a { color: var(--ink); text-underline-offset: 3px; }
+</style>
+</head>
+<body class="page">
+
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
+  <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
+</header>
+
+<main class="shell film">
+  <h1>About the film</h1>
+  <p>"How this map was made" is the short film that opens the Explore page. <a href="explore.html?intro=1">Watch it again.</a></p>
+
+  <h2>Pictures and data</h2>
+  <ul>
+    <li><b>The photos and the sky.</b> SPHEREx images, their pointings and wavelengths: NASA/JPL-Caltech, from the NASA/IPAC Infrared Science Archive. The first photo is the first in the public archive, taken on 24 April 2025.</li>
+    <li><b>Earth.</b> NASA Blue Marble Next Generation (April), Blue Marble clouds, and Black Marble 2016 night lights: NASA Earth Observatory and NASA Goddard Space Flight Center.</li>
+    <li><b>The galaxy.</b> Its photo is from the Sloan Digital Sky Survey (SDSS DR18), used under CC BY. Its distance comes from the 2MASS Redshift Survey.</li>
+    <li><b>The two stars.</b> Their colors and distances come from Gaia DR3 (ESA/Gaia/DPAC). Each color is that of a glowing body at the star's measured temperature.</li>
+    <li><b>The same sky in six bands.</b> In the colors, the photo gives way to real SPHEREx exposures of that patch of sky from its other five detectors, 1.1 to 5 microns, taken between April and November 2025. Each band is pieced together from 4 to 9 exposures. Stars that fade there really are fainter at those wavelengths. Pixels the archive flags as cosmic rays or faulty are filled in from around them.</li>
+    <li><b>The star and the galaxy that change.</b> Their brightness in each of the 102 colors was measured by SPHEREx between April 2025 and May 2026, read here with this site's own tools. Readings with a flagged pixel nearby are left out.</li>
+    <li><b>The galaxy's shift towards red is measured.</b> The line drawn beside the galaxy is its brightness in every SPHEREx exposure that saw it between 2.9 and 3.84 microns. Its bump is the glow of sooty molecules, which sits at 3.29 microns in the laboratory and in nearby galaxies. Here its top is at 3.41 microns, within one SPHEREx color of where the galaxy's known redshift of 3.5 percent puts it. That redshift, from the 2MASS Redshift Survey, is what its 480 million light-years comes from.</li>
+    <li><b>The two asteroids.</b> Their names, places and distances that day come from IMCCE SkyBoT.</li>
+    <li><b>Orbits.</b> Earth, the planets and the comets: NASA JPL Horizons.</li>
+  </ul>
+
+  <h2>What is drawn, not measured</h2>
+  <ul>
+    <li><b>The asteroids' shapes are imagined.</b> Nobody has seen Sheba or Pyrrhus as more than a point of light. Sunlight falls on them from the Sun's real direction.</li>
+    <li><b>Distances are real, on a compressed scale.</b> The order and the numbers are true. The spacing is squeezed so that 2.6 AU and 480 million light-years fit in one flight.</li>
+    <li><b>Earth and the orbit are in true proportion.</b> SPHEREx circles about 650 km up, a tenth of Earth's radius, so beside the telescope Earth is a curved horizon, and the whole globe is seen only from far back. Earth never changes size in the film.</li>
+    <li><b>Other sizes are not real.</b> SPHEREx is drawn far larger than life (tens of kilometres across on Earth's scale), and so is every body flown past. Against the Sun and the planets' orbits, Earth is far larger than life too. The model of SPHEREx is a simple one, not the flight design.</li>
+    <li><b>The light that lands on the photo is a picture of an idea.</b> Each thing in a photo is recorded as a direction, not a distance, so near and far end up side by side. Five things are flown past. The photo itself is shown only when the flight arrives, and it spreads out from those five lights.</li>
+    <li><b>The flash is drawn.</b> It marks the moment the photo was taken.</li>
+    <li><b>The colors stand for infrared wavelengths.</b> Infrared has no colors we can see, so violet to red stands for 0.75 to 5 microns. One photo holds 17 of the 102 colors, each in its own strip, and so does each band's picture: the film shows six real ranges of color, not 102 single ones. The tint on each is drawn.</li>
+    <li><b>The line of the galaxy's light is zoomed.</b> Its scale starts just under the faintest reading, not at zero, so the bump is about a seventh of the galaxy's light there, not most of it. The dashed outline marks where the bump would sit with no shift; it is a copy, moved.</li>
+    <li><b>The picture is finished like a photograph.</b> Bright things glow a little, the corners darken slightly, and there is a trace of grain. None of that is data.</li>
+    <li><b>Earth turns as it really did</b> while the first photos are taken. After that the film's days fly by, and its turning is slowed.</li>
+    <li><b>The sphere of sky has no true size.</b> It is a way to draw directions. The flat map is a Mollweide projection of it.</li>
+    <li><b>Speed lines</b> are drawn. They are not stars.</li>
+  </ul>
+</main>
+
+<script src="ui.js"></script>
+</body>
+</html>
