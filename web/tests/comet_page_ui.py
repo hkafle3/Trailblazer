@@ -21,7 +21,7 @@ from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8873"
 SHOTS = sys.argv[2] if len(sys.argv) > 2 else None
-ONLY = __import__("os").environ.get("ONLY")   # "depth" or "list": run just that part
+ONLY = __import__("os").environ.get("ONLY")   # "depth", "zoom" or "list": run just that part
 SIZES = [("desktop", dict(viewport={"width": 1440, "height": 900})),
          ("phone", dict(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True))]
 SHOT_IDS = {"C/2026 A2 (Bok)": "bok", "235P/LINEAR": "235p"}
@@ -216,6 +216,107 @@ async def depth_solution(ctx):
         await pg.close()
 
 
+# ---------------- Depth zoom (the time-lapse Depth view's, web/live/depth.js, mirrored on the path scene) ----------------
+SCENE = """() => { const v = window.__scene?.view?.() ?? null, f = document.querySelector('.shot .depth svg text');
+  return { v, font: f ? getComputedStyle(f).fontSize : null, scale: visualViewport.scale, sy: scrollY + document.body.scrollTop }; }"""
+# names shown in the scene that run past its edges or under the tabs or the zoom buttons
+UNDER = """(() => { const sc = document.querySelector('.shot .depth .scene').getBoundingClientRect(), out = [];
+  const covers = ['.shot .tabs', '.shot .dzoom'].map(s => document.querySelector(s)).filter(e => e && e.offsetWidth).map(e => e.getBoundingClientRect());
+  for (const t of document.querySelectorAll('.shot .depth svg text')) { const r = t.getBoundingClientRect(); if (!r.width) continue;
+    if (r.left < sc.left - 1 || r.right > sc.right + 1 || r.top < sc.top - 1 || r.bottom > sc.bottom + 1) out.push(t.textContent + ' past the edge');
+    for (const c of covers) if (r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top) out.push(t.textContent + ' under a control'); }
+  return out; })()"""
+# names that do not sit at what they name: each text's data-at lists its point (or a ring's points), and the text's box
+# must come within 22 px of one of them
+AWAY = """(() => { const sc = document.querySelector('.shot .depth .scene').getBoundingClientRect(), out = [];
+  for (const t of document.querySelectorAll('.shot .depth svg text[data-at]')) { const r = t.getBoundingClientRect();
+    const d = Math.min(...t.dataset.at.split(' ').map(s => s.split(',').map(Number)).map(([x, y]) => { x += sc.left; y += sc.top;
+      return Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)); }));
+    if (d > 22) out.push(`${t.textContent} ${Math.round(d)} px from it`); }
+  const names = [...document.querySelectorAll('.shot .depth svg text')].map(t => t.textContent);
+  for (const n of ['Earth today', 'Sun']) if (!names.includes(n)) out.push(n + ' missing');
+  return out; })()"""
+about = lambda p, a, f: [a[0] + (p[0] - a[0]) * f, a[1] + (p[1] - a[1]) * f]
+off = lambda p, q: math.hypot(p[0] - q[0], p[1] - q[1]) if p and q else 1e9
+
+
+async def depth_zoom(b):
+    bok = BASE + "/comet.html?id=" + urllib.parse.quote("C/2026 A2 (Bok)", safe="")
+    # ---------------- desktop ----------------
+    ctx = await b.new_context(viewport={"width": 1440, "height": 900}); pg = await ctx.new_page(); errors = watch(pg)
+    await pg.goto(bok); await ready(pg, "zoom"); await pg.click("#tab-depth"); await pg.wait_for_timeout(400)
+    st = lambda: pg.evaluate(SCENE)
+    s0 = await st()
+    if not s0["v"]:
+        check(False, "Depth zoom: the scene has no zoom (window.__scene)"); await ctx.close(); return
+    check(not await pg.evaluate(AWAY), f"Depth names at 1x sit at what they name {await pg.evaluate(AWAY)}")
+    out_btn = pg.locator(".shot .dzoom [data-zoom=out]")
+    check(await out_btn.count() == 1 and await out_btn.is_disabled(), "Depth zoom: -, + and Reset view controls, - disabled at 1x")
+    sc = await pg.locator(".shot .depth .scene").bounding_box(); mid = [sc["x"] + sc["width"] / 2, sc["y"] + sc["height"] / 2]
+    sun0 = s0["v"]["sun"]
+    await pg.click(".shot .dzoom [data-zoom=in]"); s1 = await st()
+    check(abs(s1["v"]["k"] - 1.5) < 1e-6 and off(s1["v"]["sun"], about(sun0, mid, 1.5)) <= 2, f"Depth zoom: + zooms 1.5x about the middle ({s1['v']['k']}, Sun {off(s1['v']['sun'], about(sun0, mid, 1.5)):.2f} px off)")
+    check(not await pg.evaluate(AWAY), f"Depth names zoomed 1.5x sit at what they name {await pg.evaluate(AWAY)}")
+    check(s1["font"] == s0["font"] and not await pg.evaluate(UNDER), f"Depth zoom: names keep their size ({s0['font']} -> {s1['font']}) and stay inside, clear of the controls {await pg.evaluate(UNDER)}")
+    await pg.click(".shot .dzoom [data-zoom=reset]"); s2 = await st()
+    check(s2["v"]["k"] == 1 and off(s2["v"]["sun"], sun0) <= 1 and await out_btn.is_disabled(), f"Depth zoom: Reset view goes back to 1x ({s2['v']})")
+    # the wheel zooms toward the pointer, the page neither scrolls nor zooms
+    await pg.mouse.move(*sun0); await pg.mouse.wheel(0, -300); await pg.wait_for_timeout(150); s3 = await st()
+    check(s3["v"]["k"] > 1.5 and off(s3["v"]["sun"], sun0) <= 2 and s3["sy"] == s2["sy"], f"Depth zoom: the wheel zooms toward the pointer ({s3['v']['k']:.2f}x, Sun {off(s3['v']['sun'], sun0):.2f} px off, scroll {s2['sy']} -> {s3['sy']})")
+    cdp = await ctx.new_cdp_session(pg)
+    for _ in range(3): await cdp.send("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": sun0[0], "y": sun0[1], "deltaX": 0, "deltaY": -10, "modifiers": 2})
+    await pg.wait_for_timeout(150); s4 = await st()
+    check(s4["v"]["k"] > s3["v"]["k"] and s4["scale"] == 1 and off(s4["v"]["sun"], sun0) <= 2, f"Depth zoom: a trackpad pinch (ctrl wheel) zooms the view, not the page ({s4['v']['k']:.2f}x, page scale {s4['scale']})")
+    # shift-drag and right-drag pan (no turn), never past the scene's edges
+    a0 = s4["v"]["az"]; await pg.keyboard.down("Shift"); await pg.mouse.move(*mid); await pg.mouse.down(); await pg.mouse.move(mid[0] - 40, mid[1] - 30, steps=5); await pg.mouse.up(); await pg.keyboard.up("Shift")
+    s5 = await st(); moved = [s5["v"]["sun"][0] - s4["v"]["sun"][0], s5["v"]["sun"][1] - s4["v"]["sun"][1]]
+    check(s5["v"]["az"] == a0 and s5["v"]["k"] == s4["v"]["k"] and off(moved, [-40, -30]) <= 2, f"Depth zoom: shift-drag pans the zoomed view by the drag ({moved}), no turn")
+    await pg.mouse.move(*mid); await pg.mouse.down(button="right"); await pg.mouse.move(mid[0] + 4000, mid[1] + 4000, steps=4); await pg.mouse.up(button="right")
+    s6 = await st(); v = s6["v"]
+    check(v["az"] == a0 and v["x"] >= 0 and v["y"] >= 0 and v["x"] <= v["W"] - v["W"] / v["k"] + 1e-6 and v["y"] <= v["H"] - v["H"] / v["k"] + 1e-6, f"Depth zoom: a right-drag pans only as far as the scene's edges ({v})")
+    # a drag still turns, and keeps the zoom; + and - keys; Safari's gesture events
+    await pg.mouse.move(*mid); await pg.mouse.down(); await pg.mouse.move(mid[0] + 60, mid[1], steps=5); await pg.mouse.up(); s7 = await st()
+    check(s7["v"]["az"] != a0 and s7["v"]["k"] == s6["v"]["k"], f"Depth zoom: a drag turns the path and keeps the zoom ({a0} -> {s7['v']['az']})")
+    await pg.click(".shot .dzoom [data-zoom=reset]"); await pg.focus(".shot .depth .scene"); await pg.keyboard.press("+"); s8 = await st()
+    check(abs(s8["v"]["k"] - 1.5) < 1e-6 and s8["v"]["az"] == s0["v"]["az"], f"Depth zoom: Reset view undoes the turn, the + key zooms ({s8['v']})")
+    await pg.keyboard.press("-"); check((await st())["v"]["k"] == 1, "Depth zoom: the - key zooms out")
+    k9 = await pg.evaluate("""([x, y]) => { const s = document.querySelector('.shot .depth .scene'), ev = (t, scale) => { const e = new Event(t, { cancelable: true }); Object.assign(e, { scale, clientX: x, clientY: y }); s.dispatchEvent(e); };
+      ev('gesturestart', 1); ev('gesturechange', 2); ev('gestureend', 2); return window.__scene.view().k; }""", sun0)
+    check(abs(k9 - 2) < 1e-6, f"Depth zoom: Safari's trackpad pinch (gesture events) zooms ({k9}x)")
+    for _ in range(12):
+        if await pg.locator(".shot .dzoom [data-zoom=in]").is_disabled(): break
+        await pg.click(".shot .dzoom [data-zoom=in]")
+    check((await st())["v"]["k"] == 8 and await pg.locator(".shot .dzoom [data-zoom=in]").is_disabled(), "Depth zoom: at most 8x, + disabled there")
+    check(not await pg.evaluate(UNDER), f"Depth zoom: at 8x the names stay inside, clear of the controls {await pg.evaluate(UNDER)}")
+    check(not errors, f"Depth zoom: errors {errors[:3]}")
+    await ctx.close()
+    # ---------------- phone: a two-finger pinch about its midpoint ----------------
+    ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True); pg = await ctx.new_page(); errors = watch(pg)
+    await pg.goto(bok); await ready(pg, "zoom phone"); await pg.click("#tab-depth"); await pg.wait_for_timeout(400)
+    await pg.locator(".shot").scroll_into_view_if_needed(); await pg.wait_for_timeout(200)
+    st = lambda: pg.evaluate(SCENE); s0 = await st()
+    if not s0["v"]:
+        check(False, "Depth zoom (phone): no zoom"); await ctx.close(); return
+    sc = await pg.locator(".shot .depth .scene").bounding_box(); M = [sc["x"] + sc["width"] / 2, sc["y"] + sc["height"] / 2 + 20]
+    cdp = await ctx.new_cdp_session(pg)
+    async def touch(kind, pts=()):
+        await cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"id": i, "x": x, "y": y} for i, x, y in pts]}); await pg.wait_for_timeout(20)
+    await touch("touchStart", [(0, M[0] - 30, M[1])]); await touch("touchStart", [(0, M[0] - 30, M[1]), (1, M[0] + 30, M[1])])
+    for i in range(1, 9):
+        d = 60 + 120 * i / 8; await touch("touchMove", [(0, M[0] - d / 2, M[1]), (1, M[0] + d / 2, M[1])])
+    await touch("touchEnd"); await pg.wait_for_timeout(200); s1 = await st(); f1 = s1["v"]["k"]
+    check(abs(f1 - 3) < 0.05 and off(s1["v"]["sun"], about(s0["v"]["sun"], M, f1)) <= 3 and s1["v"]["az"] == s0["v"]["az"],
+          f"Depth zoom (phone): a pinch zooms {f1:.3f}x about the fingers' midpoint (Sun {off(s1['v']['sun'], about(s0['v']['sun'], M, f1)):.2f} px off), no turn")
+    check(s1["scale"] == 1 and s1["sy"] == s0["sy"], f"Depth zoom (phone): the page does not zoom or scroll ({s1['scale']}, {s0['sy']} -> {s1['sy']})")
+    sizes = await pg.evaluate("[...document.querySelectorAll('.shot .dzoom button')].map(b => [b.offsetWidth, b.offsetHeight])")
+    check(sizes and all(w >= 44 and h >= 44 for w, h in sizes), f"Depth zoom (phone): the zoom buttons are 44 px taps {sizes}")
+    check(not await pg.evaluate(UNDER), f"Depth zoom (phone): names inside, clear of the controls {await pg.evaluate(UNDER)}")
+    await pg.click(".shot .dzoom [data-zoom=reset]")
+    check(not await pg.evaluate(AWAY), f"Depth names on a phone at 1x sit at what they name {await pg.evaluate(AWAY)}")
+    check(not errors, f"Depth zoom (phone): errors {errors[:3]}")
+    await ctx.close()
+
+
 async def missing(ctx):
     pg = await ctx.new_page(); errors = watch(pg, allow404=True)   # the record's 404 is the browser's own log line
     await pg.goto(BASE + "/comet.html?id=12P%2FPons-Brooks")
@@ -237,6 +338,8 @@ async def main():
         if ONLY == "depth":   # just the solution check (quick)
             ctx = await b.new_context(viewport={"width": 1440, "height": 900}); await depth_solution(ctx); await ctx.close()
             print(f"{'FAIL' if fails else 'PASS'} Depth solution check, {len(fails)} failures"); sys.exit(1 if fails else 0)
+        if ONLY == "zoom":
+            await depth_zoom(b); print(f"{'FAIL' if fails else 'PASS'} Depth zoom, {len(fails)} failures"); sys.exit(1 if fails else 0)
         if ONLY == "list":
             ctx = await b.new_context(viewport={"width": 1440, "height": 900}); await list_page(ctx, "desktop", known, listing); await ctx.close()
             print(f"{'FAIL' if fails else 'PASS'} list check, {len(fails)} failures"); sys.exit(1 if fails else 0)
@@ -248,6 +351,7 @@ async def main():
                 await comet_page(ctx, size, cid, recs[cid])
             if size == "desktop": await missing(ctx); await depth_solution(ctx)
             await ctx.close()
+        await depth_zoom(b)
         await b.close()
     print(f"{'FAIL' if fails else 'PASS'} comet pages: {len(known)} comets and the list at 1440x900 and 390x844, {len(fails)} failures")
     sys.exit(1 if fails else 0)

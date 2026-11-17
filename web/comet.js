@@ -213,8 +213,16 @@ async function scene(box, x) {
   const vs = f.inv?.visits ?? [];
   vs.forEach((v, k) => { const p = at(rows, (v.start + v.end) / 2 + 2400000.5); if (p) marks.push({ p, kind: v.verdict === 'seen' ? 'seen' : 'faint', label: k === 0 ? `First picture, ${F.span(F.mjdMs(v.start), F.mjdMs(v.start))}` : null }); });
   for (const pp of [f.peri.prev, f.peri.next]) { const p = pp && at(rows, pp.jd); if (p) marks.push({ p, kind: 'peri', label: `Closest to the Sun, ${F.day(F.jdMs(pp.jd))}` }); }
-  let az = -60, elv = 48;
+  const AZ = -60, EL = 48;
+  let az = AZ, elv = EL;
   const W = box.clientWidth || 452, H = box.clientHeight || W;
+  // the zoom, as the time-lapse's Depth view has it (live/depth.js): k times, the view's top-left corner at (x, y) of the
+  // unzoomed view. Lines, rings and points move with it; names keep their size and are placed again, at what they name.
+  const Z = { k: 1, x: 0, y: 0 };
+  let sunAt = null;   // for tests (window.__scene): the Sun's place in the view
+  const zoomBox = box.parentNode.querySelector('.dzoom');
+  // what sits over the scene (the Photo | Depth tabs, the zoom buttons): names keep clear of it. In the scene's own units.
+  const covers = () => { const r0 = box.getBoundingClientRect(); return [document.querySelector('.shot .tabs'), zoomBox].filter(e => e && e.offsetWidth).map(e => { const r = e.getBoundingClientRect(); return [r.left - r0.left - 4, r.top - r0.top - 4, r.right - r0.left + 4, r.bottom - r0.top + 4]; }); };
   const draw = () => {
     box.replaceChildren();
     const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${x.id}'s path around the Sun from JPL's positions, with Earth today` }, box);
@@ -224,21 +232,24 @@ async function scene(box, x) {
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), pad = 40;
     const sc = Math.min((W - 2 * pad) / (Math.max(...xs) - Math.min(...xs) || 1), (H - 2 * pad) / (Math.max(...ys) - Math.min(...ys) || 1));
     const ox = W / 2 - sc * (Math.max(...xs) + Math.min(...xs)) / 2, oy = H / 2 - sc * (Math.max(...ys) + Math.min(...ys)) / 2;
-    const Pj = p => { const q = rot(p); return [ox + sc * q[0], oy + sc * q[1]]; };
+    const Pj = p => { const q = rot(p); return [(ox + sc * q[0] - Z.x) * Z.k, (oy + sc * q[1] - Z.y) * Z.k]; };
+    const inView = q => q[0] >= 0 && q[0] <= W && q[1] >= 0 && q[1] <= H;
     const line = (list, cls) => svg('polyline', { points: list.map(p => Pj(p).map(v => v.toFixed(1)).join(',')).join(' '), class: cls }, s);
-    // labels are placed last, most important first, each moved up or down until it overlaps no earlier one, inside the box
-    const labels = [], dots = [];   // dots: points a label must not cover
-    const label = (x0, y0, text, cls, o = {}) => labels.push({ x0, y0, text, cls, ...o });
+    // names, placed last: each at what it names (beside a point, or on a ring), never under the controls, another name or a
+    // drawn point, and inside the view; one that cannot be placed so is left out, except the four that must show
+    const labels = [], dots = [];
+    const label = (at, text, cls, o = {}) => labels.push({ at, text, cls, ...o });
     for (const [name, r] of laps) {
       if (!r.length) continue;
       line(r.map(q => q.slice(1)), 'lap');
-      const top = r.map(q => Pj(q.slice(1))).reduce((b2, q) => (q[1] < b2[1] ? q : b2));
-      label(top[0], top[1], `${name}'s path`, 'dim', { mid: true, dy: -6, late: true });
+      // candidate places along the ring, nearest the viewer first (the ring's front, where it is easiest to read)
+      const ring = r.filter((_, k) => k % Math.max(1, Math.round(r.length / 24)) === 0).map(q => Pj(q.slice(1))).filter(inView).sort((p, q) => q[1] - p[1]);
+      if (ring.length) label(ring, `${name}'s path`, 'dim', { ring: true, late: true });
     }
-    const o = Pj([0, 0, 0]);
+    const o = Pj([0, 0, 0]); sunAt = o;
     svg('circle', { cx: o[0], cy: o[1], r: 16, class: 'glow' }, s);
     svg('circle', { cx: o[0], cy: o[1], r: 4.5, class: 'sun' }, s);
-    label(o[0], o[1], 'Sun', 'dim', { mid: true, dy: 24 });
+    if (inView(o)) label([o], 'Sun', 'dim', { must: true });
     const past = rows.filter(r => r[0] <= jdNow).map(r => r.slice(1)), fut = rows.filter(r => r[0] >= jdNow).map(r => r.slice(1));
     if (cometNow) { past.push(cometNow); fut.unshift(cometNow); }
     const all = line(rows.map(r => r.slice(1)), 'cpath'); all.setAttribute('aria-hidden', 'true');
@@ -248,47 +259,96 @@ async function scene(box, x) {
       const a = Pj(m.p), b2 = Pj([m.p[0], m.p[1], 0]);
       svg('line', { x1: a[0], y1: a[1], x2: b2[0], y2: b2[1], class: 'drop' }, s);
       svg('circle', { cx: a[0], cy: a[1], r: m.kind === 'peri' ? 5 : 3.6, class: `mark ${m.kind}` }, s); dots.push(a);
-      if (m.label) label(a[0], a[1], m.label, 'lab', { late: m.kind !== 'peri' });
+      if (m.label && inView(a)) label([a], m.label, 'lab', { late: m.kind !== 'peri' });
     }
     if (earthNow) {
       const e = Pj(earthNow);
       if (cometNow && useNow) {
-        const c2 = Pj(cometNow);
+        const c2 = Pj(cometNow), mid = [(e[0] + c2[0]) / 2, (e[1] + c2[1]) / 2];
         svg('line', { x1: e[0], y1: e[1], x2: c2[0], y2: c2[1], class: 'sight' }, s);
-        label((e[0] + c2[0]) / 2, (e[1] + c2[1]) / 2, F.dist(x.now.delta), 'lab');
+        if (inView(mid)) label([mid], F.dist(x.now.delta), 'lab');
       }
       svg('circle', { cx: e[0], cy: e[1], r: 5, class: 'earth' }, s); dots.push(e);
-      label(e[0], e[1], 'Earth today', 'dim', { dy: 16 });
+      if (inView(e)) label([e], 'Earth today', 'dim', { must: true });
     }
     if (cometNow) {
       const c2 = Pj(cometNow);
       svg('circle', { cx: c2[0], cy: c2[1], r: 12, class: 'halo' }, s);
       svg('circle', { cx: c2[0], cy: c2[1], r: 5.5, class: 'now' }, s); dots.push(c2);
-      label(c2[0], c2[1], 'Today', 'lab o', { dy: -10, first: true });
+      if (inView(c2)) label([c2], 'Today', 'lab o', { must: true, first: true });
     }
-    // the Photo | Depth tabs sit over the top left corner; each drawn point keeps a small clear square
-    const boxes = [[0, 0, 200, 54], [o[0] - 6, o[1] - 6, o[0] + 6, o[1] + 6], ...dots.map(d => [d[0] - 6, d[1] - 6, d[0] + 6, d[1] + 6])];
+    const boxes = [...covers(), [o[0] - 7, o[1] - 7, o[0] + 7, o[1] + 7], ...dots.map(d => [d[0] - 7, d[1] - 7, d[0] + 7, d[1] + 7])];
+    const hit = b3 => boxes.some(c => b3[0] < c[2] && b3[2] > c[0] && b3[1] < c[3] && b3[3] > c[1]);
+    const fits = b3 => b3[0] >= 2 && b3[2] <= W - 2 && b3[1] >= 2 && b3[3] <= H - 2;
     const order = [...labels.filter(l => l.first), ...labels.filter(l => !l.first && !l.late), ...labels.filter(l => l.late)];
     for (const l of order) {
       const w = l.text.length * 6.7 + 4, h = 13;
-      let anchor = l.mid ? 'middle' : l.x0 > W - w - 24 ? 'end' : 'start';
-      let x0 = l.mid ? l.x0 : anchor === 'end' ? l.x0 - 10 : l.x0 + 10, y0 = l.y0 + (l.dy ?? 4);
-      const left = () => Math.max(4, Math.min(W - 4 - w, anchor === 'end' ? x0 - w : anchor === 'middle' ? x0 - w / 2 : x0));
-      const bx = () => [left(), y0 - h + 2, left() + w, y0 + 3];
-      const hit = b3 => boxes.some(c => b3[0] < c[2] && b3[2] > c[0] && b3[1] < c[3] && b3[3] > c[1]);
-      const base = y0;
-      for (let k = 1; k <= 16 && hit(bx()); k++) y0 = base + (k % 2 ? 1 : -1) * 15 * Math.ceil(k / 2);
-      y0 = Math.max(14, Math.min(H - 6, y0));
-      const b3 = bx(); boxes.push(b3);
-      svg('text', { x: b3[0], y: y0, class: l.cls }, s).textContent = l.text;
+      // beside a point: right, left, below, above, then the corners; on a ring: centred on it, at each of its places
+      const spots = l.ring ? l.at.flatMap(([px, py]) => [[px - w / 2, py + 4], [px - w / 2, py - 8]])
+        : l.at.flatMap(([px, py]) => [[px + 10, py + 4], [px - 10 - w, py + 4], [px - w / 2, py + 20], [px - w / 2, py - 11], [px + 9, py + 17], [px - 9 - w, py + 17], [px + 9, py - 9], [px - 9 - w, py - 9]]);
+      let pick = spots.map(([lx, ly]) => [lx, ly - h + 2, lx + w, ly + 3]).find(b3 => fits(b3) && !hit(b3));
+      if (!pick && l.must) { const [lx, ly] = spots[0]; const L = Math.max(2, Math.min(W - 2 - w, lx)), Y = Math.max(h, Math.min(H - 5, ly)); pick = [L, Y - h + 2, L + w, Y + 3]; }
+      if (!pick) continue;
+      boxes.push(pick);
+      const t = svg('text', { x: pick[0], y: pick[3] - 3, class: l.cls }, s); t.textContent = l.text;
+      t.dataset.at = l.at.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');   // what it names (tests: it sits there)
     }
+    for (const [n, off] of [['in', Z.k >= 8], ['out', Z.k <= 1]]) { const bt = zoomBox?.querySelector(`[data-zoom=${n}]`); if (bt) bt.disabled = off; }
+    box.dataset.zoom = Z.k.toFixed(3);
+  };
+  // zoom by f about the view point (x0, y0), which lands at (x1, y1): what was under it stays under it. 1x to 8x, and
+  // never past the edges of the unzoomed view (live/depth.js zoomAt)
+  const zoomAt = (f, x0, y0, x1 = x0, y1 = y0) => {
+    const u = Z.x + x0 / Z.k, v = Z.y + y0 / Z.k; Z.k = Math.max(1, Math.min(8, Z.k * f));
+    Z.x = Math.max(0, Math.min(W - W / Z.k, u - x1 / Z.k)); Z.y = Math.max(0, Math.min(H - H / Z.k, v - y1 / Z.k));
+    draw();
   };
   draw();
-  let drag = null;
-  box.addEventListener('pointerdown', e => { drag = [e.clientX, e.clientY, az, elv]; box.setPointerCapture(e.pointerId); });
-  box.addEventListener('pointermove', e => { if (!drag) return; az = drag[2] + (e.clientX - drag[0]) * 0.4; elv = Math.max(5, Math.min(85, drag[3] + (e.clientY - drag[1]) * 0.3)); draw(); });
-  box.addEventListener('pointerup', () => { drag = null; });
-  box.addEventListener('keydown', e => { const s2 = { ArrowLeft: -10, ArrowRight: 10 }[e.key]; if (s2) { e.preventDefault(); az += s2; draw(); } });
+  window.__scene = { view: () => { const r = box.getBoundingClientRect(); return { k: Z.k, x: Z.x, y: Z.y, W, H, az, elv, sun: sunAt && [r.left + sunAt[0], r.top + sunAt[1]] }; } };
+  // drag to turn; a shift- or right-drag moves the zoomed view; two fingers zoom about their midpoint and move with it
+  // (a second finger ends the turn, and none starts until both lift); the wheel, a trackpad pinch (a ctrl wheel, or
+  // Safari's gesture events), + and - zoom toward the pointer or the middle; Reset view undoes zoom and turn
+  const local = e => { const r = box.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const fingers = new Map(); let drag = null, pinch = null, pan = null;
+  const two = () => { const [a, b2] = fingers.values(), r = box.getBoundingClientRect(); return { m: [(a[0] + b2[0]) / 2 - r.left, (a[1] + b2[1]) / 2 - r.top], d: Math.hypot(a[0] - b2[0], a[1] - b2[1]) }; };
+  box.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse') fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (fingers.size === 2) { if (drag) { az = drag.az; elv = drag.elv; drag = null; } box.setPointerCapture(e.pointerId); pinch = two(); draw(); return; }
+    if (fingers.size > 2 || pinch) return;
+    if (e.button === 2 || (!e.button && e.shiftKey)) { pan = { x: e.clientX, y: e.clientY, zx: Z.x, zy: Z.y }; box.setPointerCapture(e.pointerId); return; }
+    if (e.button) return;
+    drag = { x: e.clientX, y: e.clientY, az, elv }; box.setPointerCapture(e.pointerId);
+  });
+  box.addEventListener('pointermove', e => {
+    if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch) { if (fingers.size === 2 && fingers.has(e.pointerId)) { const n = two(); if (n.d > 0 && pinch.d > 0) zoomAt(n.d / pinch.d, ...pinch.m, ...n.m); pinch = n; } return; }
+    if (pan) { Z.x = pan.zx - (e.clientX - pan.x) / Z.k; Z.y = pan.zy - (e.clientY - pan.y) / Z.k; return zoomAt(1, 0, 0); }   // zoomAt keeps it in the view
+    if (!drag) return;
+    az = drag.az + (e.clientX - drag.x) * 0.4; elv = Math.max(5, Math.min(85, drag.elv + (e.clientY - drag.y) * 0.3)); draw();
+  });
+  const up = e => { fingers.delete(e?.pointerId); if (!fingers.size) pinch = null; drag = pan = null; };
+  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  box.addEventListener('contextmenu', e => e.preventDefault());   // the right button pans
+  box.addEventListener('wheel', e => {
+    e.preventDefault();
+    const px = e.deltaY * [1, 33, box.clientHeight][e.deltaMode];   // pixels, lines or pages
+    zoomAt(Math.exp(-Math.max(-300, Math.min(300, px)) * (e.ctrlKey ? .01 : .002)), ...local(e));
+  }, { passive: false });
+  let gs = 1;
+  box.addEventListener('gesturestart', e => { e.preventDefault(); gs = 1; });
+  box.addEventListener('gesturechange', e => { e.preventDefault(); if (!fingers.size && e.scale > 0) { zoomAt(e.scale / gs, ...local(e)); gs = e.scale; } });
+  box.addEventListener('gestureend', e => e.preventDefault());
+  const mid = () => [W / 2, H / 2];
+  zoomBox?.addEventListener('click', e => {
+    const z = e.target.closest('button')?.dataset.zoom;
+    if (z === 'in') zoomAt(1.5, ...mid()); else if (z === 'out') zoomAt(1 / 1.5, ...mid());
+    else if (z === 'reset') { Object.assign(Z, { k: 1, x: 0, y: 0 }); az = AZ; elv = EL; draw(); }
+  });
+  box.addEventListener('keydown', e => {
+    const z = { '+': 1.5, '=': 1.5, '-': 1 / 1.5, '_': 1 / 1.5 }[e.key];   // Ctrl or Cmd with them is the browser's own zoom
+    if (z && !e.ctrlKey && !e.metaKey && !e.altKey) { zoomAt(z, ...mid()); e.preventDefault(); return; }
+    const s2 = { ArrowLeft: -10, ArrowRight: 10 }[e.key]; if (s2) { e.preventDefault(); az += s2; draw(); }
+  });
   box.tabIndex = 0;
 }
 
