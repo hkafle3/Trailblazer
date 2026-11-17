@@ -63,11 +63,19 @@
      above Earth's limb at any window size (946 design pixels up from the scene's bottom: 336 px at 1440 x 900), never under the header */
   .qa { position: absolute; z-index: 2; left: 72px; top: max(calc(var(--head-h) + 24px), calc(100vh - 946 * max(100vw / 2944, 100vh / 1509))); width: 380px; font-family: var(--head-font); transition: opacity .4s ease-in; }
   .qa h1 { margin: 0; font: 300 24px/1.35 var(--head-font); color: #fff; text-wrap: balance; text-shadow: 0 1px 14px #000, 0 0 4px #000; }
-  .qa .cta { display: inline-flex; align-items: center; gap: 12px; margin-top: 22px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, .55);
+  .qa .cta { display: flex; width: max-content; align-items: center; gap: 12px; margin-top: 22px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, .55);
     font: 400 17px/1 var(--head-font); color: #fff; text-decoration: none; white-space: nowrap; }
   .qa .cta:hover { border-bottom-color: #fff; }
   .qa .cta:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
   .qa .arr { width: 18px; height: 18px; flex: none; fill: none; stroke: #ff9a4d; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  /* a second, quieter line under the link: the intro film, which plays on Explore and ends on the map. Smaller, dimmer, no rule under it; 44 px tall to press */
+  .qa .watch { display: inline-flex; align-items: center; gap: 9px; margin-top: 5px; padding: 15px 0; font: 400 14px/1 var(--head-font); color: rgba(255, 255, 255, .64);
+    text-decoration: none; text-shadow: 0 1px 10px #000; white-space: nowrap; }
+  .qa .watch:hover { color: #fff; }
+  .qa .watch:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .qa .watch .play { width: 11px; height: 11px; flex: none; fill: currentColor; }
+  .qa .watch .dur { color: rgba(255, 255, 255, .42); }
+  .qa .watch:hover .dur { color: inherit; }
   .leaving .qa { opacity: 0; }
   /* phones: low on the screen, where the Earth turns to night; a soft fade under it keeps it readable */
   @media (max-width: 500px) {
@@ -76,6 +84,7 @@
     .qa { left: 24px; right: 24px; top: auto; bottom: 48px; width: auto; }
     .qa h1 { font-size: 21px; line-height: 1.38; }
     .qa .cta { margin-top: 20px; font-size: 16px; }
+    .qa .watch { margin-top: 3px; font-size: 13.5px; }
   }
 </style>
 </head>
@@ -96,6 +105,8 @@
 <div class="qa">
   <h1>Find objects that move in space, in photos from NASA's SPHEREx telescope.</h1>
   <a class="cta" href="timelapse.html?target=barnard">Start with a real example<svg class="arr" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></a>
+  <!-- the intro film "How this map was made" (intro.js): it plays over Explore and ends on the map. The length is the film's, to the second (home_ui.py checks it) -->
+  <a class="watch" href="explore.html?intro=1"><svg class="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5v17l15-8.5z"/></svg>Watch the intro <span class="dur">(54 s)</span></a>
 </div>
 
 <script>

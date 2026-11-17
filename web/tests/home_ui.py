@@ -4,6 +4,10 @@ At each size: the headline and "Start with a real example" are shown in Sansatio
 clear of the header (logo, nav, account circle) and of the SPHEREx telescope; the art behind each (read with the text
 hidden) is dark enough that white text on its brightest 5% has a contrast of at least 4.5. The link opens Barnard's
 Star's time-lapse (its manifest loads), and a click on the art still lifts off to Explore.
+Under the link is a second, quieter line, "Watch the intro (54 s)": in Sansation, below the link, inside the window,
+clear of the header and the telescope, at least 44 px tall, smaller and dimmer than the link and with no rule under it,
+still readable on the art (its own dimmer color has a contrast of at least 4.5). The length it gives is the film's, to
+the second. It opens Explore with the film playing, and when the film is left the map is there.
 Run: uv run -q --with playwright python web/tests/home_ui.py [base url] [screenshot dir]   (default http://127.0.0.1:8787)"""
 import asyncio, base64, pathlib, re, sys
 from playwright.async_api import async_playwright
@@ -12,6 +16,7 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 SHOTS = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else None
 HEADLINE = "Find objects that move in space, in photos from NASA's SPHEREx telescope."
 LINK = "Start with a real example"
+WATCH = "Watch the intro"
 SIZES = [("desktop-1440x900", dict(viewport={"width": 1440, "height": 900}, device_scale_factor=2)),
          ("desktop-1280x800", dict(viewport={"width": 1280, "height": 800}, device_scale_factor=2)),
          ("phone-390x844", dict(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True)),
@@ -44,13 +49,20 @@ async def size(b, name, opts):
     check(f"{name}: one typeface, the header's Sansation, loaded", all(f.strip('"').startswith('Sansation') for f in fonts)
           and await pg.evaluate("document.fonts.check('300 24px Sansation') && document.fonts.check('400 17px Sansation')"), str(fonts))
     check(f"{name}: the page does not scroll", await pg.evaluate("document.scrollingElement.scrollHeight <= innerHeight"))
-    h1, cta = await pg.evaluate(BOX, ".qa h1"), await pg.evaluate(BOX, ".qa .cta")
+    h1, cta, watch = await pg.evaluate(BOX, ".qa h1"), await pg.evaluate(BOX, ".qa .cta"), await pg.evaluate(BOX, ".qa .watch")
+    said = " ".join((await pg.inner_text(".qa .watch")).split()); secs = re.fullmatch(WATCH + r" \((\d+) s\)", said)
+    check(f"{name}: the second line reads Watch the intro, with a length", bool(secs), said)
+    look = await pg.evaluate("""(() => { const s = sel => getComputedStyle(document.querySelector(sel)), a = c => { const m = c.match(/[\\d.]+/g).map(Number); return m.length > 3 ? m[3] : 1; }, w = s('.qa .watch'), c = s('.qa .cta');
+      return [w.fontFamily, parseFloat(w.fontSize), parseFloat(c.fontSize), a(w.color), a(c.color), parseFloat(w.borderBottomWidth), parseFloat(c.borderBottomWidth), w.textDecorationLine, !!document.querySelector('.qa .watch svg.play')]; })()""")
+    check(f"{name}: the second line is in Sansation with a play glyph", look[0].strip('"').startswith('Sansation') and look[8], str(look[0]))
+    check(f"{name}: the second line is less prominent than the link (smaller, dimmer, no rule)", look[1] < look[2] and look[3] < look[4] - .2 and look[5] == 0 and look[6] > 0 and look[7] == "none", str(look[1:8]))
+    check(f"{name}: the second line is under the link, inside the window, at least 44 px tall", watch[1] >= cta[3] and watch[0] >= 0 and watch[2] <= w and watch[3] <= h and watch[3] - watch[1] >= 43.5 and abs(watch[0] - cta[0]) < 1, f"{[round(v) for v in watch]}")
     head = await pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.topbar')).height)")
     for what, r in [("headline", h1), ("link", cta)]:
         check(f"{name}: the {what} is inside the window, under the header", r[0] >= 0 and r[2] <= w and r[1] >= head and r[3] <= h, f"{[round(v) for v in r]}, header {head:.0f}")
     others = {sel: await pg.evaluate(BOX, sel) for sel in [".topbar .brand-mark", ".topbar nav", ".topbar .authbox", ".craft img"]}
     for sel, r in others.items():
-        check(f"{name}: headline and link clear of {sel}", apart(h1, r) and apart(cta, r), f"{[round(v) for v in r]}")
+        check(f"{name}: headline and both links clear of {sel}", apart(h1, r) and apart(cta, r) and apart(watch, r), f"{[round(v) for v in r]}")
     lines = await pg.evaluate("(() => { const h = document.querySelector('.qa h1'); return Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight)); })()")
     print(f"     {name}: headline on {lines} lines, link at {[round(v) for v in cta]}")
     if SHOTS: SHOTS.mkdir(parents=True, exist_ok=True); await pg.screenshot(path=str(SHOTS / f"{name}.png"))
@@ -61,6 +73,9 @@ async def size(b, name, opts):
         L = await pg.evaluate(LUMA, "data:image/png;base64," + base64.b64encode(png).decode())
         ratio = 1.05 / (L + .05)
         check(f"{name}: white {what} on the art behind it has contrast >= 4.5", ratio >= 4.5, f"{ratio:.1f}:1 on its brightest 5%")
+    png = await pg.screenshot(clip=dict(x=watch[0], y=watch[1] + 15, width=watch[2] - watch[0], height=watch[3] - watch[1] - 30))   # the line of text itself, without its padding
+    L = await pg.evaluate(LUMA, "data:image/png;base64," + base64.b64encode(png).decode()); ink = look[3] ** 2.2 + (1 - look[3]) * L   # white at its own opacity over the art, near enough
+    check(f"{name}: the dimmer second line on the art behind it has contrast >= 4.5", (ink + .05) / (L + .05) >= 4.5, f"{(ink + .05) / (L + .05):.1f}:1 on its brightest 5%")
     await pg.close()
     # the link opens Barnard's Star's time-lapse
     pg = await ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e)[:200]))
@@ -68,6 +83,14 @@ async def size(b, name, opts):
     async with pg.expect_response(lambda r: "data/flip/barnard/manifest.json" in r.url, timeout=20000) as man:
         await pg.click(".qa .cta")
     check(f"{name}: the link opens Barnard's Star's time-lapse", re.search(r"/timelapse(\.html)?\?target=barnard$", pg.url) and (await man.value).ok, pg.url)
+    # the second line opens Explore with the film playing; the length it gives is the film's; leaving the film leaves the map
+    await pg.goto(BASE + "/"); await pg.wait_for_selector(".qa .watch"); await pg.click(".qa .watch")
+    await pg.wait_for_url(re.compile(r"/explore(\.html)?\?intro=1$"), timeout=5000); await pg.wait_for_selector("#intro-skip", timeout=10000)
+    await pg.wait_for_function("window.__intro", timeout=60000); long = await pg.evaluate("window.__intro.T_END")
+    check(f"{name}: the second line opens Explore with the film playing", await pg.evaluate("!!document.getElementById('intro') && !window.__intro.reduced"), pg.url)
+    check(f"{name}: the length on the second line is the film's, to the second", bool(secs) and int(secs.group(1)) == int(long + .5), f"{said}, film {long:.1f} s")
+    await pg.keyboard.press("Escape"); await pg.wait_for_function("!document.getElementById('intro') && !document.documentElement.dataset.intro", timeout=6000)
+    check(f"{name}: leaving the film leaves the map", await pg.is_visible("#map"))
     # the art still lifts off to Explore (a spot on Earth, low in the middle)
     await pg.goto(BASE + "/"); await pg.wait_for_selector(".scene")
     await pg.mouse.click(w * .5, h - 20)
