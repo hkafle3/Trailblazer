@@ -72,6 +72,7 @@ async def run(b, name, opts):
     await pg.wait_for_selector("#intro-skip"); await film_up(pg)
     assert await pg.evaluate("localStorage.getItem('ch.intro')") == "1", "the intro is not remembered as seen"
     assert not await pg.evaluate("window.__intro.reduced"), "the film should be moving here"
+    assert await pg.evaluate("['probe', 'look', 'marks'].every(k => !(k in window.__intro))"), "recording helpers are exposed during normal playback"
     await pg.wait_for_selector("body[data-ready='1']")
     assert not await pg.evaluate("document.getElementById('play').classList.contains('on')"), "the sky replay started under the film"
     assert not await pg.evaluate(TOUR), "the tour opened over the film"
@@ -174,13 +175,37 @@ async def run(b, name, opts):
     e0, e1 = (await probe(u0))["photoEdges"], (await probe(u1))["photoEdges"]
     w0, w1 = abs(e0[0][0] - e0[1][0]), abs(e1[0][0] - e1[1][0])
     assert 10 < w0 < .5 * w1 and w1 > .5 * vw * (1 if name == "phone" else .4), f"{name}: the flight does not close in on the photo: {w0:.0f} px wide half way, {w1:.0f} px at the end"
+    # Sample the drawn rings as the two asteroids and two stars approach, then disappear in distance order.
+    flight = []
+    for i in range(85):
+        u = m["FLY0"] + (m["FLY1"] - m["FLY0"]) * i / 84
+        flight.append((u, sorted((await probe(u))["flight"], key=lambda b: b["au"])))
+    passed = []
+    for j in range(4):
+        obj = flight[0][1][j]["name"]
+        samples = [(u, bs[j]) for u, bs in flight if bs[j]["visible"] and 8 <= bs[j]["px"] <= 100
+                   and all(bs[j]["px"] / 2 + 3 < p < lim - bs[j]["px"] / 2 - 3 for p, lim in zip(bs[j]["at"], (vw, vh)))]
+        assert len(samples) >= 3, f"{name}: {obj} never visibly approaches during the flight"
+        assert samples[-1][1]["px"] > 1.5 * samples[0][1]["px"], f"{name}: {obj} does not grow as it approaches"
+        for u, bead in (samples[0], samples[len(samples) // 2], samples[-1]):
+            x, y = bead["at"]; r = .375 * bead["px"]
+            ring = await look(u, [[x + r, y], [x - r, y], [x, y + r], [x, y - r]], 1)
+            assert sum(g[1] > 100 for g in ring) >= 3, f"{name}: {obj}'s approaching ring is not drawn at {u:.2f}s: {ring}"
+        after = [u for u, bs in flight if u > samples[-1][0] and not bs[j]["visible"]]
+        assert after, f"{name}: {obj} never passes the camera"
+        passed.append(after[0])
+    assert all(a < b for a, b in zip(passed, passed[1:])), f"{name}: flight objects pass out of distance order: {passed}"
     # Sheba: pushed in, its pixel is a lit square and the pixels two away on every side are dark
     u = m["SH_U"] + 3; p = await probe(u); (sx, sy), px = p["sheba"], p["pixel"]
     assert 12 < px < 40, f"{name}: a detector pixel is {px:.1f} window px wide at the push-in"
     got = await look(u, [[sx, sy], [sx + 2 * px, sy], [sx - 2 * px, sy], [sx, sy + 2 * px], [sx, sy - 2 * px]], px / 4)
     assert got[0][0] > 150 and all(g[0] < 70 for g in got[1:]), f"{name}: Sheba's pixel is not one lit square among dark ones: {got}"
     # the deck: its sheets are drawn (lines crossed along its near edge), some are empty, and the comet blazes in the CO2 band
+    await probe(m["DK_U"] + 2)
+    await pg.evaluate("window.__questions = [...document.querySelectorAll('#intro-labels .deck.ask')]")
+    assert await pg.evaluate("window.__questions.map(el => el.textContent)") == ["?", "?"] and await pg.evaluate("window.__questions.every(el => +getComputedStyle(el).opacity > .9)"), f"{name}: the deck does not show two visible question labels"
     u = m["DK_U"] + m["D_LIT"] + 3; d = (await probe(u))["deck"]; (ax, ay), (bx, by) = d["scan"]; n = int(max(abs(bx - ax), abs(by - ay)))
+    assert await pg.evaluate("window.__questions.map(el => el.textContent)") == ["comet 3I/ATLAS", "star"] and await pg.evaluate("window.__questions.every(el => +getComputedStyle(el).opacity > .9)"), f"{name}: the deck's question labels do not become visible answers"
     line = [g[1] for g in await look(u, [[ax + (bx - ax) * i / n, ay + (by - ay) * i / n] for i in range(n + 1)], 0)]
     peaks = sum(1 for i in range(1, n) if line[i] > 28 and line[i] >= line[i - 1] and line[i] > line[i + 1])
     assert d["fanned"] == 1 and peaks >= (45 if name == "phone" else 70), f"{name}: the deck shows {peaks} sheets along its edge"
@@ -203,8 +228,15 @@ async def run(b, name, opts):
     await pg.route("**/data/intro/scene.json", hold, times=1)
     await pg.goto(BASE + "/explore"); await pg.wait_for_selector("body[data-ready='1']")
     await pg.click("#how"); await asyncio.wait_for(held.wait(), timeout=10)
-    left = await pg.evaluate(f"(() => {{ dispatchEvent(new PageTransitionEvent('pagehide', {{ persisted: true }})); return [!!document.getElementById('intro'), !!{ON}, [...document.body.children].some(e => e.inert)]; }})()")
-    assert left == [False, False, False], f"{name}: after pagehide the film, its mark on the page or the inert page is still there: {left}"
+    # WebGLRenderer.dispose() synchronously removes its context listener; contextlost itself arrives later.
+    left = await pg.evaluate(f"""(() => {{
+      const canvas = document.getElementById('intro-gl'), remove = canvas.removeEventListener;
+      let disposed = false;
+      canvas.removeEventListener = function(type, ...args) {{ if (type === 'webglcontextlost') disposed = true; return remove.call(this, type, ...args); }};
+      dispatchEvent(new PageTransitionEvent('pagehide', {{ persisted: true }}));
+      return [!!document.getElementById('intro'), !!{ON}, [...document.body.children].some(e => e.inert), disposed];
+    }})()""")
+    assert left == [False, False, False, True], f"{name}: pagehide did not synchronously remove the film, restore the page and dispose the renderer: {left}"
     release.set(); await pg.wait_for_timeout(1500)
     assert not await pg.evaluate("window.__intro || document.getElementById('intro')"), f"{name}: a film left while loading came back"
     async def stall2(route): await asyncio.sleep(6); await route.abort()

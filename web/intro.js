@@ -160,8 +160,9 @@ const STILLS = [3.6, 8.2, fu(15.6), fu(20.6), SH_U + 3, fu(25.4), fu(30.7), fu(3
 // ---------- renderer ----------
 const canvas = $('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: REC });
-let playing = false, debug = null;
-function dispose() { playing = false; renderer.dispose(); renderer.forceContextLoss(); if (window.__intro === debug) delete window.__intro; }
+let playing = false, debug = null, disposed = false;
+function dispose() { if (disposed) return; disposed = true; playing = false; renderer.dispose(); renderer.forceContextLoss(); if (window.__intro === debug) delete window.__intro; }
+signal.addEventListener('abort', dispose, { once: true });
 try {
 renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
@@ -971,14 +972,16 @@ const css = q => { tmp.copy(q).project(camera); return [(tmp.x + 1) / 2 * W, (1 
 function probe(U) {   // where things are in the frame at film time U (window pixels)
   render(U); const c = ZM.corners.map(q => photoPoint(q[0], q[1]));
   return { sheba: css(sheba.pos), pixel: c[0].distanceTo(c[1]) / ZM.n / (camera.position.distanceTo(photoPoint(ZM.at[0], ZM.at[1])) * Math.tan(camera.fov / 2 * D2R) * 2 / H),
-    photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), deck: deckFrame.info };
+    photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), deck: deckFrame.info,
+    flight: beads.map(b => ({ name: b.name, au: b.au, at: css(b.pos), px: b.px, visible: b.sp.visible && b.sp.material.opacity > .01 })) };
 }
 function look(U, pts, r = 2) {   // the brightness really drawn round each point at film time U: [mean, max] of 0 to 255 over a square of 2r + 1 window pixels
   render(U); const gl = renderer.getContext(), k = renderer.getPixelRatio(), n = Math.max(1, Math.round((2 * r + 1) * k)), px = new Uint8Array(n * n * 4);
   return pts.map(([x, y]) => { px.fill(0); gl.readPixels(Math.round(x * k - n / 2), Math.round(canvas.height - y * k - n / 2), n, n, gl.RGBA, gl.UNSIGNED_BYTE, px);
     let sum = 0, max = 0; for (let i = 0; i < px.length; i += 4) { const v = (px[i] + px[i + 1] + px[i + 2]) / 3; sum += v; if (v > max) max = v; } return [sum / (n * n), max]; });
 }
-window.__intro = debug = { perf, render, edges, probe, look, T_END, T_HANDOVER, reduced: REDUCED, marks: { SH_U, SH, DK_U, DK_END, DIP, D_LIT, FLY0, FLY1 } };
+window.__intro = debug = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED };
+if (REC) Object.assign(debug, { probe, look, marks: { SH_U, SH, DK_U, DK_END, DIP, D_LIT, FLY0, FLY1 } });
 if (REC) { $('skip').hidden = true; return { dispose }; }   // a clean picture for the recorder; Escape still leaves
 if (REDUCED) { $('next').hidden = false; showStill(0); } else { playing = true; requestAnimationFrame(tick); }
 return { skip, dispose };
