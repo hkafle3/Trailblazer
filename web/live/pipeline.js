@@ -330,7 +330,7 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band, t } }) => {
     post({ type: 'done', ms: performance.now() - t0, manifest: {
       key: `live-${ra.toFixed(4)}-${dec.toFixed(4)}-${det}`, name: `RA ${ra.toFixed(4)}, Dec ${dec.toFixed(4)}`, ra, dec, detector: det,
       grid: GRID, arcsec_per_pixel: PIX, lam0, lam_tol: tol, visits_all: usable.length, stretch: { lo: q(0.05), hi: q(0.997) }, motion,
-      gaia: gaia ? { pmra: gaia.pmra, pmdec: gaia.pmdec, g: gaia.g, total: Math.hypot(gaia.pmra, gaia.pmdec) / 1000 } : null,
+      gaia: gaia ? { id: gaia.id, pmra: gaia.pmra, pmdec: gaia.pmdec, g: gaia.g, total: Math.hypot(gaia.pmra, gaia.pmdec) / 1000 } : null,
       frames } });
   } catch (err) {
     post({ type: 'error', error: String(err.message || err) });   // not sent for a build that was replaced

@@ -158,7 +158,7 @@ def centroid(a, guess, r=3.0):
 def gaia_motion(t):
     """Gaia DR3 proper motion (mas/yr east, north) and 2016.0 position of the source at the target, or None.
     Brown dwarfs like WISE 0855 are too faint in visible light for Gaia, so None is a normal answer."""
-    q = (f"SELECT ra, dec, pmra, pmdec, phot_g_mean_mag FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL "
+    q = (f"SELECT ra, dec, pmra, pmdec, phot_g_mean_mag, source_id FROM gaiadr3.gaia_source WHERE pmra IS NOT NULL "
          f"AND 1=CONTAINS(POINT(ra, dec), CIRCLE({t['ra']}, {t['dec']}, 0.04))")
     url = "https://gea.esac.esa.int/tap-server/tap/sync?" + urllib.parse.urlencode(
         dict(REQUEST="doQuery", LANG="ADQL", FORMAT="csv", QUERY=q))
@@ -170,7 +170,7 @@ def gaia_motion(t):
         n = (dec - t["dec"]) * 3600 + pmdec / 1000 * dt
         sep = float(np.hypot(e, n))
         if sep < 6 and (best is None or sep < best["sep"]):  # about 1 SPHEREx pixel: a background star must not pass
-            best = dict(ra=ra, dec=dec, pmra=pmra, pmdec=pmdec, g=float(r["phot_g_mean_mag"] or 99), sep=round(sep, 1))
+            best = dict(ra=ra, dec=dec, pmra=pmra, pmdec=pmdec, g=float(r["phot_g_mean_mag"] or 99), sep=round(sep, 1), id=r["source_id"])
     return best
 
 
@@ -262,7 +262,7 @@ def bake(key):
     (d / "manifest.json").write_text(json.dumps(dict(
         key=key, name=t["name"], ra=t["ra"], dec=t["dec"], detector=t["det"], note=t["note"], grid=GRID,
         arcsec_per_pixel=PIX_ARCSEC, lam0=round(lam0, 4), lam_tol=round(tol, 4), stretch=dict(lo=lo, hi=hi), motion=motion,
-        gaia=None if not gaia else dict(pmra=round(gaia["pmra"], 1), pmdec=round(gaia["pmdec"], 1), g=gaia["g"],
+        gaia=None if not gaia else dict(id=gaia["id"], pmra=round(gaia["pmra"], 1), pmdec=round(gaia["pmdec"], 1), g=gaia["g"],
                                         total=round(float(np.hypot(gaia["pmra"], gaia["pmdec"])) / 1000, 2)),
         ref=None if "ref" not in t else dict(t["ref"], total=round(float(np.hypot(t["ref"]["pmra"], t["ref"]["pmdec"])) / 1000, 2)),
         frames=meta), indent=1))

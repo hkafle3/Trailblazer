@@ -704,7 +704,7 @@ function verdict(m, f) {
   const starName = name ? `${ref?.label === 'Gaia' || g ? "Gaia's " : ''}${name}` : 'a star in Gaia';
   // match: what the dot was matched to, for every other place that names "the target" (Depth, Discuss): the Gaia star
   // ({ gaia: its proper motion }) or a passer on the dot ({ sso: its name })
-  const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g ? { kind: 'gaia', pmra: g.pmra, pmdec: g.pmdec } : null };
+  const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g ? { kind: 'gaia', id: id.star.match.gaiaId } : null };
   const seen = m.frames.filter(x => x.x != null).length;
   if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
   else if (mo && ref) {
@@ -745,7 +745,7 @@ function verdict(m, f) {
 function identityAt(m, f) {
   const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, src = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null, mid = middle(src, a);
   const srcOff = src && mid !== src ? Math.hypot(...src) : null;
-  const stars = (m.gaia || m.ref) && m.t == null && f.pred_east != null ? [{ kind: 'star', name: m.name, pos: [[f.pred_east, f.pred_north]] }] : [];
+  const stars = (m.gaia || m.ref) && m.t == null && f.pred_east != null ? [{ kind: 'star', name: m.name, gaiaId: m.gaia?.id ?? null, pos: [[f.pred_east, f.pred_north]] }] : [];
   // a passer can be the dot only where SkyBoT put it at one of this visit's exposure times (f.epochs, the live pipeline's
   // own timestamps); a baked visit has none, so its one time (the visit's middle) can make a passer nearby at most
   const exp = new Set(f.epochs ?? []), place = ([, ra, dec]) => offset(m, ra, dec);
@@ -1504,21 +1504,16 @@ const depth = depthView({
   target(m, f, all) {
     const mt = state.verdict?.match; if (!mt) return -1;
     if (mt.kind === 'sso') return all.findIndex(p => p.src === 'sso' && p.o.name === mt.name);
-    const { pos } = targetAt(m, f);
-    return pos ? this.starAt(m, f, all, mt, pos) : -1;
+    return this.gaiaRow(all, mt.id);
   },
-  // the Gaia star with this proper motion (within 1 mas/yr both ways) on the place by the identity rule, or -1
-  starAt(m, f, all, pm, pos) {
-    const half = m.grid * m.arcsec_per_pixel / 2;
-    const near = all.map((p, i) => [p, i]).filter(([p]) => p.src === 'stars' && Math.abs(p.o.pmra - pm.pmra) <= 1 && Math.abs(p.o.pmdec - pm.pmdec) <= 1)
-      .map(([p, i]) => { const [u, v] = this.onScreen(m, p.ra, p.dec, { year: f.year, pmra: p.o.pmra, pmdec: p.o.pmdec }); return { i, pos: [[-u * half, v * half]] }; });   // u runs west
-    return identify(pos, near, m.arcsec_per_pixel).match?.i ?? -1;
-  },
+  // the row of the Gaia star the identity rule matched, by its source_id only (a neighbour with a similar motion is
+  // never it); none, or a star without a usable distance: -1, "distance unknown"
+  gaiaRow: (all, id) => (id == null ? -1 : all.findIndex(p => p.src === 'stars' && String(p.o.id) === String(id))),
   // a candidate open: the patch's own catalog star (on the dot by the identity rule, the candidate aside) is not the
   // target, but it is still a known star with a name. { i, name } or null
   named(m, f, all) {
     if (!candTrack.on() || !m.gaia || m.key.startsWith('live')) return null;
-    const id = identityAt(m, f), i = id.star.match ? this.starAt(m, f, all, m.gaia, id.mid) : -1;
+    const id = identityAt(m, f), i = id.star.match ? this.gaiaRow(all, id.star.match.gaiaId) : -1;
     return i >= 0 ? { i, name: m.name } : null;
   },
   cover: () => [document.querySelector('.pv-views')],   // what sits over the beam: its labels keep clear of it

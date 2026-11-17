@@ -592,6 +592,65 @@ async def main():
             except Exception as e: check(False, f"table row 6, Depth: {case}: {type(e).__name__} {str(e)[:200]}")
             finally: await ctx.close()
 
+        # row 1c: the matched star has no usable distance and a neighbour 3 arcsec off shares its proper motion: Depth joins
+        # distances by the matched Gaia source only, so the target is "distance unknown", never the neighbour's
+        ctx, pg = await page(b)
+        try:
+            await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
+            yr = await pg.evaluate("__lapse.state.m.frames[__lapse.state.i].year")
+            dt = yr - 2016
+            async def twin(route):
+                q = qs(route); ra0, dec0 = float(q["ra"]), float(q["dec"])
+                n_dec = 4.77076 - 10362.4 / 3.6e6 * dt; n_ra = 269.44614 + 801.6 / 3.6e6 * dt / math.cos(math.radians(n_dec))   # 3" off the dot at this visit
+                await route.fulfill(json={"ra": ra0, "dec": dec0, "rules": "depth-v1", "sources": {
+                    "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 0, "truncated": False, "placed": [], "unknown": []},
+                    "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 2, "truncated": False, "limit": 1000, "unknown_count": 1, "placed": [
+                        {"id": "31", "ra": n_ra, "dec": n_dec, "g": 13.1, "pmra": -801.6, "pmdec": 10362.4, "raw": {}, "d_pc": 700, "d_lo_pc": 680, "d_hi_pc": 720},
+                        {"id": "32", "ra": 269.43, "dec": 4.75, "g": 15.0, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 2000, "d_lo_pc": 1800, "d_hi_pc": 2200}]},
+                    "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}})
+            await pg.route("**/api/depth**", twin)
+            await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999&view=depth"); await pg.wait_for_function(READY)
+            await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects === 2", timeout=30000); await pg.wait_for_timeout(500)
+            tw = await pg.evaluate("[__depth.shown.target, [...document.querySelectorAll('#dist-list li')].map(l => l.querySelector('.nm').textContent + ' | ' + l.querySelector('.dd').textContent)]")
+            check(tw[0] == "unknown" and "Barnard's Star | unknown" in tw[1] and not any(r.startswith("Barnard's Star | ") and "unknown" not in r for r in tw[1]),
+                  f"table row 1c: a same-motion neighbour 3 arcsec off does not lend Barnard's Star its distance ({tw})")
+        except Exception as e: check(False, f"table row 1c: {type(e).__name__} {str(e)[:200]}")
+        finally: await ctx.close()
+
+        # rows 6b and 6d, an open Discuss sheet: a later exposure's answer moves the match (6b) or makes another asteroid
+        # the match (6d). The sheet follows targetAt: its thumbnail and offer refresh, and a stale "It's X" is refused
+        for case, later in (("6b the match moves", ("2001 ZZ", 5)), ("6d another asteroid becomes the match", ("2001 YY", 2))):
+            ctx, pg = await page(b)
+            try:
+                first = []
+                async def known(route):
+                    q = qs(route); ra0, dec0 = float(q["ra"]), float(q["dec"]); c = math.cos(math.radians(dec0))
+                    if not first: first.append(1); rocks = [("2001 ZZ", -7)]
+                    else: await asyncio.sleep(14); rocks = [later]   # after the sheet's own 10 s wait for answers
+                    try: await route.fulfill(json={"comets": [], "asteroids": [{"name": n, "ra": ra0 + e / 3600 / c, "dec": dec0, "mag": 19.0} for n, e in rocks]})
+                    except Exception: pass
+                sightings = []
+                await pg.route("**/api/known**", known)
+                await pg.route("**/api/sightings", lambda r: (sightings.append(r.request.post_data), r.fulfill(status=201, json={"ok": True}))[1])
+                await pg.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2"); await pg.wait_for_function(READY, timeout=180000)
+                await pg.wait_for_function("__lapse.targetAt(__lapse.state.m, __lapse.state.m.frames[__lapse.state.i]).id?.pass.match?.name === '2001 ZZ'", timeout=30000)
+                await pg.click("#state"); await pg.locator("#talk [data-f=its]").wait_for(state="visible", timeout=20000)
+                was = await pg.evaluate("[document.querySelector('#talk [data-f=its]').textContent, document.querySelector('#talk .thumb').dataset.at]")
+                await pg.wait_for_function("__lapse.state.m.frames[__lapse.state.i].known?.left === 0", timeout=60000); await pg.wait_for_timeout(800)
+                now = await pg.evaluate("""[document.querySelector('#talk [data-f=its]').textContent, document.querySelector('#talk .thumb').dataset.at, window.__mark.px,
+                      __lapse.targetAt(__lapse.state.m, __lapse.state.m.frames[__lapse.state.i]).id?.pass.match?.name, patch.width / __lapse.view().cw, document.body.classList.contains('talking')]""")
+                at = [float(x) for x in now[1].split(",")]
+                check(now[5] and now[0] == f"It's {now[3]}" and now[3] == later[0] and math.dist(at, now[2]) <= 2 * now[4],
+                      f"table row {case}: the open sheet follows (offer {was[0]} -> {now[0]}, thumbnail {was[1]} -> {now[1]}, Photo's check {now[2]})")
+                # a stale offer (the button still naming the first match) is refused, nothing is logged
+                if later[0] != "2001 ZZ":
+                    await pg.evaluate("document.querySelector('#talk [data-f=its]').dataset.name = '2001 ZZ'")
+                    await pg.click("#talk [data-f=its]"); await pg.wait_for_timeout(600)
+                    st = await pg.evaluate("[document.querySelector('#talk [data-f=note]')?.textContent ?? '', document.querySelector('#talk [data-f=its]').textContent]")
+                    check(not sightings and st[1] == "It's 2001 YY", f"table row {case}: a stale 'It's 2001 ZZ' is refused, not logged ({sightings}, {st})")
+            except Exception as e: check(False, f"table row {case}: {type(e).__name__} {str(e)[:200]}")
+            finally: await ctx.close()
+
         # ---------- 8: phone ----------
         ctx, pg = await page(b, phone=True)
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY); await pg.wait_for_timeout(300)
