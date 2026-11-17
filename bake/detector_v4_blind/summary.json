@@ -1,0 +1,1711 @@
+{
+ "frozen": "734dc40",
+ "fields": 28,
+ "area_sqdeg": 6.591458149629629,
+ "candidates": [],
+ "rate_per_sqdeg": 0.0,
+ "rate_upper95": 0.4544870354251311,
+ "per_field": {
+  "b01": {
+   "stratum": "S1",
+   "l": 333.428,
+   "b": -9.579,
+   "area": 0.2551578088888889,
+   "candidates": 0,
+   "seeds": 903,
+   "movers": 52,
+   "spectrum_stage": 0,
+   "proposals": 300,
+   "gaia_rows": 83106,
+   "catwise_rows": 56355
+  },
+  "b02": {
+   "stratum": "S1",
+   "l": 9.816,
+   "b": 6.756,
+   "area": 0.19203079432098766,
+   "candidates": 0,
+   "seeds": 910,
+   "movers": 31,
+   "spectrum_stage": 0,
+   "proposals": 438,
+   "gaia_rows": 241636,
+   "catwise_rows": 51953
+  },
+  "b03": {
+   "stratum": "S1",
+   "l": 2.191,
+   "b": 3.75,
+   "area": 0.10025133827160494,
+   "candidates": 0,
+   "seeds": 1026,
+   "movers": 35,
+   "spectrum_stage": 0,
+   "proposals": 486,
+   "gaia_rows": 138168,
+   "catwise_rows": 56581
+  },
+  "b04": {
+   "stratum": "S1",
+   "l": 350.104,
+   "b": -8.365,
+   "area": 0.23584464037037037,
+   "candidates": 0,
+   "seeds": 983,
+   "movers": 23,
+   "spectrum_stage": 0,
+   "proposals": 412,
+   "gaia_rows": 190523,
+   "catwise_rows": 52492
+  },
+  "b05": {
+   "stratum": "S1",
+   "l": 4.478,
+   "b": -4.16,
+   "area": 0.08179824074074074,
+   "candidates": 0,
+   "seeds": 1006,
+   "movers": 7,
+   "spectrum_stage": 0,
+   "proposals": 322,
+   "gaia_rows": 475571,
+   "catwise_rows": 53083
+  },
+  "b06": {
+   "stratum": "S1",
+   "l": 337.018,
+   "b": 7.534,
+   "area": 0.25565555209876545,
+   "candidates": 0,
+   "seeds": 934,
+   "movers": 54,
+   "spectrum_stage": 0,
+   "proposals": 435,
+   "gaia_rows": 58402,
+   "catwise_rows": 59166
+  },
+  "b07": {
+   "stratum": "S1",
+   "l": 357.998,
+   "b": -3.733,
+   "area": 0.07074248567901234,
+   "candidates": 0,
+   "seeds": 1022,
+   "movers": 10,
+   "spectrum_stage": 0,
+   "proposals": 446,
+   "gaia_rows": 448820,
+   "catwise_rows": 56042
+  },
+  "b10": {
+   "stratum": "S2",
+   "l": 54.09,
+   "b": -8.777,
+   "area": 0.25917342543209876,
+   "candidates": 0,
+   "seeds": 887,
+   "movers": 46,
+   "spectrum_stage": 0,
+   "proposals": 313,
+   "gaia_rows": 59581,
+   "catwise_rows": 55669
+  },
+  "b11": {
+   "stratum": "S2",
+   "l": 66.341,
+   "b": 3.685,
+   "area": 0.22817500308641975,
+   "candidates": 0,
+   "seeds": 1008,
+   "movers": 57,
+   "spectrum_stage": 0,
+   "proposals": 494,
+   "gaia_rows": 152476,
+   "catwise_rows": 55301
+  },
+  "b12": {
+   "stratum": "S2",
+   "l": 59.614,
+   "b": 1.195,
+   "area": 0.17921024679012346,
+   "candidates": 0,
+   "seeds": 935,
+   "movers": 62,
+   "spectrum_stage": 0,
+   "proposals": 593,
+   "gaia_rows": 122689,
+   "catwise_rows": 54025
+  },
+  "b13": {
+   "stratum": "S2",
+   "l": 298.159,
+   "b": -9.345,
+   "area": 0.2686078551851852,
+   "candidates": 0,
+   "seeds": 864,
+   "movers": 42,
+   "spectrum_stage": 0,
+   "proposals": 291,
+   "gaia_rows": 42336,
+   "catwise_rows": 55331
+  },
+  "b14": {
+   "stratum": "S2",
+   "l": 312.307,
+   "b": 5.614,
+   "area": 0.23561480012345679,
+   "candidates": 0,
+   "seeds": 941,
+   "movers": 55,
+   "spectrum_stage": 0,
+   "proposals": 372,
+   "gaia_rows": 105076,
+   "catwise_rows": 53947
+  },
+  "b15": {
+   "stratum": "S2",
+   "l": 71.873,
+   "b": 4.712,
+   "area": 0.24000592,
+   "candidates": 0,
+   "seeds": 939,
+   "movers": 37,
+   "spectrum_stage": 0,
+   "proposals": 397,
+   "gaia_rows": 118909,
+   "catwise_rows": 57226
+  },
+  "b16": {
+   "stratum": "S2",
+   "l": 53.515,
+   "b": 3.276,
+   "area": 0.22515414098765432,
+   "candidates": 0,
+   "seeds": 937,
+   "movers": 55,
+   "spectrum_stage": 0,
+   "proposals": 570,
+   "gaia_rows": 76369,
+   "catwise_rows": 56128
+  },
+  "b19": {
+   "stratum": "S3",
+   "l": 231.763,
+   "b": -9.406,
+   "area": 0.27984587209876544,
+   "candidates": 0,
+   "seeds": 907,
+   "movers": 24,
+   "spectrum_stage": 0,
+   "proposals": 136,
+   "gaia_rows": 21113,
+   "catwise_rows": 43030
+  },
+  "b20": {
+   "stratum": "S3",
+   "l": 122.57,
+   "b": -3.86,
+   "area": 0.2736123703703704,
+   "candidates": 0,
+   "seeds": 926,
+   "movers": 49,
+   "spectrum_stage": 0,
+   "proposals": 268,
+   "gaia_rows": 30957,
+   "catwise_rows": 52238
+  },
+  "b21": {
+   "stratum": "S3",
+   "l": 244.591,
+   "b": 0.791,
+   "area": 0.25402910296296294,
+   "candidates": 0,
+   "seeds": 946,
+   "movers": 29,
+   "spectrum_stage": 0,
+   "proposals": 259,
+   "gaia_rows": 40973,
+   "catwise_rows": 51320
+  },
+  "b22": {
+   "stratum": "S3",
+   "l": 119.674,
+   "b": 5.295,
+   "area": 0.27305021333333335,
+   "candidates": 0,
+   "seeds": 834,
+   "movers": 24,
+   "spectrum_stage": 0,
+   "proposals": 251,
+   "gaia_rows": 15882,
+   "catwise_rows": 45059
+  },
+  "b23": {
+   "stratum": "S3",
+   "l": 256.255,
+   "b": -4.949,
+   "area": 0.2604595060493827,
+   "candidates": 0,
+   "seeds": 918,
+   "movers": 31,
+   "spectrum_stage": 0,
+   "proposals": 246,
+   "gaia_rows": 40182,
+   "catwise_rows": 53501
+  },
+  "b24": {
+   "stratum": "S3",
+   "l": 215.553,
+   "b": 5.258,
+   "area": 0.2706573860493827,
+   "candidates": 0,
+   "seeds": 908,
+   "movers": 16,
+   "spectrum_stage": 0,
+   "proposals": 165,
+   "gaia_rows": 24348,
+   "catwise_rows": 43091
+  },
+  "b25": {
+   "stratum": "S3",
+   "l": 253.985,
+   "b": -8.79,
+   "area": 0.25940692555555556,
+   "candidates": 0,
+   "seeds": 827,
+   "movers": 20,
+   "spectrum_stage": 0,
+   "proposals": 160,
+   "gaia_rows": 21173,
+   "catwise_rows": 41478
+  },
+  "b28": {
+   "stratum": "S4",
+   "l": 164.983,
+   "b": -1.565,
+   "area": 0.27473668444444443,
+   "candidates": 0,
+   "seeds": 908,
+   "movers": 31,
+   "spectrum_stage": 0,
+   "proposals": 193,
+   "gaia_rows": 23127,
+   "catwise_rows": 45794
+  },
+  "b29": {
+   "stratum": "S4",
+   "l": 159.448,
+   "b": 6.105,
+   "area": 0.2780342332098765,
+   "candidates": 0,
+   "seeds": 896,
+   "movers": 21,
+   "spectrum_stage": 0,
+   "proposals": 163,
+   "gaia_rows": 20465,
+   "catwise_rows": 40299
+  },
+  "b30": {
+   "stratum": "S4",
+   "l": 159.012,
+   "b": -1.814,
+   "area": 0.25959065135802467,
+   "candidates": 0,
+   "seeds": 880,
+   "movers": 19,
+   "spectrum_stage": 0,
+   "proposals": 196,
+   "gaia_rows": 16923,
+   "catwise_rows": 43290
+  },
+  "b31": {
+   "stratum": "S4",
+   "l": 207.382,
+   "b": -4.533,
+   "area": 0.26824772333333335,
+   "candidates": 0,
+   "seeds": 900,
+   "movers": 32,
+   "spectrum_stage": 0,
+   "proposals": 191,
+   "gaia_rows": 17562,
+   "catwise_rows": 43619
+  },
+  "b32": {
+   "stratum": "S4",
+   "l": 169.578,
+   "b": 1.557,
+   "area": 0.2725524701234568,
+   "candidates": 0,
+   "seeds": 878,
+   "movers": 25,
+   "spectrum_stage": 0,
+   "proposals": 180,
+   "gaia_rows": 22029,
+   "catwise_rows": 43332
+  },
+  "b33": {
+   "stratum": "S4",
+   "l": 191.24,
+   "b": 7.326,
+   "area": 0.26765116345679013,
+   "candidates": 0,
+   "seeds": 838,
+   "movers": 15,
+   "spectrum_stage": 0,
+   "proposals": 143,
+   "gaia_rows": 18058,
+   "catwise_rows": 38015
+  },
+  "b34": {
+   "stratum": "S4",
+   "l": 160.753,
+   "b": 3.776,
+   "area": 0.272161595308642,
+   "candidates": 0,
+   "seeds": 862,
+   "movers": 32,
+   "spectrum_stage": 0,
+   "proposals": 232,
+   "gaia_rows": 23660,
+   "catwise_rows": 47202
+  }
+ },
+ "completeness": {
+  "all": [
+   43,
+   90,
+   [
+    0.3871954928296787,
+    0.5694847613096823
+   ]
+  ],
+  "with_row": [
+   43,
+   89,
+   [
+    0.3918672641217903,
+    0.5752876514917996
+   ]
+  ],
+  "crowded": [
+   14,
+   54,
+   [
+    0.16406365022581818,
+    0.37525334092357726
+   ]
+  ],
+  "uncrowded": [
+   29,
+   36,
+   [
+    0.6656066620512514,
+    0.9050055133604515
+   ]
+  ],
+  "by_stratum": {
+   "S1": [
+    5,
+    16,
+    [
+     0.13211096575490608,
+     0.5483470808487474
+    ]
+   ],
+   "S2": [
+    7,
+    25,
+    [
+     0.13947530657893,
+     0.4622089217036447
+    ]
+   ],
+   "S3": [
+    13,
+    26,
+    [
+     0.3266420287543624,
+     0.6733579712456376
+    ]
+   ],
+   "S4": [
+    18,
+    23,
+    [
+     0.5961011251253132,
+     0.9101909249013128
+    ]
+   ]
+  },
+  "grid": {
+   "0.3-0.6 x 11.5-12.5": "6/10",
+   "0.3-0.6 x 12.5-13.5": "7/10",
+   "0.3-0.6 x 13.5-14.0": "1/10",
+   "0.6-1.2 x 11.5-12.5": "8/10",
+   "0.6-1.2 x 12.5-13.5": "1/10",
+   "0.6-1.2 x 13.5-14.0": "3/10",
+   "1.2-3.0 x 11.5-12.5": "7/10",
+   "1.2-3.0 x 12.5-13.5": "8/10",
+   "1.2-3.0 x 13.5-14.0": "2/10"
+  }
+ },
+ "plants": [
+  {
+   "id": "b01-p01",
+   "field": "b01",
+   "stratum": "S1",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 11.664404149586394,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:ambiguous, insufficient"
+  },
+  {
+   "id": "b01-p02",
+   "field": "b01",
+   "stratum": "S1",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 13.029693782339002,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b01-p03",
+   "field": "b01",
+   "stratum": "S1",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 13.497284240781523,
+   "row": true,
+   "crowded": false,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b01-p04",
+   "field": "b01",
+   "stratum": "S1",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.550861663568883,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b02-p01",
+   "field": "b02",
+   "stratum": "S1",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 11.604420898727899,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b02-p02",
+   "field": "b02",
+   "stratum": "S1",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 12.8706359564804,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:disagree, insufficient"
+  },
+  {
+   "id": "b02-p03",
+   "field": "b02",
+   "stratum": "S1",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 11.55214587691401,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b03-p01",
+   "field": "b03",
+   "stratum": "S1",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.72797333467924,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b03-p02",
+   "field": "b03",
+   "stratum": "S1",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.678243452308772,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:flux, insufficient"
+  },
+  {
+   "id": "b04-p01",
+   "field": "b04",
+   "stratum": "S1",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 11.535979089952331,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b04-p02",
+   "field": "b04",
+   "stratum": "S1",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 12.321922272804805,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b05-p01",
+   "field": "b05",
+   "stratum": "S1",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 12.704589096588776,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b06-p01",
+   "field": "b06",
+   "stratum": "S1",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.750544179043965,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:disagree, insufficient"
+  },
+  {
+   "id": "b06-p02",
+   "field": "b06",
+   "stratum": "S1",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 13.390388386995305,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b06-p03",
+   "field": "b06",
+   "stratum": "S1",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 12.152245708838104,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b06-p04",
+   "field": "b06",
+   "stratum": "S1",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.709373819684451,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b10-p01",
+   "field": "b10",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 11.820451958351464,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b10-p02",
+   "field": "b10",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.939696465591396,
+   "row": true,
+   "crowded": false,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b10-p03",
+   "field": "b10",
+   "stratum": "S2",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 13.399913154291896,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:disagree, insufficient"
+  },
+  {
+   "id": "b10-p04",
+   "field": "b10",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 12.252409062156323,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b10-p05",
+   "field": "b10",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.69929057677442,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b11-p01",
+   "field": "b11",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.602950339196452,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:displacement, insufficient"
+  },
+  {
+   "id": "b11-p02",
+   "field": "b11",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 11.547324522062288,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, not_cold"
+  },
+  {
+   "id": "b11-p03",
+   "field": "b11",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.707626555852011,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b12-p01",
+   "field": "b12",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 11.501566025740571,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:disagree, insufficient"
+  },
+  {
+   "id": "b12-p02",
+   "field": "b12",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 11.830062950611765,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b12-p03",
+   "field": "b12",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.810490083010794,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b13-p01",
+   "field": "b13",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 12.439572927857688,
+   "row": true,
+   "crowded": false,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b13-p02",
+   "field": "b13",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.585234963700257,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b13-p03",
+   "field": "b13",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 12.003587625884762,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b13-p04",
+   "field": "b13",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.672981305471193,
+   "row": true,
+   "crowded": false,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b14-p01",
+   "field": "b14",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 12.223384961681838,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b14-p02",
+   "field": "b14",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.515124321299428,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b14-p03",
+   "field": "b14",
+   "stratum": "S2",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 12.727494257306704,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b14-p04",
+   "field": "b14",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 12.148156539610415,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b15-p01",
+   "field": "b15",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 12.491072410548146,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b15-p02",
+   "field": "b15",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.792751946889824,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b15-p03",
+   "field": "b15",
+   "stratum": "S2",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 13.261291281588509,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b15-p04",
+   "field": "b15",
+   "stratum": "S2",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 12.98296042690612,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b16-p01",
+   "field": "b16",
+   "stratum": "S2",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.609521373725714,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b16-p02",
+   "field": "b16",
+   "stratum": "S2",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 13.362133541086815,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:displacement, insufficient"
+  },
+  {
+   "id": "b19-p01",
+   "field": "b19",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 11.564975621035746,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b19-p02",
+   "field": "b19",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.871196117482784,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, not_cold"
+  },
+  {
+   "id": "b19-p03",
+   "field": "b19",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.878868748013366,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b19-p04",
+   "field": "b19",
+   "stratum": "S3",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 13.48471232218692,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b20-p01",
+   "field": "b20",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 0,
+   "w2": 12.46211164498718,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b20-p02",
+   "field": "b20",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 2,
+   "w2": 13.906900011477855,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:ambiguous, insufficient"
+  },
+  {
+   "id": "b20-p03",
+   "field": "b20",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.742236283597077,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b20-p04",
+   "field": "b20",
+   "stratum": "S3",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 12.93283056984261,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:fit, insufficient"
+  },
+  {
+   "id": "b21-p01",
+   "field": "b21",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 12.206934687064688,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:ambiguous, insufficient"
+  },
+  {
+   "id": "b21-p02",
+   "field": "b21",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.793195804968917,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b21-p03",
+   "field": "b21",
+   "stratum": "S3",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 12.582125080654544,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b22-p01",
+   "field": "b22",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 12.884081818808488,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:disagree, insufficient"
+  },
+  {
+   "id": "b22-p02",
+   "field": "b22",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 11.910141728538203,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b22-p03",
+   "field": "b22",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.57702840641353,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b22-p04",
+   "field": "b22",
+   "stratum": "S3",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 12.552804562480247,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b23-p01",
+   "field": "b23",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 13.309684000072613,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b23-p02",
+   "field": "b23",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 11.735014804704024,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b23-p03",
+   "field": "b23",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.965205835120729,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:disagree, insufficient"
+  },
+  {
+   "id": "b24-p01",
+   "field": "b24",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 13.358455852111163,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b24-p02",
+   "field": "b24",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 12.294458602903388,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b24-p03",
+   "field": "b24",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.956034995450823,
+   "row": true,
+   "crowded": false,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b24-p04",
+   "field": "b24",
+   "stratum": "S3",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 13.062693218551805,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b25-p01",
+   "field": "b25",
+   "stratum": "S3",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 12.738716803615784,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:disagree, insufficient"
+  },
+  {
+   "id": "b25-p02",
+   "field": "b25",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 12.01430131560957,
+   "row": true,
+   "crowded": false,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b25-p03",
+   "field": "b25",
+   "stratum": "S3",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.853833025540972,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, not_cold"
+  },
+  {
+   "id": "b25-p04",
+   "field": "b25",
+   "stratum": "S3",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 13.016260024863836,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b28-p01",
+   "field": "b28",
+   "stratum": "S4",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 13.294050255933143,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b28-p02",
+   "field": "b28",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 11.847561949307645,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b28-p03",
+   "field": "b28",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.512721731022081,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b28-p04",
+   "field": "b28",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 12.90496037332464,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b29-p01",
+   "field": "b29",
+   "stratum": "S4",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 12.567745450072326,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, not_cold"
+  },
+  {
+   "id": "b29-p02",
+   "field": "b29",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 12.258405838565944,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b29-p03",
+   "field": "b29",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.775788530032763,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b29-p04",
+   "field": "b29",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 12.786349429645576,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b30-p01",
+   "field": "b30",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 11.84708732624469,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b30-p02",
+   "field": "b30",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 1,
+   "w2": 12.822201136426497,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b31-p01",
+   "field": "b31",
+   "stratum": "S4",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 12.829074527593914,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b31-p02",
+   "field": "b31",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 11.66888291612111,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b31-p03",
+   "field": "b31",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.866665405206428,
+   "row": false,
+   "crowded": false,
+   "found": false,
+   "path": null,
+   "why": "no mover record"
+  },
+  {
+   "id": "b32-p01",
+   "field": "b32",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 0,
+   "w2": 11.551379656567216,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b32-p02",
+   "field": "b32",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 2,
+   "w2": 13.971879846276517,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "spectrum, insufficient"
+  },
+  {
+   "id": "b32-p03",
+   "field": "b32",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.822869291308406,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b33-p01",
+   "field": "b33",
+   "stratum": "S4",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 12.887004801381174,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b33-p02",
+   "field": "b33",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 13.11648285983584,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b33-p03",
+   "field": "b33",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 11.830666848644467,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "seed"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b34-p01",
+   "field": "b34",
+   "stratum": "S4",
+   "speed_bin": 0,
+   "w2_bin": 1,
+   "w2": 13.491076730931805,
+   "row": true,
+   "crowded": false,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  },
+  {
+   "id": "b34-p02",
+   "field": "b34",
+   "stratum": "S4",
+   "speed_bin": 1,
+   "w2_bin": 1,
+   "w2": 13.215738144579872,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b34-p03",
+   "field": "b34",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 0,
+   "w2": 11.981130651235736,
+   "row": true,
+   "crowded": true,
+   "found": false,
+   "path": null,
+   "why": "motion_rejected:static_gaia, insufficient"
+  },
+  {
+   "id": "b34-p04",
+   "field": "b34",
+   "stratum": "S4",
+   "speed_bin": 2,
+   "w2_bin": 2,
+   "w2": 13.77795665937401,
+   "row": true,
+   "crowded": true,
+   "found": true,
+   "path": [
+    "proposal"
+   ],
+   "why": ""
+  }
+ ]
+}
