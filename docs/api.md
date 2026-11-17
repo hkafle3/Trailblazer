@@ -209,6 +209,36 @@ Refusals:
 
 The frame is the median of its exposures, so a fast asteroid usually leaves no dot: its path means a known object passed through during that visit, not that a dot under it is that object. The panel says "Catalog check unavailable" when every time answered 503, and counts the times that could not be checked otherwise. A rows-but-unreadable SkyBoT answer is a 503, never a cached empty result.
 
+## GET /api/depth?ra=&dec=[&t=]
+
+Data for the per-patch Depth view (no UI yet): every object in the time-lapse patch that has a catalog distance, in parsecs, ready for one logarithmic scale. Code: `worker/src/depth.js`. Three sources, each answered, cached and failed on its own:
+
+| Source | Catalog | Placed when | Distance (`d_pc`, with `d_lo_pc`..`d_hi_pc`) |
+|---|---|---|---|
+| `sso` | IMCCE SkyBoT at `t` (MJD), geocentric | SkyBoT gives a range `dg` | `dg` in pc; no range error is published, so both ends are `null` |
+| `stars` | ESA Gaia DR3 | `parallax_over_error > 5 AND ruwe < 1.4` | `1000 / (parallax + 0.017 mas)`, ends at parallax plus or minus its error |
+| `galaxies` | SIMBAD (Harvard mirror), `otype = 'G..'` | `rvz_redshift >= 0.01`, quality A to D, spectroscopic or unstated | comoving distance, flat LCDM, H0 = 70, Om = 0.3; ends from the redshift error plus a 300 km/s peculiar-velocity floor (`unc_basis`) |
+
+- Cone 0.15 degrees around `ra`, `dec` rounded to 4 decimals (the same cone as `/api/known`; it covers the 12 arcmin square). `t` is optional; without it `sso` is `skipped`.
+- Nothing without a usable distance gets a number: stars that fail the cut are `unknown_count` only (their positions are in `/api/gaia`); galaxies that fail are listed in `unknown` with a `reason` (`no redshift`, `redshift not spectroscopic`, `redshift quality E`, `z below 0.01`); a SkyBoT row without a range is in `unknown` (`no distance`).
+- Each object keeps the raw measurement in `raw` (parallax and error with RUWE; redshift, error, type, quality, nature; `dg` and `dh` in au). Star positions are Gaia's epoch 2016.0, with `pmra`, `pmdec`.
+- Lists hold at most `limit` (1000) rows, brightest stars first; `count` is always the exact number (from a `COUNT` of the same query) and `truncated` says when the list is shorter. Rows that disagree with that count make the source `unavailable`.
+- Status per source: `ok`; `skipped`; `unavailable` with `error` and `retry_after` (an outage, refusal, timeout or unreadable answer; never an older copy, and never saved to D1 like the other searches); `pending` with `retry_after: 5` when it has not answered within 4 s. A pending source keeps fetching after the answer goes out and is cached, so asking again usually gets it (SkyBoT takes 5 to 8 s on the ecliptic). If that background fetch fails, or takes more than 25 s in all, the failure is noted for 60 s (Cache API, under the same key with `failed/`): asks in that minute get `unavailable` without calling the archive, and the next success replaces the note. A note is never an answer.
+- Cache API, per source, only when `ok`: stars 30 days, galaxies 7 days, sso 7 days (keyed with `t`). The response is `public, max-age=3600` when every source is `ok` or `skipped`, otherwise `no-store`.
+- Local dev only (`DEPTH_FAULTS=1` in `worker/.dev.vars`): `fail=sso,stars,galaxies` forces those sources to fail at once, `outage=...` makes them fail after the deadline (the background path), `fresh=1` skips cache reads. Ignored everywhere else.
+
+```
+GET /api/depth?ra=167.1309&dec=5.1732&t=61023.3194
+200 { "ra": 167.1309, "dec": 5.1732, "t": 61023.3194, "radius_deg": 0.15, "rules": "depth-v1", "sources": {
+  "sso": { "status": "ok", "source": "IMCCE SkyBoT", "observer": "geocentre", "count": 15, "truncated": false, "epoch_jd": 2461023.8194,
+    "placed": [ { "name": "3I", "num": null, "class": "Comet", "ra": 167.15705, "dec": 5.16429, "mag": null, "err_arcsec": 0.97,
+      "raw": { "dg_au": 1.80715592229, "dh_au": 2.14669872055 }, "d_pc": 0.0000087613, "d_lo_pc": null, "d_hi_pc": null } ], "unknown": [] },
+  "stars": { "status": "ok", "source": "ESA Gaia DR3", "epoch": 2016, "count": 57, "truncated": false, "limit": 1000, "unknown_count": 140, "placed": [ ... ] },
+  "galaxies": { "status": "pending", "retry_after": 5 } } }
+```
+
+Refusals are those of `/api/known` (`ra`, `dec`, and `t` when given). `python3 worker/depth_eval.py` checks the live answer against the catalogs queried directly (needs `npm run dev` with `DEPTH_FAULTS=1`); `worker/depth.test.mjs` (in `npm test`) checks the rules and readers offline.
+
 ## GET /api/explored (D1)
 
 Which patch-sized sky cells people have checked, for the heat map, and one of the least-checked cells to suggest. Never cached, so a spot shows on the map as soon as someone opens it, and each visit gets a fresh suggestion.

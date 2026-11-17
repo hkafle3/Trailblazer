@@ -1,2 +1,4 @@
 # Local dev only. Copy to worker/.dev.vars. This is Cloudflare's published test secret: every token passes.
 TURNSTILE_SECRET=1x0000000000000000000000000000000AA
+# Local dev only: lets /api/depth take fail= and fresh= (worker/depth_eval.py). Never set this on the live Worker.
+DEPTH_FAULTS=1

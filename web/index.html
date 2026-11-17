@@ -57,6 +57,26 @@
   .earth { translate: calc(var(--mx, 0) * -8px) calc(var(--my, 0) * -4px); }
   .craft { translate: calc(var(--mx, 0) * -11px) calc(var(--my, 0) * -6px); }
   @media (prefers-reduced-motion: reduce) { .craft img, .home-sky img, .earth, .earth img, .craft, .home-sky, #home-stars { transition: none; } }
+
+  /* The headline and the way in (home variant A, "Quiet"): small, in the dark above the horizon's left shoulder, one
+     typeface (the header's Sansation), a plain underlined link with a small orange arrow. Its top keeps the same height
+     above Earth's limb at any window size (946 design pixels up from the scene's bottom: 336 px at 1440 x 900), never under the header */
+  .qa { position: absolute; z-index: 2; left: 72px; top: max(calc(var(--head-h) + 24px), calc(100vh - 946 * max(100vw / 2944, 100vh / 1509))); width: 380px; font-family: var(--head-font); transition: opacity .4s ease-in; }
+  .qa h1 { margin: 0; font: 300 24px/1.35 var(--head-font); color: #fff; text-wrap: balance; text-shadow: 0 1px 14px #000, 0 0 4px #000; }
+  .qa .cta { display: inline-flex; align-items: center; gap: 12px; margin-top: 22px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, .55);
+    font: 400 17px/1 var(--head-font); color: #fff; text-decoration: none; white-space: nowrap; }
+  .qa .cta:hover { border-bottom-color: #fff; }
+  .qa .cta:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
+  .qa .arr { width: 18px; height: 18px; flex: none; fill: none; stroke: #ff9a4d; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .leaving .qa { opacity: 0; }
+  /* phones: low on the screen, where the Earth turns to night; a soft fade under it keeps it readable */
+  @media (max-width: 500px) {
+    body.home::after { content: ""; position: fixed; z-index: 1; left: 0; right: 0; bottom: 0; height: 400px; pointer-events: none;
+      background: linear-gradient(to top, rgba(0, 0, 0, .94), rgba(0, 0, 0, .78) 55%, transparent); }
+    .qa { left: 24px; right: 24px; top: auto; bottom: 48px; width: auto; }
+    .qa h1 { font-size: 21px; line-height: 1.38; }
+    .qa .cta { margin-top: 20px; font-size: 16px; }
+  }
 </style>
 </head>
 <body class="home nostars">
@@ -68,11 +88,15 @@
 
 <canvas id="home-stars" aria-hidden="true"></canvas>
 <main class="scene">
-  <h1 class="sr-only">Trailblazer: find comets in NASA SPHEREx images</h1>
   <a class="home-sky" href="explore.html" title="Explore the sky" aria-label="Explore the whole sky SPHEREx has photographed"><img src="data/sky.jpg" alt=""></a>
   <div class="earth"><img src="data/home/earth.png" alt="" fetchpriority="high"></div>
   <a class="craft" href="explore.html" title="Explore the sky" aria-label="Explore with SPHEREx"><img src="data/home/spherex.png" alt="The SPHEREx space telescope"></a>
 </main>
+<!-- Barnard's Star: the fastest-moving star in the sky, bright, and its step across the year of photos is plain to see -->
+<div class="qa">
+  <h1>Find objects that move in space, in photos from NASA's SPHEREx telescope.</h1>
+  <a class="cta" href="timelapse.html?target=barnard">Start with a real example<svg class="arr" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></a>
+</div>
 
 <script>
   // Click anywhere on the scene, or the Explore tab: drop Earth and SPHEREx, then go to Explore.

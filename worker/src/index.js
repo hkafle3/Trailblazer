@@ -2,11 +2,12 @@
 // IRSA's search (SIA) and ESA's Gaia archive send no CORS header and IRSA throws intermittent 502s, so this
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
-//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=
+//   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=   GET /api/depth?ra=&dec=[&t=]
 //   GET /api/comets   GET /api/comets/:id   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 import { skyImagesJson, eclipticLat } from './sky_index.js';
+import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
 
@@ -38,24 +39,6 @@ async function fetchRetry(url, tries = 5, ms = 20000, withStatus = false) {
     await new Promise(res => setTimeout(res, Math.min(2000, 300 * 1.5 ** i + Math.random() * 200)));
   }
   throw new Error(last);
-}
-
-// CSV with quoted fields (cloud_access holds JSON with commas)
-function parseCsv(text) {
-  const rows = [];
-  let row = [], field = '', q = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (q) {
-      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; } else if (c === '"') q = false; else field += c;
-    } else if (c === '"') q = true;
-    else if (c === ',') { row.push(field); field = ''; }
-    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(field); field = ''; if (row.length > 1) rows.push(row); row = []; }
-    else field += c;
-  }
-  if (field || row.length) { row.push(field); rows.push(row); }
-  const [head, ...body] = rows;
-  return body.map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
 }
 
 // SPHEREx search results: only the columns we use, all before any quoted field, so a plain split per line is enough.
@@ -194,29 +177,13 @@ function ipacStars(text) {
   return stars;
 }
 
-// hours "16 28 36.29" or degrees "-16 48 16.4" -> decimal degrees
-function sexagesimal(text, hours) {
-  const n = String(text).trim().match(/[+-]?\d+(?:\.\d+)?/g);
-  if (!n) return NaN;
-  const sign = /^\s*-/.test(text) ? -1 : 1;
-  const [a, b = 0, c = 0] = n.map(x => Math.abs(Number(x)));
-  return sign * (a + b / 60 + c / 3600) * (hours ? 15 : 1);
-}
-
 // SkyBoT rows -> { comets, asteroids, omitted }, or null when any row cannot be read (then the answer is unavailable,
 // never a cached partial or empty result). Comets always; asteroids V <= 21 on the exact magnitude, brightest 8.
 function skybotRows(rows) {
   const comets = [], bright = [];
   for (const r of rows) {
-    if (!r || typeof r !== 'object' || typeof r.Class !== 'string' || !r.Class.trim() || !String(r.Name || r.Num || '').trim()) return null;   // no name: unrelated rows would merge into one path
-    const hms = /^\s*(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['RA (hms)'] ?? ''), dms = /^\s*[+-]?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d+)?)\s*$/.exec(r['DEC (dms)'] ?? '');
-    if (!hms || !dms || +hms[2] >= 60 || +hms[3] >= 60 || +dms[2] >= 60 || +dms[3] >= 60) return null;
-    const ra = sexagesimal(r['RA (hms)'], true), dec = sexagesimal(r['DEC (dms)'], false);
-    if (!(ra >= 0 && ra < 360 && dec >= -90 && dec <= 90)) return null;
-    const vm = r['VMag (mag)'];   // a magnitude may be missing (null or empty), never garbled
-    if (vm != null && vm !== '' && !Number.isFinite(Number(vm))) return null;
-    const mag = Number(vm);
-    const body = { name: String(r.Name || r.Num), ra: +ra.toFixed(5), dec: +dec.toFixed(5), mag: Number.isFinite(mag) && mag > 0 ? mag : null, err: Number(r['Err (arcsec)']) || 0 };
+    const body = skybotRow(r);
+    if (!body) return null;
     if (r.Class === 'Comet') comets.push(body);
     else if (body.mag != null && body.mag <= 21) bright.push(body);
   }
@@ -233,13 +200,9 @@ async function known(url) {
   if (p.error) return json(p, 400);
   const t = Number(url.searchParams.get('t'));
   if (!url.searchParams.has('t') || !Number.isFinite(t) || t < 40000 || t > 80000) return json({ error: 't must be an MJD' }, 400);
-  const q = new URLSearchParams({
-    '-ep': String(t + 2400000.5), '-ra': String(p.ra), '-dec': String(p.dec), '-rd': '0.15',
-    '-mime': 'json', '-output': 'object', '-objFilter': '101', '-from': 'comet-hunt',
-  });
   let rows;
   try {
-    const [status, text] = await fetchRetry(`https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?${q}`, 2, 15000, true);
+    const [status, text] = await fetchRetry(skybotUrl(p.ra, p.dec, t, 'object'), 2, 15000, true);
     // SkyBoT says "nothing in the cone" with 204; a blank 200 is a broken answer, never a cached "nothing here"
     rows = status === 204 ? [] : text.trim() ? JSON.parse(text) : null;
   } catch {
@@ -249,6 +212,23 @@ async function known(url) {
   const read = skybotRows(rows);
   if (!read) return json({ error: 'SkyBoT is not answering', retry_after: 30 }, 503, { 'Retry-After': '30' });
   return json({ ra: p.ra, dec: p.dec, t, ...read }, 200, { 'Cache-Control': 'public, max-age=86400' });
+}
+
+// Per-patch Depth view data (worker/src/depth.js, contract in docs/api.md). Each source is cached on its own in the Cache
+// API and never saved to D1: in an outage a source says "unavailable" rather than serving an older answer.
+async function depth(url, env, ctx) {
+  const p = position(url);
+  if (p.error) return json(p, 400);
+  let t = null;
+  if (url.searchParams.has('t')) {
+    t = Number(url.searchParams.get('t'));
+    if (!Number.isFinite(t) || t < 40000 || t > 80000) return json({ error: 't must be an MJD' }, 400);
+    t = +t.toFixed(4);
+  }
+  const { body, complete } = await depthAnswer({ ra: +p.ra.toFixed(4) % 360, dec: +p.dec.toFixed(4), t }, {
+    get: url => fetchRetry(url, 2, 8000), getWithStatus: url => fetchRetry(url, 2, 15000, true),
+    cache: caches.default, waitUntil: job => ctx.waitUntil(job), ...devFlags(url, env) });
+  return new Response(body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': complete ? 'public, max-age=3600' : 'no-store' } });
 }
 
 // Tag tallies per comet: each person's latest tag is their vote (so nobody counts twice)
@@ -636,6 +616,7 @@ export default {
       try { return await threads(env); }
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
+    if (url.pathname === '/api/depth') return depth(url, env, ctx);   // its own per-source cache, no saved fallback
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
