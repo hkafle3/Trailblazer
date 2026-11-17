@@ -6,7 +6,8 @@ Checks: at a point off the middle, the sky under the pointer stays under it (wit
 scroll and of a pinch, from the whole sky to the deepest zoom; every wheel event over the map is prevented and
 visualViewport.scale stays 1; a pinch that starts at the deepest zoom dives to the sky under the pointer (the hover
 readout's coordinates), and the page does not zoom while the dive flies, even as the pinch carries on; a scroll that
-dives does the same at another point; a Safari trackpad pinch (gesture events, dispatched here as plain events, so only
+dives does the same at another point; after an off-centre dive, or an off-centre zoom that stops short, the map is drawn
+where the engine's numbers put it; "Dive in" after a partial off-centre scroll opens the middle; a Safari trackpad pinch (gesture events, dispatched here as plain events, so only
 the page's handling is checked) is prevented and zooms around the pointer too.
 Run: uv run -q --with playwright python web/tests/zoom_anchor_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, re, sys
@@ -16,6 +17,14 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 LOG = """window.__wheels = []; addEventListener('wheel', e => { const r = { ctrl: e.ctrlKey }; __wheels.push(r); setTimeout(() => { r.prevented = e.defaultPrevented; }); }, { capture: true, passive: true });"""
 SKY = "(async ([x, y]) => { const v = await import('/explore-view.js'); return v.A && v.W ? { sky: v.skyAt(x, y), W: v.W, max: v.atMax() } : null; })"
 OFF = "(async ([x, y, ra, dec]) => { const v = await import('/explore-view.js'); const [px, py] = v.toScreen(ra, dec); return Math.hypot(px - x, py - y); })"
+# the map as drawn against the engine's numbers: a mark placed in .map-wrap at the map fraction the engine puts under each
+# window point, and how far from that point the browser draws it (the largest of five points, in px)
+DRAWN = """(async () => { const v = await import('/explore-view.js'), wrap = document.querySelector('.map-wrap'); let worst = 0;
+  for (const [x, y] of [[720, 434], [300, 200], [1200, 250], [250, 700], [1150, 680]]) {
+    const [u, w] = v.uvAt(x, y), m = document.createElement('i');
+    m.style.cssText = `position: absolute; width: 0; height: 0; left: ${u * 100}%; top: ${w * 100}%`;
+    wrap.append(m); const r = m.getBoundingClientRect(); m.remove(); worst = Math.max(worst, Math.hypot(r.x - x, r.y - y)); }
+  return worst; })()"""
 WHEELS = "(() => { const w = __wheels.splice(0); return { n: w.length, open: w.filter(r => !r.prevented).length }; })()"
 fails = []
 
@@ -121,6 +130,9 @@ async def dives(p):
     check("that is where the hover readout said", at and len(rd) == 2 and abs(rd[0] - at[0]) < 0.06 and abs(rd[1] - at[1]) < 0.06, f"readout {readout}")
     await pg.go_back()
     check("back closes the dive", await until(pg, "window.__diveState() === null && location.pathname.includes('explore')"))
+    await asyncio.sleep(0.3)
+    d = await pg.evaluate(DRAWN)
+    check("back from an off-centre dive, the map is drawn where its coordinates say", d < 1, f"{d:.1f} px off")
 
     # a plain scroll at another point: while it adds up, the aim is there; one that stops short sends it back to the middle
     x, y = 420, 560
@@ -132,7 +144,20 @@ async def dives(p):
     await asyncio.sleep(0.9)
     c2 = await pg.evaluate(centre)
     check("a scroll that adds up moves the aim to the pointer, and back to the middle when it stops short", math.hypot(c1[0] - x, c1[1] - y) < 1 and math.hypot(c2[0] - 720, c2[1] - 434.3) < 1, f"{[round(v) for v in c1]} then {[round(v) for v in c2]}")
-    await asyncio.sleep(0.3)
+    d = await pg.evaluate(DRAWN)
+    check("after an off-centre zoom that stops short, the map is drawn where its coordinates say", d < 1, f"{d:.1f} px off")
+
+    # "Dive in" while an off-centre scroll is adding up: the middle of the view, not the pointer
+    middle = (await pg.evaluate(SKY, [720, 434.28]))["sky"]
+    await scroll(pg, x, y, 2)
+    await pg.evaluate("document.getElementById('dive-go').click()")
+    check("Dive in during a partial off-centre scroll dives", await until(pg, "window.__diveState()?.phase === 'open'"))
+    at = spot(pg.url)
+    off = sep(*at, *middle) if at else 99
+    check("and opens the middle of the view", off < 0.005, f"{off:.4f} deg off the middle")
+    await pg.go_back()
+    check("back closes that dive", await until(pg, "window.__diveState() === null && location.pathname.includes('explore')"))
+    await asyncio.sleep(0.4)
     await scroll(pg, x, y, 7)
     check("a scroll at the deepest zoom dives", await until(pg, "window.__diveState()?.phase === 'open'"))
     at = spot(pg.url)

@@ -100,17 +100,24 @@ function frameCanvas(px) {
 }
 
 // ---------- the aim: where a dive would go, and how close a scroll is to starting one ----------
+// The map grows by s about window point p, for the lean and the flight. Its transform-origin stays the engine's (the
+// pivot, explore-view.js): the straightening turns about it, so moving it would draw the sky off its coordinates.
+// Growing about p instead of the pivot is the same as growing about the pivot and shifting by (1 - s)(p - pivot).
+function lean(s, [px, py]) {
+  const [cx, cy] = mid();
+  wrapEl.style.transformOrigin = `${cx - view.X}px ${cy - view.Y}px`;   // what set() writes when straightened; harmless otherwise
+  wrapEl.style.scale = s;   // `scale` and `translate`, not `transform`: that one holds the straightening
+  wrapEl.style.translate = `${(1 - s) * (px - cx)}px ${(1 - s) * (py - cy)}px`;
+}
+const unlean = () => { wrapEl.style.scale = wrapEl.style.translate = ''; };
 let push = 0, pushT = 0;
 function setPush(p) {
   push = clamp01(p);
   ring.style.strokeDashoffset = 1 - push;
   if (!push && at) { at = null; aimAt(); }   // the zoom stopped short, or the dive is over: the aim goes back to the middle
   if (dive && dive.phase !== 'ready') return;   // in flight the map's size is the flight's
-  if (push && !calm.matches) {   // the map leans in a little, toward the aim
-    const [x, y] = aimPt();
-    wrapEl.style.transformOrigin = `${x - view.X}px ${y - view.Y}px`;
-    wrapEl.style.scale = 1 + .05 * push;   // `scale`, not `transform`: that one holds the map's straightening (explore-view.js)
-  } else wrapEl.style.scale = '';
+  if (push && !calm.matches) lean(1 + .05 * push, aimPt());   // the map leans in a little, toward the aim
+  else unlean();
 }
 function pushBy(d) {
   clearTimeout(pushT);
@@ -123,6 +130,7 @@ function aimAt() {
   if (dive?.phase === 'ready' && dive.ra != null && (!c || round4(c[0]) !== dive.ra || round4(c[1]) !== dive.dec)) drop();   // the view moved: that spot is off
   if (dive && dive.phase !== 'ready') return;
   const on = !!c && view.atMax();
+  go.style.visibility = at ? 'hidden' : '';   // the button opens the middle: it shows only while the aim is there
   if (aim.hidden === on) { aim.hidden = !on; if (!on) { clearTimeout(pushT); setPush(0); } }
   if (!on) { if (dive) drop(); return; }   // away from the deepest zoom a loaded page is let go
   const [x, y] = aimPt();
@@ -179,7 +187,8 @@ go.addEventListener('pointerenter', () => { hoverQ = setTimeout(target, 150); })
 go.addEventListener('pointerleave', () => clearTimeout(hoverQ));
 go.addEventListener('pointerdown', () => target());
 let byKey = false;   // started from the keyboard: focus comes back to the button afterwards
-go.addEventListener('click', e => { byKey = e.detail === 0; at = null; setPush(1); start(); });   // the button dives at the middle
+// the button dives at the middle: a scroll adding up elsewhere is let go first, with the time-lapse it had started there
+go.addEventListener('click', e => { byKey = e.detail === 0; if (at) { clearTimeout(pushT); setPush(0); } setPush(1); start(); });
 
 // ---------- a dive ----------
 // phase: 'ready' (the time-lapse page is loaded in its hidden frame, the map is still in use), 'in' (flying in),
@@ -246,7 +255,6 @@ async function start(pushEntry = true, spot = there()) {
   d.c = view.toScreen(d.ra, d.dec); d.J0 = mapScale(d.ra, d.dec);
   { const m = view.M, j = d.J0; d.M0 = [m[0] * j[0] + m[1] * j[2], m[0] * j[1] + m[1] * j[3], m[2] * j[0] + m[3] * j[2], m[2] * j[1] + m[3] * j[3]]; }
   d.s0 = Math.sqrt(Math.abs(d.M0[0] * d.M0[3] - d.M0[1] * d.M0[2]));
-  d.o = `${d.c[0] - view.X}px ${d.c[1] - view.Y}px`;
   d.tint = getComputedStyle(skyImg).filter;
   d.snap = snapshot(); d.vw = innerWidth; d.vh = innerHeight;
   const loaded = await Promise.race([d.ready.then(() => true), new Promise(r => setTimeout(r, 5000))]);
@@ -284,8 +292,7 @@ function paint(d) {
   const x = cx + (r1.x + r1.w / 2 - cx) * f - w / 2, y = cy + (r1.y + r1.h / 2 - cy) * f - h / 2;
   box.style.width = w + 'px'; box.style.height = h + 'px'; box.style.transform = `translate(${x}px, ${y}px)`;
   // outside the frame: the map grows a little and goes dark, and the time-lapse page comes up around the frame
-  wrapEl.style.transformOrigin = d.o;
-  wrapEl.style.scale = Math.min(s / d.s0, 6);
+  lean(Math.min(s / d.s0, 6), d.c);
   wrapEl.style.opacity = 1 - smooth((d.t - .2) / .3);
   d.f.style.opacity = Math.max(.001, smooth((d.t - .28) / .37));
 
@@ -359,7 +366,7 @@ function close() {
 function surfaced(d) {
   cancelAnimationFrame(d.raf);
   box.hidden = true;
-  wrapEl.style.scale = ''; wrapEl.style.opacity = '';
+  unlean(); wrapEl.style.opacity = '';
   document.body.classList.remove('diving', 'flying');
   d.f.remove(); dive = null;
   dispatchEvent(new Event('dive-closed'));   // explore.js: the heat map may have a new patch looked at
