@@ -1,11 +1,11 @@
-// "How this map was made": a 90 second 3D film that ends on the flat Explore map. It plays over Explore on a first
+// "How this map was made": a 50 second 3D film that ends on the flat Explore map. It plays over Explore on a first
 // visit (explore.html decides, before the tour) and from the "How this map was made" button (explore.js).
 // Nothing here is loaded until it plays: explore.js imports this file, which then fetches intro.css, three.js and
 // data/intro/ (bake/intro_assets.py). When it ends the WebGL context is given back and the page is as it was.
 //
 // play() draws a black screen with Skip at once, loads the film behind it, plays it, and resolves when the film has
 // handed over to the map (played to the end, skipped with the button or Escape, or failed to load).
-// Reduced motion: sixteen stills, one per caption, with a Next button.
+// Reduced motion: eight stills, one per caption, with a Next button.
 // The film itself is film(): everything on screen is a pure function of the film time T (seconds), so it can be
 // played, skipped, stepped and recorded frame by frame.
 import { win, straight } from './explore-view.js';
@@ -15,12 +15,11 @@ const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module
 const SHELL = `<style>:where(#intro){position:fixed;inset:0;z-index:200;background:#010206;color:#fff}:where(#intro-skip){position:absolute;right:14px;top:12px;min-height:44px;padding:0 18px;color:#fff;background:#000;border:1px solid #fff}</style>
   <canvas id="intro-gl"></canvas>
   <div id="intro-labels" aria-hidden="true"></div>
-  <canvas id="intro-spec" aria-hidden="true"></canvas>
   <div id="intro-odo" aria-hidden="true"><b></b><span>from Earth</span></div>
   <div id="intro-hud" aria-hidden="true"><span id="intro-h-date"></span><span id="intro-h-count"></span></div>
   <button id="intro-skip" type="button">Skip</button>
   <div id="intro-cap">
-    <div class="cap-top"><span id="intro-cap-n">1 / 8</span><span id="intro-cap-ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><button id="intro-next" type="button" hidden>Next</button></div>
+    <div class="cap-top"><span id="intro-cap-n">1 / 7</span><span id="intro-cap-ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><button id="intro-next" type="button" hidden>Next</button></div>
     <p id="intro-cap-text" aria-live="polite"></p>
     <p id="intro-cap-note"></p>
   </div>
@@ -63,11 +62,10 @@ async function run() {
 
 // ---------------------------------------------------------------- the film
 // Data: data/intro/tiles.bin (real SPHEREx photo footprints), scene.json (JPL Horizons orbits), sky.jpg (the all-sky picture),
-// photo.jpg and photo.json (the first photo itself, what is in it and how far away, one star's spectrum: bake/intro_photo.py),
-// sheba.png (that photo's own pixels round one asteroid), and data/comets/3i-atlas/ (the comet page's own measurements).
-// The film is in three parts. The first stays with one photo: what it is, how deep it is, that the faint things in it
-// are really there, why it holds many colours. The second is the deck of colours: what the colours are for, shown on
-// comet 3I/ATLAS. The third pulls back to the ring, the whole sky and the map. The clocks are explained where they are made.
+// photo.jpg and photo.json (the first photo itself, what is in it and how far away: bake/intro_photo.py) and galaxy.jpg.
+// The film is one camera move with no cut: round the telescope, out through it to its first photo, down the beam past
+// what is in that photo, onto the photo and its stripes of color, then back out as the telescope steps on, to the ring
+// of photos, the whole sky and the map. The clocks are explained where they are made.
 async function film(root, signal, done) {
 const THREE = await import(THREE_URL);
 if (signal.aborted) return { dispose() {} };   // skipped while three.js was loading: nothing was made yet
@@ -112,51 +110,38 @@ function pchip(keys) {   // smooth, never-reversing curve through the keys (film
 }
 
 // ---------- the film's clock ----------
-// Three clocks. U is the film's own seconds (what plays, and what the captions are timed in). T is the second cut's
-// seconds: that cut's close look at one photo is keyed in T, and v2() turns U into T. Twice T stands still while a beat
-// of this cut plays on U: the push-in on one asteroid (SH), and the deck of colours (DK), which is its own scene. The
-// film cuts into the deck and back out, and T jumps past the old pull-back from the star while it is away.
+// Two clocks. U is the film's own seconds (what plays, and what the captions are timed in). T is the scene's seconds,
+// which everything on screen is keyed in: the same as U until the flight, which covers FLY0 to FLY1 of T while it plays
+// for FLY_S seconds of U, and in step again after it. v2() turns U into T, fu() T into U.
 // The second half (after X) is the first cut's, still keyed in that cut's seconds: w() turns T into them, wi() back.
-const X = 35.8;   // T: the close look at one photo ends here, and the film pulls back
+const FLY0 = 9, FLY1 = 13.2;   // T: the flight down the beam, from the telescope's mouth to the photo filling the view
+const FLY_S = 11;   // the flight's own length in film seconds: T runs slow while it plays
+const STEP_T = [FLY1 + 2.3, FLY1 + 3.2, FLY1 + 4.1];   // T: when the telescope takes its second, third and fourth photo
+const X = FLY1 + 5;   // T: the look at one photo ends here, and the camera pulls back out of it to the ring
 const WARP = [[0, 0], [4.8, 4.8], [X, 4.8], [X + 3, 8.6], [X + 6.2, 12.2], [X + 10.8, 19.3], [X + 14.8, 23.9], [X + 16.6, 30.2], [X + 26, 39.6]];   // [T, first cut's seconds]
 const w = T => lin(T, WARP, 0, 1), wi = t => lin(t, WARP.slice(2), 1, 0);
-const SH_T = 20.8, SH = 5.6, DK_T = 35.6, DK = 16.5, BACK_T = X + .6, DIP = .3;   // DIP: seconds to fade to black and back at each cut
-const FLY0 = 9, FLY1 = 13.2, OVER = 14.6;   // T: the flight down the beam, and when the camera has pulled out to see all of it
-const FLY_S = 11;   // the flight's own length in film seconds: T runs slow while it plays
-const CLOCK = [[0, 0], [FLY0, FLY0], [FLY0 + FLY_S, FLY1]];   // [U, T]: the same until the flight, and in step again after it
-const SH_U = lin(SH_T, CLOCK, 1, 0), DK_U = SH_U + SH + DK_T - SH_T, DK_END = DK_U + DK;   // the deck is on screen from DK_U + DIP to DK_END - DIP
-const v2 = U => U < SH_U ? lin(U, CLOCK, 0, 1) : U < DK_END - DIP ? Math.min(DK_T, SH_T + Math.max(0, U - SH_U - SH)) : BACK_T + U - (DK_END - DIP);
-const fu = T => T <= SH_T ? lin(T, CLOCK, 1, 0) : T <= DK_T ? T - SH_T + SH_U + SH : T - BACK_T + DK_END - DIP;   // when the film reaches T
+const CLOCK = [[0, 0], [FLY0, FLY0], [FLY0 + FLY_S, FLY1]];   // [U, T]
+const v2 = U => lin(U, CLOCK, 0, 1), fu = T => lin(T, CLOCK, 1, 0);
 const T_END = fu(wi(39.6)), T_HANDOVER = fu(wi(37.7));   // in U
-const STEP_T = [28.4, 29.4, 30.4];   // T: when the telescope takes its second, third and fourth photo
 const shellR = T => KL(w(T), [[8, .3], [11, .3], [13, .42], [18.7, .42], [21.7, R_BIG]]);
 const EARTH_R = .022, ORBIT_R = .054, CRAFT = .0125, R_BIG = 3.2;   // drawing sizes in AU (illustrative)
-// the deck's own seconds (U - DK_U): the question, the fan, the answer
-const DQ = 4.4, D_FAN = 3.2, D_LIT = 8.8, D_POP = 10;
 
 const NOTE_PHOTO = 'The real photo: the first in SPHEREx’s public archive, 24 April 2025 (NASA/IPAC IRSA).';
 const NOTE_DEPTH = 'Real distances on a compressed scale. Star colors from Gaia. Galaxy photo: Sloan Digital Sky Survey. The asteroids’ shapes are imagined.';
 const NOTE_MAP = 'This way of flattening a sphere is called a Mollweide projection.';
+const NOTE_COLOR = 'Infrared has no colors we can see: these stand for its wavelengths. The steps are the next three real photos, two minutes apart. Six detectors: 102 colors in all.';
 const fw = t => fu(wi(t));
-const CAPTIONS = [   // [from, to (U), step 1..8, text, small note]. Few words: every beat has to read with these hidden
-  [.5, 4.3, 1, '<b>SPHEREx</b>: a telescope in orbit around Earth.', 'Earth, SPHEREx and its orbit are drawn far larger than life.'],
+const CAPTIONS = [   // [from, to (U), step 1..7, text, small note]. Few words: every beat has to read with these hidden
+  [.5, 4.3, 1, 'This is a satellite: <b>SPHEREx</b>, a NASA space telescope circling Earth.', 'Earth, SPHEREx and its orbit are drawn far larger than life.'],
   [4.8, 8.6, 2, 'One <b>photo</b>. Seven full Moons wide.', NOTE_PHOTO],
-  [8.9, fu(16.4), 3, 'The photo is flat. Space is <b>deep</b>.', NOTE_DEPTH],
-  [fu(16.7), SH_U - .1, 3, 'Near or far, it all lands on <b>one flat photo</b>.', 'Each ring marks its place in the real photo.'],
-  [SH_U + .2, SH_U + SH - .5, 3, 'This asteroid is <b>one pixel</b>.', 'The photo’s own pixels, each 6 arcseconds wide. Sheba was predicted to be here (IMCCE SkyBoT); Gaia lists no star.'],
-  [fu(21.5), fu(26), 4, 'Each stripe of the photo sees a different <b>color</b>.', 'Infrared has no colors we can see: these stand for its wavelengths. The bright band is real, helium glowing above Earth.'],
-  [fu(26.3), fu(31), 4, 'The telescope steps. The star lands on the <b>next color</b>.', 'The next three real photos, two minutes apart.'],
-  [fu(31.3), DK_U - .1, 4, 'One star in 102 colors: its <b>spectrum</b>.', 'Real SPHEREx measurements, April 2025 to May 2026. Pale bars had a flagged pixel nearby.'],
-  [DK_U + DIP + .2, DK_U + DQ, 5, 'Two dots. <b>Which one is the comet?</b>', 'Two real objects. The star is the one from before, from another part of the sky, scaled to start as bright as the comet.'],
-  [DK_U + DQ + .3, DK_U + D_LIT - .3, 5, 'Look at them in <b>every color</b>.', 'A bigger glow is a brighter reading. Each sheet is its own exposure, taken over about a week in December 2025. The tint only names the color.'],
-  [DK_U + D_LIT, DK_U + 13.4, 5, 'The comet <b>blazes in one color</b>: carbon dioxide gas.', 'Real SPHEREx readings of comet 3I/ATLAS. Smaller rises near 2.7 and 4.7 microns are not judged here. Pale: less sure. Dashed: no reading.'],
-  [DK_U + 13.7, DK_END - DIP, 5, 'A photo shows <b>where</b>. A spectrum shows <b>what</b>.', 'The photo held up is the real one of the brightest sheet.'],
-  [fu(BACK_T + .15), fw(12.2), 6, 'Photo after photo makes a <b>ring</b>.', 'Each square is one real photo, placed where SPHEREx pointed: at right angles to the Sun.'],
-  [fw(12.5), fw(19.3), 6, 'In six months the ring <b>sweeps the whole sky</b>.', 'Real pointings, April to October 2025. One photo in three is drawn.'],
-  [fw(19.9), fw(30.2), 7, 'Every photo together: the <b>whole sky</b>.', 'The sphere has no true size. It is only a way to draw directions. Planet orbits from NASA JPL.'],
-  [fw(30.7), fw(36.9), 8, 'Unfold it, and you get the <b>map</b>.', NOTE_MAP],
+  [8.9, fu(FLY1) - .4, 3, 'The photo is flat. Space is <b>deep</b>.', NOTE_DEPTH],
+  [fu(FLY1), fu(X + .7), 4, 'Each stripe sees its own <b>color</b>, so the telescope <b>steps</b>.', NOTE_COLOR],
+  [fu(X + 1), fw(12.2), 5, 'Photo after photo makes a <b>ring</b>.', 'Each square is one real photo, placed where SPHEREx pointed: at right angles to the Sun.'],
+  [fw(12.5), fw(19.3), 5, 'In six months the ring <b>sweeps the whole sky</b>.', 'Real pointings, April to October 2025. One photo in three is drawn.'],
+  [fw(19.9), fw(30.2), 6, 'Every photo together: the <b>whole sky</b>.', 'The sphere has no true size. It is only a way to draw directions. Planet orbits from NASA JPL.'],
+  [fw(30.7), fw(36.9), 7, 'Unfold it, and you get the <b>map</b>.', NOTE_MAP],
 ];
-const STILLS = [3.6, 8.2, FLY0 + 6.4, fu(20.6), SH_U + 3, fu(25.4), fu(30.7), fu(35.2), DK_U + 3, DK_U + 8, DK_U + 12.6, DK_U + 15, fw(11), fw(15), fw(22.9), fw(35.6)];   // one frame per caption, for reduced motion
+const STILLS = [3.6, 8.2, FLY0 + 6.4, fu(STEP_T[1] + .45), fw(11), fw(15), fw(22.9), fw(35.6)];   // one frame per caption, for reduced motion
 
 // ---------- renderer ----------
 const canvas = $('gl');
@@ -183,16 +168,13 @@ try {
   loaded = await Promise.race([gone, Promise.all([
     fetch('data/intro/scene.json', { signal }).then(r => r.json()), fetch('data/intro/tiles.bin', { signal }).then(r => r.arrayBuffer()),
     tex('data/intro/sky.jpg'), fetch('data/intro/photo.json', { signal }).then(r => r.json()).then(async p => [p, await tex('data/intro/' + p.objects.find(o => o.image).image.file)]),   // and the galaxy in it, as SDSS saw it
-    tex('data/intro/photo.jpg'), tex('data/intro/sheba.png'),
-    fetch('data/comets/3i-atlas/comet.json', { signal }).then(r => r.json()).then(async c => [c, await tex('data/comets/3i-atlas/' + c.photos.reduce((a, q) => q.flux > a.flux ? q : a).file)]),   // comet 3I/ATLAS as the app measured it, and its brightest photo
+    tex('data/intro/photo.jpg'),
     document.fonts.load('17px "Space Mono"'),
   ])]);
 } catch (err) { if (signal.aborted) { dispose(); return { dispose }; } throw err; }   // skipped while the data was loading
 if (signal.aborted) { dispose(); return { dispose }; }
-const [S, tileBuf, skyTex, [PH, galTex], picTex, zoomTex, [CM, cometTex]] = loaded;
+const [S, tileBuf, skyTex, [PH, galTex], picTex] = loaded;
 galTex.colorSpace = THREE.NoColorSpace;
-for (const t of [zoomTex, cometTex]) { t.colorSpace = t === zoomTex ? THREE.NoColorSpace : THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; }   // real pixels, shown as squares
-zoomTex.flipY = false;   // row 0 of sheba.png is the lowest detector row
 skyTex.colorSpace = THREE.NoColorSpace; skyTex.wrapS = THREE.RepeatWrapping; skyTex.anisotropy = 8;
 picTex.colorSpace = THREE.NoColorSpace; picTex.flipY = false; picTex.anisotropy = 8;   // row 0 of photo.jpg is the top of the tile's square
 const STEP = S.step, NDAY = S.days;
@@ -260,6 +242,7 @@ const tiles = new THREE.Mesh(tileGeo, new THREE.ShaderMaterial({
 tiles.frustumCulled = false; tiles.renderOrder = 2; scene.add(tiles);
 
 // ---------- the first photo itself, on its own tile (tile 0), and the colours of the filter over the photo being taken ----------
+// The mesh is half as wide again as the photo: the next photos step sideways, and their stripes run past its edge.
 // A point of the tile's square is c + u e + v f, u and v from -1 to 1 (f = c x e): photo.jpg and photo.json use the same square.
 const c0 = V().fromArray(tC, 0), e0 = V().fromArray(tE, 0), f0 = V().crossVectors(c0, e0), HALF = e0.length();   // HALF: half a photo, as a tangent
 const PHOTO_R = .9845;   // a hair in front of the tiles
@@ -270,19 +253,17 @@ function tileUV(k, d) {   // where direction d falls in photo k's square
 }
 const LC = PH.lam.coef, BAND = PH.lam.band;   // wavelength in microns at (u, v) of a detector 1 photo: bake/intro_photo.py's fit to data/wavemaps.json
 const lamAt = (u, v) => LC[0] + LC[1] * u + LC[2] * u * u + LC[3] * v * v + LC[4] * u * v * v + LC[5] * u * u * u + LC[6] * v + LC[7] * u * v;
-const chanOf = (um, band) => Math.min(16, Math.max(0, Math.floor(17 * Math.log(um / band[0]) / Math.log(band[1] / band[0]))));   // 17 channels a detector, as live/spectral.js
-// the colour that stands for each of the 102 channels (0.75 to 5 microns): violet to red, the same in the photo's stripes and the star's bars
+// the colour that stands for each of the 102 channels (0.75 to 5 microns), violet to red: this photo's stripes are the first 17
 const RAMP = [[164, 140, 255], [90, 155, 255], [85, 224, 240], [125, 234, 138], [255, 228, 107], [255, 154, 77], [255, 93, 93]];
-function rampAt(t) { const x = clamp01(t) * (RAMP.length - 1), i = Math.min(RAMP.length - 2, Math.floor(x)); return RAMP[i].map((a, k) => Math.round(a + (RAMP[i + 1][k] - a) * (x - i))); }
 const photoU = { uPic: { value: picTex }, uCenter: { value: V() }, uR: { value: .3 }, uC: { value: c0 }, uE: { value: e0 }, uF: { value: f0 }, uCk: { value: V() }, uEk: { value: V() },
   uAlpha: { value: 0 }, uStripe: { value: 0 }, uSweep: { value: 2 }, uEdge: { value: 0 }, uL: { value: LC }, uBand: { value: new THREE.Vector2(...BAND) } };
 const photo = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3)).setIndex([0, 1, 2, 0, 2, 3]), new THREE.ShaderMaterial({
   uniforms: photoU, transparent: true, depthWrite: false, side: THREE.DoubleSide,
   vertexShader: `uniform vec3 uCenter, uC, uE, uF; uniform float uR; varying vec3 vDir; varying vec2 vQ;
-    void main(){ vDir = uC + position.x * uE + position.y * uF; vQ = position.xy; gl_Position = projectionMatrix * viewMatrix * vec4(uCenter + uR * vDir, 1.); }`,
+    void main(){ vQ = position.xy * 1.5; vDir = uC + vQ.x * uE + vQ.y * uF; gl_Position = projectionMatrix * viewMatrix * vec4(uCenter + uR * vDir, 1.); }`,
   fragmentShader: `uniform sampler2D uPic; uniform vec3 uCk, uEk; uniform float uAlpha, uStripe, uSweep, uEdge, uL[8]; uniform vec2 uBand; varying vec3 vDir; varying vec2 vQ;
     vec3 ramp(float t){ t = clamp(t, 0., 1.) * 6.; vec3 c = ${RAMP.map((c, i) => { const v = `vec3(${c.map(x => (x / 255).toFixed(3)).join(', ')})`; return i ? `c = mix(c, ${v}, clamp(t - ${i - 1}., 0., 1.));` : `${v};`; }).join(' ')} return c; }
-    void main(){ float lum = texture2D(uPic, vQ * .5 + .5).r, br = clamp(lum * 1.7, 0., 1.);
+    void main(){ float in0 = step(max(abs(vQ.x), abs(vQ.y)), 1.), lum = texture2D(uPic, vQ * .5 + .5).r * in0, br = clamp(lum * 1.7, 0., 1.);   // in0: inside the first photo
       vec3 col = br * vec3(.86, .93, 1.1);
       // the photo being taken now: its square on the sky, and the wavelength its filter passes at each point of it
       vec3 q = vDir / dot(vDir, uCk) - uCk, fk = cross(uCk, uEk); float u = dot(q, uEk) / dot(uEk, uEk), v = dot(q, fk) / dot(fk, fk), e = max(abs(u), abs(v));
@@ -294,7 +275,7 @@ const photo = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position',
       col = mix(col, sc * .5, div * s * .7);
       float we = fwidth(e) * 1.2, line = smoothstep(1. - 2.2 * we, 1. - we, e) * step(e, 1. + we);
       col = mix(col, vec3(1.), line * uEdge);
-      gl_FragColor = vec4(col, uAlpha); }`
+      gl_FragColor = vec4(col, uAlpha * max(in0, max(s * .8, line * uEdge))); }`   // past the first photo's edge there is only the filter of the photo being taken
 }));
 photo.frustumCulled = false; photo.renderOrder = 2.5; scene.add(photo);
 
@@ -362,18 +343,18 @@ const sun = sprite(glowTex([[0, '#fff'], [.1, '#fff3d6'], [.3, 'rgba(255,180,90,
 const earthDot = sprite(glowTex([[0, '#fff'], [.3, '#bcd8ff'], [.6, 'rgba(127,184,255,.35)'], [1, 'rgba(127,184,255,0)']]), true);
 const craftDot = sprite(dotTex, false);
 
-const earthU = { uSun: { value: V(1, 0, 0) }, uA: { value: 1 } };
+const earthU = { uSun: { value: V(1, 0, 0) } };
 const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), new THREE.ShaderMaterial({
-  uniforms: earthU, transparent: true,
+  uniforms: earthU,
   vertexShader: `varying vec3 vN, vP, vO; void main(){ vO = position; vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position, 1.); vP = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-  fragmentShader: `uniform vec3 uSun; uniform float uA; varying vec3 vN, vP, vO;
+  fragmentShader: `uniform vec3 uSun; varying vec3 vN, vP, vO;
     void main(){ vec3 n = normalize(vN), v = normalize(cameraPosition - vP), o = normalize(vO);
       float l = dot(n, uSun), day = smoothstep(-.12, .32, l), fr = pow(1. - max(dot(n, v), 0.), 2.6);
       vec3 col = mix(vec3(.004, .008, .02), vec3(.03, .1, .26) * (.3 + .9 * max(l, 0.)), day);
       vec2 g = vec2(atan(o.z, o.x), asin(o.y)) * 57.29578 / 15., fg = abs(fract(g - .5) - .5) / fwidth(g);
       float gl = max((1. - min(fg.x, 1.)) * smoothstep(.97, .9, abs(o.y)), 1. - min(fg.y, 1.));
       col += vec3(.55, .75, 1.) * gl * (.03 + .13 * day) + vec3(.3, .56, 1.) * fr * (.1 + .8 * day);
-      gl_FragColor = vec4(col, uA); }`
+      gl_FragColor = vec4(col, 1.); }`
 }));
 earth.renderOrder = 3; scene.add(earth);
 
@@ -413,35 +394,29 @@ const sunLight = new THREE.DirectionalLight(0xfff4e2, 3.2); scene.add(sunLight, 
 scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x0a1020, .5));
 
 // ---------- thin guide lines, rebuilt every frame (few points): SPHEREx's orbit, its line of sight, Sun to Earth, the right angle ----------
-function dynLines(max, into = scene, order = 7) {
+function dynLines(max) {
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(max * 6, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(max * 8, 4));
-  const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, depthTest: into === scene }));
-  l.frustumCulled = false; l.renderOrder = order; into.add(l);
+  const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
+  l.frustumCulled = false; l.renderOrder = 7; scene.add(l);
   let n = 0; const P = g.attributes.position.array, C = g.attributes.color.array;
   return {
-    line: l, begin() { n = 0; },
+    begin() { n = 0; },
     seg(a, b, col, ia = 1, ib = ia) {
       if (n >= max) return; a.toArray(P, 6 * n); b.toArray(P, 6 * n + 3);
       const c = 8 * n; C[c] = C[c + 4] = col[0]; C[c + 1] = C[c + 5] = col[1]; C[c + 2] = C[c + 6] = col[2]; C[c + 3] = Math.min(1, ia); C[c + 7] = Math.min(1, ib); n++;
     },
-    dash(a, b, col, ia, k = 12) { for (let i = 0; i < k; i += 2) this.seg(tmp.copy(a).lerp(b, i / k), tmp2.copy(a).lerp(b, (i + 1) / k), col, ia); },
     end() { g.setDrawRange(0, 2 * n); g.attributes.position.needsUpdate = g.attributes.color.needsUpdate = true; }
   };
 }
 const guides = dynLines(600);
-function beamBody(into) {   // a beam's faint body: its four sides, from a point to the corners of a photo
-  const m = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(15, 3)).setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]),
-    new THREE.MeshBasicMaterial({ color: 0xbfd6ff, transparent: true, opacity: 0, depthWrite: false, depthTest: into === scene, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
-  m.frustumCulled = false; m.renderOrder = 6; into.add(m);
-  m.put = (top, corners) => { const bp = m.geometry.attributes.position; top.toArray(bp.array, 0); corners.forEach((c, k) => c.toArray(bp.array, 3 + 3 * k)); bp.needsUpdate = true; };
-  return m;
-}
-const beamFill = beamBody(scene);
-const WHITE = [1, 1, 1], ACCENT = [1, .604, .302], STREAK_COL = [.78, .87, 1];
+const beamFill = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(15, 3)).setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]),   // the beam's faint body: its four sides, from a point to the corners of a photo
+  new THREE.MeshBasicMaterial({ color: 0xbfd6ff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+beamFill.frustumCulled = false; beamFill.renderOrder = 6; scene.add(beamFill);
+const WHITE = [1, 1, 1], STREAK_COL = [.78, .87, 1];
 const STREAKS = Array.from({ length: 180 }, (_, j) => { const r = k => { const h = Math.sin(j * 12.9898 + k * 78.233) * 43758.5453; return h - Math.floor(h); }, a = TAU * r(1), d = 1.5 + 10 * r(2) ** 1.5; return [d * Math.cos(a), d * Math.sin(a), 70 * r(3), .35 + .65 * r(4)]; });   // where each line of speed sits round the flight path
 
 // ---------- SPHEREx's orbit: a circle side-on to the Sun; its phase is fitted to where the real photos pointed ----------
-const st = { fly: 0, day: 0, E: V(), s: V(), u: V(), v: V(), p: V(), r: V(), t: V(), R: .3, look: V(), idx: 0, top: V(), px: 1, sideUp: V(0, 1, 0), sideRight: V(1, 0, 0) };   // top: the mouth of the telescope
+const st = { fly: 0, day: 0, E: V(), s: V(), u: V(), v: V(), p: V(), r: V(), t: V(), R: .3, look: V(), idx: 0, top: V(), px: 1, dist: 1 };   // top: the mouth of the telescope
 function orbitFrame(day, E, s, u, v) { earthAt(day, E); s.copy(E).normalize().negate(); u.copy(Y).addScaledVector(s, -Y.dot(s)).normalize(); v.crossVectors(s, u); }
 const PHASE = (() => {   // least squares: angle of each early pointing around the Sun line = a0 + w * day
   const E = V(), s = V(), u = V(), v = V(), c = V(); let prev = null, n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
@@ -456,23 +431,17 @@ console.assert(Math.abs(Math.abs(TAU / PHASE.w) * 1440 - 98) < 6, 'SPHEREx orbit
 
 // ---------- what is in the first photo, strung along the telescope's line of sight at real distances ----------
 // The scale is compressed (a photo's contents span thirteen powers of ten): DEPTH gives [log10 of the distance in AU,
-// fraction of the way from the telescope to the photo], straight lines between. The marks along the beam are labelled.
+// fraction of the way from the telescope to the photo], straight lines between.
 const AU_LY = 63241.08, DEPTH = [[0, .08], [1, .26], [Math.log10(AU_LY), .38], [Math.log10(AU_LY) + 2, .47], [Math.log10(AU_LY) + 4, .62], [Math.log10(AU_LY) + 6, .72], [Math.log10(AU_LY) + 9, .86]];
 const depthOf = au => lin(Math.log10(au), DEPTH, 0, 1);
-const MARKS = [['1 AU:\nEarth to Sun', 1], ['1 light-year', AU_LY], ['1,000\nlight-years', AU_LY * 1e3], ['1 million\nlight-years', AU_LY * 1e6]]   // \n: where a phone breaks the line
- .map(([text, au]) => ({ text, f: depthOf(au), pos: V() }));
 // a gate across the beam at every tenfold step in distance (1 AU to 10,000 AU, then 1 light-year to 100 million): flown through, each one is ten times farther
-const GATES = [...[0, 1, 2, 3, 4].map(k => 10 ** k), ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map(k => AU_LY * 10 ** k)].map(au => ({ f: depthOf(au), named: MARKS.some(m => Math.abs(m.f - depthOf(au)) < 1e-9) }));
+const GATES = [...[0, 1, 2, 3, 4].map(k => 10 ** k), ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map(k => AU_LY * 10 ** k)].map(depthOf);
 function odoText(f) {   // the distance from Earth at that point of the beam, to one figure: it ticks over as the flight goes
   const au = 10 ** lin(f, DEPTH, 1, 0), r = x => { const m = 10 ** Math.floor(Math.log10(x)); return Math.round(x / m) * m; }, n = x => r(x).toLocaleString('en-US');
   if (au < AU_LY * .7) return n(au) + ' AU'; const ly = au / AU_LY;
   return ly < 1.5 ? '1 light-year' : ly < 1e6 ? n(ly) + ' light-years' : n(ly / 1e6) + ' million light-years';
 }
-function ringTex(color) {
-  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
-  g.strokeStyle = color; g.lineWidth = 5; g.beginPath(); g.arc(32, 32, 24, 0, TAU); g.stroke(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
-const ringWhite = ringTex('#fff'), ringAccent = ringTex('#ff9a4d'), coreTex = glowTex([[0, '#fff'], [.25, 'rgba(255,255,255,.9)'], [.6, 'rgba(255,255,255,.2)'], [1, 'rgba(255,255,255,0)']]);
+const coreTex = glowTex([[0, '#fff'], [.25, 'rgba(255,255,255,.9)'], [.6, 'rgba(255,255,255,.2)'], [1, 'rgba(255,255,255,0)']]);
 // ---------- the bodies flown past: two rocks, two stars, a galaxy ----------
 // In flight each thing in the photo is a body with a size in space (a share of the beam's width where it is), so it comes
 // up, is passed and is left behind. Real: where each one is; the direction sunlight falls on the rocks (from where the
@@ -530,9 +499,9 @@ const haloTex = glowTex([[0, 'rgba(255,255,255,.85)'], [.1, 'rgba(255,255,255,.8
 const ballGeo = new THREE.SphereGeometry(1, 64, 32), flatGeo = new THREE.PlaneGeometry(2, 2);
 const beads = PH.objects.map((o, i) => {
   const ours = o.kind === 'star' && Math.abs(o.u - PH.star.u) < 1e-3 && Math.abs(o.v - PH.star.v) < 1e-3;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ours ? ringAccent : ringWhite, transparent: true, depthWrite: false, depthTest: false })); sp.renderOrder = 8; scene.add(sp);
-  // a plain mark of what it is, for the overview and for a body too far ahead to be more than a point: a rock, a star, a galaxy
-  const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: o.kind === 'asteroid' ? dotTex : coreTex, color: o.kind === 'asteroid' ? 0xb9ad9c : o.kind === 'galaxy' ? 0xffe9c4 : 0xdfeaff, transparent: true, depthWrite: false, depthTest: false })); core.renderOrder = 7.5; scene.add(core);
+  // a plain mark for a rock or a galaxy too far ahead to be more than a point (a star has its glow)
+  const core = o.kind === 'star' ? null : new THREE.Sprite(new THREE.SpriteMaterial({ map: o.kind === 'asteroid' ? dotTex : coreTex, color: o.kind === 'asteroid' ? 0xb9ad9c : 0xffe9c4, transparent: true, depthWrite: false, depthTest: false }));
+  if (core) { core.renderOrder = 7.5; scene.add(core); }
   const dir = V().copy(c0).addScaledVector(e0, o.u).addScaledVector(f0, o.v).normalize(), tint = o.rgb ?? (i ? [.5, .38, .3] : [.56, .53, .5]);   // imagined tints: a grey rock, and a darker, redder one, as Trojans tend to be
   const mesh = new THREE.Mesh(o.kind === 'asteroid' ? rockGeo(i + 1) : o.kind === 'star' ? ballGeo : flatGeo, o.kind === 'asteroid' ? rockMat(tint) : o.kind === 'star' ? starMat(tint) : galMat(galTex));
   mesh.frustumCulled = false; mesh.renderOrder = 7.2; mesh.visible = false; scene.add(mesh);
@@ -542,21 +511,32 @@ const beads = PH.objects.map((o, i) => {
     console.assert(eqDir(o.ra, o.dec).angleTo(dir) < 2e-4, 'the galaxy should be where its own coordinates say');
   }
   const h = k => { const x = Math.sin(i * 91.7 + k * 37.3) * 43758.5453; return x - Math.floor(x); };
-  return { ...o, i, ours, f: depthOf(o.au), sp, core, mesh, glow, dir, pos: V(), a: 0, px: 17, rpx: 0, lab: 0, front: true, tier: i % 2, axis: V(h(1) - .5, h(2) - .5, h(3) - .5).normalize(), spin: .22 + .16 * h(4) };
+  return { ...o, i, said: `${ours ? 'star' : o.name} · ${o.dist}`, f: depthOf(o.au), core, mesh, glow, dir, pos: V(), rpx: 0, lab: 0, front: true, axis: V(h(1) - .5, h(2) - .5, h(3) - .5).normalize(), spin: .22 + .16 * h(4) };
 });
-const star = beads.find(b => b.ours), starDir = V().copy(c0).addScaledVector(e0, PH.star.u).addScaledVector(f0, PH.star.v).normalize();
+// ---------- the colours: one star marked on the photo, and the telescope's steps ----------
+// The flight ends on the photo. Its stripes come on, a ring marks one star (the farther of the two flown past), and
+// the telescope takes its next three photos: each is a step to the side, so the star lands on the next stripe. The
+// label says which wavelength the star is seen at in each (photo.json's fit to the app's wavelength map).
+const starDir = V().copy(c0).addScaledVector(e0, PH.star.u).addScaledVector(f0, PH.star.v).normalize(), starSpot = V();
+const STAR_UM = [0, 1, 2, 3].map(k => lamAt(...tileUV(k, starDir)));   // the wavelength the star was seen at in each of the first four photos
 const stepAt = T => STEP_T.reduce((a, t) => a + sm((T - t + .35) / .7), 0);   // which of the first four photos is being taken: 0 to 3, sliding from one to the next
+const spotA = T => K(T, [[FLY1 + .9, 0], [FLY1 + 1.5, 1], [X + .4, 1], [X + 1.1, 0]]);
+const spot = (() => {   // the star's ring
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.strokeStyle = '#ff9a4d'; g.lineWidth = 5; g.beginPath(); g.arc(32, 32, 24, 0, TAU); g.stroke(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false })); sp.renderOrder = 8; scene.add(sp); return sp;
+})();
 // ---------- the flight down the beam ----------
 // The camera leaves the telescope's mouth and passes close by each body in turn, on a path bent a little to do so. Its
 // speed is in proportion to how far it is from the nearest stopping place (to a power, FLY_P), and the stopping places are
 // just short of each body, so it closes in on each one ever more slowly, holds it in view, and is flung past it to the next: the long gaps go by in a rush and the bodies get the time. The path
 // (where the camera is after each moment, how fast, and how far the speed lines have run) is worked out once per window size.
-const FLY_P = 1.3, SIG = [Math.log(.02), Math.log(.3)], GLANCE = .55;   // SIG: the speeds (beam lengths a second, natural log) between which the speed lines come on
-const flyA = T => K(T, [[8.5, 0], [FLY0, 1], [FLY1, 1], [FLY1 + .7, 0]]);   // how much of the film is flight
+const FILL = .72, FLY_P = 1.3, SIG = [Math.log(.02), Math.log(.3)], GLANCE = .55;   // FILL: the share of the window's height the photo fills where the flight ends, clear of the caption; SIG: the speeds (beam lengths a second, natural log) between which the speed lines come on
+const flyA = T => K(T, [[8.5, 0], [FLY0, 1], [FLY1, 1], [FLY1 + .7, 0]]);   // how much of the film is flight: the bodies, the sky behind, the gates
 let fl = null;
 function flightPath() {
   const L = photoPoint(0, 0, tmp).distanceTo(st.top), key = W + 'x' + H; if (fl?.key === key) return fl;
-  const lat = HALF * st.R * PHOTO_R / L, th = Math.tan(flyFov() / 2 * D2R), fitEnd = 1 - HALF * st.R / Math.min(th * .8, th * W / H * .9) / L;
+  const lat = HALF * st.R * PHOTO_R / L, th = Math.tan(flyFov() / 2 * D2R), fitEnd = 1 - HALF * st.R / Math.min(th * FILL, th * W / H * .9) / L;
   const end = Math.max(fitEnd, ...beads.map(b => b.f + BODY[b.kind].hold * BODY[b.kind].pass * b.f * lat));   // pass every body even when a tall window needs a wider lens to frame the photo
   const way = [{ f: 0, e: .004, bf: 0, e0: .004, u: 0, v: 0 }, ...beads.map((b, i) => { const B = BODY[b.kind], sx = i % 2 ? -1 : 1, [dx, dy] = wide() ? [sx * .96, .28] : [sx * .3, .95];   // each body passes to one side (on a phone, overhead)
     const e0 = B.pass * b.f * lat; return { f: b.f - B.hold * e0, e: 1.6 * e0, bf: b.f, e0, u: b.u - dx * B.pass, v: b.v + dy * B.pass }; }), { f: end, e: .012, bf: end, e0: .012, u: 0, v: 0 }];   // bf, e0: the body's own place, and its passing distance as a share of the beam's length
@@ -570,7 +550,7 @@ function flightPath() {
     for (let i = n - 1; i >= 0; i--) put(Math.pow(Math.cosh(sB * (i + .5) / n), 1 - FLY_P) * sB / n, B.f - B.e * Math.sinh(sB * i / n), sg(B.e, sB * i / n));
   }
   const k = FLY_S / t.at(-1); for (let i = 1; i < t.length; i++) { t[i] *= k; phi.push(phi[i - 1] + (sig[i] + sig[i - 1]) / 2 * (t[i] - t[i - 1])); }
-  return fl = { key, way, L, t, f, sig, phi, fov: end > fitEnd ? fovFill(HALF * st.R, L * (1 - end), .8, .9) : flyFov(), cu: pchip(way.map(q => [q.bf, q.u])), cv: pchip(way.map(q => [q.bf, q.v])) };
+  return fl = { key, way, L, t, f, sig, phi, fov: end > fitEnd ? fovFill(HALF * st.R, L * (1 - end), FILL, .9) : flyFov(), cu: pchip(way.map(q => [q.bf, q.u])), cv: pchip(way.map(q => [q.bf, q.v])) };
 }
 function flyNow(T) {   // st.fly: how far down the beam (0 at the telescope, 1 at the photo); st.sig: how hard it is rushing, 0 to 1; st.phi: how far the speed lines have run
   if (T < 8) { st.fly = st.sig = st.phi = 0; return; }   // the telescope is still turning to its field: no path yet
@@ -578,229 +558,34 @@ function flyNow(T) {   // st.fly: how far down the beam (0 at the telescope, 1 a
   const k = clamp01((q - F.t[lo]) / Math.max(1e-9, F.t[hi] - F.t[lo])), mix = a => a[lo] + (a[hi] - a[lo]) * k;
   st.fly = mix(F.f); st.sig = mix(F.sig) * flyA(T); st.phi = mix(F.phi);
 }
-const BEAD_GO = 21.4;   // the rings leave the photo, all but the star's
-
-// ---------- one star's spectrum: 102 bars, each a real measurement (photo.json, from live/spectrum.js) ----------
-const SP_BANDS = [[.75, 1.11], [1.11, 1.64], [1.64, 2.42], [2.42, 3.82], [3.82, 4.42], [4.42, 5]];   // live/spectral.js
-const bars = PH.spectrum.map(([um, flux, doubt, day, det]) => ({ n: (det - 1) * 17 + chanOf(um, SP_BANDS[det - 1]), flux, doubt, day, at: 0 })).sort((a, b) => a.n - b.n);
-const STAR_UM = [0, 1, 2, 3].map(k => lamAt(...tileUV(k, starDir)));   // the wavelength the star was seen at in each of the first four photos
-const SPEC_MAX = Math.max(...bars.map(b => b.flux));
-{ // when each bar appears: the four colors of the first four photos at their own moments, then the rest in the order they were really measured
-  const first = STAR_UM.map(um => chanOf(um, BAND)), when = [27.3, ...STEP_T];
-  const rest = bars.filter(b => !first.includes(b.n)).sort((a, b) => a.day - b.day);
-  bars.forEach(b => { const k = first.indexOf(b.n); b.at = k >= 0 ? when[k] + .3 : 31.6 + 2.9 * rest.indexOf(b) / (rest.length - 1); });
-}
-const specEl = $('spec'), specG = specEl.getContext('2d'); let specW = 0, specDrawn = -1;
-function drawSpectrum(T, x, y) {   // under the star at window (x, y)
-  const a = K(T, [[27, 0], [27.5, 1], [X, 1], [X + .5, 0]]) * mainA; specEl.style.opacity = a; if (a <= 0) return;
-  const w = Math.round(Math.min(620, W - 36)), h = 118, k = Math.min(2, devicePixelRatio);
-  if (specW !== w) { specW = w; specEl.width = w * k; specEl.height = h * k; specEl.style.width = w + 'px'; specEl.style.height = h + 'px'; specDrawn = -1; }
-  specEl.style.transform = `translate(${Math.round(x - w / 2)}px,${Math.round(y + (W < H ? 58 : 74))}px)`;
-  const key = Math.round(T * 60); if (key === specDrawn) return; specDrawn = key;
-  const g = specG, bw = w / 102, base = h - 22, top = 16; let n = 0;
-  g.setTransform(k, 0, 0, k, 0, 0); g.clearRect(0, 0, w, h);
-  g.fillStyle = 'rgba(255,255,255,.3)'; g.fillRect(0, base, w, 1);
-  for (const b of bars) {
-    const grow = clamp01((T - b.at) / .22); if (grow <= 0) continue; n++;
-    const bh = Math.max(2, (base - top) * b.flux / SPEC_MAX) * sm(grow), [r, gr, bl] = rampAt((b.n + .5) / 102), bx = b.n * bw + .6, wd = Math.max(1, bw - 1.2);
-    g.fillStyle = g.strokeStyle = `rgb(${r},${gr},${bl})`;
-    if (b.doubt) { g.globalAlpha = .38; g.fillRect(bx, base - bh, wd, bh); g.globalAlpha = 1; g.fillRect(bx, base - bh, wd, 1.5); } else g.fillRect(bx, base - bh, wd, bh);   // doubtful: pale, with a cap
-    if (grow < 1) { g.globalAlpha = 1 - grow; g.fillStyle = '#fff'; g.fillRect(bx, base - bh, wd, bh); g.globalAlpha = 1; }
-  }
-  g.font = '10px "Space Mono", monospace'; g.fillStyle = 'rgba(255,255,255,.6)'; g.textBaseline = 'top';
-  g.textAlign = 'left'; g.fillText('0.75 microns', 0, base + 7); g.textAlign = 'right'; g.fillText('5 microns', w, base + 7);
-  g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,.86)'; g.fillText(n === 1 ? '1 color' : n < 102 ? `${n} colors` : '102 colors: the star\u2019s spectrum', 0, 0);
-}
-
-// ---------- the push-in: the photo's own pixels around one asteroid (sheba.png and photo.json "zoom": bake/intro_photo.py) ----------
-// No resampling: each square is one detector pixel, placed where it sits on the photo, in the photo's own stretch.
-const ZM = PH.zoom, sheba = beads.find(b => b.name === ZM.name), ZMID = ZM.corners.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[1] / 4], [0, 0]);
-const pixels = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(12, 3)).setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)).setIndex([0, 1, 2, 0, 2, 3]), new THREE.ShaderMaterial({
-  uniforms: { uPic: { value: zoomTex }, uAlpha: { value: 0 }, uGain: { value: 1.7 }, uN: { value: ZM.n } }, transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
-  fragmentShader: `uniform sampler2D uPic; uniform float uAlpha, uGain, uN; varying vec2 vUv;
-    void main(){ float br = clamp(texture2D(uPic, vUv).r * uGain, 0., 1.); vec2 g = vUv * uN, fg = abs(fract(g - .5) - .5) / fwidth(g);
-      vec3 col = br * vec3(.86, .93, 1.1) + vec3(.5, .62, .8) * (1. - min(min(fg.x, fg.y), 1.)) * .13;   // the photo's look, and a faint line between pixels
-      gl_FragColor = vec4(col, uAlpha); }`
-}));
-pixels.frustumCulled = false; pixels.renderOrder = 2.6; scene.add(pixels);
-const pushAt = U => K(U, [[SH_U, 0], [SH_U + 2.2, 1], [SH_U + SH - 1.4, 1], [SH_U + SH + .4, 0]]);
-const PIX_IN = .8;   // how far in before the photo's own pixels take over from photo.jpg (they fill the view from about there)
-let pushK = 0, mainA = 1, deckA = 0;   // how far in the push is; and which of the two scenes is on screen (the other is 0)
-function pushIn(P, k) {   // the pose through the telescope (eyePose), pushed in on the asteroid: it stays where it is on screen while everything grows round it
-  const S = photoPoint(sheba.u + (ZM.at[0] - sheba.u) * k, sheba.v + (ZM.at[1] - sheba.v) * k), c = ZM.corners.map(q => photoPoint(q[0], q[1])), pix = c[0].distanceTo(c[1]) / ZM.n;
-  const fovS = 2 * Math.atan(pix * (wide() ? 34 : 44) / 2 / S.distanceTo(st.top)) / D2R, fov = Math.exp(Math.log(P.fov) * (1 - k) + Math.log(fovS) * k);
-  P.tgt.copy(S).lerp(photoPoint(0, 0, tmp), (fov - fovS) / (P.fov - fovS)); P.dir.copy(st.top).sub(P.tgt); P.dist = P.dir.length(); P.dir.normalize(); P.fov = fov;
-  const ax = [c[1].clone().sub(c[0]).normalize(), c[3].clone().sub(c[0]).normalize()].flatMap(a => [a, a.clone().negate()]).sort((a, b) => b.dot(P.up) - a.dot(P.up))[0];   // the pixels' own upright
-  P.up.lerp(ax, k).normalize();
-}
-
-// ---------- the deck of colours: comet 3I/ATLAS and a star, one thin sheet per colour ----------
-// Its own small scene: SPHEREx, its beam, and 102 sheets fanned out along it, 0.75 microns nearest the telescope and
-// 5 microns farthest. On every sheet each object's glow has an AREA in proportion to its measured brightness in that
-// colour: the comet's from data/comets/3i-atlas/comet.json (December 2025, bake/comet_spectrum.py), the star's from
-// photo.json (the film's star, scaled by one number so that the two start as bright). Brightness is the measurement, so
-// the sheets are only faintly tinted. A reading with a large error bar, or a flagged one, is pale; a colour with no
-// reading is an empty dashed sheet. The repo's CO2 band (4.20 to 4.32 microns, the band co2_verdict tests) is outlined
-// in orange, and the real photo of the brightest sheet is held up beside the deck.
-// Illustrative: each sheet is really its own exposure, taken over about a week; the star is elsewhere in the sky.
-const dScene = new THREE.Scene(), dcam = new THREE.PerspectiveCamera(20, 1, .05, 400);
-const dlabels = [];
-function dlabel(text, cls = '') {   // a deck label: at(world point, [dx, dy, anchor x, anchor y], opacity)
-  const el = document.createElement('div'); el.className = 'lbl deck ' + cls; el.textContent = text; el.style.opacity = 0; $('labels').append(el);
-  const L = { el, o: 0, at(q, [dx, dy, ax, ay] = [10, -5, 0, 0], a = 1) {
-    tmp.copy(q).project(dcam); const o = tmp.z < 1 ? +(a * deckA).toFixed(3) : 0; if (o !== L.o) el.style.opacity = L.o = o; if (o <= .01) return;
-    el.style.transform = `translate(${((tmp.x + 1) / 2 * W + dx).toFixed(1)}px,${((1 - tmp.y) / 2 * H + dy).toFixed(1)}px) translate(${ax * 100}%,${ay * 100}%)`;
-  } };
-  dlabels.push(L); return L;
-}
-const deckFrame = (() => {
-  const N = 102, X0 = 2.8, hs = 1.5, CR = .5, STAR = [-.45, .6], FOV = 20;
-  const posOf = um => { let k = SP_BANDS.findIndex(b => um < b[1]); if (k < 0) k = 5; return Math.max(0, Math.min(101.99, 17 * k + 17 * Math.log(um / SP_BANDS[k][0]) / Math.log(SP_BANDS[k][1] / SP_BANDS[k][0]))); };
-  const sheets = Array.from({ length: N }, (_, n) => ({ n, c: [], s: null, col: rampAt((n + .5) / N).map(v => .7 + .3 * v / 255) }));   // mostly white
-  for (const q of CM.spectrum['2025-12']) sheets[Math.floor(posOf(q.lam))].c.push(q);
-  for (const [um, flux, doubt] of PH.spectrum) sheets[Math.floor(posOf(um))].s = { flux, doubt };
-  for (const sh of sheets) if (sh.c.length) { sh.flux = sh.c.reduce((a, q) => a + q.flux, 0) / sh.c.length; sh.rel = Math.min(1, sh.c.reduce((a, q) => a + q.err, 0) / sh.c.length / Math.max(sh.flux, 1e-3)); }
-  const lit0 = sheets.find(sh => sh.flux && sh.s), KS = lit0.flux / lit0.s.flux;   // the star, scaled to start as bright as the comet
-  const FMAX = Math.max(...sheets.map(sh => sh.flux ?? 0)), rad = f => .46 * hs * Math.sqrt(Math.max(f, 0) / FMAX);   // area in proportion to brightness
-  const co2 = sheets.filter(sh => sh.c.some(q => q.lam >= 4.20 && q.lam <= 4.32)), hot = new Set(co2.map(sh => sh.n)), best = sheets.reduce((a, sh) => (sh.flux ?? 0) > (a.flux ?? 0) ? sh : a), measured = sheets.filter(sh => sh.flux).length;
-  const shot = CM.photos.reduce((a, q) => q.flux > a.flux ? q : a), when = new Date((shot.mjd - 40587) * 864e5);   // the brightest sheet's own photo
-  console.assert(hot.has(best.n) && Math.floor(posOf(shot.lam)) === best.n, 'the photo held up should be the brightest sheet, in the CO2 band');
-  const glow = glowTex([[0, '#fff'], [.18, 'rgba(255,255,255,.95)'], [.42, 'rgba(255,255,255,.32)'], [.7, 'rgba(255,255,255,.07)'], [1, 'rgba(255,255,255,0)']]), plane = new THREE.PlaneGeometry(2, 2);
-  const flat = (map, order, add = true) => { const m = new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ map, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide, blending: add ? THREE.AdditiveBlending : THREE.NormalBlending })); m.rotation.y = -Math.PI / 2; m.renderOrder = order; m.frustumCulled = false; dScene.add(m); return m; };
-  const spr = (map, order) => { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, depthTest: false })); m.renderOrder = order; dScene.add(m); return m; };
-  for (const sh of sheets) {
-    sh.fill = flat(null, 3); sh.fill.material.color.setRGB(.8, .88, 1); sh.fill.scale.setScalar(hs);
-    if (sh.flux) { sh.cg = flat(glow, 6); sh.cg.material.color.setRGB(...sh.col); }
-    if (sh.s) { sh.sg = flat(glow, 6); sh.sg.material.color.setRGB(...sh.col); }
-  }
-  const card = flat(cometTex, 10, false), cardRing = spr(ringAccent, 11), ask = [spr(ringWhite, 9), spr(ringWhite, 9)];
-  const dcraft = makeCraft(); dcraft.scale.setScalar(CR); dcraft.rotation.z = -Math.PI / 2; dcraft.position.set(-CR, 0, 0); dScene.add(dcraft);   // its mouth at the origin, looking along +x
-  const dsun = new THREE.DirectionalLight(0xfff4e2, 3); dsun.position.set(-2, 5, 8); dScene.add(dsun, new THREE.HemisphereLight(0x8fb4ff, 0x0a1020, .6));
-  const beam = beamBody(dScene), lines = dynLines(2600, dScene, 7), over = dynLines(40, dScene, 12), top = V(); beam.material.opacity = .05;
-  const P = (x, u, v) => V(x, v * hs, u * hs), corners = x => [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([u, v]) => P(x, u, v));
-  beam.put(top, corners(X0));
-
-  const lCraft = dlabel('SPHEREx'), lCount = dlabel('', 'big'), lNear = dlabel('0.75 microns', 'mark'), lFar = dlabel('5', 'mark'), ticks = [1, 2, 3, 4].map(um => ({ um, lab: dlabel(String(um), 'mark') }));
-  const lCo2 = dlabel('CO2 gas glows here\n4.26 microns', 'accent co2'), lCard = dlabel('', 'mark'), lAgree = dlabel(`${co2.length} sheets agree`, 'mark');
-  const lOne = dlabel('one photo, one color'), lAsk = [dlabel('?', 'ask'), dlabel('?', 'ask')];
-  const pad = n => String(n).padStart(2, '0'), shotDay = `${when.getUTCDate()} Dec`, shotTime = `${pad(when.getUTCHours())}:${pad(when.getUTCMinutes())}`;
-  console.assert(when.getUTCMonth() === 11, 'the photo held up should be from December');
-
-  const proj = q => { tmp.copy(q).project(dcam); return [(tmp.x + 1) / 2 * W, (1 - tmp.y) / 2 * H]; };
-  function aim(pos, tgt, up) { dcam.fov = FOV; dcam.aspect = W / H; dcam.position.copy(pos); dcam.up.copy(up); dcam.lookAt(tgt); dcam.updateProjectionMatrix(); dcam.updateMatrixWorld(); }
-  function fit(pts, dir, up, [x0, y0, x1, y1]) {   // look along -dir with these points filling that rectangle of the window (CSS px)
-    const tgt = pts.reduce((a, q) => a.add(q), V()).divideScalar(pts.length); let dist = 30;
-    for (let k = 0; k < 14; k++) {
-      aim(tmp2.copy(tgt).addScaledVector(dir, dist), tgt, up);
-      let a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (const q of pts) { const [x, y] = proj(q); a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); }
-      const px = dist * Math.tan(FOV / 2 * D2R) * 2 / H;
-      tgt.addScaledVector(tmp3.setFromMatrixColumn(dcam.matrixWorld, 0), ((a + c) / 2 - (x0 + x1) / 2) * px).addScaledVector(tmp3.setFromMatrixColumn(dcam.matrixWorld, 1), -((b + d) / 2 - (y0 + y1) / 2) * px);
-      dist *= Math.max((c - a) / (x1 - x0), (d - b) / (y1 - y0));
-    }
-    aim(tmp2.copy(tgt).addScaledVector(dir, dist), tgt, up);
-  }
-  return function frame(d) {   // d: the deck's own seconds
-    const tall = !wide(), DX = tall ? .075 : .105, CARD = tall ? 1.15 : 1.5, xEnd = X0 + (N - 1) * DX;   // on a phone the deck stands up, the telescope at the bottom
-    const s = sm((d - DQ) / D_FAN), la = sm((d - DQ - D_FAN + .5) / .7), lit = sm((d - D_LIT) / .9), pop = sm((d - D_POP) / 1.3), kc = sm((d - D_POP + 1.4) / 1.6), qa = sm(d / .6), named = lit > .5, throb = 1 + .12 * Math.sin((d - D_LIT) * 5.5) * lit * (1 - sm((d - D_LIT - 2.6) / .8));
-    const tilt = .82 - .06 * Math.min(1, d / DQ) - (tall ? .1 : .28) * sm((d - DQ + .6) / 4) + .12 * sm((d - D_LIT) / (DK - D_LIT)), el = .1;   // the first sheet seen clear of the telescope for the question, drifting; then round to the side as the deck grows
-    const dir = V(-Math.sin(tilt) * Math.cos(el), Math.sin(el), Math.cos(tilt) * Math.cos(el)), up0 = tall ? V(1, 0, 0) : Y;
-    const right = V().crossVectors(up0, dir).normalize(), up = V().crossVectors(dir, right);   // the camera's own right and up
-    const xNow = X0 + (N - 1) * DX * s, Xn = n => X0 + n * DX * s;
-    const cHome = tall ? V(X0 + best.n * DX, 0, 0).addScaledVector(right, hs + CARD + .45) : V(xEnd + (CARD + 1.25) * Math.cos(tilt), 0, (CARD + 1.25) * Math.sin(tilt));   // where the photo is held up
-    const key = [V(-1.3 * CR, CR, 0), V(-1.3 * CR, -CR, 0), ...corners(X0), ...corners(xNow), ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => V(xNow, 0, 0).lerp(cHome.clone().addScaledVector(right, a * CARD).addScaledVector(up, b * CARD), kc))];
-    fit(key, dir, up0, tall ? [58, 84, W - 14, H - 262] : [58, 150, W - 58, H - 214]);
-    const pxAt = q => tmp.copy(dcam.position).sub(q).dot(dir) * Math.tan(FOV / 2 * D2R) * 2 / H;   // world size of one CSS pixel there
-    const out = tall ? right : up, ve = tall ? -1 : 1;   // labels stand off the deck's upper edge (on a phone, its right edge); the scale runs along the opposite one
-    const mixc = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
-    lines.begin(); over.begin();
-    for (const c of corners(X0)) lines.seg(top, c, WHITE, .3, .6);
-    lines.seg(top, P(Xn(N - 1), 0, 0), mixc(WHITE, ACCENT, lit), .15, .4 * s);   // the comet's line of sight, through every sheet
-    lines.seg(P(X0, ...STAR), P(Xn(N - 1), ...STAR), WHITE, .22 * s);            // and the star's
-    for (const sh of sheets) {
-      const x = Xn(sh.n), a = sh.n ? sm(s * 2.5) : 1, h = hot.has(sh.n), k = h ? 1 : 1 - .45 * lit, cs = corners(x);
-      sh.fill.position.set(x, 0, 0); sh.fill.material.opacity = Math.max(a * (h ? .035 + .03 * lit : .03) * (sh.cg ? 1 : .3) * (tall ? .4 : .6) * (.12 + .88 * s * s), sh.n ? 0 : .05 * (1 - s));   // closed up, the sheets overlap: each one fainter
-      const ec = h ? mixc(sh.col, ACCENT, lit) : sh.col;
-      if (sh.cg || !sh.n) cs.forEach((c, i) => lines.seg(c, cs[(i + 1) % 4], sh.n ? ec : WHITE, a * (sh.n ? (h ? .5 + .5 * lit : .34 * k) : 1 - .55 * s)));
-      else cs.forEach((c, i) => lines.dash(c, cs[(i + 1) % 4], sh.col, a * .3 * k));   // no reading: an empty dashed sheet
-      let show = a * (.03 + (tall ? .24 : .4) * s * s); if (!sh.n) show = .95 + (show - .95) * sm(s * 2.5);   // before the fan, the first sheet alone: two dots
-      if (sh.cg) { sh.cg.position.set(x + .001, 0, 0); sh.cg.scale.setScalar(Math.max(rad(sh.flux) * 1.7, .03) * (h ? throb : 1)); sh.cg.material.opacity = show / (1 + 5 * sh.rel) * (h ? 1 + .5 * lit : 1 - .25 * lit); }
-      if (sh.sg) { sh.sg.position.copy(P(x + .001, ...STAR)); sh.sg.scale.setScalar(Math.max(rad(KS * sh.s.flux) * 1.7, .03)); sh.sg.material.opacity = show * (sh.s.doubt ? .4 : 1) * (1 - .25 * lit); }
-    }
-    // the question: which of the two dots is the comet?
-    [[0, 0], STAR].forEach((uv, i) => {   // the question marks turn into the answer, where they stand
-      const q = P(X0, ...uv), k = pxAt(q), said = named ? (i ? 'star' : 'comet 3I/ATLAS') : '?', el = lAsk[i].el;
-      ask[i].position.copy(q); ask[i].scale.setScalar(k * 56); ask[i].material.map = named && !i ? ringAccent : ringWhite; ask[i].material.opacity = qa;
-      if (el.textContent !== said) { el.textContent = said; el.className = 'lbl deck ' + (named ? 'big' + (i ? '' : ' accent') : 'ask'); }
-      lAsk[i].at(q.addScaledVector(up, 32 * k), [0, 0, -.5, -1], qa * Math.abs(2 * lit - 1));
-    });
-    lOne.at(P(X0, 0, -1).addScaledVector(up, -8 * pxAt(P(X0, 0, -1))), [0, 6, -.5, 0], tall ? 0 : sm(d / .6) * (1 - sm(s * 14)));
-    // the scale, in microns
-    const edge = n => P(Xn(n), tall ? 0 : 1, -ve),   // on a phone, level with the comet in the middle of each sheet
-     tAt = tall ? [-5, 0, -1, -.5] : [0, 4, -.5, 0];
-    for (const t of ticks) { const q = edge(posOf(t.um)), k = pxAt(q); lines.seg(q.clone().addScaledVector(out, -3 * k), q.addScaledVector(out, -9 * k), WHITE, .6 * la); t.lab.at(q, tAt, la); }
-    lNear.at(edge(0).addScaledVector(out, -9 * pxAt(edge(0))), tAt, la); lFar.at(edge(N - 1).addScaledVector(out, -9 * pxAt(edge(N - 1))), tAt, la * (tall ? 1 : 1 - pop));
-    { const a = P(Xn(co2[0].n - .5), 1, ve), b = P(Xn(co2.at(-1).n + .5), 1, ve), k = pxAt(a), dd = out.clone().multiplyScalar(12 * k), a1 = a.clone().add(dd), b1 = b.clone().add(dd);   // the CO2 band, bracketed
-      for (const [p0, p1] of [[a.clone().addScaledVector(out, 3 * k), a1], [b.clone().addScaledVector(out, 3 * k), b1], [a1, b1]]) lines.seg(p0, p1, ACCENT, .9 * lit);
-      lAgree.at(a1.lerp(b1, .5), [0, -5, -.5, -1], tall ? 0 : lit); }
-    // the real photo of the brightest sheet: out of the deck, turned to face the viewer
-    const xc = Xn(best.n), cc = V(xc, 0, 0).lerp(cHome, pop), half = hs + (CARD - hs) * pop;
-    card.visible = pop > 0; card.position.copy(cc); card.scale.setScalar(half); card.quaternion.setFromEuler(new THREE.Euler(0, -Math.PI / 2, 0)).slerp(dcam.quaternion, pop); card.material.opacity = sm(pop * 3);
-    card.material.color.setRGB(1.5, 1.3, 1.1); cardRing.material.opacity = 0;
-    if (pop > 0) {
-      const cr = V(1, 0, 0).applyQuaternion(card.quaternion), cu = V(0, 1, 0).applyQuaternion(card.quaternion), cq = [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([u, v]) => cc.clone().addScaledVector(cr, u * half).addScaledVector(cu, v * half));
-      cq.forEach((c, i) => over.seg(c, cq[(i + 1) % 4], WHITE, pop));
-      (tall ? [[P(xc, -1, -1), cq[1]], [P(xc, 1, -1), cq[2]]] : [[P(xc, 1, 1), cq[1]], [P(xc, 1, -1), cq[2]]]).forEach(([a, b]) => over.seg(a, b, ACCENT, .8 * pop, .45 * pop));   // from its own sheet
-      cardRing.position.copy(cc); cardRing.scale.setScalar(half * .62); cardRing.material.opacity = sm((pop - .7) / .3);
-      lCo2.at(cc.clone().addScaledVector(up, half), [0, -8, -.5, -1], sm((pop - .6) / .4));
-      lCard.el.textContent = tall ? `its real photo\n${shotDay}, ${shotTime}` : `its real photo · ${shotDay}, ${shotTime}`;
-      lCard.at(cc.clone().addScaledVector(up, -half), [0, 8, -.5, 0], sm((pop - .75) / .25));
-    } else { lCo2.at(cc, undefined, 0); lCard.at(cc, undefined, 0); }
-
-    lCraft.at(tall ? V(-CR, 0, 0).addScaledVector(right, CR) : V(-CR * .6, -CR, 0), tall ? [8, 0, 0, -.5] : [0, 10, -.5, 0], sm(d / .6));
-    const shown = Math.min(measured, Math.round(1 + (measured - 1) * s));
-    lCount.el.textContent = s < 1 ? `${shown} colors` : tall ? `${measured} of 102\nmeasured` : `${measured} of 102 measured`;
-    if (tall) lCount.at(P(X0, 1, 1).addScaledVector(right, -14 * pxAt(P(X0, 1, 1))), [-8, 0, -1, -.5], sm((s - .07) * 10) * (1 - la)); else lCount.at(P(X0, -1, 1), [0, -12, -1, -1], sm((s - .07) * 10));
-    lNear.el.textContent = tall ? '0.75\nmicrons' : '0.75 microns';
-    frame.info = { co2: proj(P(Xn(best.n), 0, 0)), scan: [proj(P(X0, 1, .5)), proj(P(Xn(N - 1), 1, .5))], measured, dashed: N - measured, co2n: co2.length, fanned: s };   // for the checks
-    lines.end(); over.end();
-  };
-})();
 
 // ---------- labels ----------
 // A label sits to the right of its point unless `at` says otherwise: [dx, dy] in pixels, then how much of its own
-// width and height to shift by (-.5, -1 = centred above), then true for a short line down to the point.
+// width and height to shift by (-.5, -1 = centred above).
 const labels = [];
-function label(text, pos, alpha, cls = '', at = null) { const el = document.createElement('div'); el.className = 'lbl ' + cls; $('labels').append(el); labels.push({ el, pos, alpha, at, o: -1, lead: false, text: typeof text === 'function' ? text : () => text, said: null }); }
+function label(text, pos, alpha, cls = '', at = null) { const el = document.createElement('div'); el.className = 'lbl ' + cls; $('labels').append(el); labels.push({ el, pos, alpha, at, o: -1, text: typeof text === 'function' ? text : () => text, said: null }); }
 const sysA = T => K(w(T), [[30, 1], [31.4, 0]]);   // the solar system fades before the sphere unfolds
 const wide = () => W > H;
-const sideA = T => K(T, [[FLY1 + .6, 0], [OVER, 1], [16.4, 1], [17.4, 0]]);   // while the beam is seen from the side
 label('Sun', o => o.set(0, 0, 0), T => K(w(T), [[11.6, 0], [12.6, 1]]) * sysA(T));
-label('Earth', o => o.copy(st.E), T => Math.max(sideA(T), K(w(T), [[6.8, 0], [7.8, 1]]) * sysA(T)), '', () => T_now < X ? [0, EARTH_R / st.px + 8, -.5, 0] : null);
-label('SPHEREx', o => o.copy(st.p), T => Math.max(K(T, [[.8, 0], [1.6, 1], [4.9, 1], [5.7, 0]]), sideA(T)), '', () => T_now > 8 ? (wide() ? [0, 44, -.5, 0] : [-16, 0, -1, -.5]) : null);
+label('Earth', o => o.copy(st.E), T => K(w(T), [[6.8, 0], [7.8, 1]]) * sysA(T));
+label('SPHEREx', o => o.copy(st.p), T => K(T, [[.8, 0], [1.6, 1], [4.9, 1], [5.7, 0]]));
 label('to the Sun', o => o.copy(st.E).addScaledVector(st.s, st.R * 1.25), T => K(w(T), [[7.4, 0], [8.4, 1], [10.6, 1], [11.6, 0]]));
 label('90°', o => o.copy(st.E).addScaledVector(st.s, st.R * .34).addScaledVector(st.u, st.R * .34), T => K(w(T), [[8.4, 0], [9.2, 1], [17.4, 1], [18.6, 0]]));
-// the close look: the photo, what is in it, the marks of the distance scale, then the filter's colours
-label('the photo', o => photoPoint(0, 0, o).addScaledVector(wide() ? st.sideUp : st.sideRight, (wide() ? -1.5 : 1.5) * HALF * st.R), sideA, '', () => wide() ? [0, 6, -.5, 0] : [6, 0, 0, -.5]);
-for (const b of beads) label(`${b.ours ? 'star' : b.name} · ${b.dist}`, o => o.copy(b.pos), T => Math.max(b.lab, b.a * K(T, [[16.4, 1], [17.4, 0]]) * (1 - flyA(T))), b.ours ? 'accent' : '',
-  () => flyA(T_now) > .5 ? [0, Math.min(b.rpx * (b.kind === 'star' ? 1.7 : b.kind === 'galaxy' ? .62 : 1.08), H * .2) + 12, -.5, 0] : wide() ? [0, -(b.f * HALF * st.R * 1.15 / st.px) - (b.tier ? 32 : 9), -.5, -1, !!b.tier] : [14, 0, 0, -.5]);   // clear of the beam's upper edge, on two rows
-for (const m of MARKS) label(() => wide() ? m.text.replace('\n', ' ') : m.text, o => o.copy(m.pos), sideA, 'mark', () => wide() ? [0, 5, -.5, 0] : [-8, 0, -1, -.5]);
-label(T => T < 26.9 ? 'one star' : `one star · ${STAR_UM[Math.round(stepAt(T))].toFixed(2)} microns`, o => o.copy(star.pos), T => K(T, [[21.6, 0], [22.4, 1], [X, 1], [X + .6, 0]]), 'accent', () => [13, -13, 0, -1]);
-const stripeA = T => K(T, [[23.2, 0], [23.8, 1], [25.8, 1], [26.4, 0]]);
-label(`about ${BAND[0]} microns`, o => photoPoint(-1, 1, o), stripeA, '', () => [0, 8, 0, 0]);
-label(`about ${BAND[1]} microns`, o => photoPoint(1, 1, o), stripeA, '', () => [0, 8, -1, 0]);
-label('helium glow', o => photoPoint(PH.lam.bright_band_u, -1, o), stripeA, '', () => [0, -8, -.5, -1]);
-label(`${ZM.name} · one pixel`, o => o.copy(sheba.pos), () => sm((pushK - .85) / .15), '', () => [0, wide() ? 50 : 44, -.5, 0]);
-let T_now = 0;
+// the flight: each body's name and distance under it while it is the one being passed; then the photo's colours
+for (const b of beads) label(b.said, o => o.copy(b.pos), () => b.lab, '', () => [0, Math.min(b.rpx * (b.kind === 'star' ? 1.7 : b.kind === 'galaxy' ? .62 : 1.08), H * .2) + 12, -.5, 0]);
+label(T => `one star · ${STAR_UM[Math.round(stepAt(T))].toFixed(2)} microns`, o => o.copy(starSpot), spotA, 'accent', () => [13, -13, 0, -1]);
+const stripeA = T => K(T, [[FLY1 + 1.2, 0], [FLY1 + 1.7, 1], [STEP_T[0] - .5, 1], [STEP_T[0] - .1, 0]]);   // the first photo's own stripes, named before the telescope steps on
+label(`about ${BAND[0]} microns`, o => photoPoint(-1, -1, o), stripeA, '', () => [0, -8, 0, -1]);
+label(`about ${BAND[1]} microns`, o => photoPoint(1, -1, o), stripeA, '', () => [0, -8, -1, -1]);
+label('helium glow', o => photoPoint(PH.lam.bright_band_u, -.9, o), stripeA, '', () => [0, 0, -.8, 0]);
 function placeLabels(T) {
   for (const L of labels) {
-    const a = L.alpha(T) * mainA; let vis = a > .01 && L.pos(tmp);
+    const a = L.alpha(T); let vis = a > .01 && L.pos(tmp);
     if (vis) { tmp.project(camera); vis = tmp.z < 1 && Math.abs(tmp.x) < 1.05 && Math.abs(tmp.y) < 1.05; }
     const o = vis ? +a.toFixed(3) : 0; if (o !== L.o) L.el.style.opacity = L.o = o;
     if (!vis) continue;
     const said = L.text(T); if (said !== L.said) L.el.textContent = L.said = said;
-    const [dx, dy, ax, ay, lead] = L.at?.() ?? [10, -5, 0, 0];
-    if (!!lead !== L.lead) L.el.classList.toggle('lead', L.lead = !!lead);
+    const [dx, dy, ax, ay] = L.at?.() ?? [10, -5, 0, 0];
     L.el.style.transform = `translate(${((tmp.x + 1) / 2 * W + dx).toFixed(1)}px,${((1 - tmp.y) / 2 * H + dy).toFixed(1)}px) translate(${ax * 100}%,${ay * 100}%)`;
   }
 }
@@ -817,36 +602,22 @@ const upPhoto = f0.clone().negate().normalize();   // with this up, the photo's 
 // through the telescope: from the top of SPHEREx, a long lens on the photo. Every line of sight is a point from here.
 function eyePose() { const C = photoPoint(0, 0), d = st.top.clone().sub(C), L = d.length(); return pose(C, d, L, upPhoto, wide() ? .07 : .15, fovFill(HALF * st.R, L, .62, .9)); }
 // The flight: from the telescope's mouth straight down the beam towards the photo, with a wide lens, so that what is in the
-// photo comes past one thing at a time in order of distance. After the last body, the lens frames the photo.
-const flyFov = () => wide() ? 55 : 80;
+// photo comes past one thing at a time in order of distance. After the last body, the lens frames the photo. Once there
+// it never quite stops: it starts to draw back, slowly at first, and that becomes the pull-out to the ring.
+const flyFov = () => wide() ? 55 : 80, CREEP = .3;   // CREEP: how much farther back the camera is when the pull-out begins
 const flyCam = (f, o) => o.copy(st.top).lerp(photoPoint(fl.cu(f), fl.cv(f), tmp), f);
-function flyPose() {
+function flyPose(T) {
   const F = flightPath(), f = st.fly, pos = flyCam(f, V()), view = flyCam(Math.min(1, f + 2e-4), V()).sub(flyCam(Math.max(0, f - 2e-4), tmp2)).normalize();
   for (const b of beads) {   // a glance at each body as it comes up, let go as it is passed
     const q = F.way[b.i + 1], xi = (f - q.bf) / q.e0, g = GLANCE * sm((xi + 40) / 30) * (1 - sm((xi + 1.4) / 2.4));
     if (g > 0) view.lerp(tmp2.copy(st.top).lerp(photoPoint(b.u, b.v, tmp), b.f).sub(pos).normalize(), g).normalize();
   }
-  const D = F.L * (1 - f);
+  const D = F.L * (1 - f), back = 1 + CREEP * (Math.max(0, T - FLY1) / (X - FLY1)) ** 2;
   const framing = sm((f - F.way.at(-2).bf) / (F.way.at(-1).f - F.way.at(-2).bf));
-  return pose(pos.addScaledVector(view, D), view.negate(), D, upPhoto, wide() ? .07 : .15, flyFov() + (F.fov - flyFov()) * framing + (wide() ? 16 : 10) * st.sig);   // the lens opens up in the rush
+  return pose(pos.addScaledVector(view, D), view.negate(), D * back, upPhoto, wide() ? .07 + .04 * framing : .15, flyFov() + (F.fov - flyFov()) * framing + (wide() ? 16 : 10) * st.sig);   // the lens opens up in the rush
 }
-// the beam from the side: the telescope on the left and the photo on the right (on a phone, bottom and top), Earth kept out of its way
-function sidePose(T) {
-  const C = photoPoint(0, 0), ax = C.clone().sub(st.top), L = ax.length(); ax.divideScalar(L);
-  const dE = st.E.clone().sub(st.top); dE.addScaledVector(ax, -dE.dot(ax)).normalize();   // from the beam towards Earth
-  const away = [e0, f0].flatMap(a => [a.clone(), a.clone().negate()]).sort((a, b) => a.dot(dE) / a.length() - b.dot(dE) / b.length())[0];   // the side of the photo that faces away from Earth
-  away.addScaledVector(ax, -away.dot(ax)).normalize();   // with this as "up" the photo is seen square on, not as a diamond
-  const up = wide() ? away : ax, right = wide() ? ax : away, back = V().crossVectors(right, up), tilt = (wide() ? .45 : .4) + .02 * (T - 13), fov = wide() ? 14 : 18, tf = Math.tan(fov / 2 * D2R);   // a long lens, so the far end is not squeezed
-  const dir = back.multiplyScalar(Math.cos(tilt)).addScaledVector(ax, -Math.sin(tilt));   // a little from behind the telescope, so the photo shows its face
-  st.sideUp.copy(up); st.sideRight.copy(right);
-  const dist = wide() ? L * Math.cos(tilt) / (1.5 * tf * W / H) : L * Math.cos(tilt) / (.94 * tf);
-  const tgt = st.top.clone().addScaledVector(ax, L * (wide() ? .47 : .5)); if (!wide()) tgt.addScaledVector(right, 54 * dist * 2 * tf / H);   // on a phone the beam stands left of the middle: its labels are on its right
-  return pose(tgt, dir, dist, up, wide() ? .1 : .19, fov);
-}
-// the star, seen from the middle of Earth with a very long lens: every photo of it is then exactly where it was on the sky
-function starPose() { const S = photoPoint(PH.star.u, PH.star.v), d = st.E.clone().sub(S), L = d.length(); return pose(S, d, L, upPhoto, wide() ? .1 : .16, wide() ? 1.15 : 1.7); }
-// the way out of the close look: straight back along the photo's line of sight, to over Earth's shoulder. The photo stays
-// in the middle and Earth comes into view under it; only then does the film swing round to see the ring.
+// the way out of the photo: straight back along its line of sight, past the telescope, to over Earth's shoulder. The photo
+// stays in the middle and Earth comes into view under it; only then does the film swing round to see the ring.
 function backPose() { const ax = photoPoint(0, 0).sub(st.E).normalize(); return pose(st.E.clone().addScaledVector(ax, st.R * .56), ax.clone().negate().addScaledVector(upPhoto, .3), fitDist(st.R * .62), upPhoto, .22); }
 function rectPose(r) {   // look straight at the flat map so it lands exactly on a screen rectangle (CSS px)
   const ppu = r.w / (4 * R2 * st.R), dist = H / (2 * Math.tan(VFOV / 2 * Math.PI / 180) * ppu);
@@ -869,12 +640,8 @@ function ovalRect() { const w = Math.min(W * .92, H * .56 * 2); return { x: (W -
 const SHOTS = [   // a and b in film seconds; the shots after X are the first cut's, and are given that cut's seconds (t)
   { a: 0, b: 4.5, f: T => pose(tmp.copy(st.E).addScaledVector(st.r, .074), tmp2.copy(st.s).multiplyScalar(K(T, [[0, .7], [5, .5]])).addScaledVector(st.t, .68).addScaledVector(st.r, -.1), fitDist(W > H ? .05 : .062), W > H ? tmp3.copy(st.r).multiplyScalar(.3).addScaledVector(tmp4.crossVectors(tmp2, st.r).normalize(), -.95) : st.r, W > H ? .09 : .225) },   // on a phone, high enough that the orbit line clears the caption's rule
   { a: 6.9, b: 8.4, f: eyePose },
-  { a: FLY0, b: FLY1, f: flyPose },
-  { a: OVER, b: 16.2, f: sidePose },
-  { a: 18.4, b: 25.8, f: eyePose },
-  { a: 27.6, b: X, f: starPose },
-  { a: BACK_T - .1, b: BACK_T + .2, f: eyePose },   // the film cuts back from the deck to here (T jumps from DK_T to BACK_T)
-  { a: BACK_T + 1.4, b: BACK_T + 1.6, f: backPose },
+  { a: FLY0, b: X, f: flyPose },
+  { a: X + 2, b: X + 2.2, f: backPose },
   { a: X + 3.6, b: wi(10.4), f: (T, t) => pose(st.E, tmp2.copy(st.s).multiplyScalar(.78).addScaledVector(Y, .42).addScaledVector(tmp3.crossVectors(st.s, Y), .46 + .03 * (t - 8)), fitDist(.38), Y) },
   { a: wi(12.7), b: wi(18.3), f: () => { const el = (W < H ? 60 : 40) * Math.PI / 180; return pose(tmp.copy(st.E).multiplyScalar(.6), tmp2.copy(MID).multiplyScalar(Math.cos(el)).addScaledVector(Y, Math.sin(el)), fitDist(1.1), Y); } },
   { a: wi(21.8), b: wi(29.6), f: (T, t) => { const az = K(t, [[21, -1.08], [30.4, -.34]]), el = K(t, [[21, .44], [30.4, .2]]);
@@ -897,13 +664,10 @@ const hDate = $('h-date').appendChild(new Text('')), hCount = $('h-count').appen
 let capShown = -1, odoShown = -1;
 const odoEl = $('odo'), odoNum = odoEl.firstChild.appendChild(new Text(''));
 const fmtDate = d => new Date((S.mjd0 + d - 40587) * 864e5).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' });
-let deckOn = false, cutShown = -1;
 function render(U) {
-  const T = v2(U), inDeck = U >= DK_U + DIP && U < DK_END - DIP, cut = Math.min(1, Math.abs(U - DK_U - DIP) / DIP, Math.abs(U - DK_END + DIP) / DIP);   // each cut dips to black
-  mainA = inDeck ? 0 : cut; deckA = inDeck ? cut : 0; pushK = pushAt(U);
-  if (cut !== cutShown) canvas.style.opacity = cutShown = cut;
+  const T = v2(U);
   const t = w(T), day = st.day = dayAt(T), speed = (dayAt(T + .05) - dayAt(T - .05)) / .1, R = st.R = shellR(T), close = T < X;   // t: the first cut's seconds
-  const { E, s, u, v, p, r, top } = st; T_now = T;
+  const { E, s, u, v, p, r, top } = st;
   orbitFrame(day, E, s, u, v);
   const al = PHASE.a0 + PHASE.w * day; r.copy(u).multiplyScalar(Math.cos(al)).addScaledVector(v, Math.sin(al));
   st.t.copy(u).multiplyScalar(-Math.sin(al)).addScaledVector(v, Math.cos(al)).multiplyScalar(Math.sign(PHASE.w)); p.copy(E).addScaledVector(r, ORBIT_R);
@@ -914,16 +678,16 @@ function render(U) {
   tileU.uNow.value = day;
   tileU.uFresh.value = Math.max(.0009, .13 * speed);
   tileU.uFill.value = K(t, [[18.2, 1], [19.6, 0]]); tileU.uFront.value = K(t, [[7.5, 0], [9.3, .85], [12.6, 0]]); tileU.uSeam.value = K(t, [[6, .4], [10, .1], [12.5, 0]]);   // on the way out of the close look the camera passes the near side of the ring: outlines only there
-  tileU.uAlpha.value = sys * (T < 5.9 ? 1 : K(T, [[5.9, 1], [6.4, 0], [BACK_T + .5, 0], [BACK_T + 1.4, 1]])); tiles.visible = tileU.uAlpha.value > 0;   // not under the real photo: up close the all-sky picture is a blur
+  tileU.uAlpha.value = sys * (T < 5.9 ? 1 : K(T, [[5.9, 1], [6.4, 0], [X + 1.1, 0], [X + 2, 1]])); tiles.visible = tileU.uAlpha.value > 0;   // not under the real photo: up close the all-sky picture is a blur
   uLift.value = K(t, [[19, 1], [21.5, 0]]);
 
   // the first photo on its tile; the stripes are the filter of the photo being taken now (the first, then the three steps)
-  const pa = photoU.uAlpha.value = K(T, [[4.9, 0], [5.9, 1], [BACK_T + 1.6, 1], [BACK_T + 2.8, 0]]); photo.visible = pa > 0;   // the real photo stays on its tile until the ring is in view
+  const pa = photoU.uAlpha.value = K(T, [[4.9, 0], [5.9, 1], [X + 2.2, 1], [X + 3.4, 0]]); photo.visible = pa > 0;   // the real photo stays on its tile until the ring is in view
   if (photo.visible) {
-    const kf = T < BACK_T ? stepAt(T) : 0, k = Math.min(2, Math.floor(kf)); photoU.uCenter.value.copy(E); photoU.uR.value = R * PHOTO_R;   // between photos the square slides to its next place; back from the deck, the white edge is the first photo's own again
+    const kf = stepAt(T), k = Math.min(2, Math.floor(kf)); photoU.uCenter.value.copy(E); photoU.uR.value = R * PHOTO_R;   // between photos the square slides to its next place
     photoU.uCk.value.fromArray(tC, 3 * k).lerp(tmp.fromArray(tC, 3 * k + 3), kf - k); photoU.uEk.value.fromArray(tE, 3 * k).lerp(tmp.fromArray(tE, 3 * k + 3), kf - k);
-    photoU.uStripe.value = K(T, [[21.6, 0], [21.7, 1], [X - .2, 1], [X + .5, 0]]); photoU.uSweep.value = K(T, [[21.7, -1.1], [23.4, 1.2]]);
-    photoU.uEdge.value = K(T, [[4.9, 0], [5.9, .8], [BACK_T + 1.6, .8], [BACK_T + 2.8, 0]]);
+    photoU.uStripe.value = K(T, [[FLY1 - .1, 0], [FLY1, 1], [X + .6, 1], [X + 1.6, 0]]); photoU.uSweep.value = K(T, [[FLY1, -1.1], [FLY1 + 1.5, 1.2]]);   // the stripes sweep on as the flight arrives, and go as the camera pulls out
+    photoU.uEdge.value = K(T, [[4.9, 0], [5.9, .8], [X + 2.2, .8], [X + 3.4, 0]]);
   }
 
   // the joined-up sky, and its unfolding
@@ -932,17 +696,16 @@ function render(U) {
   shellU.uAlpha.value = K(t, [[17.6, 0], [19.2, 1]]); shellU.uGrid.value = K(t, [[19.5, 0], [22, .13], [35.5, .13], [37.5, .05]]); shellU.uEcl.value = K(t, [[21, 0], [23, .55], [35.5, .55], [37.5, .75]]);
   glassU.uGrid.value = K(t, [[19.5, 0], [22, .2]]); shell.visible = glass.visible = shellU.uAlpha.value > 0; shell.material.depthWrite = shellU.uAlpha.value > .99;
 
-  // Sun, Earth, SPHEREx. Earth and the model of SPHEREx are put away for the look at one star (the camera sits inside Earth);
-  // Earth comes back as the film pulls out, SPHEREx as the white dot it is from then on.
+  // Sun, Earth, SPHEREx. The model of SPHEREx is put away once the flight has left it behind; from the pull-out on it is a white dot.
   earthU.uSun.value.copy(s); const er = K(t, [[19, EARTH_R], [21.4, .0001]]); earth.position.copy(E); earth.scale.setScalar(er);
-  earthU.uA.value = K(T, [[26, 1], [27, 0], [X, 0], [BACK_T, 1]]); earth.visible = er > .0002 && earthU.uA.value > 0;
+  earth.visible = er > .0002;
   sunLight.position.copy(E).addScaledVector(s, 5); sunLight.target.position.copy(E);
   const look = st.look; if (idx > 0 && idx < NT) {   // where the telescope points: the last photo, turning to the next one
     const f = sm((day - tDay[idx - 1]) / Math.max(1e-6, tDay[idx] - tDay[idx - 1]) * 1.6 - .6);
     look.fromArray(tC, 3 * (idx - 1)).lerp(tmp.fromArray(tC, 3 * idx), f).normalize();
   } else if (idx === 0) look.copy(r).lerp(c0, sm((T - 2.6) / 1.8)).normalize();   // turning to its first field
   else look.copy(r);
-  const cs = CRAFT * K(T, [[16.7, 1], [17.4, 0]]); craft.visible = cs > 1e-5;   // the model is gone before the camera comes back to its mouth
+  const cs = CRAFT * K(T, [[FLY0 + .6, 1], [FLY0 + 1.2, 0]]); craft.visible = cs > 1e-5;   // the model is gone before the camera pulls back past it
   top.copy(p).addScaledVector(look, CRAFT * 1.2);   // just clear of the shields, so the camera can sit there
   if (craft.visible) {
     const z = tmp.copy(s).addScaledVector(look, -s.dot(look)).normalize(), x = tmp2.crossVectors(look, z);
@@ -951,7 +714,7 @@ function render(U) {
 
   // camera
   flyNow(T); const fa = flyA(T);
-  const P = poseAt(T); if (pushK > 0) pushIn(P, pushK);
+  const P = poseAt(T); st.dist = P.dist;
   const fov = P.fov ?? VFOV;
   camera.fov = fov; camera.aspect = W / H; camera.near = Math.exp(Math.log(P.dist * .02) * (1 - fa) + Math.log((fl?.L ?? 1) * 2e-5) * fa); camera.far = P.dist * 60 + 60;
   camera.position.copy(P.tgt).addScaledVector(P.dir, P.dist); camera.up.copy(P.up); camera.lookAt(P.tgt);
@@ -976,7 +739,7 @@ function render(U) {
   // guides
   guides.begin();
   // SPHEREx's orbit: put away while the camera looks out through the telescope and from inside Earth
-  const ga = close ? K(T, [[4.9, 1], [6.2, 0], [FLY1 + .6, 0], [OVER, 1], [16.2, 1], [17.4, 0]]) : K(T, [[X + .6, 0], [X + 1.8, 1]]) * K(t, [[0, 1], [9.6, 1], [11.6, 0]]);
+  const ga = close ? K(T, [[4.9, 1], [6.2, 0]]) : K(T, [[X + .6, 0], [X + 1.8, 1]]) * K(t, [[0, 1], [9.6, 1], [11.6, 0]]);
   if (ga > 0) {
     for (let i = 0; i < 96; i++) {
       const a0 = i / 96 * TAU, a1 = (i + 1) / 96 * TAU;
@@ -987,36 +750,25 @@ function render(U) {
       for (const [a, b] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) guides.seg(from, tileCorner(idx - 1, a, b, tmp), WHITE, (.1 + .5 * flash) * ga, (.05 + .3 * flash) * ga);
     }
   }
-  // the beam of the first photo: from the telescope to the four corners of the photo, with a gate across it at every
-  // tenfold step in distance, and each thing in the photo where it really is along its own line of sight
-  const beam = close ? K(T, [[4.55, 0], [4.7, 1], [6.4, .55], [8.4, .55], [FLY0, .8], [16.2, .8], [18.4, .5], [21.2, 0]]) : 0, sa = sideA(T);
-  beamFill.visible = beam > 0; beamFill.material.opacity = .05 * beam * K(T, [[18.4, 1], [19.4, 0]]);
+  // the beam of the first photo: from the telescope to the four corners of the photo, with a gate across it at every tenfold step in distance
+  const beam = close ? K(T, [[4.55, 0], [4.7, 1], [6.4, .55], [8.4, .55], [FLY0, .8], [FLY1, .8], [FLY1 + 1, 0]]) : 0;
+  beamFill.visible = beam > 0; beamFill.material.opacity = .05 * beam;
   if (beam > 0) {
     const shut = 1 + 1.6 * Math.exp(-Math.max(0, T - 4.6) / .3), corners = [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([a, b]) => photoPoint(a, b));
     for (const c of corners) guides.seg(top, c, WHITE, .2 * beam * shut, .5 * beam * shut);
-    beamFill.put(top, corners);
-    const ps = st.px, gateA = Math.max(fa * .22, sa * .32);
-    if (gateA > 0) for (const gt of GATES) for (let k = 0; k < 4; k++) guides.seg(tmp.copy(top).lerp(corners[k], gt.f).clone(), tmp2.copy(top).lerp(corners[(k + 1) % 4], gt.f), WHITE, gateA * (gt.named ? 1.6 : 1));
-    for (const m of MARKS) {   // the marks of the distance scale, off the side of the beam that faces the caption
-      const a = sa, out = wide() ? tmp3.copy(st.sideUp).negate() : tmp3.copy(st.sideRight).negate(), half = m.f * HALF * R * 1.5;
-      tmp.copy(top).lerp(photoPoint(0, 0, tmp2), m.f).addScaledVector(out, half + 5 * ps); m.pos.copy(tmp).addScaledVector(out, 9 * ps);
-      if (a > 0) guides.seg(tmp, m.pos, WHITE, .7 * a);
-    }
+    const bp = beamFill.geometry.attributes.position; top.toArray(bp.array, 0); corners.forEach((c, k) => c.toArray(bp.array, 3 + 3 * k)); bp.needsUpdate = true;
+    if (fa > 0) for (const f of GATES) for (let k = 0; k < 4; k++) guides.seg(tmp.copy(top).lerp(corners[k], f).clone(), tmp2.copy(top).lerp(corners[(k + 1) % 4], f), WHITE, fa * .22);
   }
   for (const b of beads) {
-    const f = b.ours ? b.f + (1 - b.f) * K(T, [[22.4, 0], [23.4, 1]]) : b.f;   // the star's ring slides out to the photo, along the line of sight
-    if (b === sheba) photoPoint(b.u + (ZM.at[0] - b.u) * pushK, b.v + (ZM.at[1] - b.v) * pushK, tmp); else photoPoint(b.u, b.v, tmp);   // pushed in, Sheba's ring sits on its pixel (the predicted spot is 0.4 of a pixel away)
-    b.pos.copy(top).lerp(tmp, f);
-    b.a = close ? K(T, [[FLY1, 0], [FLY1 + .7, 1]]) * (b.ours ? 1 : K(T, [[BEAD_GO, 1], [BEAD_GO + 1, 0]])) : b.ours ? K(T, [[X, 1], [X + .6, 0]]) : 0;   // its ring: from the pull-out on
-    const dz = depth(b.pos), dc = camera.position.distanceTo(b.pos), ca = b.a * sa, B = BODY[b.kind], rw = B.r * b.f * HALF * R * PHOTO_R, rpx = b.rpx = rw / (Math.max(dc, 1e-12) * ppx);   // rpx: the body's radius on screen
-    b.px = b.ours ? 22 : b === sheba ? 17 + 54 * pushK : 17;   // the ring is a fixed size on screen
-    b.sp.visible = b.a > 0 && dz > camera.near;
-    if (b.sp.visible) { b.sp.position.copy(b.pos); b.sp.scale.setScalar(dz * ppx * b.px); b.sp.material.opacity = b.a; }
-    // in flight: the body itself, with a size in space. Far ahead it is a point of light
-    const q = fl?.way[b.i + 1], xi = q ? (st.fly - q.bf) / q.e0 : -99, far = b.kind === 'star' ? 0 : fa * (1 - sm((rpx - (b.kind === 'galaxy' ? 4 : 1.5)) / 3));
+    b.pos.copy(top).lerp(photoPoint(b.u, b.v, tmp), b.f);
+    const dz = depth(b.pos), dc = camera.position.distanceTo(b.pos), B = BODY[b.kind], rw = B.r * b.f * HALF * R * PHOTO_R, rpx = b.rpx = rw / (Math.max(dc, 1e-12) * ppx);   // rpx: the body's radius on screen
+    // the body itself, with a size in space. Far ahead it is a point of light
+    const q = fl?.way[b.i + 1], xi = q ? (st.fly - q.bf) / q.e0 : -99, far = fa * (1 - sm((rpx - (b.kind === 'galaxy' ? 4 : 1.5)) / 3));
     b.front = dz > 0; b.lab = fa * sm((rpx * (b.kind === 'star' ? 2.5 : 1) - 24) / 14) * sm((xi + 16) / 8) * (1 - sm((xi + .5) / 1.3));
-    b.core.visible = dz > camera.near && (ca > 0 || far > 0);
-    if (b.core.visible) { const cs = dz * ppx * (ca > 0 ? b.px * (b.kind === 'asteroid' ? .2 : .42) : b.kind === 'galaxy' ? 7 : 3.4); b.core.position.copy(b.pos); b.core.scale.set(cs * (b.kind === 'galaxy' ? 1.7 : 1), cs, 1); b.core.material.opacity = Math.max(ca, far); }
+    if (b.core) {
+      b.core.visible = dz > camera.near && far > 0;
+      if (b.core.visible) { const cs = dz * ppx * (b.kind === 'galaxy' ? 7 : 3.4); b.core.position.copy(b.pos); b.core.scale.set(cs * (b.kind === 'galaxy' ? 1.7 : 1), cs, 1); b.core.material.opacity = far; }
+    }
     b.mesh.visible = fa > 0; if (b.glow) b.glow.visible = fa > 0;
     if (fa > 0) {
       const un = b.mesh.material.uniforms; b.mesh.position.copy(b.pos); b.mesh.scale.setScalar(rw); un.uA.value = fa;
@@ -1027,8 +779,9 @@ function render(U) {
         un.uTime.value = U; b.glow.position.copy(b.pos); b.glow.scale.setScalar(Math.max(rw * 20, Math.max(dz, 0) * ppx * 9)); b.glow.material.opacity = fa * (.6 + .4 * sm(rpx / 4));
       } else un.uA.value = fa * (1 - sm((xi + 1.1) / .9)) * sm(rpx / 5) * (1 - sm((rpx / H - .42) / .3));   // a flat photo: gone before it is seen edge on, or so large that it is a blur
     }
-    if (beam > 0 && f < .999) guides.seg(top, b.pos, WHITE, .05 * beam * b.a, .3 * beam * b.a);
   }
+  const sa = spotA(T); spot.visible = sa > 0; photoPoint(PH.star.u, PH.star.v, starSpot);
+  if (spot.visible) { spot.position.copy(starSpot); spot.scale.setScalar(depth(starSpot) * ppx * 22); spot.material.opacity = sa; }
   // the rush between bodies: lines of speed past the lens (drawn; they are not stars)
   if (st.sig > .004) {
     const S = camera.near * 60, ax = tmp3.copy(photoPoint(0, 0, tmp)).sub(top).normalize(), rt = tmp4.crossVectors(ax, upPhoto).normalize(), up = tmp5.crossVectors(rt, ax);
@@ -1047,15 +800,8 @@ function render(U) {
   }
   guides.end();
 
-  pixels.visible = pushK > PIX_IN;
-  if (pixels.visible) {   // the pixels are placed from their own middle, so they stay sharp under a very long lens
-    const mid = photoPoint(ZMID[0], ZMID[1], pixels.position), pa = pixels.geometry.attributes.position;
-    ZM.corners.forEach((q, i) => photoPoint(q[0], q[1], tmp).sub(mid).toArray(pa.array, 3 * i)); pa.needsUpdate = true; pixels.material.uniforms.uAlpha.value = sm((pushK - PIX_IN) / .14); pixels.material.uniforms.uGain.value = 1.7 + 1.5 * sm((pushK - .9) / .1);   // once they fill the view, the exposure is lifted so the one pixel reads (illustrative)
-  }
-  if (inDeck) { deckOn = true; deckFrame(U - DK_U); renderer.render(dScene, dcam); }
-  else { if (deckOn) { deckOn = false; for (const L of dlabels) L.el.style.opacity = L.o = 0; } renderer.render(scene, camera); }
+  renderer.render(scene, camera);
   placeLabels(T);
-  if (close || T < X + .6) { tmp.copy(star.pos).project(camera); drawSpectrum(T, (tmp.x + 1) / 2 * W, (1 - tmp.y) / 2 * H); } else if (specEl.style.opacity !== '0') specEl.style.opacity = 0;
 
   // words
   const oa = fa * sm((st.fly - .05) / .04) * (1 - sm((st.fly - (fl?.way.at(-2).f ?? 1) - .001) / .004)); if (oa !== odoShown) odoEl.style.opacity = odoShown = oa;   // it stops at the galaxy: past it there is only the photo
@@ -1063,7 +809,7 @@ function render(U) {
   const hud = close ? K(T, [[.3, 0], [1.2, 1], [4.9, 1], [5.7, 0]]) : K(T, [[X + 1, 0], [X + 2, 1]]) * K(t, [[30, 1], [31, 0]]); $('hud').style.opacity = hud;
   if (hud > 0) { hDate.data = fmtDate(day); hCount.data = (idx <= EARLY ? idx : EARLY + 3 * (idx - EARLY)).toLocaleString('en-US') + (idx === 1 ? ' photo' : ' photos'); }
   const ci = U < CAPTIONS[0][0] ? 0 : CAPTIONS.findIndex(c => U >= c[0] - .15 && U < c[1] + .15);
-  if (ci >= 0 && ci !== capShown) { const c = CAPTIONS[ci]; capShown = ci; capText.innerHTML = c[3]; capNote.textContent = c[4]; $('cap-n').textContent = c[2] + ' / 8'; ticks.forEach((el, i) => el.classList.toggle('on', i < c[2])); }
+  if (ci >= 0 && ci !== capShown) { const c = CAPTIONS[ci]; capShown = ci; capText.innerHTML = c[3]; capNote.textContent = c[4]; $('cap-n').textContent = c[2] + ' / 7'; ticks.forEach((el, i) => el.classList.toggle('on', i < c[2])); }
   const c = CAPTIONS[capShown]; capText.style.opacity = capNote.style.opacity = c && !REDUCED ? Math.min(clamp01((U - c[0]) / .35), clamp01((c[1] - U) / .3)) : c ? 1 : 0;
   $('cap').style.opacity = K(t, [[36.9, 1], [37.4, 0]]);
   root.style.opacity = K(U, [[T_HANDOVER + .1, 1], [T_HANDOVER + 1.5, 0]]);   // hand over to the real map underneath
@@ -1090,7 +836,7 @@ function skip() {
 }
 $('next').onclick = () => (still < STILLS.length - 1 ? showStill(still + 1) : finish());
 addEventListener('resize', () => { resize(); if (!playing) render(REDUCED ? STILLS[still] : Tnow); }, { signal });
-for (const t of [2, 8, fu(11), fu(15.5), SH_U + 3, fu(24), fu(30), DK_U + 2, DK_U + 12, fw(9), fw(18.8), fw(27), fw(33)]) render(t);   // warm up: compile every shader and upload the pictures before the first real frame
+for (const t of [2, 8, fu(11), fu(FLY1 + 1.6), fu(STEP_T[1]), fw(9), fw(18.8), fw(27), fw(33)]) render(t);   // warm up: compile every shader and upload the pictures before the first real frame
 render(0);
 renderer.getContext().readPixels(0, 0, 1, 1, 6408, 5121, new Uint8Array(4));   // wait here for the graphics card to finish all of that, not in the film's first frame
 $('loading').remove();
@@ -1105,11 +851,11 @@ function edges(x, y) {
   return { x0: x0 / k, x1: x1 / k, y0: (h - yt) / k, y1: (h - yb) / k };
 }
 const css = q => { tmp.copy(q).project(camera); return [(tmp.x + 1) / 2 * W, (1 - tmp.y) / 2 * H]; };
-function probe(U) {   // where things are in the frame at film time U (window pixels)
-  render(U); const c = ZM.corners.map(q => photoPoint(q[0], q[1]));
-  return { sheba: css(sheba.pos), pixel: c[0].distanceTo(c[1]) / ZM.n / (camera.position.distanceTo(photoPoint(ZM.at[0], ZM.at[1])) * Math.tan(camera.fov / 2 * D2R) * 2 / H),
-    photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), deck: deckFrame.info,
-    flight: beads.map(b => ({ name: b.name, kind: b.kind, au: b.au, at: css(b.pos), r: b.rpx, front: b.front, drawn: b.mesh.visible && b.mesh.material.uniforms.uA.value > .5, ring: b.sp.visible && b.sp.material.opacity > .01 })), fly: st.fly, rush: st.sig };
+function probe(U) {   // where things are in the frame at film time U (window pixels), and the camera itself
+  render(U);
+  return { photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), star: css(starSpot), frame: css(photoPoint(...tileUV(0, tmp.copy(photoU.uCk.value).normalize()))),   // frame: the middle of the photo being taken
+    cam: { pos: camera.position.toArray(), dir: camera.getWorldDirection(V()).toArray(), fov: camera.fov, dist: st.dist },
+    flight: beads.map(b => ({ name: b.name, kind: b.kind, au: b.au, at: css(b.pos), r: b.rpx, front: b.front, drawn: b.mesh.visible && b.mesh.material.uniforms.uA.value > .5 })), fly: st.fly, rush: st.sig };
 }
 function look(U, pts, r = 2) {   // the brightness really drawn round each point at film time U: [mean, max, mean color] of 0 to 255 over a square of 2r + 1 window pixels
   render(U); const gl = renderer.getContext(), k = renderer.getPixelRatio(), n = Math.max(1, Math.round((2 * r + 1) * k)), px = new Uint8Array(n * n * 4);
@@ -1117,7 +863,7 @@ function look(U, pts, r = 2) {   // the brightness really drawn round each point
     let sum = 0, max = 0; const c = [0, 0, 0]; for (let i = 0; i < px.length; i += 4) { const v = (px[i] + px[i + 1] + px[i + 2]) / 3; sum += v; if (v > max) max = v; for (let j = 0; j < 3; j++) c[j] += px[i + j] / (n * n); } return [sum / (n * n), max, c]; });
 }
 window.__intro = debug = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED };
-if (REC) Object.assign(debug, { probe, look, flightPath, marks: { SH_U, SH, DK_U, DK_END, DIP, D_LIT, FLY0, FLY1: FLY0 + FLY_S } });
+if (REC) Object.assign(debug, { probe, look, flightPath, marks: { FLY0, FLY1: fu(FLY1), STEPS: STEP_T.map(fu), OUT: fu(X), RING: fu(X + 3.6) } });
 if (REC) { $('skip').hidden = true; return { dispose }; }   // a clean picture for the recorder; Escape still leaves
 if (REDUCED) { $('next').hidden = false; showStill(0); } else { playing = true; requestAnimationFrame(() => requestAnimationFrame(tick)); }   // the frame after next: the next one was timed before all of the above ran, and the film would start that much late
 return { skip, dispose };

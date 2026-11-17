@@ -2,17 +2,14 @@
   photo.jpg    the first SPHEREx photo in the public archive (2025W17_4B_0001_1, detector 1, 24 April 2025), zodiacal
                light model subtracted, resampled onto the square of its tile in tiles.bin (tile 0): pixel (i, j) is
                direction c + u e + v f with u, v = -1..1 across and down, f = c x e. 2048 px, about the photo's own pixels.
-  sheba.png    the photo's own pixels around asteroid Sheba (192 x 192 detector pixels, the stretch of photo.jpg), for the
-               film's push-in; photo.json "zoom" says where its four corners sit in the square.
   galaxy.jpg   the galaxy in the photo as the Sloan Digital Sky Survey saw it (SkyServer DR18 colour cutout, 72 arcseconds
                wide, north up, east left; CC-BY, credit Sloan Digital Sky Survey), for the film's flight past it.
   photo.json   the wavelength of every point of that square (a fit to web/data/wavemaps.json D1), where known things
-               sit in it and how far away they are, the star the film follows and its measured spectrum.
+               sit in it and how far away they are, and the star the film marks on it.
 Real distances: asteroids from IMCCE SkyBoT at the photo's time (geocentric), stars from Gaia DR3 parallaxes (IRSA),
 the galaxy from its redshift in the 2MASS Redshift Survey (Huchra et al. 2012, VizieR J/ApJS/199/26) with H0 = 70 km/s/Mpc.
 Real star colours: each star's Gaia DR3 temperature (teff_gspphot), turned into the colour of a black body that hot.
-The star's spectrum comes from bake/intro_spectrum.py (the app's own measurement code). Inputs are kept in
-bake/cache/intro/ and fetched when missing (the photo is 65 MB).
+Inputs are kept in bake/cache/intro/ and fetched when missing (the photo is 65 MB).
 Run: uv run -q --with astropy --with numpy --with pillow --with certifi python bake/intro_photo.py"""
 import json, math, ssl, struct, urllib.parse, urllib.request
 from pathlib import Path
@@ -27,9 +24,8 @@ REPO = Path(__file__).resolve().parent.parent
 OUT, CACHE = REPO / "web/data/intro", REPO / "bake/cache/intro"
 OBS = "2025W17_4B_0001_1"
 FITS_URL = f"https://nasa-irsa-spherex.s3.amazonaws.com/dr1/level2/2025W17_4B/l2b-v27-2026-196/1/level2_{OBS}D1_spx_l2b-v27-2026-196.fits"
-STAR = "735835070124268800"       # the Gaia DR3 star the film follows (G 12.8: bright, not saturated, alone)
+STAR = "735835070124268800"       # the Gaia DR3 star the film marks (G 12.8: bright, not saturated, alone)
 GALAXY = "10421099+3047551"       # 2MASX id, 2MRS redshift from SDSS
-ZOOM, ZN = "Sheba", 96            # the asteroid the film pushes in on, and half the width of its cutout in detector pixels
 SHOW = {"asteroid": ["Sheba", "Pyrrhus"], "star": ["735874686902617984", STAR]}   # the nearest bright one, and the one the film follows
 N, EPS, H0, LY_PER_MPC, AU_PER_LY = 2048, math.radians(23.4392911), 70.0, 3.26156e6, 63241.08
 BAND = (0.75, 1.11)               # detector 1, web/live/spectral.js SP_BANDS
@@ -156,27 +152,14 @@ add("galaxy", "galaxy", uv(gra, gdec), round(mly * 1e6 * AU_PER_LY), f"{round(ml
     ra=gra, dec=gdec, image=dict(file="galaxy.jpg", arcsec=GAL_ARCSEC, credit="Sloan Digital Sky Survey", src="SDSS DR18 SkyServer ImgCutout, CC-BY"))
 objects.sort(key=lambda o: o["au"])
 
-# ---- the photo's own pixels around one asteroid: no resampling, the same stretch as photo.jpg ----
-zb = next(b for b in bodies if b["name"] == ZOOM); zx, zy = (int(round(float(t))) for t in w.all_world2pix(*eq(c + zb["u"] * e + zb["v"] * f), 0))
-cut = img[zy - ZN:zy + ZN, zx - ZN:zx + ZN]; assert cut[ZN, ZN] == cut[ZN - 3:ZN + 4, ZN - 3:ZN + 4].max(), "the asteroid is not the brightest pixel at its predicted place"
-Image.fromarray((np.clip(np.arcsinh(np.clip((cut - lo) / (hi - lo), 0, None) * 10) / np.arcsinh(10), 0, 1) * 255).astype(np.uint8)).save(OUT / "sheba.png", optimize=True)   # row 0 is the lowest detector row
-zc = [[round(float(t), 6) for t in uv(*w.all_pix2world(x - .5, y - .5, 0))] for x, y in [(zx - ZN, zy - ZN), (zx + ZN, zy - ZN), (zx + ZN, zy + ZN), (zx - ZN, zy + ZN)]]   # pixel i covers i - .5 to i + .5
-zoom = dict(name=f"asteroid {ZOOM}", file="sheba.png", n=2 * ZN, corners=zc, at=[round(float(t), 6) for t in uv(*w.all_pix2world(zx, zy, 0))], peak=round(float(cut[ZN, ZN] / np.median(np.abs(cut - np.median(cut))) / 1.4826), 1))
-
-spec_f = CACHE / "star_spectrum.json"
-if spec_f.exists(): spectrum = [[round(p["lam"], 4), round(p["flux"], 2), int(bool(p["doubt"])), round(p["t"] - 60789, 2), int(p["det"][1])] for p in json.loads(spec_f.read_text())["points"]]
-else: spectrum = json.loads((OUT / "photo.json").read_text())["spectrum"]   # keep the committed one
 star = gaia[STAR]; su, sv = uv(star["ra"], star["dec"])
 doc = dict(
     photo=dict(obs=OBS, det=1, mjd=round(mjd, 5), day=round(mjd - 60789, 5), utc=hd["DATE-AVG"][:16], width_deg=round(2 * math.degrees(math.atan(math.sqrt(e @ e))), 3),
                src=f"SPHEREx level 2 image {OBS} D1 (DR1), NASA/IPAC IRSA; zodiacal light model subtracted"),
     lam=dict(coef=[round(float(x), 6) for x in coef], terms="1 u u2 v2 uv2 u3 v uv", band=BAND, fit_err=round(fit_err, 5), bright_band_u=round(band_u, 3), bright_band_um=round(lam_at(band_u, 0), 3)),
-    objects=objects, zoom=zoom, n_bodies=len(bodies),
-    star=dict(id=STAR, ra=star["ra"], dec=star["dec"], g=round(star["g"], 2), u=round(float(su), 4), v=round(float(sv), 4), um=round(lam_at(su, sv), 4)),
-    spectrum=spectrum)
+    objects=objects, n_bodies=len(bodies),
+    star=dict(id=STAR, ra=star["ra"], dec=star["dec"], g=round(star["g"], 2), u=round(float(su), 4), v=round(float(sv), 4), um=round(lam_at(su, sv), 4)))
 (OUT / "photo.json").write_text(json.dumps(doc, separators=(",", ":")))
-assert len(spectrum) == 102 and sorted({p[4] for p in spectrum}) == [1, 2, 3, 4, 5, 6]
 print(f"photo.jpg {(OUT / 'photo.jpg').stat().st_size / 1e6:.2f} MB; {doc['photo']}; wavelength fit within {fit_err:.4f} um; bright band at u {band_u:.2f} = {doc['lam']['bright_band_um']} um")
 for o in objects: print(f"  {o['name']:20s} u {o['u']:+.3f} v {o['v']:+.3f}  {o['dist']:28s} light there: {o['snr']} sigma   {o['src']}")
-print(f"  sheba.png: {2 * ZN} px around detector pixel ({zx}, {zy}); its pixel is {zoom['peak']} times the spread of the pixels around it")
-print(f"  {len(bodies)} known asteroids and comets on the detector; star we follow at u {su:+.3f} v {sv:+.3f}, {doc['star']['um']} um in this photo; spectrum {len(spectrum)} points, {sum(p[2] for p in spectrum)} doubtful")
+print(f"  {len(bodies)} known asteroids and comets on the detector; star we follow at u {su:+.3f} v {sv:+.3f}, {doc['star']['um']} um in this photo")

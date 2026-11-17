@@ -7,11 +7,13 @@ it and does not fetch intro.js, intro.css, three.js or data/intro/. Links with ?
 browser that has seen the tour (ch.tour, which the other suites set), do not play it either.
 The "How this map was made" button replays it over a panned and zoomed map on another day and lands on that same view
 (edges within 2 px, the view and the day unchanged, focus back on the button). Skip and Escape end it within 4 s, and
-Skip works before the film has loaded. Reduced motion: sixteen stills with sixteen captions and a Next button, no animation.
+Skip works before the film has loaded. Reduced motion: eight stills with eight captions and a Next button, no animation.
 The film's own scenes are checked from the pixels it really draws (frame by frame through ?intro=rec): the flight down the
-beam passes two rocks, two stars and a galaxy as solid bodies in order of distance, asteroid Sheba's pixel is one lit square among dark ones, the deck of colors shows its sheets and the
-comet's blaze, and the cut back from the deck lands on the first photo. The flight also passes every body in order without
-time reversal at 320 x 1000 and 320 x 1280. Leaving the page while it loads (pagehide, and a
+beam passes two rocks, two stars and a galaxy as solid bodies in order of distance and ends with the whole photo in view;
+there the photo's stripes of color come on, one star is ringed, and at each of the telescope's three steps the photo
+being taken moves a stripe along while the star stays put and its wavelength changes. The film is one camera move: from
+the start of the flight to the ring of photos the camera never jumps from one frame to the next and nothing fades out.
+The flight and its arrival are also checked at 320 x 1000 and 320 x 1280. Leaving the page while it loads (pagehide, and a
 real navigation away and back) takes the film off at once and it does not come back.
 Run: uv run -q --with playwright python web/tests/intro_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, sys
@@ -20,11 +22,12 @@ from playwright.async_api import async_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 SIZES = [("desktop", dict(viewport={"width": 1440, "height": 900})),
          ("phone", dict(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True))]
-LAZY = ("intro.js", "intro.css", "three", "data/intro/", "data/comets/3i-atlas/")   # what a visit that does not play the film must not fetch
+LAZY = ("intro.js", "intro.css", "three", "data/intro/")   # what a visit that does not play the film must not fetch
 ON = "document.documentElement.dataset.intro"
 RECT = "(() => { const b = document.getElementById('map').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()"
 DAY = "+document.getElementById('time').value"
 TOUR = "document.querySelector('.tour-card h2')?.textContent"
+MOVE, GLANCE, TURN, ZOOM = .16, 15, 4, .2   # the most the camera may do in one frame: move (as a share of its distance to its subject), turn during the flight's glances at the bodies and turn after it (degrees), change its lens (log of the ratio)
 FILM_S = "window.__perf.frames.reduce((a, b) => a + b, 0) / 1000"   # seconds of film played so far
 
 
@@ -80,6 +83,34 @@ async def flight_samples(pg, name, m):
     passed = [next((u for u, bs, _ in flight if not bs[j]["front"]), None) for j in range(len(flight[0][1]))]
     assert all(u is not None for u in passed) and all(a < b for a, b in zip(passed, passed[1:])), f"{name}: bodies are not passed in order: {passed}"
     return flight
+
+
+async def arrival(pg, name, m, vw, vh):
+    """Where the flight ends, the photo is whole, in view and large: the middles of its four edges, in window pixels."""
+    ed = (await pg.evaluate(f"window.__intro.probe({m['FLY1']})"))["photoEdges"]
+    assert all(math.isfinite(q) for e in ed for q in e), f"{name}: the photo's edges at arrival are not finite: {ed}"
+    assert all(0 < x < vw and 0 < y < vh for x, y in ed), f"{name}: at arrival the photo is not inside the window: {ed}"
+    wide, high = math.dist(ed[0], ed[1]), math.dist(ed[2], ed[3])
+    assert max(wide / vw, high / vh) > .6 and min(wide, high) > .8 * max(wide, high), f"{name}: at arrival the photo is {wide:.0f} by {high:.0f} px in a {vw} by {vh} window"
+    return wide
+
+
+async def one_move(pg, name, m):
+    """No hard cut from the start of the flight to the ring: at 60 frames a second the camera never moves more than a
+    small share of its distance to what it looks at, turns more than a little, or changes its lens much between two
+    frames, and the picture stays fully shown. (Half a second apart the same measures are far past these limits.)"""
+    n = int((m["RING"] + 1 - m["FLY0"]) * 60)
+    cams = await pg.evaluate(f"""(() => {{ const out = [], op = id => +getComputedStyle(document.getElementById(id)).opacity;
+      for (let i = 0; i <= {n}; i++) {{ const c = window.__intro.probe({m['FLY0']} + i / 60).cam; out.push([c.pos, c.dir, c.fov, c.dist, op('intro') * op('intro-gl')]); }} return out; }})()""")
+    def jump(a, b):
+        return (math.dist(a[0], b[0]) / min(a[3], b[3]), math.degrees(math.acos(max(-1, min(1, sum(p * q for p, q in zip(a[1], b[1])))))), abs(math.log(a[2] / b[2])))
+    worst = [max(jump(a, b)[k] for a, b in zip(cams, cams[1:])) for k in range(3)]
+    join = cams[int((m['FLY1'] - m['FLY0']) * 60):]; calm = max(jump(a, b)[1] for a, b in zip(join, join[1:]))   # after the flight's own glances at the bodies
+    assert all(c[4] == 1 for c in cams), f"{name}: the picture fades between the flight and the ring"
+    assert worst[0] < MOVE and worst[1] < GLANCE and calm < TURN and worst[2] < ZOOM, f"{name}: the camera jumps between the flight and the ring: moves {worst[0]:.3f} of its distance, turns {worst[1]:.2f} degrees, lens changes {worst[2]:.3f} in one frame"
+    apart = [max(jump(a, b)[k] for a, b in zip(cams, cams[30:])) for k in range(3)]
+    assert apart[0] > 3 * MOVE, f"{name}: the continuity check would not see a cut: {apart}"
+    return [worst[0], calm, worst[2]]
 
 
 async def run(b, name, opts):
@@ -190,10 +221,9 @@ async def run(b, name, opts):
     look = lambda u, pts, r=2: pg.evaluate(f"window.__intro.look({u}, {pts}, {r})")
     vw, vh = opts["viewport"]["width"], opts["viewport"]["height"]
     # the flight: half way down the beam the photo is ahead in the middle, far smaller than it will be at the end
-    u0, u1 = (m["FLY0"] + m["FLY1"]) / 2, m["FLY1"]
-    e0, e1 = (await probe(u0))["photoEdges"], (await probe(u1))["photoEdges"]
-    w0, w1 = abs(e0[0][0] - e0[1][0]), abs(e1[0][0] - e1[1][0])
-    assert 10 < w0 < .5 * w1 and w1 > .5 * vw * (1 if name == "phone" else .4), f"{name}: the flight does not close in on the photo: {w0:.0f} px wide half way, {w1:.0f} px at the end"
+    e0 = (await probe((m["FLY0"] + m["FLY1"]) / 2))["photoEdges"]
+    w0, w1 = abs(e0[0][0] - e0[1][0]), await arrival(pg, name, m, vw, vh)
+    assert 10 < w0 < .5 * w1, f"{name}: the flight does not close in on the photo: {w0:.0f} px wide half way, {w1:.0f} px at the end"
     # The bodies. Each of the five (two rocks, two stars, a galaxy) is flown past as a solid body, held in view for a
     # while as it grows, and left behind, in order of distance. Checked on the pixels drawn: a rock is lit across its
     # face (a ring would be empty in the middle) and stands out from the sky; a star is bright and warmer than white, the
@@ -201,7 +231,6 @@ async def run(b, name, opts):
     # to nothing at its edge. Between bodies the speed lines come on, and they are off while a body is held.
     flight = await flight_samples(pg, name, m)
     assert [b["kind"] for b in flight[0][1]] == ["asteroid", "asteroid", "star", "star", "galaxy"], f"{name}: the flight's bodies: {flight[0][1]}"
-    assert not any(b["ring"] for _, bs, _ in flight for b in bs), f"{name}: a ring is drawn during the flight"
     mean = lambda gs: sum(g[0] for g in gs) / len(gs)
     passed, warmth, held = [], [], []
     for j in range(5):
@@ -241,30 +270,31 @@ async def run(b, name, opts):
     rest = flight[10]; assert rest[2] < .01 and all(b["r"] < 20 for b in rest[1]), f"{name}: the flight should not have moved off by {rest[0]:.2f}s: {rest}"
     lines, still = await streaks(next(u for u, _, rush in flight if rush > .8)), await streaks(rest[0])
     assert lines > 2 * still + 20, f"{name}: no speed lines are drawn in the rush: {lines} places against {still} at rest"
-    # Sheba: pushed in, its pixel is a lit square and the pixels two away on every side are dark
-    u = m["SH_U"] + 3; p = await probe(u); (sx, sy), px = p["sheba"], p["pixel"]
-    assert 12 < px < 40, f"{name}: a detector pixel is {px:.1f} window px wide at the push-in"
-    got = await look(u, [[sx, sy], [sx + 2 * px, sy], [sx - 2 * px, sy], [sx, sy + 2 * px], [sx, sy - 2 * px]], px / 4)
-    assert got[0][0] > 150 and all(g[0] < 70 for g in got[1:]), f"{name}: Sheba's pixel is not one lit square among dark ones: {got}"
-    # the deck: its sheets are drawn (lines crossed along its near edge), some are empty, and the comet blazes in the CO2 band
-    await probe(m["DK_U"] + 2)
-    await pg.evaluate("window.__questions = [...document.querySelectorAll('#intro-labels .deck.ask')]")
-    assert await pg.evaluate("window.__questions.map(el => el.textContent)") == ["?", "?"] and await pg.evaluate("window.__questions.every(el => +getComputedStyle(el).opacity > .9)"), f"{name}: the deck does not show two visible question labels"
-    u = m["DK_U"] + m["D_LIT"] + 3; d = (await probe(u))["deck"]; (ax, ay), (bx, by) = d["scan"]; n = int(max(abs(bx - ax), abs(by - ay)))
-    assert await pg.evaluate("window.__questions.map(el => el.textContent)") == ["comet 3I/ATLAS", "star"] and await pg.evaluate("window.__questions.every(el => +getComputedStyle(el).opacity > .9)"), f"{name}: the deck's question labels do not become visible answers"
-    line = [g[1] for g in await look(u, [[ax + (bx - ax) * i / n, ay + (by - ay) * i / n] for i in range(n + 1)], 0)]
-    peaks = sum(1 for i in range(1, n) if line[i] > 28 and line[i] >= line[i - 1] and line[i] > line[i + 1])
-    assert d["fanned"] == 1 and peaks >= (45 if name == "phone" else 70), f"{name}: the deck shows {peaks} sheets along its edge"
-    assert 0 < d["dashed"] == 102 - d["measured"] and d["co2n"] >= 2, f"{name}: the deck's readings: {d}"
-    blaze = (await look(u, [d["co2"]], 3))[0]
-    assert blaze[0] > 200, f"{name}: the comet does not blaze in its CO2 sheet: {blaze}"
-    # the cut back: the first photo is on screen again, its white edge on all four sides
-    u = m["DK_END"] - m["DIP"] + .35; ed = (await probe(u))["photoEdges"]
-    assert all(0 < x < vw and 0 < y < vh for x, y in ed), f"{name}: back from the deck the photo is not in view: {ed}"
-    got = await look(u, ed, 3)
-    assert all(g[1] > 110 for g in got), f"{name}: back from the deck the photo's edge is not drawn: {got}"
+    # The colors. On the photo the stripes come on (a row across it turns from grey to violet and blue), one star is
+    # ringed, and at each step the photo being taken moves a sixteenth of its width while the star stays where it is
+    # on the photo and is seen at the next wavelength.
+    async def row(u):
+        ed = (await probe(u))["photoEdges"]; (rx, ry), (lx, ly) = ed[0], ed[1]
+        got = await look(u, [[lx + (rx - lx) * i / 40, ly + (ry - ly) * i / 40 - 30] for i in range(2, 39)], 3)
+        return sum(g[2][2] - g[2][0] for g in got) / len(got), sum(g[0] for g in got) / len(got)
+    grey, tinted = await row(m["FLY1"]), await row(m["STEPS"][0] - .5)
+    assert tinted[0] > grey[0] + 12 and tinted[1] > grey[1] + 8, f"{name}: the photo's stripes do not come on: blue over red and brightness {grey} before, {tinted} after"
+    said, offs = [], []
+    for u in [m["STEPS"][0] - .5] + [t + .45 for t in m["STEPS"]]:
+        p = await probe(u); ed = p["photoEdges"]; wd = math.dist(ed[0], ed[1])
+        said.append(await pg.evaluate("[...document.querySelectorAll('#intro-labels .lbl.accent')].find(el => +el.style.opacity > .9)?.textContent"))
+        offs.append(((p["frame"][0] - p["star"][0]) / wd, (p["frame"][1] - p["star"][1]) / wd))
+        assert all(0 < q < lim for q, lim in zip(p["star"], (vw, vh))), f"{name}: the ringed star is off screen at {u:.1f}s"
+        ring = (await look(u, [[p["star"][0] + 8.3, p["star"][1]]], 1))[0][2]   # the ring is a thin line 8 px out
+        assert ring[0] > 100 and ring[0] > ring[2] + 50, f"{name}: no orange ring round the star at {u:.1f}s: {ring}"
+    um = [float(t.split()[-2]) for t in said if t and t.startswith("one star")]
+    assert len(um) == 4 and all(.015 < b - a < .03 for a, b in zip(um, um[1:])), f"{name}: the star's label does not step through four colors: {said}"
+    steps = [math.dist(a, b) for a, b in zip(offs, offs[1:])]
+    assert all(.045 < d < .07 for d in steps) and math.dist(offs[0], offs[3]) > .15, f"{name}: the photo being taken does not step a sixteenth of its width each time: {steps}"
+    # one camera move, flight to ring
+    worst = await one_move(pg, name, m)
     await pg.context.close()
-    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), Sheba is one lit pixel ({px:.0f} px wide), the deck shows {peaks} sheet edges, {d['dashed']} empty sheets and the comet's blaze, and the cut back lands on the photo")
+    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), the stripes come on (blue over red {grey[0]:.0f} to {tinted[0]:.0f}), the star is seen at {um} microns as the telescope steps, and flight to ring is one camera move (most in one frame: {worst[0]:.3f} of its distance, {worst[1]:.2f} degrees, lens {worst[2]:.3f})")
 
     # ---- leaving the page while the film loads: it is taken off at once and does not come back ----
     pg = await page(b, opts, errs, seen_tour=True)
@@ -298,16 +328,16 @@ async def run(b, name, opts):
     await pg.goto(BASE + "/explore"); await film_up(pg)
     assert await pg.evaluate("window.__intro.reduced") and await pg.is_visible("#intro-next")
     seen = []
-    for i in range(16):
+    for i in range(8):
         await pg.wait_for_timeout(600); seen.append(await pg.inner_text("#intro-cap-text"))
         assert await pg.evaluate("window.__perf.frames.length") == 0, "reduced motion ran the animation"
         await pg.click("#intro-next")
-    assert len(set(seen)) == 16, f"reduced motion: {len(set(seen))} captions, not 16"
+    assert len(set(seen)) == 8, f"reduced motion: {len(set(seen))} captions, not 8"
     await gone(pg, f"{name} reduced motion"); await pg.wait_for_function(f"{TOUR} === 'Welcome to Trailblazer'", timeout=4000)
     await pg.keyboard.press("Escape"); await pg.wait_for_function(f"!{TOUR}")   # close the tour
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.click("#intro-skip"); await gone(pg, f"{name} reduced motion Skip", 1500)
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.keyboard.press("Escape"); await gone(pg, f"{name} reduced motion Escape", 1500)
-    print(f"{name}: reduced motion shows 16 stills with Next and no animation, then the tour; Skip and Escape end it")
+    print(f"{name}: reduced motion shows 8 stills with Next and no animation, then the tour; Skip and Escape end it")
     await pg.context.close()
     assert not errs, f"{name}: page errors {errs}"
 
@@ -321,10 +351,11 @@ async def main():
             errs = []
             pg = await page(b, dict(viewport={"width": 320, "height": height}, device_scale_factor=2, has_touch=True, is_mobile=True), errs, seen_tour=True)
             await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
-            await flight_samples(pg, name, await pg.evaluate("window.__intro.marks"))
+            m = await pg.evaluate("window.__intro.marks")
+            await flight_samples(pg, name, m); wide = await arrival(pg, name, m, 320, height); await one_move(pg, name, m)
             assert not errs, f"{name}: page errors {errs}"
             await pg.context.close()
-            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps")
+            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, and flight to ring is one camera move")
         await b.close()
     print("intro_ui: all checks passed")
 
