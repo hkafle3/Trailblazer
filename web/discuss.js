@@ -104,7 +104,7 @@ export function discuss(page) {
         <p class="pv-info" data-f="note" role="status"></p>
       </section>
       <button class="pv-state pv-post" type="submit" disabled><span>Post</span>${GO}</button>`;
-    stateBox.after(form);
+    (stateBox.closest('.pstage > *') ?? stateBox).after(form);   // a card of the stage's own (the button sits in Report's section)
     const q = s => form.querySelector(s), ts0 = q('.cf-turnstile');
     // Turnstile: the always-pass test key locally, to match worker/.dev.vars; loaded once, the first time the sheet opens
     ts0.dataset.sitekey = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) ? '1x00000000000000000000AA' : '0x4AAAAAAGBTgXAx-fdK_qGx';

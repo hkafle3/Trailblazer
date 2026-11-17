@@ -85,8 +85,9 @@ body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4
 @media (prefers-reduced-motion: reduce) { #loading, body.busy #loading, #ld-line { transition: none; } }
 
 /* ---------- right column ---------- */
+.pv-mini { left: calc(1936 * var(--e)); top: calc(332 * var(--e)); width: calc(434 * var(--e)); height: calc(297 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(14 * var(--e)); overflow: hidden; }
 
-.pv-state { width: calc(451 * var(--e)); height: calc(102 * var(--e)); box-sizing: border-box; display: flex; align-items: center;
+.pv-state { left: calc(1927 * var(--e)); top: calc(680 * var(--e)); width: calc(451 * var(--e)); height: calc(102 * var(--e)); box-sizing: border-box; display: flex; align-items: center;
   padding: 0 calc(21 * var(--e)) 0 calc(21 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(16 * var(--e)); background: #000; color: #fff; text-decoration: none;
   font: 400 calc(32 * var(--e)) / 1 var(--panel-font); letter-spacing: .02em; transition: background .2s; }
 .pv-state > span:first-child { flex: 1; text-align: center; }   /* the word sits centred in the space left of the arrow */
@@ -95,6 +96,13 @@ body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4
 .pv-state .go { flex: none; width: calc(59 * var(--e)); height: calc(59 * var(--e)); min-width: 24px; min-height: 24px; border-radius: 50%; background: #ececec; color: #050505; display: grid; place-items: center; transition: transform .2s var(--ease); }
 .pv-state .go svg { width: 62%; height: 62%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .pv-state:hover .go { transform: translateX(calc(4 * var(--e))); }
+
+/* Ming's Descriptions card, as the Discuss sheet and the comet and candidate pages use it (the time-lapse's own position
+   part sits in Advanced: .adv-body .pv-desc below) */
+.pv-desc:not(.adv-grp) { left: calc(1927 * var(--e)); top: calc(825 * var(--e)); width: calc(451 * var(--e)); box-sizing: border-box; }
+.pv-desc:not(.adv-grp) .pv-scroll { max-height: calc(240 * var(--e)); }
+.pv-desc:not(.adv-grp) { padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }   /* title 21 in from the rule, the rest a further 28 in */
+.pv-desc:not(.adv-grp) .pv-scroll { padding-left: calc(28 * var(--e)); }
 
 /* a card's content scrolls under its heading. When there is more below, a white bar on the right shows how much
    (Zoom's square white thumb, as a line) and the last line fades out */
@@ -221,7 +229,12 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   .pstage > * { position: relative; left: auto; top: auto; width: auto; }
   .pv-frame { aspect-ratio: 1146 / 902; height: auto; }
   .tl { margin: 40px 18px 50px; --e: .55px; }
+  .pv-state { height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
+  .pv-mini { width: min(100%, 434px); height: auto; aspect-ratio: 434 / 297; }
   .pv-scroll { max-height: none !important; padding-right: 0; }
+  .pv-desc:not(.adv-grp) { padding: 14px 0 0 18px; border-top-width: 1.5px; }
+  .pv-desc h2 { font-size: 20px; margin-bottom: 12px; }
+  .pv-desc:not(.adv-grp) .pv-scroll { padding-left: 0; }
   .pv-desc label { font-size: 15px; }
   .pv-desc .box { width: min(100%, 320px); height: 34px; font-size: 14px; margin-top: 10px; }
   .pv-desc .sub, .pv-info { font-size: 13px; }
@@ -279,8 +292,10 @@ i.kn-check { display: inline-block; width: calc(16 * var(--m)); height: calc(16 
 /* the Spectrum toggle leaves the corner to the tabs: bottom-left, across from the legend */
 .pv-specbtn { top: auto !important; bottom: calc(16 * var(--e)); }
 /* the legend: one "already known" mark, or Advanced's split into predicted and known passing */
-#legend .lg-split, body:has(#split:checked) #legend .lg-merged { display: none; }
-body:has(#split:checked) #legend .lg-split { display: flex; }
+#legend .lg-split { display: none; }
+body:has(#split:checked) #legend .lg-merged { display: none; }
+body:is(:has(#split:checked), .ringed) #legend .lg-split { display: flex; }
+body.ringed #legend .lg-merged { display: none; }
 
 /* Depth: the beam fills the frame; the photo's own marks, legend and Spectrum toggle step aside */
 .xp-d3 { position: absolute; inset: 0; z-index: 2; overflow: hidden; background: #010206; }
@@ -357,7 +372,7 @@ body.adv-open .adv-body { display: block; }
 #fov::-webkit-slider-thumb { -webkit-appearance: none; width: calc(5 * var(--m)); min-width: 4px; height: calc(18 * var(--m)); min-height: 12px; background: #fff; border: 0; border-radius: 0; }
 #fov::-moz-range-thumb { width: calc(5 * var(--m)); min-width: 4px; height: calc(15 * var(--m)); background: #fff; border: 0; border-radius: 0; }
 #fov:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
-.pv-mini { width: calc(100% - 4px); aspect-ratio: 868 / 594; margin-top: calc(12 * var(--m)); box-sizing: border-box; border: max(1.5px, calc(1.5 * var(--m))) solid #fff; border-radius: calc(6 * var(--m)); overflow: hidden; }
+.adv-body .pv-mini { width: calc(100% - 4px); height: auto; aspect-ratio: 868 / 594; margin-top: calc(12 * var(--m)); border-width: max(1.5px, calc(1.5 * var(--m))); border-radius: calc(6 * var(--m)); }
 #mini { display: block; width: 100%; height: 100%; }
 /* Position and details (Descriptions before): the search, the status line, what the patch shows */
 .adv-body .pv-desc { position: relative; }
@@ -424,6 +439,7 @@ body.sky .pv-desc { margin: 0; }
   .pv-report .pv-state { height: 56px; font-size: 16px; }
   .pv-report .pv-state .go { width: 44px; height: 44px; }
   .adv-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .adv-lab, .adv-body .pv-desc label { display: flex; align-items: center; min-height: 44px; min-width: 44px; margin: 0; }
 }
 @media (max-width: 640px) {
   /* the header is solid here, so nothing shows through it */

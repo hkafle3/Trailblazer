@@ -113,7 +113,7 @@
               <path d="M170 113C176 125 187 135 187 147A17 17 0 1 1 153 147C153 135 164 125 170 113Z"/>
             </g>
           </svg>
-          <div class="sp-readout"><b id="sp-um">&nbsp;</b>microns<br><span id="sp-band">&nbsp;</span><br><span class="sp-read" id="sp-nm">&nbsp;</span> nm</div>
+          <div class="sp-readout"><b id="sp-um">&nbsp;</b>microns<br><span id="sp-band">&nbsp;</span><br><span id="sp-ch">&nbsp;</span> · <span class="sp-read" id="sp-nm">&nbsp;</span> nm</div>
         </div>
         <div class="sp-ends" aria-hidden="true"><span class="sp-end">0.75</span><span class="sp-end">5.0</span></div>
         <div class="sp-layers"><input class="cbx" type="checkbox" id="sp-on"><label class="sp-add" for="sp-on">Add as a color layer</label></div>
@@ -231,8 +231,9 @@ let pvView = P.get('view') === 'depth' ? 'depth' : 'photo';
 {
   const replace = history.replaceState.bind(history);
   history.replaceState = (st, title, url) => {
-    const u = new URL(url ?? location.href, location.href);
-    if (pvView === 'depth') u.searchParams.set('view', 'depth'); else u.searchParams.delete('view');
+    // by hand, not searchParams: re-serialising would encode the rest of the address (layers=9,77 -> 9%2C77)
+    const u = new URL(url ?? location.href, location.href), q = u.search.replace(/([?&])view=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+    u.search = pvView === 'depth' ? `${q}${q ? '&' : '?'}view=depth` : q;
     replace(st, title, u.href);
   };
 }
@@ -371,7 +372,7 @@ const spectral = (() => {
     needle.style.transform = `rotate(${90 - angle(api.i)}deg)`;
     read.textContent = nmOf(c).toLocaleString('en-US');
     document.getElementById('sp-um').textContent = c.um.toFixed(2);
-    document.getElementById('sp-band').textContent = `band ${c.detector} · ch ${c.n + 1}`;
+    document.getElementById('sp-band').textContent = `band ${c.detector}`; document.getElementById('sp-ch').textContent = `ch ${c.n + 1}`;
     on.checked = api.active.has(api.i);
     on.setAttribute('aria-label', `Show the ${nmOf(c)} nanometre layer`);
     dial.setAttribute('aria-valuenow', api.i + 1);
@@ -566,9 +567,10 @@ function draw() {
   // beside it and its name; known comets and asteroids passing get the same check where SkyBoT put them. Advanced's
   // "Split already known" (state.split) draws them apart instead: the predicted place as a white ring, the known
   // passers as dashed paths in their own colours (comets orange, asteroids blue), as before the redesign.
-  const say = verdict(m, f), merged = !state.split;
+  // a time-lapse opened at a comet's place on a date (&t=, from its page) rings that place: the comet is the subject, not the star
+  const say = verdict(m, f), merged = !state.split, starMark = merged && !!say.star && m.t == null && !candTrack.on();
   let tLab = null;   // the target's "Already known" name, kept clear of by the passers' names below
-  if (merged && say.star && !candTrack.on()) {
+  if (starMark) {
     const cur = shown.at(-1) === f ? toPx(f.x, f.y) : f.pred_east != null ? predPx(f) : toPx((G - 1) / 2, (G - 1) / 2);
     const bx = cur[0] + 12, by = cur[1] - 12;
     knownBadge(bx, by);
@@ -579,7 +581,10 @@ function draw() {
     ctx.textAlign = 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(text, x0, by);
     ctx.fillStyle = '#7fb8ff'; ctx.fillText(text, x0, by);
   }
-  if (!merged && f.pred_east != null && !candTrack.on()) {   // predicted position for this date (Gaia, or a published motion)
+  // merged, a known star's predicted ring gives way to its check; any other prediction (a comet's JPL place, opened
+  // from its page with &t=) keeps its ring
+  document.body.classList.toggle('ringed', !starMark && f.pred_east != null && !candTrack.on());   // the legend names the ring (patch.css)
+  if (!starMark && f.pred_east != null && !candTrack.on()) {   // predicted position for this date (Gaia, a published motion, JPL)
     const [gx, gy] = predPx(f);
     for (const [color, width] of [['rgba(0,0,0,.85)', 5], ['#ffffff', 2]]) {   // dark outline keeps it visible on a white star
       ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.arc(gx, gy, 15, 0, 7); ctx.stroke();

@@ -4,7 +4,7 @@ for the live time-lapse and the candidate page's frames; Cloudflare, for the Tur
 (GET /api/known is answered here), so whether a known object is near the dot is decided by the test.
 Run: uv run -q --with playwright python web/tests/discuss_ui.py [base url] [WIDTHxHEIGHT] [screenshot dir]
      (default http://127.0.0.1:8787, 1440x900, no screenshots)
-1. A live spot near Barnard's Star, then a click on a random dot there (each run a new spot): Undiscovered opens the sheet in place of
+1. A live spot near Barnard's Star, then a click on a random dot there (each run a new spot): Report a new find (Undiscovered before the redesign) opens the sheet in place of
    the right column, with no known object near.
 2. Post (Comet, a comment, Turnstile's test key) lands on the candidate page: the id, Candidate, the byline, the comment,
    the tally and the frames, rebuilt at the Spectral channel and detector the dot was reported at (channel 6 here).
@@ -45,7 +45,7 @@ async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
         ctx = await b.new_context(viewport={"width": W, "height": H})
-        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'tester', via: 'demo' })) } catch {}")
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'tester', via: 'demo' })) } catch {}")
         await ctx.route("**/api/known?*", stub_known)
         await ctx.add_init_script(RECORD)
         pg = await ctx.new_page()
@@ -72,8 +72,8 @@ async def main():
             await built()
             n = await pg.evaluate("__lapse.state.m.frames.length"); k = random.randrange(n)
             await visit(k)
-            if await label() == "Undiscovered": break
-        assert await label() == "Undiscovered", "no fresh spot found"
+            if await label() == "Report a new find": break
+        assert await label() == "Report a new find", "no fresh spot found"
         spot = await pg.evaluate("(({ m }) => ({ ra: m.ra, dec: m.dec, det: m.detector, n: m.frames.length, channel: m.channel }))(__lapse.state)")
         assert spot["channel"] == CH - 1, f"the time-lapse is not built at channel {CH}: {spot}"
         lapse_band = await pg.evaluate("__built.filter(b => b.band).at(-1)")   # what the time-lapse on screen was built with
@@ -82,7 +82,7 @@ async def main():
         await pg.wait_for_selector("#talk", state="visible")
         await pg.wait_for_timeout(2500)
         assert await pg.locator("#talk").is_visible() and not await pg.evaluate("__lapse.state.playing"), "playback went on and closed the sheet"
-        assert not await pg.locator(".pv-mini").is_visible() and not await pg.locator(".pstage > .pv-desc").is_visible(), "the sheet did not replace the right column"
+        assert not await pg.locator(".pv-who").is_visible() and not await pg.locator(".pv-report").is_visible(), "the sheet did not replace the right column"
         assert "RA" in await pg.locator("#talk [data-f=where]").text_content()
         assert await pg.locator("#talk .talk-form").is_visible() and not await pg.locator("#talk .match").is_visible(), "a known object was offered with none near"
         assert "tester" in await pg.locator("#talk [data-f=as]").text_content()
@@ -150,8 +150,8 @@ async def main():
         await built()
         for k2 in [x for x in range(spot["n"]) if x != k]:   # a visit nobody reported this dot in
             await visit(k2)
-            if await label() == "Undiscovered": break
-        assert await label() == "Undiscovered"
+            if await label() == "Report a new find": break
+        assert await label() == "Report a new find"
         await pg.click("#state")
         its = pg.locator("#talk [data-f=its]")
         await its.wait_for(state="visible", timeout=15000)
@@ -164,7 +164,7 @@ async def main():
         assert (await r.value).status == 201 and res["sighting"]["name"] == "2001 FM127", res
         await pg.wait_for_selector("#talk", state="hidden")
         assert await pg.locator("#status").text_content() == "Logged as 2001 FM127"
-        assert await label() == "Undiscovered", "a sighting made a candidate"
+        assert await label() == "Report a new find", "a sighting made a candidate"
         # "Something else" shows the form instead
         await pg.click("#state")
         await its.wait_for(state="visible", timeout=15000)

@@ -12,7 +12,7 @@ async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
         ctx = await b.new_context(viewport={"width": 1440, "height": 900})
-        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
         fail = {"left": 1, "seen": 0}   # the first D5 image search fails, as IRSA does on a bad day
 
         async def images(route):

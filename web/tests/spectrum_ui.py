@@ -62,7 +62,7 @@ def clean_checks(r, label):
 
 async def desktop(b):
     ctx = await b.new_context(viewport={"width": 1440, "height": 900}, accept_downloads=True)
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
     pg = await ctx.new_page()
     errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
     await pg.goto(f"{BASE}/timelapse.html?target=barnard")
@@ -127,7 +127,7 @@ async def desktop(b):
 
 async def phone(b):
     ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True)
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
     pg = await ctx.new_page()
     errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
     await pg.goto(f"{BASE}/timelapse.html?target=barnard")
@@ -137,20 +137,22 @@ async def phone(b):
     await pick(pg, *STAR, touch=True)
     await pg.wait_for_timeout(600)
     check(await lapse(pg) == before, "phone: a tap in pick mode did not re-centre")
-    check(await pg.get_attribute(".pv-tabs [data-t=info]", "aria-pressed") == "true" and await pg.is_visible("#spec") and not await pg.is_visible(".pv-desc"),
-          "phone: the card opened in the Info tab, in Descriptions' place")
+    await pg.wait_for_timeout(700)   # the page glides the card into view
+    card = await pg.evaluate("(() => { const r = document.getElementById('spec').getBoundingClientRect(), t = document.querySelector('.tl').getBoundingClientRect(); return [r.top, r.bottom, t.bottom, innerHeight]; })()")
+    check(await pg.is_visible("#spec") and card[0] >= card[2] - 1 and card[0] < card[3], f"phone: the card opened under the timeline, scrolled into view {card}")
     r = await result(pg)
     clean_checks(r, "phone, G 13.6 star")
-    sizes = await pg.evaluate("""() => Object.fromEntries(['#spec-mode', '#spec-close', '#spec-log', '#spec-csv', '.pv-tabs [data-t=info]'].map(s => {
+    sizes = await pg.evaluate("""() => Object.fromEntries(['#spec-mode', '#spec-close', '#spec-log', '#spec-csv'].map(s => {
       const b = document.querySelector(s).getBoundingClientRect(); return [s, [Math.round(b.width), Math.round(b.height)]]; }))""")
     check(all(w >= 44 and h >= 44 for w, h in sizes.values()), f"phone: tap targets {sizes}")
-    scroll = await pg.evaluate("[document.scrollingElement.scrollHeight, innerHeight, document.scrollingElement.scrollWidth, innerWidth]")
-    check(scroll[0] <= scroll[1] and scroll[2] <= scroll[3], f"phone: the page does not scroll (content {scroll[0]} x {scroll[2]}, window {scroll[1]} x {scroll[3]})")
-    chart = await pg.evaluate("(() => { const c = document.getElementById('spec-chart').getBoundingClientRect(), p = document.getElementById('spec').getBoundingClientRect(); return [c.top, c.bottom, p.top, p.bottom]; })()")
-    check(chart[0] >= chart[2] and chart[1] <= chart[3] + 1, f"phone: the whole chart shows in the panel without scrolling it (chart {chart[0]:.0f}-{chart[1]:.0f}, panel {chart[2]:.0f}-{chart[3]:.0f})")
+    scroll = await pg.evaluate("[document.body.scrollWidth, innerWidth]")
+    check(scroll[0] <= scroll[1], f"phone: nothing sideways (content {scroll[0]}, window {scroll[1]})")
+    await pg.locator("#spec-chart").scroll_into_view_if_needed()
+    chart = await pg.evaluate("(() => { const c = document.getElementById('spec-chart').getBoundingClientRect(), p = document.getElementById('spec').getBoundingClientRect(); return [c.top, c.bottom, p.top, p.bottom, innerHeight]; })()")
+    check(chart[0] >= chart[2] and chart[1] <= chart[3] + 1 and chart[1] <= chart[4], f"phone: the whole chart shows in the card, on screen (chart {chart[0]:.0f}-{chart[1]:.0f}, card {chart[2]:.0f}-{chart[3]:.0f})")
     if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "phone-star-g13.6.png"))
     await pg.tap("#spec-close")
-    check(not await pg.is_visible("#spec") and await pg.is_visible(".pv-desc") and "spec=" not in pg.url, "phone: closing brings Descriptions back and drops &spec=")
+    check(not await pg.is_visible("#spec") and "spec=" not in pg.url, "phone: closing the card hides it and drops &spec=")
     # Barnard's Star on the phone, for the screenshot and the saturated message
     await pg.tap("#spec-mode")
     f = await pg.evaluate("(() => { const s = __lapse.state, f = s.m.frames[s.i]; return __spec.screenOfPix(f.x, f.y); })()")
