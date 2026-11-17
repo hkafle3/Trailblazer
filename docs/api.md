@@ -31,12 +31,12 @@ One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `deta
 ```json
 { "id": "3I/ATLAS", "kind": "known", "real": true, "tags": { "comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0 },
   "detail": { "speed_arcsec_per_hour": 99.0, "direction": "west", "first_mjd": 60888.3334, "exposures": 259, "measured": 159,
-    "photos": [ { "file": "2025W33_1B_0599_1_D5.png", "mjd": 60901.2413, "lam": 4.254, "flux": 95.58 } ],
+    "photos": [ { "file": "2025W33_1B_0599_1_D5.png", "mjd": 60901.2413, "lam": 4.254, "flux": 95.58, "ra": 243.82269, "dec": -16.39156 } ],
     "spectrum": { "2025-08": [ { "lam": 4.254, "flux": 95.58, "err": 0.82 } ], "2025-12": [ { "lam": 4.277, "flux": 532.73, "err": 3.1 } ] } },
   "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun.", "created_at": 1762998800000 } ] }
 ```
 
-A measured comet (`bake/comet_spectrum.py`; 3I/ATLAS, C/2025 R2, C/2024 T5, 210P so far) adds `photos`, `spectrum` (by month), `dir` (its folder under `web/data/comets/`), `co2` (the carbon dioxide verdict per month: `state` detected, quiet or unclear, with `excess` and `sigma` in mJy) and `co2_verdict` (one word for the page's badge: detected if any month shows it).
+A measured comet (`bake/comet_spectrum.py`; 3I/ATLAS, C/2025 R2, C/2024 T5, 210P so far) adds `photos` (each with the comet's `ra`, `dec` when it was taken, from JPL Horizons as SPHEREx saw it; its detector ends the file name), `spectrum` (by month), `dir` (its folder under `web/data/comets/`), `co2` (the carbon dioxide verdict per month: `state` detected, quiet or unclear, with `excess` and `sigma` in mJy) and `co2_verdict` (one word for the page's badge: detected if any month shows it).
 
 For a known comet from JPL's catalog, `detail` holds `spherex`: every SPHEREx D1 photo whose outline held the comet when it was taken (`[{ "day": 210.43, "obs": "2025W47_..." }]`), plus `q` (closest distance to the Sun, AU), `tp` (when, Julian date) and `mags`.
 

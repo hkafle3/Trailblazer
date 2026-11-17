@@ -6,6 +6,8 @@ const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');   // no id: the list of known comets
 const MJD_UNIX = 40587, day = dayParam();   // ?day=: the date on Explore's timeline when this page was opened from the map
 const date = (mjd, opts) => new Date((mjd - MJD_UNIX) * 864e5).toLocaleDateString('en-GB', { timeZone: 'UTC', ...opts });
+// the time-lapse on one exposure (MJD) of a detector, centred on the comet's place then, that spot ringed (timelapse.html &t=)
+const lapseHref = (ra, dec, det, mjd) => `timelapse.html?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}&t=${mjd.toFixed(4)}`;
 
 function ago(ms) {
   const m = (Date.now() - ms) / 6e4;
@@ -54,7 +56,9 @@ function photos(d) {
     f.title = `${p.lam.toFixed(2)} µm`;
     f.append(plate, date(p.mjd, { day: 'numeric', month: 'short', ...yr, hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', ''));
     box.append(f);
-    return { fig: f, src: img.src, alt: img.alt, mjd: p.mjd, ring: 'ring', label: date(p.mjd, { day: 'numeric', month: 'short', year: 'numeric' }) };
+    // the photo's place, from the photo itself (bake/photo_positions.py), and its detector, from its name (..._D2.png)
+    const lapse = p.ra != null && [p.ra, p.dec, p.file.match(/_(D\d)\.png$/)?.[1] ?? 'D1', p.mjd];
+    return { fig: f, src: img.src, alt: img.alt, mjd: p.mjd, ring: 'ring', label: date(p.mjd, { day: 'numeric', month: 'short', year: 'numeric' }), lapse };
   });
   $('c-photos-panel').hidden = false;
   // it opens on the photo where the comet is brightest (the most light measured at it), then plays on in date order
@@ -64,8 +68,9 @@ function photos(d) {
 // The photo strip's player: one large frame above the thumbnails, stepping through them in date order and looping,
 // under the time-lapse's own timeline (patch.css .tl: a dot per photo, the date over the play/pause handle).
 // Every photo is centred on the comet, so the comet holds still in the ring while the stars slide past.
-// items: [{ fig, src, alt, mjd, label, ring }]; it opens on photo `start` and starts playing from there when it scrolls
-// into view, except with reduced motion. Live photos (start null): each src arrives later (set), and the frame stays empty
+// items: [{ fig, src, alt, mjd, label, ring, lapse }]; under the timeline, "Open in time-lapse" opens the photo on screen
+// there (lapse: [ra, dec, detector, mjd]; hidden for a photo without one). It opens on photo `start` and starts playing
+// from there when it scrolls into view, except with reduced motion. Live photos (start null): each src arrives later (set), and the frame stays empty
 // until open(k) names the one to open on, once all are built, so it never opens on a weak photo while a clear one loads.
 // Clicking a thumbnail shows it (and pauses); arrow keys step the handle.
 const PLAY_MS = 600;
@@ -76,9 +81,10 @@ function player(items, start = null) {
     <button class="tl-knob" type="button" role="slider" aria-label="Photo. Paused; press to play the photos in turn, arrow keys step." aria-valuemin="0" aria-valuemax="${N - 1}" aria-valuenow="0">
     <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6 12z"/></svg>
     <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>
-    </button></div></div>`;
+    </button></div></div>
+    <a class="pv-state lapse" hidden><span>Open in time-lapse</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>`;
   $('c-photos-panel').prepend(wrap);
-  const [img, ring, line, knob, out] = ['img', '.ring', '.tl-line', '.tl-knob', '.tl-date'].map(q => wrap.querySelector(q));
+  const [img, ring, line, knob, out, lapse] = ['img', '.ring', '.tl-line', '.tl-knob', '.tl-date', '.lapse'].map(q => wrap.querySelector(q));
   const t0 = items[0].mjd, span = items[N - 1].mjd - t0, pos = m => (span ? 4 + 92 * (m - t0) / span : 50) + '%';
   for (const it of items) { const d = el('i', 'tl-visit'); d.style.left = pos(it.mjd); wrap.querySelector('.tl-dots').append(d); }
   let i = -1, timer = null, touched = false, inView = false, wait = start == null;
@@ -92,6 +98,8 @@ function player(items, start = null) {
     out.style.left = `clamp(${h}px, ${pos(it.mjd)}, calc(100% - ${h}px))`;
     knob.setAttribute('aria-valuenow', k); knob.setAttribute('aria-valuetext', `Photo ${k + 1} of ${N}, ${it.label}`);
     items.forEach((x, n) => x.fig.classList.toggle('on', n === k));
+    lapse.hidden = !it.lapse;
+    if (it.lapse) { lapse.href = lapseHref(...it.lapse); lapse.title = `Open the time-lapse on the ${it.label} photo, centred on the comet`; }
     wrap.dataset.i = k;
   };
   const step = s => { for (let n = 1; n <= N; n++) { const k = (((i + s * n) % N) + N) % N; if (items[k].src) return go(k); } };
@@ -219,7 +227,7 @@ function known(c) {
   const picks = visitShots(shots), list = el('div', 'visits');
   for (const v of picks) {   // each photo carries the comet's exact position at that moment (bake/known_comets.py)
     const a = el('a', 'visit', date(MJD0 + v.day, { day: 'numeric', month: 'short', year: 'numeric' }));
-    a.href = `timelapse.html?ra=${v.ra.toFixed(4)}&dec=${v.dec.toFixed(4)}&det=D1&t=${(MJD0 + v.day).toFixed(4)}`;
+    a.href = lapseHref(v.ra, v.dec, 'D1', MJD0 + v.day);
     a.title = `Open the time-lapse on this visit, centred on where it was (RA ${v.ra.toFixed(2)}, Dec ${v.dec.toFixed(2)})`;
     list.append(a);
   }
@@ -242,7 +250,7 @@ function knownPhotos(c, picks) {
     ringEl.style.left = ringEl.style.top = '50%'; plate.append(cv, ringEl);
     const label = date(MJD0 + s.day, { day: 'numeric', month: 'short', ...yr });
     fig.append(plate, label, vis); box.append(fig);
-    return { fig, cv, ringEl, vis, s, mjd: MJD0 + s.day, label: date(MJD0 + s.day, { day: 'numeric', month: 'short', year: 'numeric' }), alt: `${c.id} on ${label}`, ring: 'ring earlier' };
+    return { fig, cv, ringEl, vis, s, mjd: MJD0 + s.day, label: date(MJD0 + s.day, { day: 'numeric', month: 'short', year: 'numeric' }), alt: `${c.id} on ${label}`, ring: 'ring earlier', lapse: [s.ra, s.dec, 'D1', MJD0 + s.day] };
   });
   // said once, under the strip, when a photo had a star's saturated centre filled in (live/cutout.js paint)
   const cores = el('p', 'pv-info cores', 'Bright star centres are filled in: SPHEREx saturates there.');

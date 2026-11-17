@@ -75,7 +75,7 @@
   .cpage .measures .pv-info { font-size: 12px; }
   .cpage .wherecard .where { max-width: 360px; }
   .cpage .wherecard #c-where { font-size: 12px; }
-  .cpage .wherecard .pv-state { width: min(100%, 300px); }
+  .cpage .wherecard .pv-state, .cpage .player .lapse { width: min(100%, 300px); }
   .cpage .empty-box .pv-state { font-size: 16px; white-space: nowrap; }
   .cpage .frames figure { font-size: 11px; }
   .cpage .spectrum .legend, .cpage .spec-head .pv-info { font-size: 12px; }
@@ -90,6 +90,9 @@
 .cpage .player .ring { --d: calc(100 * var(--e)); min-width: 34px; min-height: 34px; }
 .cpage .player .tl { position: relative; left: auto; top: auto; width: 100%; margin: 0; padding: max(34px, calc(64 * var(--e))) 0 max(12px, calc(24 * var(--e))); }
 .cpage .player .tl-line { cursor: default; }
+/* "Open in time-lapse" under the timeline: his arrow button, as "Find on map", as wide as its words */
+.cpage .player .lapse { width: auto; gap: calc(24 * var(--e)); white-space: nowrap; }
+.cpage .player .lapse[hidden] { display: none; }
 .cpage .frames figure { cursor: pointer; }
 .cpage .frames figure:not(.on) .pv-mini { opacity: .55; }
 .cpage .frames .vis { margin: 0; font-size: max(10px, calc(18 * var(--e))); }
