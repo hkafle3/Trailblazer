@@ -2,9 +2,11 @@
 // for any CSV, and be much cheaper on a real one. Run: node worker/check_csv.mjs (also part of npm test).
 import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
+import { skybotRow } from './src/depth.js';
 
 const src = readFileSync(new URL('./src/index.js', import.meta.url), 'utf8');
-const parseCsv = new Function(src.match(/function parseCsv[\s\S]*?\n}\n/)[0] + 'return parseCsv;')();
+const depthSrc = readFileSync(new URL('./src/depth.js', import.meta.url), 'utf8');   // parseCsv lives there (shared with /api/depth)
+const parseCsv = new Function(depthSrc.match(/function parseCsv[\s\S]*?\n}\n/)[0] + 'return parseCsv;')();
 const spherexRows = new Function('parseCsv', src.match(/const SPX_COLS[\s\S]*?\nfunction spherexRows[\s\S]*?\n}\n/)[0] + 'return spherexRows;')(parseCsv);
 const pick = r => ['obs_id', 't_min', 'access_url', 'energy_bandpassname', 'dataproduct_subtype'].map(k => r[k]);
 
@@ -52,8 +54,8 @@ const okEsa = isDeepStrictEqual(esaStars('ra,dec,pmra,pmdec,g,source_id\r\n269.4
 let esaThrew = false; try { esaStars('<html>ESA error</html>'); } catch { esaThrew = true; }
 console.log(`${okEsa && esaThrew ? 'PASS' : 'FAIL'} ESA Gaia CSV: stars read, an error page refused`); fail += !(okEsa && esaThrew);
 // SkyBoT rows: every row must read, the V <= 21 cut uses the exact magnitude, comets always kept
-const sexagesimal = new Function(src.match(/function sexagesimal[\s\S]*?\n}\n/)[0] + 'return sexagesimal;')();
-const skybotRows = new Function('sexagesimal', src.match(/function skybotRows[\s\S]*?\n}\n/)[0] + 'return skybotRows;')(sexagesimal);
+// skybotRows reads each row with skybotRow from depth.js (shared with /api/depth), which imports cleanly
+const skybotRows = new Function('skybotRow', src.match(/function skybotRows[\s\S]*?\n}\n/)[0] + 'return skybotRows;')(skybotRow);
 const row = (Name, ra, dec, mag, Class = 'MB>Middle') => ({ Name, 'RA (hms)': ra, 'DEC (dms)': dec, 'VMag (mag)': mag, Class, 'Err (arcsec)': 1 });
 const swan = row('C/2025 R2', '05 09 14.4693', '+27 21 19.971', 20.3, 'Comet');
 const sky = skybotRows([swan, row('bright', '05 09 10', '+27 22 0', 18.8), row('just faint', '05 09 11', '+27 22 1', 21.04)]);
