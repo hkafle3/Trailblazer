@@ -3,7 +3,7 @@ comets against a fresh JPL Horizons query, within stated tolerances. Reads the r
 If JPL has published a new orbit solution since the bake, the orbit comparisons are reported as such, not as failures
 (the fix is a re-bake). Exit 1 on any failure.
 Run: python3 bake/check_facts.py [http://127.0.0.1:8873]"""
-import json, math, re, sys, time, urllib.parse, urllib.request
+import calendar, json, math, re, sys, time, urllib.parse, urllib.request
 
 API = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8873"
 HZ = "https://ssd.jpl.nasa.gov/api/horizons.api?"
@@ -88,7 +88,7 @@ for cid in COMETS:
         close("closest to Earth this pass (JD)", e["jd"], float(next(v for k, v in best.items() if k.startswith("Date"))), TOL["enc_jd"], cid, changed)
         close("closest to Earth this pass (AU)", e["delta"], float(best["delta"]), TOL["enc_delta"], cid, changed)
     if now:
-        jd = (time.mktime(time.strptime(now["as_of"], "%Y-%m-%d")) - time.timezone) / 86400 + 2440587.5
+        jd = calendar.timegm(time.strptime(now["as_of"], "%Y-%m-%d")) / 86400 + 2440587.5   # the UTC day, whatever the machine's zone
         r0 = rows(hz(des, frag, EPHEM_TYPE="OBSERVER", CENTER="'500@399'", TLIST=f"'{jd}'", TLIST_TYPE="JD", QUANTITIES="'1,9,19,20,23,29'",
                      ANG_FORMAT="DEG", EXTRA_PREC="YES"))[0]
         same = now["soln"] == soln

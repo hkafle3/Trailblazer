@@ -68,7 +68,7 @@ function tab(depth, c, x) {
 // where SPHEREx detected it, or else the visit measured best). Its time-lapse link is that picture's.
 function hero(c, x) {
   const d = x.d, vs = x.f?.inv?.visits ?? [];
-  let img, when, lam, ring = 'cring', link = null;
+  let img, when, lam, ring = 'cring', link = null, verdict = 'seen';
   if (d.photos?.length) {
     const p = d.photos.reduce((b2, q) => (q.flux > b2.flux ? q : b2));
     img = `data/comets/${d.dir}/${p.file}`; when = utcTime(F.mjdMs(p.mjd)); lam = p.lam;
@@ -76,7 +76,7 @@ function hero(c, x) {
   } else {
     const withImg = vs.filter(v => v.img), seen = withImg.filter(v => v.verdict === 'seen');
     const v = seen.length ? seen.reduce((b2, q) => (q.snr > b2.snr ? q : b2)) : withImg.find(q => q.verdict === 'faint') ?? withImg[0];
-    if (v) { img = v.img; when = utcTime(F.mjdMs(v.link.t)); lam = v.lam; link = v.link; if (v.verdict !== 'seen') ring = 'cring dash'; }
+    if (v) { img = v.img; when = utcTime(F.mjdMs(v.link.t)); lam = v.lam; link = v.link; verdict = v.verdict; if (v.verdict !== 'seen') ring = 'cring dash'; }
   }
   if (img) {
     $('c-hero').src = img; $('c-hero').alt = `${c.id} in a SPHEREx picture, ${when}`;
@@ -84,7 +84,7 @@ function hero(c, x) {
     $('c-when').textContent = when;
     $('c-lam').textContent = `Infrared${lam ? ` ${lam.toFixed(2)} µm` : ''}, brightness stretched per picture`;
     $('c-lam').append(mark('measured'));
-    if (ring !== 'cring') $('c-lam').before(el('span', 'cnote', 'Not detected here: the ring marks where JPL puts it.'));
+    if (verdict !== 'seen') $('c-lam').before(el('span', 'cnote', verdict === 'faint' ? 'Not detected here: the ring marks where JPL puts it.' : 'Could not be measured here: the ring marks where JPL puts it.'));
   } else { $('c-hero').remove(); $('c-ring').remove(); $('c-nopic').hidden = false; }
   if (link) { $('c-lapse').href = lapseHref(c.id, link); $('c-lapse').hidden = false; }
 }
@@ -140,7 +140,8 @@ function strip(c, P) {
     if (v.d.length) say.append(' ', sentences(el('span'), v.d, 'measured'));
     const a = el('a', 'clink lapse'); a.href = lapseHref(c.id, v.link); a.innerHTML = `Time-lapse ${ARROW}`;
     a.title = `Open the time-lapse on this visit's clearest picture, centred on where JPL puts the comet`;
-    card.append(ph, when, say, a);
+    const cap = el('p', 'pcap', `Infrared${v.lam ? ` ${v.lam.toFixed(2)} µm` : ''}, brightness stretched per picture`);
+    card.append(ph, cap, when, say, a);
     box.append(card);
   }
   if (P.next.length) {
@@ -323,9 +324,9 @@ function advanced(c, x) {
     const g = el('div', 'pgrid');
     for (const p of [...d.photos].sort((a, b2) => a.mjd - b2.mjd)) {
       const fig = el('figure'), im = el('img'); im.src = `data/comets/${d.dir}/${p.file}`; im.alt = ''; im.loading = 'lazy';
-      fig.append(im, el('figcaption', null, `${F.day(F.mjdMs(p.mjd))} · ${p.lam.toFixed(2)} µm`)); g.append(fig);
+      fig.append(im, el('figcaption', null, `${F.day(F.mjdMs(p.mjd))} · infrared ${p.lam.toFixed(2)} µm`)); g.append(fig);
     }
-    const s = el('p', 'src lm'); s.append(el('i'), 'Measured by SPHEREx (TrailBlazer’s photometry)');
+    const s = el('p', 'src lm'); s.append(el('i'), 'Measured by SPHEREx (TrailBlazer’s photometry); brightness stretched per picture');
     sec.append(g, s); body.append(sec);
   }
   if (!body.children.length) body.append(el('p', 'def', 'Nothing more for this comet yet.'));

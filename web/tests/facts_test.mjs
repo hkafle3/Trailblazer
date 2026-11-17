@@ -86,6 +86,14 @@ eq(txt(F.going(X('C/2026 A1 (MAPS)', facts({ e: 0.99996, per: 1899, q: 0.0057, a
 const other = F.going(X('C/x', facts({}, { peri: { prev: P('2026-05-01', 1.5), next: null } }), now({ soln: 'JPL#2', rdot: 5 })));
 eq([other.a, other.needs, F.plain(other.d[0].text)], [null, true, 'JPL updated its orbit since these facts were baked; the direction needs data.'], 'R3 another JPL solution: no direction');
 
+// a later day: the passages are sorted again, and an orbit last seen before a passed perihelion gates the magnitude
+const later = Date.parse('2027-02-10T12:00:00Z');
+const XL = (f, nw) => F.inputs({ id: 'C/x', detail: { co2: {}, facts: f } }, nw, later);
+eq(txt(F.going(XL(facts({ e: 0.5, per: 6, q: 1.5 }, { peri: { prev: P('2020-12-22', 1.5), next: P('2026-12-22', 1.5) } }), now({ as_of: '2027-02-10', rdot: 3 })))),
+  ['Heading away from the Sun.', 'It passed closest on 22 Dec 2026.'], 'R3 after the baked next perihelion has passed');
+eq(F.see(XL(facts({ last_obs: '2026-11-16' }, { peri: { prev: null, next: P('2026-12-22', 1.5) } }), now({ as_of: '2027-02-10', T: 12 }))).needs, true, 'R2 last seen before a perihelion that has since passed');
+eq(txt(F.going(X('C/x', facts({ e: 1.0003, per: null }, { peri: { prev: P('2026-05-01', 1.5), next: null } }), now({ rdot: 5, T: 13.8, T30: 14.1 })))).at(-1), 'Predicted to fade.', 'R3 fading by exactly 0.3 in decimals');
+
 // ---------- R4 ----------
 eq(F.decode('C/2026 A2 (Bok)').map(p => p.text), ['takes over 200 years to go round, or may not come back', 'found in the first half of January 2026', 'named for who found it'], 'R4 Bok');
 eq(F.decode('235P/LINEAR').map(p => p.text), ['numbered: seen coming back at least twice', 'named for who found it'], 'R4 235P');
@@ -143,7 +151,7 @@ const v8 = F.visits(X('C/2026 A2 (Bok)', facts({}, { inv: { visits: [vis({ verdi
   vis({}), vis({ start: MJD('2026-09-10'), end: MJD('2026-10-04'), n: 558, delta: 2.03 }), vis({ verdict: 'unmeasured', snr: null, delta: null })] } }), now({}),
   { co2: BOK_CO2 }));
 eq(v8.map(v => [v.when, v.title, ...v.d.map(s => F.plain(s.text))]), [
-  ['10–22 Jun 2025', 'Not detected. The ring marks where JPL puts it.', '850 million km away.', 'Magnitude 22.3 then.', 'A part of the sky SPHEREx photographs often.', 'Before it was found.'],
+  ['10–22 Jun 2025', 'Not detected. The ring marks where JPL puts it.', '850 million km away.', 'Magnitude 22.3 then.', 'A part of the sky SPHEREx photographs often.', 'Before it was found.', 'Measured in 3 of its 113 pictures.'],
   ['15 Feb–2 Mar 2026', 'First seen.', "Its light stood 60 times above the picture's noise.", '580 million km away.'],
   ['10 Sep–4 Oct 2026', 'Seen.', "Its light stood 60 times above the picture's noise.", '304 million km away.', 'A part of the sky SPHEREx photographs often.', "Carbon dioxide detected in September's combined measurements."],
   ['15 Feb–2 Mar 2026', 'Could not be measured here.']], 'R8 Bok-like visits');
@@ -165,6 +173,7 @@ eq(lead('2P/Encke', facts({ e: 0.847, per: 3.3, q: 0.336 }, { peri: { prev: P('2
 eq(lead('C/2024 T5 (ATLAS)', facts({ e: 1.0003, per: null }, { peri: { prev: P('2026-01-01', 2), next: null }, inv: { visits: [vis({ verdict: 'faint' }), vis({ verdict: 'faint' })] } }), now({ rdot: 3 }), { co2_verdict: 'unclear' }),
   ['A comet passing through the inner Solar System, heading away from the Sun.', 'SPHEREx’s pictures did not detect it; the carbon dioxide answer is not settled.'], 'R9 open orbit, all faint, unclear');
 eq(lead('P/x', facts({ e: 0.9, per: 70 })), ['A comet that comes back every 70 years.'], 'R9 P 20-200, direction unknown: no clause');
+eq(F.lead(X('C/x', facts({ e: 1.0003, per: null }, { inv: { visits: [vis({ verdict: 'unmeasured' })] } }), now({ rdot: 3 }))).map(s => s.text).at(-1), 'None of its 1 SPHEREx visit could be measured.', 'R9 no visit could be measured');
 
 // ---------- chips and the next box (rows 4, 5, 21) ----------
 const chips = (id, f, d) => F.chips(X(id, f, now({}), d)).map(s => [s.text, s.label]);

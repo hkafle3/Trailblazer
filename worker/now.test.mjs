@@ -28,27 +28,58 @@ test('a reply for another body is refused', async () => {
   await assert.rejects(horizonsNow('2026 A2', false, '2026-11-17', horizons({ other: true })), /answered for/);
 });
 
-// a D1 stand-in: the cron's three statements, on a Map of rows
-function db(rows, due) {
+test('positions from another solution are refused', async () => {
+  const f = async url => { const r = await horizons()(url); const q = new URL(url).searchParams;
+    return q.get('EPHEM_TYPE') === 'VECTORS' ? reply(JSON.stringify({ result: (await r.json()).result.replaceAll('JPL#34', 'JPL#35') })) : r; };
+  await assert.rejects(horizonsNow('2026 A2', false, '2026-11-17', f), /positions from JPL#35/);
+});
+
+test('a reply missing a velocity component is refused', async () => {
+  const f = async url => { const r = await horizons()(url); const q = new URL(url).searchParams;
+    if (q.get('EPHEM_TYPE') !== 'VECTORS') return r;
+    const t = (await r.json()).result.replace(/(\$\$SOE\n[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,)[^,]*,/, '$1 ,');
+    return reply(JSON.stringify({ result: t })); };
+  await assert.rejects(horizonsNow('2026 A2', false, '2026-11-17', f), /no vy/);
+});
+
+// a D1 stand-in for the cron's statements on a Map of rows: the claim, the select, the two conditional writes
+function db(rows) {
   return { prepare: sql => ({ bind: (...a) => ({
-    all: async () => ({ results: due }),
+    all: async () => ({ results: [{ id: 'C/2026 A2 (Bok)', des: '2026 A2', frag: 0 }] }),
     run: async () => {
       const [id, x, y, z, w] = a, old = rows.get(id) ?? {};
-      if (/as_of = \?2/.test(sql)) rows.set(id, { ...old, as_of: x, soln: y, now: z, tried_at: w, error: null });
-      else rows.set(id, { ...old, tried_at: x, error: y });
+      if (/^INSERT/.test(sql)) {   // the claim: (id, at, at - RETRY)
+        if (old.tried_at != null && old.tried_at >= y) return { meta: { changes: 0 } };
+        rows.set(id, { ...old, tried_at: x }); return { meta: { changes: 1 } };
+      }
+      if (/as_of = \?2/.test(sql)) { if (old.tried_at === w) rows.set(id, { ...old, as_of: x, soln: y, now: z, error: null }); }
+      else if (old.tried_at === y) rows.set(id, { ...old, error: x });
+      return { meta: { changes: 1 } };
     } }) }) };
 }
 
 test('a cron run writes today\'s row, and a failure keeps the last good one', async () => {
   const rows = new Map([['C/2026 A2 (Bok)', { as_of: '2026-11-16', soln: 'JPL#34', now: '{"T":13.8}' }]]);
-  const due = [{ id: 'C/2026 A2 (Bok)', des: '2026 A2', frag: 0 }];
   const at = Date.parse('2026-11-17T00:10:00Z');
-  let r = await snapshot({ DB: db(rows, due) }, at, horizons({ fail: true }));
+  let r = await snapshot({ DB: db(rows) }, at, horizons({ fail: true }));
   assert.deepEqual([r.due, r.ok], [1, 0]);
   const kept = rows.get('C/2026 A2 (Bok)');
   assert.deepEqual([kept.as_of, kept.now, kept.error], ['2026-11-16', '{"T":13.8}', 'Horizons HTTP 503']);
-  r = await snapshot({ DB: db(rows, due) }, at + 30 * 60e3, horizons());
+  r = await snapshot({ DB: db(rows) }, at + 30 * 60e3, horizons());
   assert.deepEqual([r.day, r.ok], ['2026-11-17', 1]);
   const row = rows.get('C/2026 A2 (Bok)');
   assert.deepEqual([row.as_of, row.soln, row.error, JSON.parse(row.now).T], ['2026-11-17', 'JPL#34', null, 13.797]);
+});
+
+test('an overlapping run neither fetches a claimed comet nor writes over a newer claim', async () => {
+  const rows = new Map(), at = Date.parse('2026-11-17T00:00:00Z');
+  let release;   // the first run stalls on Horizons until released
+  const slow = async url => { await new Promise(ok => { release ??= ok; if (release !== ok) ok(); }); return horizons()(url); };
+  const first = snapshot({ DB: db(rows) }, at, slow);
+  await new Promise(ok => setTimeout(ok, 10));
+  const second = await snapshot({ DB: db(rows) }, at + 10 * 60e3, horizons());   // within RETRY_MS of the claim: skipped
+  assert.equal(second.ok, 0);
+  rows.get('C/2026 A2 (Bok)').tried_at = at + 30 * 60e3;   // a later run claimed it meanwhile
+  release(); await first;
+  assert.equal(rows.get('C/2026 A2 (Bok)').as_of, undefined, 'the stalled run wrote over a newer claim');
 });

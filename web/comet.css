@@ -145,7 +145,8 @@ body.cometpage::before, body.cometpage::after { display: none; }   /* styles.css
 .cometpage .v.next::before { background: #000; border: 1.5px solid #fff; box-sizing: border-box; }
 .cometpage .v .cph { aspect-ratio: 1; border: 1.5px solid #fff; border-radius: 6px; }
 .cometpage .v.faint .cph img, .cometpage .v.unmeasured .cph img { opacity: .55; }
-.cometpage .v .when { margin: 14px 0 6px; font-size: 15px; }
+.cometpage .v .pcap { margin-top: 6px; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }
+.cometpage .v .when { margin: 8px 0 6px; font-size: 15px; }
 .cometpage .v .say { font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
 .cometpage .v .say > b { display: block; font-weight: 400; color: #fff; margin-bottom: 2px; }
 .cometpage .v .lapse { margin-top: 12px; font-size: 12px; }

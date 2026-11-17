@@ -180,7 +180,11 @@ def refine(cid, rows, key, k, name):
     fine = ephemeris(cid, rows[k - 1]["jd"], rows[k + 1]["jd"], "1 h", name)
     j = min(range(len(fine)), key=lambda i: fine[i][key])
     if j == 0 or j == len(fine) - 1: return None
-    return dict(jd=round(fine[j]["jd"], 3), value=fine[j][key])
+    if fine[j][key] < 0.1:   # under 0.1 AU an hour is too coarse (C/2026 A1 moves 230 km/s there): a one-minute table
+        fine = ephemeris(cid, fine[j - 1]["jd"], fine[j + 1]["jd"], "1 m", name + "-1m")
+        j = min(range(len(fine)), key=lambda i: fine[i][key])
+        if j == 0 or j == len(fine) - 1: return None
+    return dict(jd=round(fine[j]["jd"], 4), value=fine[j][key])
 
 
 def minima(rows, key):
@@ -217,7 +221,7 @@ def spkid(cid):
 
 def most(cid):
     """IRSA MOST over the whole survey, by SPK-ID: [{obs, det, t (mid-exposure MJD), poly[8], uri}] (DR1 wins a duplicate)."""
-    f = CACHE / slug(cid) / "most.txt"
+    f = CACHE / slug(cid) / f"most-{iso(JD_TODAY)}.txt"
     o = spkid(cid)
     if not f.exists():
         url = "https://irsa.ipac.caltech.edu/cgi-bin/MOST/nph-most?" + urllib.parse.urlencode(
@@ -256,7 +260,19 @@ def held(cid, pics):
     ra = np.degrees(np.unwrap(np.radians([r["ra"] for r in rows]))); dec = np.array([r["dec"] for r in rows])
     t = np.array([p["t"] for p in pics])
     pra, pdec = np.interp(t, jd, ra) % 360, np.interp(t, jd, dec)
-    hit = inside(pra, pdec, np.array([p["poly"] for p in pics]))
+    polys = np.array([p["poly"] for p in pics])
+    hit = inside(pra, pdec, polys)
+    # near an outline's edge the hourly rows are not enough (SPHEREx's 95-minute orbit moves a close comet by up to a
+    # minute of arc): a picture whose answer changes when the point moves 2 arcmin is decided on the exact position
+    d = 2 / 60
+    edge = np.zeros(len(pics), bool)
+    for dx, dy in ((d, 0), (-d, 0), (0, d), (0, -d)):
+        edge |= inside((pra + dx / np.cos(np.radians(pdec))) % 360, pdec + dy, polys) != hit
+    if edge.any():
+        ex = at_times(cid, sorted({pics[i]["t"] for i in np.flatnonzero(edge)}))
+        for i in np.flatnonzero(edge):
+            pra[i], pdec[i] = ex[pics[i]["t"]]
+        hit[edge] = inside(pra[edge], pdec[edge], polys[edge])
     return [dict(obs=p["obs"], det=p["det"], t=round(p["t"], 5), ra=round(float(a), 5), dec=round(float(d), 5))
             for p, a, d, h in zip(pics, pra, pdec, hit) if h]
 
@@ -268,7 +284,7 @@ def at_times(cid, ts):
         batch = ts[i:i + 40]
         tl = " ".join(f"{t + MJD_JD:.6f}" for t in batch)
         rows = table(horizons(cid, "OBSERVER", {"CENTER": f"'{SPHEREX}'", "TLIST": f"'{tl}'", "TLIST_TYPE": "JD", "QUANTITIES": "'1'",
-                                                "ANG_FORMAT": "DEG", "EXTRA_PREC": "YES"}, f"exact-{i // 40}-{batch[0]:.4f}-{len(batch)}"))
+                                                "ANG_FORMAT": "DEG", "EXTRA_PREC": "YES"}, "exact-" + __import__("hashlib").md5(tl.encode()).hexdigest()[:16]))
         assert len(rows) == len(batch), f"{cid}: Horizons gave {len(rows)} of {len(batch)} positions"
         for t, r in zip(batch, rows):
             out[t] = (round(num(next(v for k, v in r.items() if k.startswith("R.A."))), 5), round(num(next(v for k, v in r.items() if k.startswith("DEC"))), 5))
@@ -298,6 +314,9 @@ def facts(cid, rec):
     d = rec["detail"] or {}
     el_text, el = elements(cid)
     sol = solution(el_text)
+    stale = [f.name for f in (CACHE / slug(cid)).glob("*.txt") if not f.name.startswith(("most", "frag-"))
+             and (m := re.search(r"Target body name: .+?\{source: (JPL#[^}\s]+)\}", f.read_text())) and m.group(1) != sol["ref"]]
+    assert not stale, f"{cid}: cached replies from another JPL solution than {sol['ref']}: {stale[:3]} (delete bake/cache/facts/{slug(cid)}/ and bake again)"
     des, frag = designation(cid)
     pics = held(cid, most(cid))
     first = min([p["t"] for p in pics] + [p["mjd"] for p in d.get("photos") or []] or [JD_TODAY - MJD_JD]) + MJD_JD
@@ -348,9 +367,10 @@ def facts(cid, rec):
     vs = []
     for v in visits_of(pics):
         mid = (v[0]["t"] + v[-1]["t"]) / 2 + MJD_JD
-        r = min(eph, key=lambda e: abs(e["jd"] - mid))
+        ej = [e["jd"] for e in eph]
+        delta = float(np.interp(mid, ej, [e["delta"] for e in eph])) if ej[0] <= mid <= ej[-1] else None
         vs.append(dict(start=round(v[0]["t"], 4), end=round(v[-1]["t"], 4), n=len(v), dets=sorted({p["det"] for p in v}),
-                       delta=round(r["delta"], 4) if abs(r["jd"] - mid) <= 1 else None, measure=to_measure(v), pics=v))
+                       delta=round(delta, 4) if delta is not None else None, measure=to_measure(v), pics=v))
     status = "fragment" if frag else ("disrupted" if cid in DISRUPTED else None)
     extrap = bool(prev and sol["last_obs"] and jd_of(sol["last_obs"]) < prev["jd"] <= JD_TODAY)
     return dict(
@@ -401,54 +421,67 @@ def main():
     jf = CACHE / "measure-jobs.json"; jf.write_text(json.dumps(jobs))
     if "--no-measure" not in sys.argv:
         subprocess.run(["node", str(ROOT / "bake/visit_verdicts.mjs"), str(jf), API, str(CACHE / "measure-results.json")], check=True)
+    def build():
+        rf = CACHE / "measure-results.json"
+        res = {r["png"]: r for r in (json.loads(rf.read_text()) if rf.exists() else [])}   # one comet's picture: two comets can share a picture
+        sql = [f"-- Generated by bake/comet_facts.py on {TODAY:%Y-%m-%d}: what each known comet's page states (comet-plan/fact-table.md)"]
+        for cid, f in done.items():
+            d = recs[cid]["detail"] or {}
+            photos = sorted(d.get("photos") or [], key=lambda p: p["mjd"])
+            n_pics = sum(v["n"] for v in f["visits"])
+            out_vs = []
+            for v in f["visits"]:
+                key = lambda p: f"web/data/comets/visits/{slug(cid)}/{p['obs']}_{p['det']}.png"
+                got = [dict(res[key(p)], **p) for p in v["measure"] if key(p) in res]
+                seen = [g for g in got if g["verdict"] == "seen"]
+                valid = [g for g in got if g["verdict"] in ("seen", "faint")]
+                verdict = "seen" if seen else "faint" if valid else "unmeasured"
+                best = max(seen, key=lambda g: g["snr"]) if seen else (got[0] if got else v["measure"][0])
+                mine = [p for p in photos if v["start"] - 0.01 <= p["mjd"] <= v["end"] + 0.01]   # baked photos in this visit
+                if mine:   # a measured comet's clearest photo of the visit is its picture and its link
+                    ph = max(mine, key=lambda p: p["flux"])
+                    link = dict(t=ph["mjd"], ra=ph["ra"], dec=ph["dec"], det=ph["file"].rsplit("_", 1)[1][:2])
+                    img = f"data/comets/{d['dir']}/{ph['file']}"
+                else:
+                    link = dict(t=best["t"], ra=best["ra"], dec=best["dec"], det=best["det"])
+                    img = best.get("png", "").replace("web/", "", 1) if best.get("png_ok") else None
+                near = None
+                if seen and designation(cid)[1]:   # a fragment: is its light within the 25 arcsec circle of its parent's position?
+                    near = parent_sep(cid, link)
+                out_vs.append(dict(start=v["start"], end=v["end"], n=v["n"], dets=v["dets"], delta=v["delta"], verdict=verdict,
+                                   lam=best.get("lam") if not mine else ph["lam"], near_parent=near if near is not None and near <= 25 else None,
+                                   snr=round(max(g["snr"] for g in seen), 1) if seen else None, measured=len(valid), tried=len(got),
+                                   why=next((g["why"] for g in got if g.get("why")), None), link=link, img=img))
+            # magnitude at the link's exposure: interpolated in the daily table (B1)
+            Tj, Tv = [r[0] for r in f["eph"]["T"]], [r[1] for r in f["eph"]["T"]]
+            for v in out_vs:
+                x = v["link"]["t"] + MJD_JD
+                v["T"] = round(float(np.interp(x, Tj, Tv)), 1) if Tj and Tj[0] <= x <= Tj[-1] else None
+            inv = dict(n=n_pics, first=f["visits"][0]["start"] if f["visits"] else None, last=f["visits"][-1]["end"] if f["visits"] else None,
+                       visits=out_vs)
+            body = {k: v for k, v in f.items() if k not in ("visits", "eph")}
+            body["inv"] = inv
+            body["T"] = f["eph"]["T"]   # predicted magnitude every 5 days (Depth's brightness, the visit's magnitude)
+            js = json.dumps(body, separators=(",", ":"))
+            sql.append(f"UPDATE comets SET detail = json_set(detail, '$.facts', json({q(js)})) WHERE id = {q(cid)};")
+            print(f"{cid}: {n_pics} pictures, {len(out_vs)} visits ({', '.join(v['verdict'] for v in out_vs)}), "
+                  f"peri prev {iso(f['peri']['prev']['jd']) if f['peri']['prev'] else '-'} next {iso(f['peri']['next']['jd']) if f['peri']['next'] else '-'}, "
+                  f"enc {iso(f['enc']['jd']) + ' ' + str(round(f['enc']['delta'], 3)) if f['enc'] else '-'}, soln {f['orb']['soln']}", flush=True)
+        return sql
+
     rf = CACHE / "measure-results.json"
-    res = {(r["obs"], r["det"]): r for r in (json.loads(rf.read_text()) if rf.exists() else [])}
-    sql = [f"-- Generated by bake/comet_facts.py on {TODAY:%Y-%m-%d}: what each known comet's page states (comet-plan/fact-table.md)"]
-    for cid, f in done.items():
-        d = recs[cid]["detail"] or {}
-        photos = sorted(d.get("photos") or [], key=lambda p: p["mjd"])
-        n_pics = sum(v["n"] for v in f["visits"])
-        out_vs = []
-        for v in f["visits"]:
-            got = [dict(res[(p["obs"], p["det"])], **p) for p in v["measure"] if (p["obs"], p["det"]) in res]
-            seen = [g for g in got if g["verdict"] == "seen"]
-            valid = [g for g in got if g["verdict"] in ("seen", "faint")]
-            verdict = "seen" if seen else "faint" if valid else "unmeasured"
-            best = max(seen, key=lambda g: g["snr"]) if seen else (got[0] if got else v["measure"][0])
-            mine = [p for p in photos if v["start"] - 0.01 <= p["mjd"] <= v["end"] + 0.01]   # baked photos in this visit
-            if mine:   # a measured comet's clearest photo of the visit is its picture and its link
-                ph = max(mine, key=lambda p: p["flux"])
-                link = dict(t=ph["mjd"], ra=ph["ra"], dec=ph["dec"], det=ph["file"].rsplit("_", 1)[1][:2])
-                img = f"data/comets/{d['dir']}/{ph['file']}"
-            else:
-                link = dict(t=best["t"], ra=best["ra"], dec=best["dec"], det=best["det"])
-                img = best.get("png", "").replace("web/", "", 1) if best.get("png_ok") else None
-            near = None
-            if seen and designation(cid)[1]:   # a fragment: is its light within the 25 arcsec circle of its parent's position?
-                near = parent_sep(cid, link)
-            out_vs.append(dict(start=v["start"], end=v["end"], n=v["n"], dets=v["dets"], delta=v["delta"], verdict=verdict,
-                               lam=best.get("lam") if not mine else ph["lam"], near_parent=near if near is not None and near <= 25 else None,
-                               snr=round(max(g["snr"] for g in seen), 1) if seen else None, measured=len(valid), tried=len(got),
-                               why=next((g["why"] for g in got if g.get("why")), None), link=link, img=img))
-        # magnitude at the link's exposure: interpolated in the daily table (B1)
-        Tj, Tv = [r[0] for r in f["eph"]["T"]], [r[1] for r in f["eph"]["T"]]
-        for v in out_vs:
-            x = v["link"]["t"] + MJD_JD
-            v["T"] = round(float(np.interp(x, Tj, Tv)), 1) if Tj and Tj[0] <= x <= Tj[-1] else None
-        inv = dict(n=n_pics, first=f["visits"][0]["start"] if f["visits"] else None, last=f["visits"][-1]["end"] if f["visits"] else None,
-                   visits=out_vs)
-        body = {k: v for k, v in f.items() if k not in ("visits", "eph")}
-        body["inv"] = inv
-        body["T"] = f["eph"]["T"]   # predicted magnitude every 5 days (Depth's brightness, the visit's magnitude)
-        js = json.dumps(body, separators=(",", ":"))
-        sql.append(f"UPDATE comets SET detail = json_set(detail, '$.facts', json({q(js)})) WHERE id = {q(cid)};")
-        print(f"{cid}: {n_pics} pictures, {len(out_vs)} visits ({', '.join(v['verdict'] for v in out_vs)}), "
-              f"peri prev {iso(f['peri']['prev']['jd']) if f['peri']['prev'] else '-'} next {iso(f['peri']['next']['jd']) if f['peri']['next'] else '-'}, "
-              f"enc {iso(f['enc']['jd']) + ' ' + str(round(f['enc']['delta'], 3)) if f['enc'] else '-'}, soln {f['orb']['soln']}", flush=True)
+    sql = build()
+    # a picture a page shows whose PNG is gone (an earlier bake pruned it while it was not shown): measure it again
+    gone = {"web/" + m for m in re.findall(r'"img":"(data/comets/visits/[^"]+)"', "\n".join(sql)) if not (ROOT / "web" / m).exists()}
+    if gone and "--no-measure" not in sys.argv:
+        rf.write_text(json.dumps([r for r in json.loads(rf.read_text()) if r["png"] not in gone]))
+        subprocess.run(["node", str(ROOT / "bake/visit_verdicts.mjs"), str(jf), API, str(rf)], check=True)
+        sql = build()
     (ROOT / f"worker/migrations/{OUT_NAME}.sql").write_text("\n".join(sql) + "\n")
     used = set(re.findall(r'"img":"(data/comets/visits/[^"]+)"', "\n".join(sql)))   # keep only the pictures a page shows
-    for png in (ROOT / "web/data/comets/visits").glob("*/*.png"):
-        if str(png.relative_to(ROOT / "web")) not in used: png.unlink()
+    for cid in done:
+        for png in (ROOT / "web/data/comets/visits" / slug(cid)).glob("*.png"):
+            if str(png.relative_to(ROOT / "web")) not in used: png.unlink()
     print(f"wrote worker/migrations/{OUT_NAME}.sql ({len(done)} comets)")
 
 

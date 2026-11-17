@@ -12,7 +12,8 @@ const [jobsFile, api, outFile] = process.argv.slice(2);
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const maps = JSON.parse(fs.readFileSync(path.join(ROOT, 'web/data/wavemaps.json'), 'utf8'));
 const jobs = JSON.parse(fs.readFileSync(jobsFile, 'utf8'));
-const done = new Map((fs.existsSync(outFile) ? JSON.parse(fs.readFileSync(outFile, 'utf8')) : []).map(r => [`${r.obs} ${r.det}`, r]));
+// keyed by the PNG path, which names the comet: two comets can share a picture, at different places in it
+const done = new Map((fs.existsSync(outFile) ? JSON.parse(fs.readFileSync(outFile, 'utf8')) : []).map(r => [r.png, r]));
 
 // an 8-bit grey PNG from paint()'s RGBA (all three channels equal)
 function png(w, h, rgba) {
@@ -31,7 +32,9 @@ const canvas = () => {   // what paint() draws on
   return { width: 0, height: 0, getContext: () => ({ createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData: i => { img = i; } }), get img() { return img; } };
 };
 
-const todo = jobs.filter(j => { const r = done.get(`${j.obs} ${j.det}`); return !r || r.verdict === 'error'; });
+// measured again when the place it was measured at is not the job's (more than 1 arcsec away)
+const moved = (r, j) => r.ra == null || Math.hypot((r.ra - j.ra) * Math.cos(j.dec * Math.PI / 180), r.dec - j.dec) * 3600 > 1;
+const todo = jobs.filter(j => { const r = done.get(j.png); return !r || r.verdict === 'error' || moved(r, j); });
 console.log(`${jobs.length} pictures, ${todo.length} to measure`);
 let n = 0;
 const save = () => fs.writeFileSync(outFile, JSON.stringify([...done.values()]));
@@ -39,7 +42,7 @@ await pool(todo, 4, async j => {
   let r;
   try {
     const p = await knownPhoto({ obs: j.obs, det: j.det, ra: j.ra, dec: j.dec }, { api, maps });
-    r = { obs: j.obs, det: j.det, verdict: p.verdict, snr: p.snr == null ? null : +p.snr.toFixed(2), why: p.why || null, refs: p.refs, few: !!p.few, lam: +p.lam.toFixed(3), png: j.png, png_ok: false };
+    r = { obs: j.obs, det: j.det, ra: j.ra, dec: j.dec, verdict: p.verdict, snr: p.snr == null ? null : +p.snr.toFixed(2), why: p.why || null, refs: p.refs, few: !!p.few, lam: +p.lam.toFixed(3), png: j.png, png_ok: false };
     const c = canvas();
     if (p.px && p.px.some(Number.isFinite)) {
       paint(c, p);
@@ -48,9 +51,9 @@ await pool(todo, 4, async j => {
       r.png_ok = true;
     }
   } catch (e) {
-    r = { obs: j.obs, det: j.det, verdict: 'error', snr: null, why: String(e.message || e).slice(0, 160), png: j.png, png_ok: false };
+    r = { obs: j.obs, det: j.det, ra: j.ra, dec: j.dec, verdict: 'error', snr: null, why: String(e.message || e).slice(0, 160), png: j.png, png_ok: false };
   }
-  done.set(`${j.obs} ${j.det}`, r);
+  done.set(j.png, r);
   if (++n % 20 === 0) { save(); console.log(`  measured ${n} of ${todo.length}`); }
 });
 save();

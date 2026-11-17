@@ -75,7 +75,13 @@ export function decode(id) {
 // ---------- the inputs, checked once ----------
 // now: the snapshot, shown only within 2 days of its date; ORB and NOW from different JPL solutions are not combined
 export function inputs(c, now, today) {
-  const d = c.detail ?? {}, f = d.facts ?? null, orb = f?.orb ?? null;
+  const d = c.detail ?? {}, orb = d.facts?.orb ?? null;
+  // the baked passages, sorted into before and after the given day (the bake day's split goes stale once one passes)
+  let f = d.facts ?? null;
+  if (f?.peri) {
+    const ps = [f.peri.prev, f.peri.next].filter(Boolean);
+    f = { ...f, peri: { ...f.peri, prev: ps.filter(p => jdMs(p.jd) <= today).at(-1) ?? null, next: ps.find(p => jdMs(p.jd) > today) ?? null } };
+  }
   const age = now ? Math.floor(today / DAY) - dayMs(now.as_of) / DAY : null;   // whole days since the snapshot's date
   const fresh = age != null && age >= -1 && age <= 2;
   const n = fresh ? now : null;
@@ -125,9 +131,16 @@ export function magGate(x) {
   if (!now) return 'Today’s forecast needs data.';
   if (f?.status === 'fragment') return 'It is a fragment of a comet, and JPL’s brightness forecast does not cover the pieces.';
   if (f?.status === 'disrupted') return `It ${f.status_note ?? 'broke up'}, so brightness forecasts no longer apply.`;
-  if (f?.extrapolated) return 'JPL’s last sighting of it came before it passed the Sun, so today’s brightness is a guess.';
+  if (extrapolated(x)) return 'JPL’s last sighting of it came before it passed the Sun, so today’s brightness is a guess.';
   if (now.T == null || now.T > 30) return 'JPL has no usable brightness forecast for it.';
   return null;
+}
+// the orbit's last observation came before a perihelion that has passed by the given day (R2's status gate)
+export function extrapolated(x) {
+  const { f, orb, today } = x;
+  if (f?.extrapolated) return true;
+  const p = f?.peri?.prev;
+  return !!(p && orb?.last_obs && dayMs(orb.last_obs) < jdMs(p.jd) && jdMs(p.jd) <= today);
 }
 export function see(x) {
   const { now } = x, card = { q: 'Can I see it?', label: 'predicted', src: srcNow(x) };
@@ -171,7 +184,7 @@ export function going(x) {
   } else return { ...card, a: null, needs: true, d: [S(now && !same ? 'JPL updated its orbit since these facts were baked; the direction needs data.' : 'Its direction needs data.', 'needs')] };
   if (orb.per != null && orb.per < 200 && name.kind !== 'I' && next && !(a === 'Passing the Sun now.' && near === next) && a !== 'Heading toward the Sun.')
     d.push(S(`Next closest to the Sun: ${b(monthYear(jdMs(next.jd)))}.`, 'predicted'));
-  if (now && same && !magGate(x) && now.T30 != null && now.T30 - now.T >= 0.3) d.push(S('Predicted to fade.', 'predicted'));
+  if (now && same && !magGate(x) && now.T30 != null && now.T30 - now.T >= 0.3 - 1e-9) d.push(S('Predicted to fade.', 'predicted'));
   if (orb.q < 0.01) d.push(S('It skims the Sun; comets this close often break up.', 'predicted'));
   return { ...card, a, d, phrase };
 }
@@ -269,7 +282,7 @@ export function visits(x) {
     const s = mjdMs(v.start), e = mjdMs(v.end), out = [];
     let title;
     if (v.verdict === 'seen') {
-      title = v.near_parent ? 'Light near the parent’s position.' : firstSeen ? 'First seen.' : 'Seen.';
+      title = v.near_parent != null ? 'Light near the parent’s position.' : firstSeen ? 'First seen.' : 'Seen.';
       firstSeen = false;
       out.push(S(`Its light stood ${b(Math.round(v.snr) + ' times')} above the picture's noise.`, 'measured'));
     } else if (v.verdict === 'faint') title = 'Not detected. The ring marks where JPL puts it.';
@@ -278,9 +291,12 @@ export function visits(x) {
     if (v.verdict === 'faint' && v.T != null && v.T <= 30 && !x.f?.status) out.push(S(`Magnitude ${v.T.toFixed(1)} then.`, 'predicted'));
     if (v.n >= 100) out.push(S('A part of the sky SPHEREx photographs often.', 'measured'));
     if (w && e < w.start) out.push(S('Before it was found.', 'measured'));
-    const months = [...new Set([monthKey(s), monthKey(e)])].filter(m => co2[m]?.state === 'detected');
+    const spanned = [];
+    for (let m = new Date(Date.UTC(new Date(s).getUTCFullYear(), new Date(s).getUTCMonth(), 1)); m.getTime() <= e; m.setUTCMonth(m.getUTCMonth() + 1)) spanned.push(monthKey(m.getTime()));
+    const months = spanned.filter(m => co2[m]?.state === 'detected');
     if (months.length) out.push(S(`Carbon dioxide detected in ${MONTHS[+months[0].slice(5) - 1]}'s combined measurements.`, 'measured'));
-    return { k, when: span(s, e), start: s, end: e, title, d: out, verdict: v.verdict, n: v.n, link: v.link, img: v.img };
+    if (v.verdict === 'faint' && v.tried) out.push(S(`Measured in ${v.measured} of its ${v.n.toLocaleString('en-US')} pictures.`, 'measured'));
+    return { k, when: span(s, e), start: s, end: e, title, d: out, verdict: v.verdict, n: v.n, link: v.link, img: v.img, lam: v.lam ?? null };
   });
 }
 export function span(s, e) {   // 15-22 Jun 2025, 15 Feb-2 Mar 2026, 27 Jul 2025
@@ -317,6 +333,7 @@ export function sxClause(x) {
   if (v === 'detected') s = 'SPHEREx detected carbon dioxide around it';
   else if (c.seen) s = `SPHEREx detected it on ${c.seen} of ${c.n} visit${c.n === 1 ? '' : 's'}`;
   else if (c.n && c.measured === c.n) s = 'SPHEREx’s pictures did not detect it';
+  else if (c.n && !c.measured) s = `None of its ${c.n} SPHEREx visit${c.n === 1 ? '' : 's'} could be measured`;
   else if (c.n) s = `SPHEREx’s pictures did not detect it; ${c.measured} of ${c.n} visit${c.n === 1 ? '' : 's'} could be measured`;
   else return null;
   if (v === 'unclear') s += '; the carbon dioxide answer is not settled';
