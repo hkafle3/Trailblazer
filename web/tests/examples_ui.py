@@ -1,9 +1,7 @@
 """Browser check that the examples a first visit lands on show something real. Needs the app up and the network (NASA's S3
 copy of SPHEREx for the live photos); takes a few minutes.
-Run: uv run -q --with playwright python web/tests/examples_ui.py [base url]   (default http://127.0.0.1:8787)
-- Comet pages: the photo player's first frame is the clearest one. Live photos (C/2024 J3 (ATLAS), 235P/LINEAR): the
-  highest-SNR Seen visit, orange ring. Baked photos (C/2025 R2 (SWAN)): the photo with the most light. 2P/Encke, seen in
-  no visit: its brightest predicted visit, and a line saying SPHEREx could not see it and what the ring marks.
+Run: uv run -q --with playwright python web/tests/examples_ui.py [base url]   (default http://127.0.0.1:8873)
+(The comet pages' main picture and visit pictures are checked by web/tests/comet_page_ui.py since the redesign.)
 - Crops (live/cutout.js paint): a bright star whose core is masked (saturated) is drawn filled, with no black pixel in
   it; edges off the image stay black; the light measured on the same pixels is unchanged.
 - Explore on the default day: the featured card's comet has a marker drawn and not dimmed, the card within 1% of it.
@@ -11,62 +9,12 @@ Run: uv run -q --with playwright python web/tests/examples_ui.py [base url]   (d
 import asyncio, re, sys, urllib.parse
 from playwright.async_api import async_playwright
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8873"
 page = lambda cid: f"{BASE}/comet.html?id=" + urllib.parse.quote(cid, safe="")
-# every frame the big player shows, in order: [index, ring class, playing]
-WATCH = """window.__shown = [];
-new MutationObserver(ms => { for (const m of ms) if (m.attributeName === 'data-i') { const p = m.target;
-  window.__shown.push([+p.dataset.i, p.querySelector('.ring').className, p.dataset.playing === '1']); } })
-  .observe(document, { subtree: true, attributes: true, attributeFilter: ['data-i'] });"""
-DONE = "!/Building|Built/.test(document.querySelector('#c-photos-panel .frames-note')?.textContent ?? 'Building')"
-
-
 async def ctx_for(b):
     ctx = await b.new_context(viewport={"width": 1440, "height": 900})
     await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
-    await ctx.add_init_script(f"document.addEventListener('DOMContentLoaded', () => {{ {WATCH} }})")
     return ctx
-
-
-async def live(b, cid, seen_expected):
-    ctx = await ctx_for(b); pg = await ctx.new_page()
-    await pg.goto(page(cid))
-    await pg.wait_for_selector("#c-photos-panel:not([hidden])")
-    await pg.locator("#c-photos-panel").scroll_into_view_if_needed()
-    await pg.wait_for_function(DONE, timeout=300000)
-    await pg.wait_for_timeout(300)
-    figs = await pg.eval_on_selector_all("#c-photos figure", "fs => fs.map(f => [f.dataset.verdict, f.dataset.snr === '' || f.dataset.snr == null ? null : +f.dataset.snr])")
-    shown = await pg.evaluate("window.__shown")
-    note = await pg.text_content("#c-photos-panel .frames-note")
-    assert shown, f"{cid}: the player showed nothing ({figs})"
-    first = shown[0][0]
-    seen = [k for k, (v, _) in enumerate(figs) if v == "seen"]
-    if seen_expected:
-        assert seen, f"{cid}: expected a Seen visit, got {figs}"
-        best = max(seen, key=lambda k: figs[k][1])
-        assert first == best and shown[0][1] == "ring", f"{cid}: opened on {shown[0]}, the clearest is {best} ({figs})"
-        color = await pg.evaluate("getComputedStyle(document.querySelector('.player .ring')).borderTopColor")
-        r, g, bl = [float(x) for x in re.findall(r"[\d.]+", color)[:3]]
-        assert r > 200 and g < 200 and bl < 120, f"{cid}: ring colour {color} is not orange"
-        print(f"  {cid}: opens on visit {first + 1} of {len(figs)} (SNR {figs[first][1]:.1f}, the highest), orange ring {color}")
-    else:
-        assert not seen, f"{cid}: expected no Seen visit, got {figs}"
-        assert "could not see it" in note and "The ring shows where JPL says it was" in note, f"{cid}: note {note!r}"
-        print(f"  {cid}: none seen, opens on visit {first + 1}; note: {note}")
-    await ctx.close()
-
-
-async def baked(b, cid):
-    ctx = await ctx_for(b); pg = await ctx.new_page()
-    d = (await (await ctx.request.get(BASE + "/api/comets/" + urllib.parse.quote(cid, safe=""))).json())["detail"]
-    shots = sorted(d["photos"], key=lambda p: p["mjd"])
-    best = max(range(len(shots)), key=lambda k: shots[k]["flux"])
-    await pg.goto(page(cid))
-    await pg.wait_for_selector(".player[data-i]")
-    shown = await pg.evaluate("window.__shown")
-    assert shown[0][0] == best and shown[0][1] == "ring", f"{cid}: opened on {shown[0]}, most light is photo {best}"
-    print(f"  {cid}: opens on photo {best + 1} of {len(shots)} ({shots[best]['flux']:.0f} mJy, the most light)")
-    await ctx.close()
 
 
 CROP = """async () => {
@@ -132,9 +80,7 @@ async def main():
         b = await p.chromium.launch(channel="chrome", headless=True)
         await crop(b)
         await explore(b)
-        await baked(b, "C/2025 R2 (SWAN)")
-        await asyncio.gather(live(b, "C/2024 J3 (ATLAS)", True), live(b, "235P/LINEAR", True), live(b, "2P/Encke", False))
         await b.close()
-    print("PASS examples: comet players open on the clearest photo, masked star cores drawn filled, Explore features a comet on the map")
+    print("PASS examples: masked star cores drawn filled, Explore features a comet on the map")
 
 asyncio.run(main())

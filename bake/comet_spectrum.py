@@ -373,7 +373,8 @@ def publish(name, rows, pts, cache, points_file="points.json"):
         for p in sorted(sorted(sel, key=lambda q: -q["flux"])[:3], key=lambda q: q["t"]):
             file = f"{p['obs']}_{p['det']}.png"
             photo(p, out / file, cache)
-            photos.append(dict(file=file, mjd=round(p["t"], 4), lam=round(p["lam"], 3), flux=round(p["flux"], 2)))
+            photos.append(dict(file=file, mjd=round(p["t"], 4), lam=round(p["lam"], 3), flux=round(p["flux"], 2),
+                               ra=round(p["ra"], 5), dec=round(p["dec"], 5)))   # where it was cut out: the time-lapse centres there
     first = [e for e in rows if month(e["t"]) == month(rows[0]["t"])]
     speed, direction = motion(first)
     verdicts = {m: co2_verdict(sel) for m, sel in months.items()}

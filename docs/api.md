@@ -22,6 +22,7 @@ Markers for the Explore map: comets people found (`kind: "comet"`) and known obj
 - `tags`: votes, counted from the `comments` table. A tag is part of a comment, and only each person's latest tag counts.
 - `co2`, `photos` (known comets): the carbon dioxide verdict of a measured comet (`detected`, `quiet` or `unclear`; `null` until its spectrum is measured) and how many SPHEREx photos it is in. The Comets page lists them.
 - `thumb` (measured comets): one of the photos its page shows, the one where the comet is brightest (`data/comets/<dir>/<file>`); `null` for the rest. The Comets page uses it for the measured comets' cards.
+- `pictures`, `first`, `last`, `visits`, `seen`, `measured` (known comets): from the baked picture inventory (`detail.facts.inv`): how many SPHEREx pictures held it on any detector, the first and last (MJD), how many visits, in how many SPHEREx detected it and how many could be measured. `peri_prev`, `peri_next`: its perihelion passages (Julian date) around the bake day. The Comets list groups and orders by these.
 - `track` (known comets): `[[day, ra, dec, magnitude], ...]` every 10 days from JPL Horizons. The map moves the marker along it and shows it only while magnitude is 16 or brighter. Built by `bake/known_comets.py`.
 
 ## GET /api/comets/:id (D1)
@@ -31,14 +32,18 @@ One comet for its page. URL-encode the id (`/api/comets/3I%2FATLAS`). Adds `deta
 ```json
 { "id": "3I/ATLAS", "kind": "known", "real": true, "tags": { "comet": 0, "asteroid": 0, "glitch": 0, "unsure": 0, "star": 0 },
   "detail": { "speed_arcsec_per_hour": 99.0, "direction": "west", "first_mjd": 60888.3334, "exposures": 259, "measured": 159,
-    "photos": [ { "file": "2025W33_1B_0599_1_D5.png", "mjd": 60901.2413, "lam": 4.254, "flux": 95.58 } ],
+    "photos": [ { "file": "2025W33_1B_0599_1_D5.png", "mjd": 60901.2413, "lam": 4.254, "flux": 95.58, "ra": 243.82269, "dec": -16.39156 } ],
     "spectrum": { "2025-08": [ { "lam": 4.254, "flux": 95.58, "err": 0.82 } ], "2025-12": [ { "lam": 4.277, "flux": 532.73, "err": 3.1 } ] } },
   "comments": [ { "author": "orbit_owl", "tag": "comet", "body": "The tail points away from the Sun.", "created_at": 1762998800000 } ] }
 ```
 
-A measured comet (`bake/comet_spectrum.py`; 3I/ATLAS, C/2025 R2, C/2024 T5, 210P so far) adds `photos`, `spectrum` (by month), `dir` (its folder under `web/data/comets/`), `co2` (the carbon dioxide verdict per month: `state` detected, quiet or unclear, with `excess` and `sigma` in mJy) and `co2_verdict` (one word for the page's badge: detected if any month shows it).
+A measured comet (`bake/comet_spectrum.py`; 3I/ATLAS, C/2025 R2, C/2024 T5, 210P so far) adds `photos` (each with the comet's `ra`, `dec` when it was taken, from JPL Horizons as SPHEREx saw it; its detector ends the file name), `spectrum` (by month), `dir` (its folder under `web/data/comets/`), `co2` (the carbon dioxide verdict per month: `state` detected, quiet or unclear, with `excess` and `sigma` in mJy) and `co2_verdict` (one word for the page's badge: detected if any month shows it).
 
 For a known comet from JPL's catalog, `detail` holds `spherex`: every SPHEREx D1 photo whose outline held the comet when it was taken (`[{ "day": 210.43, "obs": "2025W47_..." }]`), plus `q` (closest distance to the Sun, AU), `tp` (when, Julian date) and `mags`.
+
+Every known comet's `detail.facts` (`bake/comet_facts.py`, migration 0017) holds what its page states (comet-plan/fact-table.md): `orb` (JPL's orbit at the bake day's epoch, with its solution `soln`, data arc and MOID; `des` is its Horizons designation), `peri` (the previous and next perihelion passages, refined), `enc` (its closest approach to Earth this pass, or null when not bracketed), `status` (`fragment` or `disrupted`) and `extrapolated`, `path` (heliocentric ecliptic positions for Depth), `T` (predicted magnitude every 5 days) and `inv` (every SPHEREx picture that held it over the whole survey, grouped into visits at gaps of 5 days, each visit with its verdict, best SNR, the predicted distance at its middle, and `link`: the picture its time-lapse link opens).
+
+`now` is the daily snapshot (`worker/src/now.js`, table `comet_now`, migration 0018): `{ as_of, soln, T, T30, r, rdot, delta, deldot, elong, side, cnst, ra, dec, x, y, z, vx, vy, vz }` from JPL Horizons for that UTC day, or `null`. A cron (every 10 minutes, 00:00 to 05:59 UTC) refreshes 10 comets a run; a failed fetch keeps the last good row and its date. Pages hide it when `as_of` is more than 2 days old, and combine it with `facts` only when `soln` matches.
 
 Refusals: `404 {"error":"no comet C-9999"}`, `400 {"error":"comet id is not valid"}`, `503` if the database does not answer.
 

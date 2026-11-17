@@ -697,8 +697,11 @@ function verdict(m, f) {
   const live = m.key.startsWith('live'), id = tg.id, onDot = !!id.star.match;
   // the motion is fit from the sources measured visit by visit: it is the dot's only when this visit's source is on the
   // dot. Off it (id.srcOff), or with none measured this visit, nothing here says the dot moved
-  const srcOn = f.x != null && id.srcOff == null, mo = srcOn ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
-  const offTxt = !m.motion || srcOn ? null : id.srcOff != null
+  // opened from a comet's page (&comet= with &t=): the view is about a comet, so no star-style motion line (a proper motion
+  // fit to the patch's middle across visits says nothing about a comet, which is in the middle in one visit only)
+  const cv = m.comet != null && m.t != null;
+  const srcOn = f.x != null && id.srcOff == null, mo = srcOn && !cv ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
+  const offTxt = cv || !m.motion || srcOn ? null : id.srcOff != null
     ? `The source measured near the middle this visit sits ${Math.round(id.srcOff)} arcseconds off the dot, so the motion measured here may belong to something else.`
     : 'No source was measured on the dot this visit, so the motion measured in other visits may belong to something else.';
   const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : pub ? { total: pub.total, label: pub.source, tol: 35 } : null;
@@ -707,7 +710,9 @@ function verdict(m, f) {
   // ({ gaia: its proper motion }) or a passer on the dot ({ sso: its name })
   const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g ? { kind: 'gaia', id: id.star.match.gaiaId } : null };
   const seen = m.frames.filter(x => x.x != null).length;
-  if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
+  const tf = cv && m.frames.find(x => x.at_t);
+  if (cv) { if (!f.at_t) out.parts.push(`This visit shows the same patch of sky; ${m.comet} is in the middle only in the ${tf ? monthYear(tf.start) : 'linked'} visit its page opened.`); }
+  else if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
   else if (mo && ref) {
     const pct = 100 * mo.total / ref.total;
     out.star = name ?? 'a Gaia star'; out.known = true;
@@ -750,10 +755,18 @@ function identityAt(m, f) {
   // a passer can be the dot only where SkyBoT put it at one of this visit's exposure times (f.epochs, the live pipeline's
   // own timestamps); a baked visit has none, so its one time (the visit's middle) can make a passer nearby at most
   const exp = new Set(f.epochs ?? []), place = ([, ra, dec]) => offset(m, ra, dec);
-  const passers = [...(f.known?.bodies ?? [])].map(([name, b]) => {
+  let passers = [...(f.known?.bodies ?? [])].map(([name, b]) => {
     const at = b.pts.filter(p => exp.has(p[0]));
     return { kind: b.kind, name, mag: b.mag, at, pos: at.map(place), near: b.pts.filter(p => !exp.has(p[0])).map(place) };
   });
+  // opened from a comet's page (&comet= with &t=): in the visit with that exposure the comet is at the patch centre, the
+  // place its page gave (JPL Horizons as SPHEREx saw it). SkyBoT's own orbit can put it a minute of arc away (C/2026 A2:
+  // 60 arcsec), so under SkyBoT's name for it (C/2026 A2 for "C/2026 A2 (Bok)") this place stands in for SkyBoT's
+  if (m.comet && f.at_t) {
+    const sb = passers.find(p => p.kind === 'comet' && (m.comet === p.name || m.comet.startsWith(p.name + ' ') || m.comet.startsWith(p.name + '/')));
+    passers = passers.filter(p => p !== sb);
+    passers.push({ kind: 'comet', name: sb?.name ?? m.comet, mag: sb?.mag ?? null, at: [[m.t, m.ra, m.dec]], pos: [[0, 0]], near: [] });
+  }
   const star = identify(mid, stars, a), pass = identify(mid, passers, a);
   // a passer on the dot: the exposure it matched at (t, for the Discuss sheet) and its place then (the target's place)
   if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.at[k][0]; p.place = p.pos[k]; }
@@ -973,7 +986,14 @@ function show(m, query, opts = {}) {
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   candTrack.commit(query);
-  document.getElementById('pv-name').textContent = targetName(m) ?? 'Sky spot';
+  document.getElementById('pv-name').textContent = targetName(m) ?? m.comet ?? 'Sky spot';   // &comet=: the comet its page opened
+  if (opts.comet && m.t != null && m.comet === undefined) {   // checked once per patch; until then, and if it fails, an ordinary view
+    m.comet = null;
+    cometOf(m, opts.comet).then(id => {
+      m.comet = id;
+      if (id && state.m === m) { document.getElementById('pv-name').textContent = targetName(m) ?? id; draw(); }
+    });
+  }
   window.__aim3d?.();   // Advanced's "View this spot on Explore's 3D sky" follows the address
   panel(m); draw(); photo();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
@@ -1019,6 +1039,22 @@ async function knownNext() {
 }
 // east/north offset in arcsec of (ra, dec) from the patch centre, through the frames' own TAN projection
 // (pipeline.js gridWorld, inverted): a flat approximation drifts by pixels near the celestial poles
+// &comet= (a comet page's "Open in time-lapse") is a claim in a shareable address, so it is checked before anything uses
+// it: that comet's own record (GET /api/comets/:id on this site, what its page reads) must hold a photo taken at the
+// view's time t (within 5 s), on this detector, at this spot (within 2 pixels): a measured photo (its ra, dec and the
+// detector in its file name), a JPL-listed D1 exposure or a visit's linked picture. Then the record's own id; otherwise, or when the record cannot
+// be read, null, and the view is an ordinary one.
+async function cometOf(m, hint) {
+  try {
+    const r = await fetch(`/api/comets/${encodeURIComponent(hint)}`);
+    if (!r.ok) return null;
+    const c = await r.json(), d = c.detail ?? {}, tol = 2 * m.arcsec_per_pixel;
+    const shots = [...(d.photos ?? []).filter(p => p.ra != null).map(p => [p.mjd, p.ra, p.dec, p.file?.match(/_(D\d)\.png$/)?.[1]]),
+      ...(d.spherex ?? []).map(s => [MJD0 + s.day, s.ra, s.dec, 'D1']),
+      ...(d.facts?.inv?.visits ?? []).map(v => v.link).filter(Boolean).map(l => [l.t, l.ra, l.dec, l.det])];   // each visit's link (bake/comet_facts.py)
+    return shots.some(([t, ra, dec, det]) => Math.abs(t - m.t) * 86400 <= 5 && det === m.detector && Math.hypot(...offset(m, ra, dec)) <= tol) ? c.id : null;
+  } catch { return null; }
+}
 function offset(m, ra, dec) {
   const d0 = m.dec * D2R, d = dec * D2R, da = (ra - m.ra) * D2R;
   const cosc = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(da);
@@ -1132,7 +1168,7 @@ function search(ra, dec, det, opts = {}) {
   const ch = spMain(), c = CHANNELS[ch];   // the Spectral dial's channel picks the detector; null: the best-covered wavelength
   if (c) document.getElementById('det').value = det = c.detector;
   // opts.t (a known comet's page): open on the visit with the exposure taken then (MJD), its centre ringed (pipeline.js)
-  const tq = opts.t != null ? `&t=${opts.t}` : '';
+  const tq = opts.t != null ? `&t=${opts.t}${opts.comet ? `&comet=${encodeURIComponent(opts.comet)}` : ''}` : '';   // &comet=: whose page
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}${c ? `@${ch}` : ''}${tq}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}${spQuery()}${tq}`;
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
   const t0 = performance.now(), id = job = ++builds;
@@ -1224,7 +1260,7 @@ function spSync() {
   // a baked target is one fixed wavelength: a channel asks for that spot live
   // with no channel, the band in the Band box (it follows the dial, and a Band change sets it)
   if (ch !== (m.channel ?? null) || (ch != null && !m.key.startsWith('live'))) return search(m.ra, m.dec, ch == null ? document.getElementById('det').value : m.detector, { keep: true });
-  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}${specQ()}`);
+  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}${m.comet ? `&comet=${encodeURIComponent(m.comet)}` : ''}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}${specQ()}`);
   const spot = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, have = [], missing = [], missed = [];
   for (const { n, detector } of state.spectral) {
     const lm = n === ch ? m : live.get(`${spot},${detector}@${n}`);
@@ -1761,7 +1797,7 @@ spRestore();
 if (P.has('ra') && P.has('dec')) {
   const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
-  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
+  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t'), comet: P.get('comet') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 } else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1', ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends it when a dive is likely ('dive-go')
   setMode('lapse');

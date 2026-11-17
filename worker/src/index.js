@@ -3,11 +3,12 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=   GET /api/depth?ra=&dec=[&t=]
-//   GET /api/comets   GET /api/comets/:id   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
+//   GET /api/comets   GET /api/comets/:id (with `now`, the daily snapshot: cron, worker/src/now.js)   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 import { skyImagesJson, eclipticLat } from './sky_index.js';
 import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
+import { snapshot, nowRow } from './now.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
 
@@ -257,20 +258,29 @@ async function comets(url, env) {
   const [rows, tags] = await Promise.all([env.DB.prepare(`SELECT id, kind, ra, dec, day, tail, real, track, det, visit, author, created_at,
     json_extract(detail, '$.co2_verdict') AS co2, COALESCE(json_extract(detail, '$.exposures'), json_array_length(detail, '$.spherex')) AS photos,
     json_extract(detail, '$.faint') AS faint,
+    json_extract(detail, '$.facts.inv.n') AS pictures, json_extract(detail, '$.facts.inv.first') AS first, json_extract(detail, '$.facts.inv.last') AS last,
+    (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') = 'seen') AS seen,
+    (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') != 'unmeasured') AS measured,
+    (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') = 'parent') AS parent,
+    (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') = 'unseen') AS unseen,
+    json_array_length(detail, '$.facts.inv.visits') AS visits,
+    json_extract(detail, '$.facts.peri.prev.jd') AS peri_prev, json_extract(detail, '$.facts.peri.next.jd') AS peri_next,
     'data/comets/' || json_extract(detail, '$.dir') || '/' || (SELECT json_extract(p.value, '$.file') FROM json_each(detail, '$.photos') p
       ORDER BY json_extract(p.value, '$.flux') DESC LIMIT 1) AS thumb
     FROM comets`).all(), tallies(env.DB)]);
-  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, thumb: c.thumb ?? (THUMBS[c.id] ? `data/comets/thumbs/${THUMBS[c.id].file}` : null) } : {}) })) });
+  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, pictures: c.pictures, first: c.first, last: c.last, seen: c.seen, measured: c.measured, parent: c.parent, unseen: c.unseen,
+    visits: c.visits, peri_prev: c.peri_prev, peri_next: c.peri_next, thumb: c.thumb ?? (THUMBS[c.id] ? `data/comets/thumbs/${THUMBS[c.id].file}` : null) } : {}) })) });
 }
 
 // One comet for its page: position, tags, the measured detail (photos, spectrum) and its discussion
 async function comet(id, env) {
   const c = await env.DB.prepare('SELECT * FROM comets WHERE id = ?').bind(id).first();
   if (!c) return json({ error: `no comet ${id}` }, 404);
-  const [tags, talk] = await Promise.all([tallies(env.DB),
-    env.DB.prepare('SELECT author, tag, body, created_at FROM comments WHERE comet_id = ? ORDER BY created_at').bind(id).all()]);
+  const [tags, talk, now] = await Promise.all([tallies(env.DB),
+    env.DB.prepare('SELECT author, tag, body, created_at FROM comments WHERE comet_id = ? ORDER BY created_at').bind(id).all(),
+    env.DB.prepare('SELECT as_of, soln, now FROM comet_now WHERE id = ?').bind(id).first()]);
   return json({ ...cometRow(c, tags), tags: tags[id] ?? { comet: 0, asteroid: 0, glitch: 0, unsure: 0, star: 0 },
-    detail: c.detail ? JSON.parse(c.detail) : null, comments: talk.results });
+    detail: c.detail ? JSON.parse(c.detail) : null, now: nowRow(now), comments: talk.results });
 }
 
 // Every comet with written comments is a thread, for the Forums page: the comet, its votes and its comments, oldest
@@ -571,6 +581,8 @@ async function check(request, env) {
 }
 
 export default {
+  // the daily "right now" snapshot of each known comet (worker/src/now.js; wrangler.toml [triggers])
+  async scheduled(event, env, ctx) { ctx.waitUntil(snapshot(env).then(r => console.log('snapshot', JSON.stringify(r)))); },
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);

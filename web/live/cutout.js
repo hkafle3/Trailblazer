@@ -223,24 +223,26 @@ export function visitShots(shots) {
 // at this wavelength, or one pixel holding most of the light, which is a glitch the flags missed, not a comet).
 const REF_LOOK = 32, PEAK_MAX = 0.6;   // 32 headers of 32 KB: enough to find same-wavelength photos of most spots
 let mapsP = null;
-const wavemap = () => (mapsP ??= fetch(new URL('../data/wavemaps.json', import.meta.url)).then(r => r.json()).then(m => m.D1).catch(e => { mapsP = null; throw e; }));
+const wavemaps = () => (mapsP ??= fetch(new URL('../data/wavemaps.json', import.meta.url)).then(r => r.json()).catch(e => { mapsP = null; throw e; }));
 export async function pool(items, n, fn) {   // fn over items, at most n at a time
   const out = new Array(items.length); let i = 0;
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); } }));
   return out;
 }
 const inImage = p => p && p[0] >= 0 && p[1] >= 0 && p[0] <= SIZE - 1 && p[1] <= SIZE - 1;
+// s.det: the detector (D1 when not given: bake/known_comets.py lists D1 exposures); maps: wavemaps.json's maps by detector
 export async function knownPhoto(s, { api = '', signal, maps } = {}) {
+  const det = s.det ?? 'D1';
   let r;   // a 503 is IRSA busy behind the Worker (when the sky index cannot answer): two more tries, 3 s apart
   for (let k = 0; ; k++) {
-    r = await fetch(`${api}/api/images?ra=${s.ra.toFixed(4)}&dec=${s.dec.toFixed(4)}&det=D1&v=2`, { signal });
+    r = await fetch(`${api}/api/images?ra=${s.ra.toFixed(4)}&dec=${s.dec.toFixed(4)}&det=${det}&v=2`, { signal });
     if (r.status !== 503 || k === 2) break;
     await new Promise(ok => setTimeout(ok, 3000));
   }
   if (!r.ok) throw new Error(`image search: HTTP ${r.status}`);
   const { images } = await r.json(), img = images.find(i => i.obs === s.obs);
   if (!img) throw new Error(`${s.obs} is not in the image search`);
-  const [h, map] = await Promise.all([imageHeader(img.key, signal), maps ?? wavemap()]);
+  const [h, map] = await Promise.all([imageHeader(img.key, signal), (maps ? Promise.resolve(maps) : wavemaps()).then(m => m[det])]);
   const p = worldToPix(h, s.ra, s.dec);
   if (!inImage(p)) throw new Error(`${s.obs} does not cover the comet`);
   const win = targetCells(p), [lam, bw] = wavelengthAt(map, p[0], p[1]);

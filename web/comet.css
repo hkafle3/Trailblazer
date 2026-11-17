@@ -1,98 +1,277 @@
-/* A comet's page (comet.html?id=, comet.js): the candidate page's layout and parts (discuss.css .cpage, Ming's patch.css),
-   plus what only a measured or known comet has. No new parts: each rule says which of his it reuses.
-   The older rounded-glass rules for these ids and classes (styles.css, ui.css) are undone here where they still match. */
+/* The comet pages, direction A ("answers first"): comet.html?id= (one comet) and comet.html (the Comets list).
+   Ming's style (design/frontend-refactor/, header.css): black, Space Mono panels, Sansation dates, 1.5px white outlines
+   with small radii, the round arrow button, straight white top rules on cards (never a thick border-top curving into
+   rounded corners), orange = this comet and now. Honesty marks: filled dot measured by SPHEREx, hollow dot predicted by
+   JPL, dashed box needs data. */
+@import url("https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap");
 
-/* the older page's spacing, corners and gradient title (styles.css .comet-head, .talk, .composer; ui.css .talk) */
-.cpage .comet-head { margin: 0; }
-.cpage .talk { padding: 0; border-radius: 0; background: none; border: 0; }
-.cpage .talk .composer { padding-top: 0; border-top: 0; }
-.cpage .comet-grid, .cpage .col { min-width: 0; grid-template-columns: minmax(0, 1fr); }
-.cpage .head #c-cat, .cpage .head #c-verdict { color: #cfd6e4; }
-.cpage .co2.detected { color: var(--comet); }   /* the verdict on the CO2 band, coloured as on the Comets list */
-
-/* Where it is: his card, the mini map in his mini-map box (as on the candidate page), the date in his timeline's type,
-   then "Find on map" as his arrow button */
-.cpage .wherecard { display: block; }
-.cpage .wherecard #c-when { margin: calc(18 * var(--e)) 0 0; font: 300 max(13px, calc(24 * var(--e))) / 1 var(--head-font); color: #e8e8e8; }
-.cpage .wherecard #c-when:empty { display: none; }
-.cpage .wherecard #c-where { margin-top: calc(8 * var(--e)); white-space: pre; }
-.cpage .wherecard .pv-state { width: auto; margin-top: calc(26 * var(--e)); }
-.cpage .wherecard .skymini { box-shadow: none; }
-.cpage .wherecard .where { white-space: normal; line-height: 0; }   /* ui.css .wherecard .where kept the markup's line breaks */
-
-/* photos: his mini-map boxes (discuss.css .frames), the cutouts brightened as before (styles.css .plate img) */
-.cpage .frames figure { font-size: max(11px, calc(22 * var(--e))); text-align: center; }
-.cpage .frames figure.now { color: #fff; }
-
-/* measurements: one box, four values in his info type over Space Mono numbers */
-.cpage .measures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(20 * var(--e)) calc(40 * var(--e)); }
-.cpage .measures div { padding: 0; border: 0; display: grid; gap: calc(10 * var(--e)); align-content: start; }
-.cpage .measures .pv-info { margin: 0; }
-.cpage .measures b { font: 400 max(17px, calc(36 * var(--e))) / 1.1 var(--panel-font); color: #fff; }
-.cpage .measures small { font: 400 max(11px, calc(20 * var(--e))) var(--panel-font); color: #cfd6e4; }
-
-/* spectrum: a box with his card heading; the chart keeps its colours (styles.css .spectrum), its text in his type */
-.cpage .spec-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; margin-bottom: calc(20 * var(--e)); }
-.cpage .spectrum h2, .cpage .empty-box h2 { margin: 0; font: 400 max(18px, calc(36 * var(--e))) / 1.1 var(--panel-font); letter-spacing: 0; color: #fff; }
-.cpage .spec-head .pv-info { margin: 0; }
-.cpage .spectrum text { font-family: var(--panel-font); }
-.cpage .spectrum .lab { font: 400 12px var(--panel-font); fill: #fff; }
-.cpage .spectrum .legend { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: calc(14 * var(--e)); }
-
-/* known comets: the box with his info lines; each SPHEREx visit a white-outlined pill (his Spectral chips,
-   patch.css .sp-chip, without the remove mark); the way out his arrow button */
-.cpage .empty-box { display: grid; gap: calc(22 * var(--e)); justify-items: start; }
-.cpage .empty-box .pv-info { margin: 0; }
-.cpage .empty-box .visits { display: flex; flex-wrap: wrap; gap: 10px; }
-.cpage .visits a { display: inline-flex; align-items: center; height: max(28px, calc(44 * var(--e))); padding: 0 14px; box-sizing: border-box; border: max(1px, calc(2 * var(--e))) solid #fff; border-radius: 999px;
-  font: 400 max(12px, calc(20 * var(--e))) / 1 var(--panel-font); color: #fff; white-space: nowrap; transition: background .15s, color .15s; }
-.cpage .visits a:hover, .cpage .visits a:focus-visible { background: #fff; color: #000; outline: 0; }
-.cpage .empty-box .pv-state { width: auto; gap: calc(24 * var(--e)); }
-
-/* comments: the candidate page's boxes; "was asteroid" quieter */
-.cpage .post .was { color: #8b93a3; }
-.cpage #t-list > .pv-info { margin: 0; }
-.cpage .compose .row #c-note { flex: 1; }
-.cpage .compose .row .pv-state { flex: none; }
-
-/* the right column: the tag rows' counts and the tally line under them */
-.cpage .verdict #t-head { margin: calc(14 * var(--e)) 0 0; }
-.cpage .missing { margin: 0; }
-.cpage .missing a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
-
-/* phones: one column; the map and tags come before the photos and the comments, so a tag is picked next to the form */
-@media (max-width: 900px) {
-  .cpage > .left, .cpage .comet-grid:not([hidden]), .cpage > .right { display: contents; }
-  .cpage > * > *, .cpage .comet-grid > * { min-width: 0; }
-  .cpage .comet-head { order: 0; }
-  .cpage #c-map { order: 2; }
-  .cpage .col { order: 3; }
-  .cpage .verdict { order: 4; }
-  .cpage .talk { order: 5; }
-  .cpage .missing { order: 1; }
-  .cpage .col, .cpage .talk { gap: 18px; }
-  .cpage .measures { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px 16px; }
-  .cpage .measures .pv-info { font-size: 12px; }
-  .cpage .wherecard .where { max-width: 360px; }
-  .cpage .wherecard #c-where { font-size: 12px; }
-  .cpage .wherecard .pv-state { width: min(100%, 300px); }
-  .cpage .empty-box .pv-state { font-size: 16px; white-space: nowrap; }
-  .cpage .frames figure { font-size: 11px; }
-  .cpage .spectrum .legend, .cpage .spec-head .pv-info { font-size: 12px; }
+body.cometpage {
+  --panel-font: "Space Mono", ui-monospace, monospace;
+  --ink: #fff; --ink-2: #cfd6e4; --ink-3: #8b93a3; --line: rgba(255, 255, 255, .14);
+  background: #000; color: var(--ink); font: 400 14px/1.5 var(--panel-font);
 }
-@media (min-width: 561px) { .cpage #c-photos { grid-template-columns: repeat(6, minmax(0, 1fr)); } }   /* six a row, as before (three on a phone): 3I/ATLAS's six photos on one line */
+body.cometpage::before, body.cometpage::after { display: none; }   /* styles.css body.page's sky photo: this page is black */
+.cometpage p, .cometpage h1, .cometpage h2, .cometpage h3, .cometpage dl, .cometpage dd, .cometpage figure { margin: 0; }
+.cometpage h1, .cometpage h2, .cometpage h3 { font-weight: 400; }
+.cometpage [hidden] { display: none !important; }
+.cometpage button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.cometpage .ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.cometpage .wrap { width: min(1128px, calc(100% - 32px)); margin: 0 auto; padding: 132px 0 72px; }
 
-/* the strip's player: his mini-map box, large, over the time-lapse's timeline and play/pause handle (patch.css .tl) */
-.cpage .player { display: grid; justify-items: center; gap: calc(30 * var(--e)); margin-bottom: calc(44 * var(--e)); }
-.cpage .player .big { position: relative; left: auto; top: auto; width: min(100%, calc(620 * var(--e)), 520px); height: auto; aspect-ratio: 1; background: #000; }
-.cpage .player .big img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-.cpage .player .big img:not([src]) { visibility: hidden; }
-.cpage .player .ring { --d: calc(100 * var(--e)); min-width: 34px; min-height: 34px; }
-.cpage .player .tl { position: relative; left: auto; top: auto; width: 100%; margin: 0; padding: max(34px, calc(64 * var(--e))) 0 max(12px, calc(24 * var(--e))); }
-.cpage .player .tl-line { cursor: default; }
-.cpage .frames figure { cursor: pointer; }
-.cpage .frames figure:not(.on) .pv-mini { opacity: .55; }
-.cpage .frames .vis { margin: 0; font-size: max(10px, calc(18 * var(--e))); }
-.cpage .frames figure { align-content: start; }   /* a two-line label under one photo keeps every photo on one line */
-.cpage #c-photos-panel .frames-note { margin-top: calc(30 * var(--e)); line-height: 1.5; }
-.cpage #c-photos-panel .cores { margin-top: calc(8 * var(--e)); line-height: 1.5; }
+/* type */
+.cometpage .kicker { font: 400 12px/1 var(--panel-font); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.cometpage .info { font: 400 12.5px/1.55 var(--panel-font); color: var(--ink-2); }
+.cometpage .date { font-family: var(--head-font); font-weight: 300; }
+.cometpage .o { color: var(--comet); fill: var(--comet); }
+.cometpage .def { color: var(--ink-3); }
+.cometpage .h2 { font: 400 21px/1.15 var(--panel-font); }
+.cometpage .card { border-top: 1.5px solid #fff; padding-top: 18px; }   /* a straight rule, never a curved border-top */
+.cometpage .box { border: 1.5px solid #fff; border-radius: 6px; background: #000; }
+.cometpage .clink { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/1 var(--panel-font); color: #fff; }
+.cometpage .clink svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.cometpage .clink:hover { text-decoration: underline; text-underline-offset: 4px; }
+.cometpage .cnote { color: var(--ink-3); font-size: 11.5px; }
+.cometpage .cnote.err { color: #ff8a8a; }
+
+/* the arrow button (Ming's .pv-state, at a fixed size) */
+.cometpage .state { display: flex; align-items: center; justify-content: space-between; gap: 14px; height: 56px; padding: 0 8px 0 20px; border: 1.5px solid #fff; border-radius: 10px;
+  background: #000; color: #fff; font: 400 16px/1 var(--panel-font); white-space: nowrap; transition: background .2s; }
+.cometpage .state:hover { background: #141414; }
+.cometpage .state .cgo { flex: none; width: 40px; height: 40px; border-radius: 50%; background: #ececec; color: #050505; display: grid; place-items: center; transition: transform .2s var(--ease); }
+.cometpage .state:hover .cgo { transform: translateX(3px); }
+.cometpage .state .cgo svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cometpage .state.sm { height: 44px; font-size: 14px; padding-left: 16px; border-radius: 8px; }
+.cometpage .state.sm .cgo { width: 30px; height: 30px; } .cometpage .state.sm .cgo svg { width: 17px; height: 17px; }
+.cometpage .state:disabled { opacity: .45; cursor: default; }
+
+/* honesty: where a number comes from */
+.cometpage .lb { display: inline-block; width: 7px; height: 7px; margin: 0 0 1px 6px; border-radius: 50%; vertical-align: middle; box-sizing: border-box; }
+.cometpage .lb.lm { background: #fff; }
+.cometpage .lb.lp { border: 1px solid #fff; }
+.cometpage .lb.ln { border: 1px dashed var(--ink-3); border-radius: 2px; width: 9px; }
+.cometpage .src { display: inline-flex; align-items: center; gap: 6px; font: 400 11px/1.3 var(--panel-font); color: var(--ink-3); }
+.cometpage .src i { flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
+.cometpage .src.lm i { background: #fff; }
+.cometpage .src.lp i { border: 1px solid #fff; }
+.cometpage .src.ln { padding: 2px 7px; border: 1px dashed var(--ink-3); border-radius: 4px; }
+.cometpage .needs { display: inline-block; padding: 1px 8px; border: 1px dashed var(--ink-3); border-radius: 4px; color: var(--ink-3); font-size: 12px; }
+.cometpage .needs.big { font-size: 18px; padding: 2px 12px; }
+.cometpage .key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 11px; color: var(--ink-3); }
+.cometpage .key .lb { margin: 0 7px 1px 0; }
+
+/* ---------------------------------------------------------------- one comet: the top */
+.cometpage .crumb { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-bottom: 30px; }
+.cometpage .crumb .ic { width: 16px; height: 16px; }
+.cometpage .chero { display: grid; grid-template-columns: minmax(0, 1fr) 452px; gap: 72px; align-items: start; }
+.cometpage .chero h1 { font: 400 46px/1.05 var(--panel-font); letter-spacing: -.01em; margin: 14px 0 12px; overflow-wrap: anywhere; }
+.cometpage .decode { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 11.5px; color: var(--ink-3); margin-bottom: 26px; }
+.cometpage .decode b { font-weight: 400; color: var(--ink-2); margin-right: 4px; }
+.cometpage .lead { font: 400 19px/1.6 var(--panel-font); max-width: 38ch; }
+.cometpage .lead .lb { width: 8px; height: 8px; }
+.cometpage .chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0 14px; }
+.cometpage .cchip { display: inline-flex; align-items: center; gap: 9px; min-height: 32px; padding: 0 14px; border: 1.5px solid #fff; border-radius: 999px; font-size: 12.5px; }
+.cometpage .cchip .lb { margin: 0; }
+.cometpage .cchip.lm .lb { background: var(--comet); box-shadow: 0 0 8px var(--comet); }
+.cometpage .cchip.lq { border-color: rgba(255, 255, 255, .45); color: var(--ink-2); }
+.cometpage .chero .key { margin-bottom: 30px; }
+.cometpage .actions { display: flex; align-items: center; gap: 28px; }
+.cometpage .actions .state { width: 300px; }
+.cometpage .shot { position: relative; }
+.cometpage .shot .tabs { position: absolute; left: 14px; top: 14px; z-index: 2; display: inline-flex; border: 1.5px solid #fff; border-radius: 6px; overflow: hidden; background: #000; }
+.cometpage .shot .tabs button { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; font: 400 13px/1 var(--panel-font); }
+.cometpage .shot .tabs button + button { border-left: 1.5px solid #fff; }
+.cometpage .shot .tabs button.on { background: #fff; color: #000; }
+.cometpage .shot .tabs .ic { width: 15px; height: 15px; }
+.cometpage .shot .box { aspect-ratio: 1; overflow: hidden; }
+.cometpage .shot .cap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin-top: 12px; font-size: 11.5px; color: var(--ink-3); }
+.cometpage .shot .cap .date { font-size: 13px; color: #e8e8e8; }
+.cometpage .shot .cap .cnote { flex-basis: 100%; }
+
+/* pictures: north up, the ring where JPL puts the comet (solid: SPHEREx detected it there) */
+.cometpage .cph { position: relative; background: #000; overflow: hidden; }
+.cometpage .cph img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.cometpage .cph .cring { position: absolute; left: 50%; top: 50%; width: 22%; height: 22%; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px solid var(--comet); box-shadow: 0 0 10px rgba(255, 154, 77, .45); }
+.cometpage .cph .cring.dash { border-style: dashed; border-color: rgba(255, 255, 255, .6); box-shadow: none; }
+.cometpage .cph .nopic { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11.5px; color: var(--ink-3); }
+
+/* Depth: the comet's path among the planets (comet.js scene) */
+.cometpage .scene { touch-action: none; cursor: grab; outline-offset: 3px; -webkit-user-select: none; user-select: none; }
+/* the zoom buttons, as on the time-lapse's Depth view (patch.css .xp-d3-zoom), over the scene's top right corner */
+.cometpage .shot .dzoom { position: absolute; z-index: 3; right: 14px; top: 14px; display: flex; border: 1.5px solid #fff; border-radius: 8px; overflow: hidden; background: #000; }
+.cometpage .shot .dzoom button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 32px; min-width: 34px; padding: 0 10px; color: #fff; font: 400 13px/1 var(--panel-font); cursor: pointer; }
+.cometpage .shot .dzoom button + button { border-left: 1.5px solid rgba(255, 255, 255, .45); }
+.cometpage .shot .dzoom button:hover:not(:disabled) { background: rgba(255, 255, 255, .14); }
+.cometpage .shot .dzoom button:disabled { color: rgba(255, 255, 255, .35); cursor: default; }
+.cometpage .shot .dzoom button:focus-visible { outline: 2px solid var(--comet); outline-offset: -3px; }
+.cometpage .shot .dzoom svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.cometpage .scene svg { display: block; width: 100%; height: 100%; font-family: var(--panel-font); }
+.cometpage .scene .lap { fill: none; stroke: rgba(200, 215, 255, .32); stroke-width: 1; }
+.cometpage .scene .cpath { fill: none; stroke: none; }
+.cometpage .scene .cpast { fill: none; stroke: var(--comet); stroke-width: 2.2; stroke-dasharray: 1 6; stroke-linecap: round; }
+.cometpage .scene .cfut { fill: none; stroke: var(--comet); stroke-width: 1.6; stroke-dasharray: 1 7; stroke-linecap: round; opacity: .5; }
+.cometpage .scene .glow { fill: rgba(255, 190, 110, .14); }
+.cometpage .scene .sun { fill: #fff4dc; }
+.cometpage .scene .earth { fill: #cfe3ff; }
+.cometpage .scene .sight { stroke: rgba(255, 255, 255, .55); stroke-width: 1; }
+.cometpage .scene .drop { stroke: rgba(255, 255, 255, .22); stroke-width: 1; stroke-dasharray: 1 3; }
+.cometpage .scene .mark.seen { fill: #fff; }
+.cometpage .scene .mark.faint { fill: #000; stroke: rgba(255, 255, 255, .65); stroke-width: 1.2; }
+.cometpage .scene .mark.peri { fill: #000; stroke: #fff; stroke-width: 1.5; }
+.cometpage .scene .halo { fill: rgba(255, 154, 77, .18); }
+.cometpage .scene .now { fill: var(--comet); }
+.cometpage .scene text { font-size: 11px; fill: #fff; }
+.cometpage .scene text.dim { fill: rgba(255, 255, 255, .6); }
+.cometpage .scene text.o { fill: var(--comet); }
+
+/* ---------------------------------------------------------------- the six answers */
+.cometpage .answers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 56px 44px; margin-top: 104px; }
+.cometpage .ans .q { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+.cometpage .ans .a { font: 400 25px/1.2 var(--panel-font); margin: 16px 0 12px; }
+.cometpage .ans .d { font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+.cometpage .ans .d b, .cometpage .v .say span b { font-weight: 400; color: #fff; }
+.cometpage .ans .srcs { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; }
+.cometpage .kv { display: grid; grid-template-columns: auto 1fr; gap: 9px 18px; margin-top: 18px; font-size: 13px; }
+.cometpage .kv dt { color: var(--ink-3); }
+.cometpage .ans .kv + .d { margin-top: 12px; }
+.cometpage .spec { margin-top: 18px; }
+.cometpage .spec svg { display: block; width: 100%; height: auto; font-family: var(--panel-font); }
+.cometpage .spec text { font-size: 10.5px; fill: #fff; }
+.cometpage .spec text.dim { fill: rgba(255, 255, 255, .55); }
+.cometpage .spec .band { fill: rgba(255, 154, 77, .14); }
+.cometpage .spec .cont { stroke: rgba(255, 255, 255, .45); stroke-dasharray: 3 4; }
+.cometpage .spec .line { fill: none; stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
+.cometpage .spec-cap { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+
+/* ---------------------------------------------------------------- what SPHEREx saw: one card per visit */
+.cometpage .saw { margin-top: 112px; }
+.cometpage .saw-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; }
+.cometpage .saw-def { margin-top: 8px; font-size: 12px; color: var(--ink-3); max-width: 80ch; }
+.cometpage .vstrip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 34px 22px; margin-top: 34px; }
+.cometpage .v { position: relative; padding-top: 22px; border-top: 1.2px solid #fff; }
+.cometpage .v::before { content: ""; position: absolute; left: 0; top: -5px; width: 9px; height: 9px; border-radius: 50%; background: #fff; }
+.cometpage .v.next { border-top-style: dashed; border-top-color: rgba(255, 255, 255, .5); }
+.cometpage .v.next::before { background: #000; border: 1.5px solid #fff; box-sizing: border-box; }
+.cometpage .v .cph { aspect-ratio: 1; border: 1.5px solid #fff; border-radius: 6px; }
+.cometpage .v.faint .cph img, .cometpage .v.unseen .cph img, .cometpage .v.unmeasured .cph img { opacity: .55; }
+.cometpage .v .pcap { margin-top: 6px; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }
+.cometpage .v .when { margin: 8px 0 6px; font-size: 15px; }
+.cometpage .v .say { font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.cometpage .v .say > b { display: block; font-weight: 400; color: #fff; margin-bottom: 2px; }
+.cometpage .v .lapse { margin-top: 12px; font-size: 12px; }
+.cometpage .next-box { aspect-ratio: 1; border: 1.5px dashed rgba(255, 255, 255, .5); border-radius: 6px; display: grid; align-content: center; gap: 18px; padding: 16px; font-size: 12.5px; color: var(--ink-2); }
+.cometpage .next-box b { display: block; font-weight: 400; color: #fff; font-size: 13px; }
+.cometpage .next-box .o b { color: var(--comet); }
+
+/* ---------------------------------------------------------------- folded: Advanced and Discuss */
+.cometpage .folds { margin-top: 96px; display: grid; gap: 26px; }
+.cometpage .fold summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; list-style: none; }
+.cometpage .fold summary::-webkit-details-marker { display: none; }
+.cometpage .fold .ft { font-size: 19px; }
+.cometpage .fold small { display: block; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.cometpage .fold .chev { transition: transform .2s; }
+.cometpage .fold[open] .chev { transform: rotate(180deg); }
+.cometpage .adv-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 44px; margin-top: 26px; }
+.cometpage .adv-sec h3 { font-size: 14px; color: var(--ink-2); margin-bottom: 10px; }
+.cometpage .adv-sec .kv { margin: 0 0 12px; font-size: 12.5px; }
+.cometpage .adv-sec .def { font-size: 12px; margin-bottom: 8px; }
+.cometpage .adv-sec:has(.pgrid) { grid-column: 1 / -1; }
+.cometpage .adv-sec.visits { grid-column: 1 / -1; }
+.cometpage .adv-sec .vrow { margin-bottom: 10px; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); }
+.cometpage .adv-sec .vrow b { font-weight: 400; color: #fff; margin-right: 6px; }
+.cometpage .adv-sec .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px; margin-bottom: 12px; }
+.cometpage .adv-sec figure img { display: block; width: 100%; aspect-ratio: 1; border: 1px solid rgba(255, 255, 255, .6); border-radius: 4px; image-rendering: pixelated; }
+.cometpage .adv-sec figcaption { margin-top: 4px; font-size: 10.5px; color: var(--ink-3); }
+.cometpage .ctalk { margin-top: 22px; display: grid; gap: 14px; }
+.cometpage .post { border-top: 1px solid var(--line); padding-top: 10px; }
+.cometpage .post .who { font-size: 12px; color: var(--ink-3); } .cometpage .post .who b { color: var(--ink-2); font-weight: 400; }
+.cometpage .post .body { margin-top: 4px; font-size: 13px; }
+.cometpage .cform { display: grid; gap: 10px; }
+.cometpage .cform textarea, .cometpage .cform .nick { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1.5px solid #fff; border-radius: 6px; background: #000; color: #fff; font: 400 13px/1.5 var(--panel-font); resize: vertical; }
+.cometpage .cform .crow { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+
+/* ---------------------------------------------------------------- the list */
+.cometpage #l-all .top { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 72px; align-items: end; }
+.cometpage #l-all h1 { font: 400 46px/1.05 var(--panel-font); margin-bottom: 22px; }
+.cometpage #l-all .lead { max-width: 46ch; }
+.cometpage .csearch { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 16px; border: 1.5px solid #fff; border-radius: 6px; color: var(--ink-3); }
+.cometpage .csearch input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: #fff; font: 400 13px var(--panel-font); outline: 0; }
+.cometpage .csearch:focus-within { box-shadow: 0 0 0 2px rgba(255, 255, 255, .25); }
+.cometpage #l-all > .key { margin-top: 28px; }
+.cometpage .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; margin-top: 48px; }
+.cometpage .fc { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 24px; align-items: start; }
+.cometpage .fc .cph { aspect-ratio: 1; border: 1.5px solid #fff; border-radius: 6px; }
+.cometpage .fc .cring { width: 30%; height: 30%; }
+.cometpage .fc .kicker { margin: 6px 0 12px; color: var(--comet); }
+.cometpage .fc h3 { font: 400 22px/1.2 var(--panel-font); }
+.cometpage .fc .d { font-size: 13px; line-height: 1.6; color: var(--ink-2); margin: 10px 0 16px; }
+.cometpage .grp { margin-top: 80px; }
+.cometpage .grp-h { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.cometpage .grp-h h2 { font: 400 21px/1.2 var(--panel-font); }
+.cometpage .grp-h p { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
+.cometpage .grp-h .cn { font-size: 13px; color: var(--ink-3); white-space: nowrap; }
+.cometpage details.grp summary { cursor: pointer; list-style: none; }
+.cometpage details.grp summary::-webkit-details-marker { display: none; }
+.cometpage details.grp .cmore { display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; color: #fff; }
+.cometpage details.grp .cmore .ic { width: 16px; height: 16px; }
+.cometpage details.grp[open] .chev { transform: rotate(180deg); }
+.cometpage details.grp[open] .cmore { font-size: 0; }
+.cometpage details.grp[open] .cmore .ic { font-size: 13px; }
+.cometpage .crows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 44px; margin-top: 22px; }
+.cometpage .crow { display: grid; grid-template-columns: 56px minmax(0, 1fr) 28px; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.cometpage .crow .th { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; border: 1.5px solid #fff; background: #000; display: grid; place-items: center; }
+.cometpage .crow .th img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.cometpage .nophoto { width: 6px; height: 6px; border-radius: 50%; border: 1px solid #fff; }
+.cometpage .crow b { display: block; font-weight: 400; font-size: 14px; overflow-wrap: anywhere; }
+.cometpage .crow small { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.cometpage .crow small .lb { margin-left: 5px; width: 6px; height: 6px; }
+.cometpage .crow .cgo { width: 26px; height: 26px; border-radius: 50%; background: #ececec; color: #000; display: grid; place-items: center; }
+.cometpage .crow .cgo svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cometpage .crow:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.cometpage .grp.co2 .crow .th { border-color: var(--comet); box-shadow: 0 0 10px rgba(255, 154, 77, .35); }
+.cometpage .cnone, .cometpage .missing { margin-top: 24px; color: var(--ink-2); }
+.cometpage .missing a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.cometpage main > h1#c-id { font: 400 36px/1.1 var(--panel-font); }
+
+/* ---------------------------------------------------------------- tablets and phones */
+@media (max-width: 1100px) {
+  .cometpage .chero { grid-template-columns: minmax(0, 1fr) 380px; gap: 40px; }
+  .cometpage .vstrip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .cometpage .crows { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .cometpage .wrap { padding-top: 84px; }
+  .cometpage .crumb { margin-bottom: 18px; }
+  .cometpage .chero { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .cometpage .chero .txt { display: contents; }
+  .cometpage .chero .txt > * { order: 0; }
+  .cometpage .chero h1 { font-size: 30px; margin: 10px 0 14px; }
+  .cometpage .lead { font-size: 15.5px; }
+  .cometpage .shot { order: 3; margin-top: 26px; }
+  .cometpage .chips { margin: 18px 0 12px; gap: 8px; }
+  .cometpage .cchip { min-height: 30px; font-size: 11.5px; padding: 0 12px; }
+  .cometpage .chero .key { margin-bottom: 0; }
+  .cometpage .actions { order: 4; margin-top: 18px; flex-direction: column; align-items: stretch; gap: 16px; }
+  .cometpage .actions .state { width: 100%; }
+  .cometpage .actions .clink { justify-content: center; }
+  .cometpage .answers { grid-template-columns: minmax(0, 1fr); gap: 40px; margin-top: 64px; }
+  .cometpage .ans .a { font-size: 22px; }
+  .cometpage .shot .dzoom { right: 8px; top: 8px; }
+  .cometpage .shot .dzoom button { height: 44px; min-width: 44px; padding: 0; }
+  .cometpage .shot .dzoom span { display: none; }   /* Reset view: the icon alone on a phone (its name is its aria-label) */
+  .cometpage .saw { margin-top: 72px; }
+  .cometpage .saw-head { flex-direction: column; gap: 4px; }
+  .cometpage .vstrip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 16px; margin-right: -16px; padding-right: 16px; padding-top: 6px; }
+  .cometpage .vstrip .v { flex: none; width: 160px; scroll-snap-align: start; }
+  .cometpage .folds { margin-top: 64px; }
+  .cometpage .adv-body { grid-template-columns: minmax(0, 1fr); }
+  .cometpage #l-all .top { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .cometpage #l-all h1 { font-size: 34px; }
+  .cometpage .feat { grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 32px; }
+  .cometpage .fc { grid-template-columns: 112px minmax(0, 1fr); gap: 16px; }
+  .cometpage .fc h3 { font-size: 17px; }
+  .cometpage .fc .d { font-size: 12px; margin: 6px 0 0; }
+  .cometpage .fc .clink { display: none; }
+  .cometpage .grp { margin-top: 56px; }
+  .cometpage .crows { grid-template-columns: minmax(0, 1fr); }
+  .cometpage .crow small { white-space: normal; }
+}
