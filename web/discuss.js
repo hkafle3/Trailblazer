@@ -70,6 +70,7 @@ export function discuss(page) {
     const m = state.m; if (!m) return;
     const f = m.frames[state.i];
     if (near.m !== m) loadNear(m);
+    if (sheet && openOn && !offered && openOn[0] === m && openOn[1] === f && !started()) offer(m, f);   // a late SkyBoT answer
     if (!force && last[0] === m && last[1] === f) return;
     last = [m, f];
     if (sheet && openOn && (openOn[0] !== m || openOn[1] !== f)) close();   // the sheet describes one spot in one visit
@@ -113,7 +114,7 @@ export function discuss(page) {
     q('.close').onclick = close;
     form.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     form.addEventListener('input', sync); form.addEventListener('change', sync);
-    q('[data-f=else]').onclick = () => { q('.match').hidden = true; q('.talk-form').hidden = false; sync(); q('.cbx').focus(); };
+    q('[data-f=else]').onclick = () => { offered = true; q('.match').hidden = true; q('.talk-form').hidden = false; sync(); q('.cbx').focus(); };
     q('[data-f=its]').onclick = logSighting;
     form.onsubmit = e => { e.preventDefault(); post(); };
     window.addEventListener('ch:user', sync);
@@ -135,7 +136,7 @@ export function discuss(page) {
     sheet ??= build();
     page.opening?.();   // the page closes any other card that takes the same place
     page.stop();   // the sheet is about this visit: playback would move on and close it
-    openOn = [m, f];
+    openOn = [m, f]; offered = false;
     document.body.classList.add('talking');
     // the thumbnail: the middle of the photo on screen, the dot ringed
     const c = q('.thumb canvas'), g = c.getContext('2d'), p = $('patch'), w = p.width * .49, h = w * c.height / c.width;
@@ -150,15 +151,23 @@ export function discuss(page) {
     // SkyBoT's answers for this visit come in after the frames (timelapse.html knownFor): wait for them, a little
     for (let t = 0; t < 40 && f.known?.left > 0 && openOn?.[1] === f; t++) await new Promise(r => setTimeout(r, 250));
     if (openOn?.[1] !== f) return;
-    const k = page.middle ? page.middle(f) : knownMatch(f, m.ra, m.dec);   // the passer the page's verdict put on the dot (timelapse.html knownAtMiddle)
-    if (!k) return;
+    if (offer(m, f)) q('[data-f=its]').focus();
+  }
+  // "It's X": the passer the page's verdict put on the dot (timelapse.html knownAtMiddle). SkyBoT's answers can land after
+  // the sheet opened, so frame() asks again on every redraw until it is offered or the person has started on the form.
+  let offered = false;
+  function offer(m, f) {
+    const k = page.middle ? page.middle(f) : knownMatch(f, m.ra, m.dec);
+    if (!k) return false;
+    offered = true;
     q('[data-f=kname]').textContent = k.name;
     q('[data-f=kwhat]').textContent = `${k.kind === 'comet' ? 'Comet' : 'Asteroid'}${k.mag != null ? ` · mag ${k.mag}` : ''} · predicted here ${dayMonth(k.t)}`;
     q('[data-f=its] span').textContent = `It's ${k.name}`;
     q('[data-f=its]').dataset.name = k.name;
     q('.match').hidden = false; q('.talk-form').hidden = true; sync();
-    q('[data-f=its]').focus();
+    return true;
   }
+  const started = () => !!sheet.querySelector('[name=tag]:checked') || !!sheet.querySelector('textarea')?.value.trim();
   function close() {
     document.body.classList.remove('talking');
     openOn = null;

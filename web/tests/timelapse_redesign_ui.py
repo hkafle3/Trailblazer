@@ -231,6 +231,45 @@ async def main():
               and "Barnard's Star · distance unknown" in labels and not any(l.startswith("Barnard's Star · ") and "unknown" not in l for l in labels),
               f"Depth target: no usable distance for the middle is said, never borrowed from the star beside it ({mine}, {[r for r in rows if r[2] == 'stars:11']}, {[l for l in labels if 'Barnard' in l]})")
         await pg.unroute("**/api/depth**", no_barnard)
+        # the target comes from two answers that can land in either order: /api/depth and SkyBoT's passers (/api/known).
+        # A known asteroid on R Draconis's dot, in the depth answer with a distance: the final labels are the same either way
+        async def race(depth_first):
+            p2 = await ctx.new_page(); p2.errors = []
+            async def known(route):
+                q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+                if depth_first: await asyncio.sleep(4)
+                await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": float(q["ra"]), "dec": float(q["dec"]), "mag": 19.0}]})
+            async def depth(route):
+                q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+                if not depth_first: await asyncio.sleep(6)
+                await route.fulfill(json={"ra": float(q["ra"]), "dec": float(q["dec"]), "rules": "depth-v1", "sources": {
+                    "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 1, "truncated": False, "unknown": [], "placed": [
+                        {"name": "2001 ZZ", "num": None, "class": "MB>Middle", "ra": float(q["ra"]), "dec": float(q["dec"]), "mag": 19.0, "raw": {}, "d_pc": 1.6e-5, "d_lo_pc": None, "d_hi_pc": None}]},
+                    "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 1, "truncated": False, "limit": 1000, "unknown_count": 0, "placed": [
+                        {"id": "21", "ra": float(q["ra"]) + .02, "dec": float(q["dec"]), "g": 12, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 300, "d_lo_pc": 290, "d_hi_pc": 310}]},
+                    "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}})
+            await p2.route("**/api/known**", known); await p2.route("**/api/depth**", depth)
+            await p2.goto(f"{BASE}/timelapse.html?target=rdra&view=depth"); await p2.wait_for_function(READY)
+            await p2.wait_for_function("__depth.shown?.target === 'sso:2001 ZZ'", timeout=40000)
+            out = await p2.evaluate("""[__depth.shown.target, [...document.querySelectorAll('#dist-list li')].map(l => l.querySelector('.nm').textContent + ' | ' + l.querySelector('.dd').textContent),
+                [...document.querySelectorAll('#depth3d .lbl.accent')].map(l => l.textContent)]""")
+            await p2.close(); return out
+        a1, a2 = await race(True), await race(False)
+        check(a1 == a2 and a1[0] == "sso:2001 ZZ" and not any("unknown" in r for r in a1[1]) and a1[2] == ["2001 ZZ · 3.3 AU"],
+              f"Depth target with depth first, then SkyBoT, and the reverse: the same labels ({a1} / {a2})")
+        # the Discuss sheet's "It's X" offer too: SkyBoT answering after the sheet's own 10 s wait still offers it
+        p3 = await ctx.new_page()
+        async def late_known(route):
+            q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+            await asyncio.sleep(12)
+            try: await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": float(q["ra"]), "dec": float(q["dec"]), "mag": 19.0}]})
+            except Exception: pass
+        await p3.route("**/api/known**", late_known)
+        await p3.goto(f"{BASE}/timelapse.html?target=rdra"); await p3.wait_for_function(READY)
+        await p3.click("#state"); await p3.wait_for_selector("#talk", state="visible")
+        await p3.locator("#talk [data-f=its]").wait_for(state="visible", timeout=40000)
+        check(await p3.text_content("#talk [data-f=its]") == "It's 2001 ZZ", "Discuss: a SkyBoT answer landing after the sheet opened still offers It's 2001 ZZ")
+        await p3.close()
         # the arrows a tab or the 3D view use do not step the visit
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
         i0 = await pg.evaluate("__lapse.state.i")

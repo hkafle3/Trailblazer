@@ -1466,6 +1466,7 @@ const depth = depthView({
     return { u: f.x != null ? (f.x - c) / half : 0, v: f.y != null ? (f.y - c) / half : 0, name: candTrack.title() ?? (m.key.startsWith('live') ? 'the dot in the middle' : m.name) };
   },
   targetName: m => candTrack.title() ?? (m.key.startsWith('live') ? null : m.name),
+  matchKey: () => JSON.stringify(state.verdict?.match ?? null),   // what the target pick depends on, besides the depth answer
 });
 window.__depth = depth;   // for tests/timelapse_redesign_ui.py
 const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]')];

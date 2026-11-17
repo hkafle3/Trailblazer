@@ -173,8 +173,9 @@ export function depthView(page) {
     left.append(i, el('span', 'nm', name), el('small', null, small));
     li.append(left, el('span', 'dd', dist)); return li;
   }
-  let picked = { target: -1, letters: new Map() };
+  let picked = { target: -1, letters: new Map() }, pickedFor = null;   // pickedFor: the verdict's match the pick was made with
   function choose(all) {   // the target, and up to four more to name in the beam: the nearest, the farthest, one between
+    pickedFor = page.matchKey();
     const t = page.target(data.m, data.f, all), letters = new Map(), rest = all.map((_, i) => i).filter(i => i !== t);
     const stars = rest.filter(i => all[i].src === 'stars'), other = rest.filter(i => all[i].src !== 'stars');
     const pick = new Set([stars[0], stars[Math.floor(stars.length / 2)], stars[stars.length - 1], other[other.length - 1], other[0], stars[1]].filter(i => i != null));
@@ -182,7 +183,7 @@ export function depthView(page) {
     return { target: t, letters };
   }
   function nameOf(p, i) {
-    if (i === picked.target) return page.targetName(data.m) ?? 'The star in the middle';
+    if (i === picked.target) return p.src === 'sso' ? p.o.name : page.targetName(data.m) ?? 'The star in the middle';
     const L = picked.letters.get(i);
     if (p.src === 'sso') return `${p.o.name}${p.o.class ? ` (${p.o.class.split('>')[0].toLowerCase()})` : ''}`;
     if (p.src === 'galaxies') return L ? `Galaxy ${L} · ${p.o.id}` : p.o.id;
@@ -280,7 +281,7 @@ export function depthView(page) {
       const [u, v] = uv(p), f = scale(p.ly), name = i === picked.target || picked.letters.has(i);
       if (!name) { const q = at(u, v, f); pos.push(...q.toArray()); scene3.dots.push({ pos: q, key: p.key, text: `${p.src === 'sso' ? p.o.name : p.src === 'galaxies' ? p.o.id : `star, G ${p.o.g?.toFixed(1) ?? '?'}`} · ${lyText(p.ly, true)}` }); return; }
       const acc = i === picked.target, L0 = picked.letters.get(i), d = lyText(p.ly, S.W < 500);
-      const text = acc ? `${page.targetName(m) ?? 'the star in the middle'} · ${d}` : `${p.src === 'sso' ? p.o.name : `${p.src === 'galaxies' ? 'galaxy' : 'star'} ${L0}`} · ${d}`;
+      const text = acc ? `${p.src === 'sso' ? p.o.name : page.targetName(m) ?? 'the star in the middle'} · ${d}` : `${p.src === 'sso' ? p.o.name : `${p.src === 'galaxies' ? 'galaxy' : 'star'} ${L0}`} · ${d}`;
       const err = p.o.d_lo_pc != null ? [scale(p.o.d_lo_pc * LY_PC), scale(p.o.d_hi_pc * LY_PC)] : null;
       scene3.beads.push({ u, v, f, pos: at(u, v, f), err, acc, sp: S.sprite(acc ? scene3.rA : scene3.rW, 9), lab: S.label(text, acc ? 'accent' : ''), size: acc ? 20 : 15 });
     });
@@ -362,7 +363,10 @@ export function depthView(page) {
       const r = page.region(); if (!r) return;
       if (init()) photo();   // the far end shows this visit's photo straight away, whatever the catalogs answer
       const url = want(r.m, r.f);
-      if (asked !== url) { asked = url; tries = 0; fetchNow(url, r.m, r.f); }
+      if (asked !== url) { asked = url; tries = 0; fetchNow(url, r.m, r.f); return; }
+      // the target comes from two answers that land in either order: this one, and the verdict's match (SkyBoT's
+      // passers, GET /api/known). A new match re-picks the target and redraws the list and the beam.
+      if (data?.d && data.url === url && page.matchKey() !== pickedFor) { paintList(); build(); }
       else render();
     },
     show(on) {
