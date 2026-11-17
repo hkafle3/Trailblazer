@@ -215,7 +215,7 @@ import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } fr
 import { recenterable, panToSky, heatCell } from './live/recenter.js';
 import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
 import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
-import { discuss, knownMatch } from './discuss.js';   // "Discuss this": the sheet behind Report a new find, and Discovered for reported dots
+import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Report a new find, and Discovered for reported dots
 import { depthView } from './live/depth.js';   // the Depth tab: the beam and the Distances list, from /api/depth
 import { MJD0 } from './skymap.js';
 import * as candTrack from './live/candtrack.js';   // &cand=: a detector candidate's track and votes
@@ -699,17 +699,34 @@ function verdict(m, f) {
   else if (m.frames.some(x => x.blob)) out.parts.push('Too bright to measure: this star saturates the detector, so no motion can be read.');
   else out.parts.push(`No motion measured: the middle shows a source in ${seen} of ${m.frames.length} visits, and a motion needs 3 over 6 months.`);
   // known comets and asteroids SkyBoT put in this visit, and whether one is the dot in the middle
-  const k = f.known, hit = k ? knownMatch(f, m.ra, m.dec) : null;
-  if (hit) { out.known = true; out.who = hit.name; out.parts.push(' ', { ok: `The middle matches the known ${hit.kind} ${hit.name}.` }); }
+  // A known comet or asteroid is the dot in the middle only when SkyBoT puts it on that dot: within two SPHEREx pixels
+  // (about the PSF's width plus a measured position's error) of where the middle's source was measured, widened by half
+  // the step it moved between two exposure times (a median of the exposures sits between them). Closer than 60″ but not
+  // on the dot is "nearby", said as such; it does not make the dot known.
+  const k = f.known, { hit, near } = k ? knownAtMiddle(m, f) : {};
+  if (hit) { out.known = true; out.who = hit.name; out.parts.push(' ', { ok: `The dot in the middle matches the known ${hit.kind} ${hit.name}.` }); }
+  else if (near) out.parts.push(` Nearby: the known ${near.kind} ${near.name} passed ${Math.round(near.d)} arcseconds from the dot in the middle, too far to be it.`);
   else if (k?.bodies.size) {
     const n = k.bodies.size, kinds = new Set([...k.bodies.values()].map(b => b.kind)), what = kinds.size > 1 ? 'known object' : `known ${[...kinds][0]}`;
     out.parts.push(` ${n === 1 ? `A ${what}, ${[...k.bodies.keys()][0]},` : `${n} ${what}s`} passed through during this visit.`);
   }
   return out;
 }
+function knownAtMiddle(m, f) {
+  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, tgt = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : [0, 0];   // east, north of the middle's source
+  let hit = null, near = null;
+  for (const [name, b] of f.known?.bodies ?? []) {
+    const p = b.pts.map(([, ra, dec]) => offset(m, ra, dec));
+    const step = p.slice(1).reduce((s, q, i) => Math.max(s, Math.hypot(q[0] - p[i][0], q[1] - p[i][1])), 0);
+    const d = Math.min(...p.map(([e, n]) => Math.hypot(e - tgt[0], n - tgt[1]))), r = 2 * a + step / 2;
+    if (d <= r && (!hit || d < hit.d)) hit = { name, kind: b.kind, d };
+    else if (d > r && d <= 60 && (!near || d < near.d)) near = { name, kind: b.kind, d };
+  }
+  return { hit, near };
+}
 let saidKey = '';
 function sayVerdict(m, f) {
-  const v = verdict(m, f), key = JSON.stringify([v.parts, m.key, m.ra, m.dec]);
+  const v = verdict(m, f), key = JSON.stringify([v.parts, m.key, m.ra, m.dec, m.frames.length, m.detector, m.lam0, m.channel ?? null]);   // the facts line too
   state.verdict = v;
   if (key === saidKey) return;
   saidKey = key;
@@ -1124,7 +1141,8 @@ function back() {
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
-talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text) });
+talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text),
+  opening: () => { if (spec.at || spec.mode) closeSpec(false); } });   // one card in the right column: the sheet closes the Spectrum card
 window.__lapse = { state, recenter, verdict, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 // ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
@@ -1435,7 +1453,10 @@ function setView(v, user = false) {
   pvView = v;
   document.body.classList.toggle('depth', v === 'depth');
   for (const t of viewTabs) { const on = t.dataset.view === v; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; }
-  if (v === 'depth' && (spec.mode || spec.at)) closeSpec(false);   // picking a star and its card are Photo things: the right column is Distances
+  if (v === 'depth') {   // the Discuss sheet, picking a star and its card, and playing are Photo things: in Depth the right column is Distances
+    talk?.close(); stop();
+    if (spec.mode || spec.at) closeSpec(false);
+  }
   depth.show(v === 'depth');
   if (user || P.has('view')) history.replaceState(history.state, '', location.href);   // the wrapper writes &view=
   if (v === 'photo') draw();
@@ -1478,7 +1499,8 @@ for (const b of [document.getElementById('share'), document.getElementById('shar
 
 const playBtn = document.getElementById('play');
 function stop() { state.playing = false; playBtn.classList.remove('on'); }
-function togglePlay() { if (state.playing) return stop(); state.playing = true; state.last = 0; playBtn.classList.add('on'); }
+// playing is the time-lapse, a Photo thing: Depth asks the catalogs once per visit, so it does not play through them
+function togglePlay() { if (state.playing) return stop(); if (pvView === 'depth') setView('photo', true); state.playing = true; state.last = 0; playBtn.classList.add('on'); }
 // Zoom: drag right to zoom in. The bar fills as you do: 12 arcmin (the whole region) is empty, 1 arcmin is full.
 const fov = document.getElementById('fov');
 const setFov = () => { state.fov = 13 - +fov.value; document.getElementById('fov-w').textContent = `${state.fov} arcmin`; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };

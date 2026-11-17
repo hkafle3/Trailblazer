@@ -133,6 +133,7 @@ export function discuss(page) {
   async function open() {
     const m = state.m, f = m.frames[state.i];
     sheet ??= build();
+    page.opening?.();   // the page closes any other card that takes the same place
     page.stop();   // the sheet is about this visit: playback would move on and close it
     openOn = [m, f];
     document.body.classList.add('talking');
@@ -199,5 +200,5 @@ export function discuss(page) {
       window.turnstile?.reset?.();   // a token works once
     }
   }
-  return { frame };
+  return { frame, close };
 }

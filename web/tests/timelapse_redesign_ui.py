@@ -250,6 +250,36 @@ async def main():
         check(err[0] == "false" and err[1] and err[2], f"image failure: said beside the photo with Advanced shut ({err[1]})")
         await ctx.close()
 
+        # ---------- 10: the dot in the middle, the facts, and one card at a time (Codex review, third pass) ----------
+        ctx, pg = await page(b)
+        await pg.goto(f"{BASE}/timelapse.html?target=rdra"); await pg.wait_for_function(READY)
+        # a known asteroid is the dot only when SkyBoT puts it on the dot; 30 arcsec away it is "nearby", not a match
+        K = """(east => { const ra = 10 + east / 3600 / Math.cos(5 * Math.PI / 180), f = { x: 50, y: 50, mjd: 61000, known: { left: 0, failed: 0, bodies: new Map([['2001 AB', { kind: 'asteroid', mag: 18, pts: [[61000, ra, 5]] }]]) } };
+              const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, grid: 101, arcsec_per_pixel: 6.15, motion: null, gaia: null, ref: null, frames: [f, { ...f, known: null }] };
+              const v = __lapse.verdict(m, f); return [v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), v.known]; })"""
+        on, off = await pg.evaluate(K + "(4)"), await pg.evaluate(K + "(30)")
+        check("matches the known asteroid 2001 AB" in on[0] and on[1] and "Nearby: the known asteroid 2001 AB passed 30 arcseconds" in off[0] and not off[1] and "matches" not in off[0],
+              f"known at the middle: 4 arcsec is the dot ({on[1]}), 30 arcsec is only nearby ({off})")
+        # the facts follow the patch: a different wavelength shows, though the verdict's words are the same
+        await pg.evaluate("__lapse.state.m.lam0 = 1.234; document.getElementById('split').click(); document.getElementById('split').click()")
+        check("1.23 µm" in await pg.text_content("#pv-facts"), f"facts: a new wavelength shows ({await pg.text_content('#pv-facts')})")
+        # one card at a time: Discuss closes the Spectrum card; Depth closes Discuss; Play goes back to Photo
+        # (on a wide screen the Spectrum card covers Report; a narrow one shows both, so the sheet can open over the card)
+        await pg.set_viewport_size({"width": 390, "height": 844}); await pg.wait_for_timeout(200)
+        await pg.evaluate("__spec.open(271.9, 66.7, 2026)"); await pg.wait_for_timeout(200)
+        await pg.click("#state"); await pg.wait_for_selector("#talk", state="visible")
+        a = await pg.evaluate("[document.body.classList.contains('speccing'), document.body.classList.contains('talking'), location.search.includes('spec=')]")
+        await pg.set_viewport_size({"width": 1440, "height": 900}); await pg.wait_for_timeout(200)
+        await pg.click("#tab-depth"); await pg.wait_for_timeout(300)
+        bcls = await pg.evaluate("[document.body.classList.contains('talking'), (r => r.width > 0 && r.height > 0)(document.getElementById('dist').getBoundingClientRect()), (r => r.width > 0)(document.getElementById('talk').getBoundingClientRect())]")
+        await pg.evaluate("document.getElementById('play').click()"); await pg.wait_for_timeout(300)
+        c = await pg.evaluate("[document.getElementById('tab-photo').getAttribute('aria-selected'), document.getElementById('play').classList.contains('on')]")
+        await pg.evaluate("document.getElementById('play').click()")
+        check(a == [False, True, False] and bcls == [False, True, False] and c == ["true", True],
+              f"one card at a time: Discuss closed Spectrum {a}; Depth closed Discuss and shows Distances {bcls}; Play went back to Photo {c}")
+        check(not pg.errors, f"cards: no page errors {pg.errors}")
+        await ctx.close()
+
         # ---------- 8: phone ----------
         ctx, pg = await page(b, phone=True)
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY); await pg.wait_for_timeout(300)
