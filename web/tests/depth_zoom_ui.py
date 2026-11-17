@@ -29,6 +29,12 @@ BEAM = "(() => { const c = document.querySelector('#depth3d canvas'), t = docume
 # time-lapse page scrolls its body)
 STATE = """() => ({ v: __depth.view ?? null, ring: __depth.ringOf?.() ?? null, cam: __depth.cam ?? null, scale: visualViewport.scale, dpr: devicePixelRatio, sy: scrollY + document.body.scrollTop,
   font: getComputedStyle(document.querySelector('#depth3d .lbl:not(.tip)')).fontSize, peek: document.getElementById('depth3d').dataset.peek || '' })"""
+# visible names that run under the tabs, the zoom box, or the note and hint along the bottom
+UNDER = """(() => { const box = s => { const e = document.querySelector(s); if (!e || !e.offsetWidth) return null; const r = e.getBoundingClientRect(); return [s, r]; };
+  const covers = ['.pv-views', '#depth3d .xp-d3-zoom', '#depth3d .xp-d3-note', '#depth3d .xp-d3-hint'].map(box).filter(Boolean), out = [];
+  for (const l of document.querySelectorAll('#depth3d .lbl:not(.tip)')) { if (+l.style.opacity < .5) continue; const r = l.getBoundingClientRect();
+    for (const [s, c] of covers) if (r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top) out.push(l.textContent + ' under ' + s); }
+  return out; })()"""
 fails = []
 
 
@@ -153,6 +159,15 @@ async def main():
             W, H, k = cv["width"], cv["height"], k_of(s8)
             for _ in range(5): s9 = await drag(250, 250, "shift")
             for _ in range(5): s10 = await drag(-250, -250, "shift")
+            unders = []
+            await zreset.click(); rr = (await st())["ring"]; await pg.mouse.move(*rr[:2])   # about 3x toward the target's ring
+            for _ in range(28): await pg.mouse.wheel(0, -20)
+            await pg.wait_for_timeout(100); unders += await pg.evaluate(UNDER)
+            await zin.click(); await zin.click()   # about 7x, then at the scene's four corners
+            for xy in ((0, 0), (1, 0), (0, 1), (1, 1)):   # the zoomed view at the scene's four corners
+                for _ in range(5): await drag(-250 if xy[0] else 250, -250 if xy[1] else 250, "shift")
+                unders += await pg.evaluate(UNDER)
+            check(not unders, f"zoomed toward the ring and panned to each corner: no name runs under the tabs, the zoom box, the note or the hint ({unders})")
             check(s9["v"]["x"] == 0 and s9["v"]["y"] == 0 and abs(s10["v"]["x"] - (W - W / k)) < 1 and abs(s10["v"]["y"] - (H - H / k)) < 1,
                   f"pan: stops at the edges of the whole scene ({s9['v']['x']:.1f}, {s9['v']['y']:.1f} and {s10['v']['x']:.1f}, {s10['v']['y']:.1f} of {W - W / k:.1f}, {H - H / k:.1f})")
             # the dashed "no distance" rings fade in with the swing, as everything else does
@@ -188,6 +203,17 @@ async def main():
         clash = await pg.evaluate("""(() => { const r = [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5).map(l => [l.textContent, l.getBoundingClientRect()]), out = [];
           for (const [i, [a, p]] of r.entries()) for (const [b, q] of r.slice(i + 1)) if (p.left < q.right && p.right > q.left && p.top < q.bottom && p.bottom > q.top) out.push(a + ' / ' + b); return out; })()""")
         check(not clash, f"phone zoomed: no two names overlap ({clash})")
+        # the names moved below the note and hint (a pinch like the video's: 3.6x just right of the ring)
+        await pg.tap("#depth3d [data-zoom=reset]"); await pg.wait_for_timeout(100)
+        N = [ring0[0] + 20, ring0[1] + 10]
+        await touch("touchStart", [(0, N[0] - 25, N[1])]); await touch("touchStart", [(0, N[0] - 25, N[1]), (1, N[0] + 25, N[1])])
+        for i in range(1, 11):
+            d = 50 + 130 * i / 10
+            await touch("touchMove", [(0, N[0] - d / 2, N[1] - d / 6), (1, N[0] + d / 2, N[1] + d / 6)])
+        await touch("touchEnd"); await pg.wait_for_timeout(200); f1 = k_of(await st())
+        sliver = await pg.evaluate("""(() => { const b = document.getElementById('depth3d').getBoundingClientRect();
+          return [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5).filter(l => { const r = l.getBoundingClientRect(); return r.bottom > b.bottom || r.top < b.top; }).map(l => l.textContent); })()""")
+        check(not sliver, f"phone zoomed: no name is cut off at the frame's edge ({sliver})")
         if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "phone-zoomed.png"))
         # one finger still turns, and keeps the zoom
         h0 = await pg.evaluate(BEAM)

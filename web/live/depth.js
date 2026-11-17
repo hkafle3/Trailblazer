@@ -75,11 +75,12 @@ function stage(box) {
       el.style.opacity = vis ? a.toFixed(3) : 0; if (!vis) return;
       // kept inside the view sideways: a name that would run off an edge slides back in
       const w = el.offsetWidth, h = el.offsetHeight, x = Math.max(4, Math.min(S.W - w - 4, (tmp.x + 1) / 2 * S.W + dx + ax * w));
-      let y = (1 - tmp.y) / 2 * S.H + dy;
+      let y = Math.max(2 - ay * h, (1 - tmp.y) / 2 * S.H + dy);   // and one that would run off the top slides down into it
       // under a box it would run beneath (the tabs over the beam): moved down just clear of it, and of the names moved
       // there before it (zoomed in, several can land under the tabs)
       const clear = boxes => { let moved = false; for (const [x0, y0, x1, y1] of boxes) { const top = y + ay * h; if (x < x1 && x + w > x0 && top < y1 + 2 && top + h > y0) { y += y1 + 2 - top; moved = true; } } return moved; };
-      if (clear(S.keep)) clear(S.placed);
+      const moved = clear(S.keep); if (moved) clear(S.placed);
+      if (moved && y + ay * h + h > S.H) { el.style.opacity = 0; return; }   // moved off the bottom: not a sliver at the edge
       S.placed.push([x, y + ay * h, x + w, y + ay * h + h]);
       el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(0,${ay * 100}%)`;
     }, remove() { el.remove(); } };
@@ -385,7 +386,8 @@ export function depthView(page) {
     if (!S || !open) return;
     S.size(); S.z = 1; S.camera.clearViewOffset();   // the fit below is of the unzoomed view
     const br = box.getBoundingClientRect();
-    S.keep = (page.cover?.() ?? []).filter(Boolean).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
+    // zoomed, names can also reach the note and hint along the bottom: they keep clear of them too (moved below, out of view)
+    S.keep = [...(page.cover?.() ?? []), ...(Z.k > 1 ? box.querySelectorAll('.xp-d3-note, .xp-d3-hint') : [])].filter(Boolean).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
       .map(r => [r.left - br.left, r.top - br.top, r.right - br.left, r.bottom - br.top]);
     S.placed = [];   // the names placed so far this frame
     const { W, H } = S, small = W < 500, T = yaw.t0 ? (performance.now() - yaw.t0) / 1000 : 9;
