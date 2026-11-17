@@ -718,6 +718,12 @@ function verdict(m, f) {
   else if (offTxt) out.parts.push(offTxt);
   else if (m.frames.some(x => x.blob)) out.parts.push('Too bright to measure: this star saturates the detector, so no motion can be read.');
   else out.parts.push(`No motion measured: the middle shows a source in ${seen} of ${m.frames.length} visits, and a motion needs 3 over 6 months.`);
+  // the catalog identity is identityAt's alone, whatever the visit count or a motion fit: a star whose place this visit
+  // is on the dot is known even with one visit, or with no motion measured (a published place, no Gaia motion)
+  if (onDot && !out.known) {
+    out.star = name ?? (g ? 'a Gaia star' : 'a known star'); out.known = true;
+    out.parts.push(' ', { ok: g ? `${name ? starName : 'A Gaia star'}, already known.` : `${name ?? 'The star'} is already known.` });
+  }
   if (offTxt && g) out.parts.push(' ', offTxt);
   if (id.star.nearby) out.parts.push(` Nearby: the catalog's place for ${name ?? 'the Gaia star here'} is ${Math.round(id.star.nearby.d)} arcseconds from the dot this visit, too far to be it.`);
   // known comets and asteroids SkyBoT put in this visit: on the dot, nearby, or just passing through
@@ -1523,7 +1529,9 @@ const depth = depthView({
     return { u: pos ? -pos[0] / half : null, v: pos ? pos[1] / half : null, name: name ?? 'the dot in the middle' };
   },
   targetName,
-  matchKey: () => JSON.stringify(state.verdict?.match ?? null),   // what the target pick depends on, besides the depth answer
+  // what the target's pick and place depend on, besides the depth answer: its identity, and targetAt's place and exposure
+  // time (a later SkyBoT answer can move a match to a closer exposure without changing who it is)
+  matchKey: () => { const m = state.m, t = m && targetAt(m, m.frames[state.i]); return JSON.stringify([state.verdict?.match ?? null, t?.pos ?? null, t?.id?.pass.match?.t ?? null]); },
 });
 window.__depth = depth;   // for tests/timelapse_redesign_ui.py
 const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]')];

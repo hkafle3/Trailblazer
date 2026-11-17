@@ -176,7 +176,7 @@ export function depthView(page) {
     left.append(i, el('span', 'nm', name), el('small', null, small));
     li.append(left, el('span', 'dd', dist)); return li;
   }
-  let picked = { target: -1, letters: new Map() }, pickedFor = null;   // pickedFor: the verdict's match the pick was made with
+  let picked = { target: -1, letters: new Map() }, pickedFor = null;   // pickedFor: page.matchKey() when the pick was made
   function choose(all) {   // the target, and up to four more to name in the beam: the nearest, the farthest, one between
     pickedFor = page.matchKey();
     const t = page.target(data.m, data.f, all), named = page.named?.(data.m, data.f, all) ?? null;   // named: a known star that is not the target keeps its name
@@ -194,11 +194,13 @@ export function depthView(page) {
     if (p.src === 'galaxies') return L ? `Galaxy ${L} · ${p.o.id}` : p.o.id;
     return L ? `Star ${L}` : `Star, G ${p.o.g?.toFixed(1) ?? '?'}`;
   }
-  // what is in the photo: the patch square (the API's cone is wider), a star at its place this visit
+  // what is in the photo: the patch square (the API's cone is wider), a star at its place this visit. The target is kept
+  // whatever its catalog place: it is found by who it is (page.target) and drawn where the page places it (targetAt, an
+  // asteroid at its matched exposure); the answer's place, at the visit's middle, is for every other object
   function inPatch(ra, dec, pm) { const [u, v] = page.onScreen(data.m, ra, dec, pm); return Math.abs(u) <= 1 && Math.abs(v) <= 1; }
   function placedHere() {
-    const year = data.f.year ?? 2026;
-    return placedOf(data.d).filter(p => inPatch(p.ra, p.dec, p.src === 'stars' ? { year, pmra: p.o.pmra, pmdec: p.o.pmdec } : null));
+    const year = data.f.year ?? 2026, every = placedOf(data.d), t = page.target(data.m, data.f, every);
+    return every.filter((p, i) => i === t || inPatch(p.ra, p.dec, p.src === 'stars' ? { year, pmra: p.o.pmra, pmdec: p.o.pmdec } : null));
   }
   const unknownHere = src => (data.d.sources[src]?.unknown ?? []).filter(o => inPatch(o.ra, o.dec, null));
   function paintList() {

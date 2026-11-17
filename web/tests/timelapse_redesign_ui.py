@@ -424,17 +424,25 @@ async def main():
                 ...(o.pred ? { pred_east: o.pred[0], pred_north: o.pred[1] } : {}), ...(live ? { epochs: o.epochs ?? [61000] } : {}), known: { left: 0, failed: 0, bodies } };
               const others = [1, 2, 3].map(k => ({ ...base, mjd: 61000 + 60 * k, start: '2025-10-01', end: '2025-10-03', x: c, y: c, known: null }));
               const m = { key: live ? 'live-x' : 'test', name: live ? 'x' : 'Test Star', ra: 10, dec: 5, grid: G, arcsec_per_pixel: a, motion: o.motion ?? null,
-                gaia: o.gaia ?? null, ref: null, frames: [f, ...others], ...(o.mode === 't' ? { t: 61000 } : {}) };
+                gaia: o.gaia ?? null, ref: o.ref ?? null, frames: [f, ...others].slice(0, o.n ?? 4), ...(o.mode === 't' ? { t: 61000 } : {}) };
               const v = __lapse.verdict(m, f), t = __lapse.targetAt(m, f);
-              return { say: v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), known: v.known, who: v.who, pos: t.pos, offer: t.id?.pass.match?.name ?? null };
+              return { say: v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), known: v.known, star: v.star, who: v.who, pos: t.pos, offer: t.id?.pass.match?.name ?? null };
             } catch (e) { return { err: String(e) }; } })"""
-        MO, GAIA = {"total": 10.2, "err": 0.5, "years": 1}, {"total": 10, "pmra": 0, "pmdec": 10000}
+        MO, GAIA, REF = {"total": 10.2, "err": 0.5, "years": 1}, {"total": 10, "pmra": 0, "pmdec": 10000}, {"total": 8, "source": "SIMBAD"}
         near = lambda p, q: p is not None and math.hypot(p[0] - q[0], p[1] - q[1]) < 0.01
         OFF = "The source measured near the middle this visit sits 15 arcseconds off the dot, so the motion measured here may belong to something else."
         NONE = "No source was measured on the dot this visit, so the motion measured in other visits may belong to something else."
         ROWS = [   # row, the made-up patch, what must hold
             ("1 plain star on the dot", {"mode": "baked", "src": [1, 0], "gaia": GAIA, "pred": [1.5, 0], "motion": MO},
              lambda r: r["say"] == "Moved 10 arcseconds a year. Matches Gaia's Test Star, already known." and r["known"] and near(r["pos"], [1, 0]) and not r["offer"]),
+            ("1 single visit, a Gaia star on the dot", {"mode": "baked", "src": [1, 0], "gaia": GAIA, "pred": [1.5, 0], "n": 1},
+             lambda r: r["say"] == "Only one visit here so far, so nothing can be seen moving yet. Gaia's Test Star, already known." and r["known"] and r["star"] == "Test Star"),
+            ("1 a published place on the dot, no motion fit", {"mode": "baked", "src": [0.5, 0], "ref": REF, "pred": [0.5, 0]},
+             lambda r: r["say"].endswith(" Test Star is already known.") and r["known"] and r["star"] == "Test Star"),
+            ("3 a published place, the source off the dot", {"mode": "baked", "src": [15, 0], "ref": REF, "pred": [1, 0], "motion": MO},
+             lambda r: r["say"] == OFF + " Test Star is already known." and r["known"] and "Moved" not in r["say"]),
+            ("4 a published place, no detection this visit", {"mode": "baked", "src": None, "ref": REF, "pred": [1, 0], "motion": MO},
+             lambda r: r["say"] == NONE + " Test Star is already known." and r["known"]),
             ("2 source on the dot, not in Gaia", {"mode": "baked", "src": [0.5, 0], "motion": {"total": 29, "err": 8.3, "years": 1}},
              lambda r: r["say"] == "Seems to move 29 arcseconds a year, give or take 8.3. It is not in Gaia (too faint in visible light)." and not r["known"] and near(r["pos"], [0.5, 0])),
             ("3 source off the dot", {"mode": "live", "src": [15, 0], "motion": MO},
@@ -551,6 +559,38 @@ async def main():
             check(not pg.errors, f"integration: no page errors {pg.errors}")
         except Exception as e: check(False, f"Depth asteroid: {type(e).__name__} {str(e)[:200]}")
         finally: await ctx.close()
+
+        # row 6, Depth: a later exposure's answer moves an existing match closer to the dot (-7 arcsec east, then +5): Depth
+        # follows targetAt, so its ring ends where the Photo's check is
+        def sso_at(ra0, dec0, east):
+            return {"ra": ra0, "dec": dec0, "rules": "depth-v1", "sources": {
+                "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 1, "truncated": False, "unknown": [], "placed": [
+                    {"name": "2001 ZZ", "num": None, "class": "MB>Middle", "ra": ra0 + east / 3600 / math.cos(math.radians(dec0)), "dec": dec0, "mag": 19.0, "raw": {}, "d_pc": 1.6e-5, "d_lo_pc": None, "d_hi_pc": None}]},
+                "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 0, "truncated": False, "limit": 1000, "unknown_count": 0, "placed": []},
+                "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}}
+        qs = lambda route: dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+        for case, east_mid, staggered in (("a later exposure's answer moves the match", 0, True), ("its place at the visit's middle is outside the patch", 400, False)):
+            ctx, pg = await page(b)
+            try:
+                first = []
+                async def known(route):
+                    q = qs(route); ra0, dec0 = float(q["ra"]), float(q["dec"]); e = 0
+                    if staggered:
+                        if not first: first.append(q["t"]); e = -7
+                        else: await asyncio.sleep(5); e = 5
+                    try: await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": ra0 + e / 3600 / math.cos(math.radians(dec0)), "dec": dec0, "mag": 19.0}]})
+                    except Exception: pass
+                async def depth_answer(route):
+                    q = qs(route); await route.fulfill(json=sso_at(float(q["ra"]), float(q["dec"]), east_mid))
+                await pg.route("**/api/known**", known); await pg.route("**/api/depth**", depth_answer)
+                await pg.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2&view=depth"); await pg.wait_for_function(READY, timeout=180000)
+                await pg.wait_for_function("__depth.shown?.target === 'sso:2001 ZZ' && __lapse.state.m.frames[__lapse.state.i].known?.left === 0", timeout=60000)
+                await pg.wait_for_timeout(1500)
+                r = await pg.evaluate(TGT)
+                check(r["photo"] and r["depth"] and math.dist(r["photo"], r["depth"]) <= 2 * r["a"] and (r["label"] or "").startswith("2001 ZZ · "),
+                      f"table row 6, Depth: {case}: the ring is at the Photo's check (photo {r['photo']} vs Depth {r['depth']}, label {r['label']})")
+            except Exception as e: check(False, f"table row 6, Depth: {case}: {type(e).__name__} {str(e)[:200]}")
+            finally: await ctx.close()
 
         # ---------- 8: phone ----------
         ctx, pg = await page(b, phone=True)
