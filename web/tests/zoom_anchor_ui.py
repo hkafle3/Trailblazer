@@ -7,7 +7,8 @@ scroll and of a pinch, from the whole sky to the deepest zoom; every wheel event
 visualViewport.scale stays 1; a pinch that starts at the deepest zoom dives to the sky under the pointer (the hover
 readout's coordinates), and the page does not zoom while the dive flies, even as the pinch carries on; a scroll that
 dives does the same at another point; after an off-centre dive, or an off-centre zoom that stops short, the map is drawn
-where the engine's numbers put it; "Dive in" after a partial off-centre scroll opens the middle; a Safari trackpad pinch (gesture events, dispatched here as plain events, so only
+where the engine's numbers put it; "Dive in" after a partial off-centre scroll opens the middle; with the middle of the
+view off the sky oval (near the north pole), a pinch over sky dives there, and a second one does too; a Safari trackpad pinch (gesture events, dispatched here as plain events, so only
 the page's handling is checked) is prevented and zooms around the pointer too.
 Run: uv run -q --with playwright python web/tests/zoom_anchor_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, re, sys
@@ -178,6 +179,49 @@ async def dives(p):
     await browser.close()
 
 
+async def edge(p):
+    browser, pg = await page(p)
+    await pg.mouse.move(720, 434)
+    await scroll(pg, 720, 434, 40)
+    # the north pole of the oval at the middle of the view, a little to its side: the middle is off the sky
+    await pg.evaluate("import('/explore-view.js').then(v => v.set(v.MAXW, v.A.w / 2 - 0.52 * v.MAXW, (v.A.t + v.A.b) / 2))")
+    await asyncio.sleep(0.6)
+    mid = await pg.evaluate("import('/explore-view.js').then(v => v.skyAt(v.A.w / 2, (v.A.t + v.A.b) / 2))")
+    pt = None
+    for y in range(460, 820, 20):
+        for x in (720, 600, 840, 480, 960):
+            s = await pg.evaluate(SKY, [x, y])
+            if s and s["sky"] and s["max"]: pt = (x, y); break
+        if pt: break
+    check("edge: the middle of the view is off the sky, with sky elsewhere in the window", mid is None and pt, f"middle {mid}, sky at {pt}")
+    if not pt: return await browser.close()
+    x, y = pt
+    for n in ("first", "second"):
+        await pg.mouse.move(x + 1, y); await pg.mouse.move(x, y); await asyncio.sleep(0.4)
+        here = (await pg.evaluate(SKY, [x, y]))["sky"]
+        await pinch(pg, x, y, 3)
+        ok = await until(pg, "window.__diveState()?.phase === 'open'")
+        at = spot(pg.url)
+        off = sep(*at, *here) if at else 99
+        # 0.02 degrees: 0.2 deg from the pole the pinch's zoom steps at the deepest level move the view a few px
+        check(f"edge: a {n} pinch over sky dives there", ok and off < 0.02, f"{off:.4f} deg off, {pg.url.split('/')[-1]}")
+        if not ok: break
+        await pg.go_back()
+        check(f"edge: back closes the {n} dive", await until(pg, "window.__diveState() === null && location.pathname.includes('explore') && !document.body.classList.contains('diving')"))
+        await asyncio.sleep(0.4)
+    # a dive that fails as it starts (made to throw once, reading the sky picture's style) leaves the map usable
+    await pg.evaluate("""(() => { const g = getComputedStyle; window.getComputedStyle = (el, ...a) => {
+      if (!window.__thrown && el?.matches?.('#map img.sky')) { window.__thrown = 1; throw new Error('test: dive fails'); } return g(el, ...a); }; })()""")
+    await pinch(pg, x, y, 3)
+    await asyncio.sleep(1.5)
+    stuck = await pg.evaluate("({ thrown: !!window.__thrown, dive: window.__diveState(), diving: document.body.classList.contains('diving'), path: location.pathname })")
+    check("edge: a dive that fails as it starts leaves the map, not a half-started dive", stuck["thrown"] and stuck["dive"] is None and not stuck["diving"] and "explore" in stuck["path"], str(stuck))
+    await asyncio.sleep(0.4)
+    await pinch(pg, x, y, 3)
+    check("edge: and the next dive works", await until(pg, "window.__diveState()?.phase === 'open'"))
+    await browser.close()
+
+
 async def safari(p):
     browser, pg = await page(p)
     x, y = 1000, 300
@@ -203,6 +247,7 @@ async def main():
             for x, y in ((1000, 300), (420, 560)):
                 await anchored(p, kind, x, y)
         await dives(p)
+        await edge(p)
         await safari(p)
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

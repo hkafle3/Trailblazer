@@ -236,6 +236,13 @@ function mapScale(ra, dec) {
 async function start(pushEntry = true, spot = there()) {
   const d = target(spot);
   if (d.ra == null || d.phase !== 'ready') return;
+  try { await takeOff(d, pushEntry); }
+  catch (err) {   // whatever went wrong, the map is left usable: no dive half-started, no address of one
+    console.error('dive failed', err);
+    if (dive === d) { if (history.state?.dive) history.back(); surfaced(d); }
+  }
+}
+async function takeOff(d, pushEntry) {
   d.phase = 'in';
   const day = +$('time').value;
   d.ready.then(() => { if (dive === d) d.f.contentWindow.postMessage({ type: 'dive-go', ra: d.ra, dec: d.dec, det: DET, day }, location.origin); });
@@ -245,7 +252,7 @@ async function start(pushEntry = true, spot = there()) {
   fingers.clear(); pinch = null;
   view.cancel(); view.hooks.stop();
   if (pushEntry) {
-    const c = here();
+    const c = here() ?? [d.ra, d.dec];   // the middle of the view can be off the sky (near the poles): then the dive's spot
     const keep = { ...history.state, view: { ra: c[0], dec: c[1], zoom: view.W / view.A.min, day: +$('time').value } };
     history.replaceState(keep, '');
     history.pushState({ dive: { ra: d.ra, dec: d.dec } }, '', lapseUrl(d));
