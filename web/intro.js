@@ -1074,6 +1074,21 @@ function adapt(dt) {
   if (load.was) { const helped = mean < .9 * load.was; load.was = 0; if (!helped) { quality--; load.off = true; return resize(); } }
   if (mean > 20 && quality < TIERS.length - 1) { quality++; load.good = 0; load.was = mean; resize(); } else if (mean < 17.5 && quality > 0 && ++load.good >= 5) { quality--; load.good = 0; resize(); } else if (mean >= 17.5) load.good = 0;
 }
+function tick(ts) {
+  if (!playing) return;
+  if (T0 === null) T0 = ts; else { perf.frames.push(ts - perf.last); adapt(ts - perf.last); }
+  perf.last = ts; Tnow = (ts - T0) / 1000;
+  if (Tnow >= T_END) return finish();
+  render(Tnow); requestAnimationFrame(tick);
+}
+function showStill(i) {
+  still = i; root.style.transition = 'opacity .3s'; root.style.opacity = 0;
+  setTimeout(() => { if (signal.aborted) return; render(STILLS[i]); root.style.opacity = 1; $('next').textContent = i === STILLS.length - 1 ? 'Open the map' : 'Next'; }, 300);
+}
+function skip() {
+  if (REDUCED || !playing) return finish();
+  if (Tnow < T_HANDOVER) T0 -= (T_HANDOVER - Tnow) * 1000;   // cut to the flat map, then the usual dissolve
+}
 $('next').onclick = () => (still < STILLS.length - 1 ? showStill(still + 1) : finish());
 addEventListener('resize', () => { resize(); if (!playing) render(REDUCED ? STILLS[still] : Tnow); }, { signal });
 for (const t of [.2, 2, CLICK + .1, 8, fu(11), UA - .2, UA + .4, fu(WASH[0] + 1.2), fu(WASH[0] + 2.2), fu(SHIFT[0] + 2.4), fw(9), fw(18.8), fw(27), fw(33)]) render(t);   // warm up: compile every shader and upload the pictures before the first real frame
