@@ -4,7 +4,8 @@ At 1440x900:
 1. the wheel zooms toward the pointer: every point keeps its place relative to the pointer (the target's ring lands
    within 3 px of where a zoom about the pointer puts it, and so does a dot), and the ring grows by the zoom factor;
 2. a trackpad pinch (ctrl wheel) zooms the view and not the page (visualViewport.scale and devicePixelRatio stay);
-3. labels keep their font size at any zoom; hovering a dot and clicking one still name it while zoomed;
+3. labels keep their font size at any zoom; hovering a dot and clicking one still name it while zoomed, and the hover
+   name stays shown and in place through 32 hovers on one dot (at 1x and zoomed);
 4. a drag still turns the beam while zoomed, and keeps the zoom; the zoom stays between 1x and 8x;
 5. the + and - buttons and keys zoom about the middle; Reset view undoes the zoom and the turn (the camera is the
    first one again);
@@ -76,6 +77,17 @@ async def dot_in_view(pg, margin=30):   # a dot well inside the canvas: its key 
     return None, None
 
 
+async def steady_tip(pg, n=32):   # hover the same dot n times, within 1 px: the tip stays shown and in one place
+    key, xy = await dot_in_view(pg)
+    if not key: return False, "no dot in view"
+    seen = []
+    for i in range(n):
+        await pg.mouse.move(xy[0] + (i % 3) - 1, xy[1] + (i % 2)); await pg.wait_for_timeout(15)
+        seen.append(await pg.evaluate("(t => [+t.style.opacity, t.getBoundingClientRect().left, t.getBoundingClientRect().top, document.getElementById('depth3d').dataset.peek])(document.querySelector('#depth3d .lbl.tip'))"))
+    bad = [i for i, (o, x, y, k) in enumerate(seen) if o < .9 or k != key or abs(x - seen[0][1]) > 1.5 or abs(y - seen[0][2]) > 1.5]
+    return not bad, f"{key}: off or moved on updates {bad[:6]} (first {[round(v, 1) for v in seen[0][:3]]}, last {[round(v, 1) for v in seen[-1][:3]]})"
+
+
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
@@ -86,6 +98,9 @@ async def main():
         s0 = await st(); cam0 = s0["cam"]
         check(s0["ring"] is not None and k_of(s0) == 1, f"desktop: the target's ring is on screen at 1x ({s0['ring']}, view {s0['v']})")
         ring0 = s0["ring"] or [700, 400, 20]
+        ok, say = await steady_tip(pg)
+        check(ok, f"1x: the hover name stays shown and in place through 32 hovers on one dot ({say})")
+        await pg.mouse.move(5, 5); await pg.wait_for_timeout(100)
         key, dot0 = await dot_in_view(pg)
         # 1. the wheel at a point beside the ring
         A = [ring0[0] + 40, ring0[1] + 25]
@@ -115,6 +130,8 @@ async def main():
             clk = await st()
             check(hov["peek"] == key2 and clk["peek"] == key2, f"zoomed: hovering and clicking a dot still name it ({key2}: {hov['peek']}, {clk['peek']})")
         else: check(False, "zoomed: a dot in view to hover")
+        ok, say = await steady_tip(pg)
+        check(ok, f"zoomed: the hover name stays shown and in place through 32 hovers on one dot ({say})")
         if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "desktop-zoomed.png"))
         # 4. a drag turns while zoomed and keeps the zoom
         cv = await pg.locator("#depth3d canvas").bounding_box(); cx, cy = cv["x"] + cv["width"] / 2, cv["y"] + cv["height"] / 2

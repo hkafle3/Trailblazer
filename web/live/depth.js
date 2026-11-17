@@ -85,7 +85,7 @@ function stage(box) {
       const moved = clear(S.keep) || slid; if (moved || S.z > 1) for (let i = 0; i < 8 && clear(S.placed, 8); i++);   // again while it moves (a later box can cover it); never end to end
       // moved off the bottom, or zoomed and down among the note and hint: hidden, not squeezed in at the edge
       if ((moved || S.z > 1) && y + ay * h + h > S.floor) { el.style.opacity = 0; return; }
-      S.placed.push([x, y + ay * h, x + w, y + ay * h + h]);
+      if (!cls.includes('tip')) S.placed.push([x, y + ay * h, x + w, y + ay * h + h]);   // a hover name clears the names, never its own past places
       el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(0,${ay * 100}%)`;
     }, remove() { el.remove(); } };
   };
