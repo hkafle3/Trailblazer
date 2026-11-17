@@ -987,6 +987,13 @@ function show(m, query, opts = {}) {
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   candTrack.commit(query);
   document.getElementById('pv-name').textContent = targetName(m) ?? m.comet ?? 'Sky spot';   // &comet=: the comet its page opened
+  if (opts.comet && m.t != null && m.comet === undefined) {   // checked once per patch; until then, and if it fails, an ordinary view
+    m.comet = null;
+    cometOf(m, opts.comet).then(id => {
+      m.comet = id;
+      if (id && state.m === m) { document.getElementById('pv-name').textContent = targetName(m) ?? id; draw(); }
+    });
+  }
   window.__aim3d?.();   // Advanced's "View this spot on Explore's 3D sky" follows the address
   panel(m); draw(); photo();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
@@ -1032,6 +1039,21 @@ async function knownNext() {
 }
 // east/north offset in arcsec of (ra, dec) from the patch centre, through the frames' own TAN projection
 // (pipeline.js gridWorld, inverted): a flat approximation drifts by pixels near the celestial poles
+// &comet= (a comet page's "Open in time-lapse") is a claim in a shareable address, so it is checked before anything uses
+// it: that comet's own record (GET /api/comets/:id on this site, what its page reads) must hold a photo taken at the
+// view's time t (within 5 s), on this detector, at this spot (within 2 pixels): a measured photo (its ra, dec and the
+// detector in its file name) or a JPL-listed D1 exposure. Then the record's own id; otherwise, or when the record cannot
+// be read, null, and the view is an ordinary one.
+async function cometOf(m, hint) {
+  try {
+    const r = await fetch(`/api/comets/${encodeURIComponent(hint)}`);
+    if (!r.ok) return null;
+    const c = await r.json(), d = c.detail ?? {}, tol = 2 * m.arcsec_per_pixel;
+    const shots = [...(d.photos ?? []).filter(p => p.ra != null).map(p => [p.mjd, p.ra, p.dec, p.file?.match(/_(D\d)\.png$/)?.[1]]),
+      ...(d.spherex ?? []).map(s => [MJD0 + s.day, s.ra, s.dec, 'D1'])];
+    return shots.some(([t, ra, dec, det]) => Math.abs(t - m.t) * 86400 <= 5 && det === m.detector && Math.hypot(...offset(m, ra, dec)) <= tol) ? c.id : null;
+  } catch { return null; }
+}
 function offset(m, ra, dec) {
   const d0 = m.dec * D2R, d = dec * D2R, da = (ra - m.ra) * D2R;
   const cosc = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(da);
@@ -1178,7 +1200,7 @@ function search(ra, dec, det, opts = {}) {
     else if (m.type === 'error') fail(`${brief(m.error)}.`, ' The examples on the Explore page always work.', m.error);
     else if (m.type === 'done') {
       job = 0;
-      remember(key, prep(Object.assign(m.manifest, { channel: c ? ch : null, t: opts.t, comet: opts.comet })));
+      remember(key, prep(Object.assign(m.manifest, { channel: c ? ch : null, t: opts.t })));
       const secs = ((performance.now() - t0) / 1000).toFixed(1), n = m.manifest.frames.length;
       setStatus(c ? `${n} of ${m.manifest.visits_all} visits have channel ${ch + 1}, built in ${secs} s` : `${n} visits, built in ${secs} s from NASA's public SPHEREx copy`);
       show(live.get(key), query, opts);

@@ -12,6 +12,9 @@ and on a phone (390x844):
   60 arcsec off for C/2026 A2), says it is already known, and does not invite a report of a new find; the panel title is
   the comet's name, and the verdict opens with the comet, not a star-style motion line;
 - the Depth tab draws its beam (a canvas that is not blank);
+- &comet= is only a hint: a made-up name, a real comet at the wrong spot or the wrong time, or its record not loading
+  leaves an ordinary view (no comet title, nothing named); without &comet= the view is ordinary; in the linked
+  comet's other visits the title stays and the verdict says the comet is in the middle in its own visit only;
 - no page or console errors."""
 import asyncio, math, sys, urllib.parse
 from playwright.async_api import async_playwright
@@ -119,12 +122,48 @@ async def run(b, cid, size, kw):
     await ctx.close()
 
 
+# &comet= checks on the time-lapse alone (desktop): the address, then what must hold. Bok's 29 Sep 2026 D5 photo and
+# C/2024 J3's Sep 2026 visit, as their pages link them (comet_timelapse_ui's own runs above check those links)
+BOK_Q, J3_Q, BOK_ID = "ra=269.0113&dec=69.1596&det=D5&t=61312.8036", "ra=276.8868&dec=42.5785&det=D1&t=61303.3769", urllib.parse.quote(BOK, safe="")
+HINTS = [   # name, address, route /api/comets/* to fail, step the timeline back one visit, the title it must show
+    ("made-up name at Bok's photo", f"{BOK_Q}&comet=Definitely%20not%20a%20real%20comet", False, False, "Sky spot"),
+    ("Bok's name at J3's spot", f"{J3_Q}&comet={BOK_ID}", False, False, "Sky spot"),
+    ("Bok's name and spot, 4 minutes off its photo", f"ra=269.0113&dec=69.1596&det=D5&t=61312.8066&comet={BOK_ID}", False, False, "Sky spot"),
+    ("Bok's link with its record not loading", f"{BOK_Q}&comet={BOK_ID}", True, False, "Sky spot"),
+    ("Bok's link without &comet=", BOK_Q, False, False, "Sky spot"),
+    ("Bok's link, another visit", f"{BOK_Q}&comet={BOK_ID}", False, True, BOK),
+]
+
+
+async def hints(b):
+    for name, q, fail, step, title in HINTS:
+        ctx = await b.new_context(viewport={"width": 1440, "height": 900})
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
+        pg = await ctx.new_page(); errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        # the browser logs the record's refusal itself (404 for a made-up name, 503 when made to fail): expected here
+        pg.on("console", lambda m: m.type == "error" and not any(f"status of {c}" in m.text for c in (404, 503)) and errors.append(m.text))
+        if fail: await pg.route("**/api/comets/**", lambda r: r.fulfill(status=503, body='{"error":"down"}', content_type="application/json"))
+        await pg.goto(f"{BASE}/timelapse.html?{q}"); await pg.wait_for_function(READY, timeout=240000)
+        if step: await pg.focus("#play"); await pg.keyboard.press("ArrowLeft")
+        try: await pg.wait_for_function("(t => t && !/checking/i.test(t))(document.getElementById('vKnown')?.textContent)", timeout=120000)
+        except Exception: pass
+        await pg.wait_for_timeout(1000)
+        at_t, t, say, note = await pg.evaluate("[!!__lapse.state.m.frames[__lapse.state.i].at_t, ...['pv-name', 'pv-say', 'state-note'].map(i => document.getElementById(i).textContent.trim())]")
+        named = "matches the known comet" in say or "already known" in note
+        if step: ok = t == title and not at_t and not named and "is in the middle only in the Sep 2026 visit its page opened" in say
+        else: ok = t == title and not named and "Definitely" not in t + say + note and "C/2026 A2 (Bok)" not in say + note and (at_t or "J3" in name)
+        check(ok and not errors, f"&comet= {name}: title '{t}', linked exposure on screen {at_t}, '{say}' / '{note}' {errors}")
+        await ctx.close()
+
+
 SHOTS = sys.argv[2] if len(sys.argv) > 2 else None   # a folder for a screenshot of the control on each page and size
 
 
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
+        await hints(b)
         for cid in (BOK, J3):
             for size, kw in SIZES:
                 await run(b, cid, size, kw)
