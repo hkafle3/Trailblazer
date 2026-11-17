@@ -8,6 +8,7 @@ export const R = 0.15, LIMIT = 1000, DEADLINE = 4000;   // cone radius (deg), ro
 const AU_PC = 1 / 206264.80624709636, C = 299792.458, H0 = 70, OM = 0.3, OL = 0.7;
 const ZP = 0.017, ZMIN = 0.01, VPEC = 300;   // Gaia parallax zero point (mas), lowest redshift placed, peculiar velocity (km/s)
 const TTL = { stars: 30 * 86400, galaxies: 7 * 86400, sso: 7 * 86400 };
+const FAIL_TTL = 60, BUDGET = 25000;   // s a failure is remembered (never an answer, only "unavailable"); ms one source may take in all
 const ESA = 'https://gea.esac.esa.int/tap-server/tap/sync', SIMBAD = 'https://simbad.harvard.edu/simbad/sim-tap/sync';
 const LABEL = { sso: 'SkyBoT', stars: 'Gaia archive', galaxies: 'SIMBAD' };
 
@@ -164,11 +165,15 @@ export function readSkybot(status, text) {
 }
 
 // ---------- the endpoint ----------
-// fail= and fresh= are honoured only in local dev (DEPTH_FAULTS=1 in worker/.dev.vars, never in wrangler.toml)
+// Honoured only in local dev (DEPTH_FAULTS=1 in worker/.dev.vars, never in wrangler.toml): fail= throws before any cache
+// read; outage= lets the archive fail late (after the deadline, like a hung service), through the real failure path;
+// fresh=1 skips cache reads.
 export function devFlags(url, env) {
-  if (env?.DEPTH_FAULTS !== '1') return { faults: new Set(), fresh: false };
-  return { faults: new Set((url.searchParams.get('fail') || '').split(',').filter(Boolean)), fresh: url.searchParams.get('fresh') === '1' };
+  if (env?.DEPTH_FAULTS !== '1') return { faults: new Set(), outage: new Set(), fresh: false };
+  const set = k => new Set((url.searchParams.get(k) || '').split(',').filter(Boolean));
+  return { faults: set('fail'), outage: set('outage'), fresh: url.searchParams.get('fresh') === '1' };
 }
+const lateFailure = () => new Promise((_, no) => setTimeout(no, DEADLINE + 1000, new Error('simulated outage (dev)')));
 
 const tapUrl = (base, query) => `${base}?${new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv', QUERY: query })}`;
 
@@ -210,22 +215,40 @@ const builders = {
 async function source(name, p, deps) {
   if (deps.faults.has(name)) throw new Error('forced failure (dev)');
   const key = `https://depth.cache/v3/${name}?ra=${p.ra.toFixed(4)}&dec=${p.dec.toFixed(4)}${name === 'sso' ? `&t=${p.t.toFixed(4)}` : ''}`;
+  const failKey = key.replace('/v3/', '/v3/failed/');
   if (!deps.fresh) {
     const hit = await deps.cache.match(key).catch(() => null);
     if (hit) return hit.text();
+    // a fetch that failed in the last minute (often in the background, after the answer said "pending"): say unavailable
+    // now instead of "pending" on every ask through an outage, and leave the archive alone until the note expires
+    const failed = await deps.cache.match(failKey).catch(() => null);
+    if (failed) throw new Error(`failed recently: ${await failed.text()}`);
   }
-  const body = await builders[name](p, deps.get, deps.getWithStatus);
-  const text = JSON.stringify({ ...body, fetched_at: new Date().toISOString() });
-  try { await deps.cache.put(key, new Response(text, { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${TTL[name]}` } })); }
-  catch (e) { console.warn('depth cache', e); }   // not cached this time; the answer is still good
-  return text;
+  let timer;
+  try {
+    // bounded below waitUntil's 30 s, so a hung archive is recorded as a failure before the Worker is stopped
+    const budget = new Promise((_, no) => { timer = setTimeout(no, BUDGET, new Error(`no answer in ${BUDGET / 1000} s`)); });
+    const build = deps.outage?.has(name) ? lateFailure() : builders[name](p, deps.get, deps.getWithStatus);
+    const body = await Promise.race([build, budget]);
+    const text = JSON.stringify({ ...body, fetched_at: new Date().toISOString() });
+    try {
+      await deps.cache.put(key, new Response(text, { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${TTL[name]}` } }));
+      await deps.cache.delete(failKey);   // a success replaces any failure note
+    } catch (e) { console.warn('depth cache', e); }   // not cached this time; the answer is still good
+    return text;
+  } catch (e) {
+    try { await deps.cache.put(failKey, new Response(String(e?.message ?? e).slice(0, 200), { headers: { 'Cache-Control': `public, max-age=${FAIL_TTL}` } })); }
+    catch (e2) { console.warn('depth cache', e2); }
+    throw e;
+  } finally { clearTimeout(timer); }
 }
 
-// p: { ra, dec, t } already checked and rounded (t may be null). deps: { get, getWithStatus, cache, faults, fresh, waitUntil }.
+// p: { ra, dec, t } already checked and rounded (t may be null). deps: { get, getWithStatus, cache, faults, fresh, waitUntil,
+// deadline (ms, tests only) }.
 // Returns { body, complete }: body is JSON text; complete is false when any source is pending or unavailable.
 export async function depthAnswer(p, deps) {
   let timer;
-  const LATE = {}, late = new Promise(res => { timer = setTimeout(res, DEADLINE, LATE); });
+  const LATE = {}, late = new Promise(res => { timer = setTimeout(res, deps.deadline ?? DEADLINE, LATE); });
   let complete = true;
   const parts = await Promise.all(['sso', 'stars', 'galaxies'].map(async name => {
     if (name === 'sso' && p.t == null) return `"sso":{"status":"skipped","reason":"no t given"}`;

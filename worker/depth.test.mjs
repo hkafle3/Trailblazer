@@ -58,9 +58,11 @@ test('SkyBoT: 204 is empty, blank 200 and unreadable rows are errors, a row with
 
 test('fault flags work only with DEPTH_FAULTS=1', () => {
   const url = new URL('http://x/api/depth?ra=1&dec=1&fail=stars,sso&fresh=1');
-  assert.deepEqual(devFlags(url, {}), { faults: new Set(), fresh: false });
-  assert.deepEqual(devFlags(url, { DEPTH_FAULTS: 'true' }), { faults: new Set(), fresh: false });
-  assert.deepEqual(devFlags(url, { DEPTH_FAULTS: '1' }), { faults: new Set(['stars', 'sso']), fresh: true });
+  const none = { faults: new Set(), outage: new Set(), fresh: false };
+  assert.deepEqual(devFlags(url, {}), none);
+  assert.deepEqual(devFlags(url, { DEPTH_FAULTS: 'true' }), none);
+  assert.deepEqual(devFlags(url, { DEPTH_FAULTS: '1' }), { faults: new Set(['stars', 'sso']), outage: new Set(), fresh: true });
+  assert.deepEqual(devFlags(new URL('http://x/?outage=galaxies'), {}).outage, new Set());
 });
 
 // a fake archive: answers each query by what it asks for; a fake cache that records puts
@@ -75,7 +77,7 @@ function fakes({ failGaia = false } = {}) {
     return 'oid,main_id,otype,ra,dec,rvz_redshift,rvz_err,rvz_type,rvz_qual,rvz_nature\n' + (q.includes('rvz_redshift >=') ? '1,"g1","G",1,1,0.2,,z,C,"s"\n' : '2,"g2","G",1,1,,,,,\n');
   };
   const getWithStatus = async () => [204, ''];
-  const cache = { match: async k => (store.has(k) ? new Response(store.get(k)) : undefined), put: async (k, r) => store.set(k, await r.text()) };
+  const cache = { match: async k => (store.has(k) ? new Response(store.get(k)) : undefined), put: async (k, r) => store.set(k, await r.text()), delete: async k => store.delete(k) };
   return { get, getWithStatus, cache, store, calls, faults: new Set(), fresh: false, waitUntil: () => {} };
 }
 
@@ -98,7 +100,8 @@ test('answer: every source ok and cached on its own; a failing source is unavail
   assert.equal(c.complete, false);
   assert.deepEqual(e.sources.stars, { status: 'unavailable', error: 'Gaia archive is not answering', retry_after: 30 });
   assert.equal(e.sources.galaxies.status, 'ok'); assert.equal(e.sources.sso.status, 'skipped');
-  assert.ok(![...f.store.keys()].some(k => k.includes('stars')));
+  assert.ok(![...f.store.keys()].some(k => k.includes('/v3/stars')), 'no answer cached for a failed source');
+  assert.ok(f.store.has('https://depth.cache/v3/failed/stars?ra=1.0000&dec=1.0000'), 'only a short failure note');
 
   const h = fakes(), real = h.get;
   h.get = async u => (new URL(u).searchParams.get('QUERY') ?? '').startsWith('SELECT COUNT') && u.includes('gea.esac') && u.includes('parallax') ? 'n\n5\n' : real(u);
@@ -106,4 +109,35 @@ test('answer: every source ok and cached on its own; a failing source is unavail
 
   const g = fakes(); g.faults = new Set(['galaxies']);
   assert.equal(JSON.parse((await depthAnswer({ ra: 1, dec: 1, t: null }, g)).body).sources.galaxies.error, 'forced failure (dev)');
+});
+
+test('a failure after the deadline is remembered: the next ask says unavailable, not pending; a success clears it', async () => {
+  const d = fakes(), jobs = [];
+  let skybotCalls = 0, skybotOk = false;
+  d.deadline = 20;
+  d.waitUntil = j => jobs.push(j);
+  d.getWithStatus = async () => { skybotCalls++; await new Promise(r => setTimeout(r, 60)); if (!skybotOk) throw new Error('HTTP 503'); return [204, '']; };
+  const p = { ra: 1, dec: 1, t: 61000.5 }, failKey = 'https://depth.cache/v3/failed/sso?ra=1.0000&dec=1.0000&t=61000.5000';
+  const first = JSON.parse((await depthAnswer(p, d)).body);
+  assert.equal(first.sources.sso.status, 'pending');
+  await Promise.all(jobs);
+  assert.ok(d.store.has(failKey), 'the background failure is noted');
+  const second = await depthAnswer(p, d), b = JSON.parse(second.body);
+  assert.deepEqual(b.sources.sso, { status: 'unavailable', error: 'SkyBoT is not answering', retry_after: 30 });
+  assert.equal(second.complete, false);
+  assert.equal(b.sources.stars.status, 'ok');
+  assert.equal(skybotCalls, 1, 'no new SkyBoT call while the failure is remembered');
+  assert.ok(![...d.store.keys()].some(k => k.includes('/v3/sso')), 'a failure is never cached as an answer');
+  // the archive is back: a fetch that succeeds (here a cold one) replaces the note
+  skybotOk = true; d.deadline = 1000; d.fresh = true;
+  assert.equal(JSON.parse((await depthAnswer(p, d)).body).sources.sso.status, 'ok');
+  assert.ok(!d.store.has(failKey), 'a success clears the failure note');
+  d.fresh = false;
+  assert.equal(JSON.parse((await depthAnswer(p, d)).body).sources.sso.status, 'ok');
+});
+
+test('a hung archive is cut off by the per-source budget and noted as a failure', async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('./src/depth.js', import.meta.url), 'utf8');
+  const budget = Number(src.match(/BUDGET = (\d+)/)[1]);
+  assert.ok(budget < 30000, 'below waitUntil\'s 30 s, so the note is written before the Worker stops');
 });

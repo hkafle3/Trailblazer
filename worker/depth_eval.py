@@ -285,6 +285,21 @@ def main():
              f'fail={fail}: an unavailable source still carries objects')
     _, status, body, _ = depth(ra, dec, t)
     c.ok('5', all(v['status'] == 'ok' for v in body['sources'].values()), 'a forced failure was remembered')
+    # an archive that fails late (after the 4 s deadline, in the background): the next ask must say unavailable, not
+    # pending forever; the failure is noted for 60 s and a later success clears it. On a fresh patch so nothing is cached.
+    ra2, dec2, t2 = 33.3333, -44.4444, 61000.5
+    _, status, body, _ = depth(ra2, dec2, t2, '&fresh=1&outage=galaxies')
+    c.ok('5', body['sources']['galaxies']['status'] == 'pending', f'late outage: first ask {body["sources"]["galaxies"]}')
+    time.sleep(3)   # the background fetch fails 5 s after it started
+    _, status, body, headers = depth(ra2, dec2, t2)
+    states = {k: v['status'] for k, v in body['sources'].items()}
+    c.ok('5', states == {'sso': 'ok', 'stars': 'ok', 'galaxies': 'unavailable'} or states == {'sso': 'pending', 'stars': 'ok', 'galaxies': 'unavailable'},
+         f'late outage: second ask {states}')
+    c.ok('5', 'placed' not in body['sources']['galaxies'] and 'no-store' in headers.get('Cache-Control', ''), 'late outage: unavailable carries objects or is cacheable')
+    _, status, body, _ = depth(ra2, dec2, t2, '&fresh=1')
+    c.ok('5', body['sources']['galaxies']['status'] == 'ok', f'late outage: a fresh fetch did not succeed {body["sources"]["galaxies"]}')
+    _, status, body, _ = depth(ra2, dec2, t2)
+    c.ok('5', body['sources']['galaxies']['status'] == 'ok', 'late outage: the success did not replace the failure note')
     _, status, body, _ = depth(ra, dec, t, '&fail=stars&fresh=1')
     c.ok('5', body['sources']['stars']['status'] == 'unavailable', 'fail with fresh did not fail')
 
