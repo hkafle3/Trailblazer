@@ -7,6 +7,11 @@ compatibility_date = "2026-11-01"
 [observability]
 enabled = true
 
+# The daily "right now" snapshot of each known comet from JPL Horizons (worker/src/now.js): every 10 minutes from 00:00
+# to 05:59 UTC, 10 comets a run that have no row for the day yet, so 72 comets take 8 runs and failures are retried.
+[triggers]
+crons = ["*/10 0-5 * * *"]
+
 # Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
 [assets]
 directory = "../web"
