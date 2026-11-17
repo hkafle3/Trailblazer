@@ -8,7 +8,7 @@
     "db:local": "wrangler d1 migrations apply comet-hunt --local --config worker/wrangler.toml",
     "db:remote": "wrangler d1 migrations apply comet-hunt --remote --config worker/wrangler.toml",
     "deploy": "wrangler deploy --config worker/wrangler.toml",
-    "test": "node web/tests/straight_rules.mjs && node web/tests/search_core.mjs && node web/tests/intro_quality.mjs && node web/tests/identity_check.mjs && node web/tests/cutout_check.mjs && node web/tests/spectrum_check.mjs && node web/tests/rice_check.mjs && node --test worker/sky_index.test.mjs worker/sky_index_full.test.mjs worker/depth.test.mjs && node worker/check_csv.mjs && sh worker/test_contract.sh"
+    "test": "node web/tests/straight_rules.mjs && node web/tests/search_core.mjs && node web/tests/intro_quality.mjs && node web/tests/identity_check.mjs && node web/tests/cutout_check.mjs && node web/tests/spectrum_check.mjs && node web/tests/rice_check.mjs && node --test worker/sky_index.test.mjs worker/sky_index_full.test.mjs worker/depth.test.mjs worker/now.test.mjs && node web/tests/facts_test.mjs && node worker/check_csv.mjs && sh worker/test_contract.sh"
   },
   "devDependencies": {
     "wrangler": "4.162.0"
