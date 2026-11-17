@@ -1062,28 +1062,17 @@ function render(U) {
 const perf = { frames: [] };
 let T0 = null, Tnow = 0, still = 0;
 function finish() { playing = false; done(); }
-// Adaptive quality: after each second of playing, if its frames took over 20 ms on average, the picture is drawn one
-// step cheaper (TIERS). It goes back up a step only after five good seconds in a row, so it never flips back and forth.
-const load = { ms: 0, n: 0, good: 0 };
+// Adaptive quality: after each second of playing, if its frames came over 20 ms apart on average, the picture is drawn one
+// step cheaper (TIERS). If that step did not bring the frames at least a tenth closer together, the picture was not what
+// was slow (a display held to 30 frames a second, as a laptop saving power does, or a busy machine): the step is taken
+// back and quality is left alone from then on. It goes back up a step only after five good seconds in a row, so it never
+// flips back and forth.
+const load = { ms: 0, n: 0, good: 0, was: 0, off: false };
 function adapt(dt) {
-  load.ms += dt; load.n++; if (load.ms < 1000) return;
+  if (load.off) return; load.ms += dt; load.n++; if (load.ms < 1000) return;
   const mean = load.ms / load.n; load.ms = load.n = 0;
-  if (mean > 20 && quality < TIERS.length - 1) { quality++; load.good = 0; resize(); } else if (mean < 17.5 && quality > 0 && ++load.good >= 5) { quality--; load.good = 0; resize(); } else if (mean >= 17.5) load.good = 0;
-}
-function tick(ts) {
-  if (!playing) return;
-  if (T0 === null) T0 = ts; else { perf.frames.push(ts - perf.last); adapt(ts - perf.last); }
-  perf.last = ts; Tnow = (ts - T0) / 1000;
-  if (Tnow >= T_END) return finish();
-  render(Tnow); requestAnimationFrame(tick);
-}
-function showStill(i) {
-  still = i; root.style.transition = 'opacity .3s'; root.style.opacity = 0;
-  setTimeout(() => { if (signal.aborted) return; render(STILLS[i]); root.style.opacity = 1; $('next').textContent = i === STILLS.length - 1 ? 'Open the map' : 'Next'; }, 300);
-}
-function skip() {
-  if (REDUCED || !playing) return finish();
-  if (Tnow < T_HANDOVER) T0 -= (T_HANDOVER - Tnow) * 1000;   // cut to the flat map, then the usual dissolve
+  if (load.was) { const helped = mean < .9 * load.was; load.was = 0; if (!helped) { quality--; load.off = true; return resize(); } }
+  if (mean > 20 && quality < TIERS.length - 1) { quality++; load.good = 0; load.was = mean; resize(); } else if (mean < 17.5 && quality > 0 && ++load.good >= 5) { quality--; load.good = 0; resize(); } else if (mean >= 17.5) load.good = 0;
 }
 $('next').onclick = () => (still < STILLS.length - 1 ? showStill(still + 1) : finish());
 addEventListener('resize', () => { resize(); if (!playing) render(REDUCED ? STILLS[still] : Tnow); }, { signal });
