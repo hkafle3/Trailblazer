@@ -2,7 +2,8 @@
 // for the patch and the visit on screen. Two parts, fed by one answer:
 // - the beam: SPHEREx at the near end, the whole region's photo at the far end, and each placed object on its own line
 //   of sight at its distance, on a compressed log scale (the UX mockup's 3D view, ux-mockups/src/depth3d.js sky(), on
-//   real data). Drag turns it.
+//   real data). Drag turns it; the wheel, a pinch, + and - zoom toward the pointer or the fingers, a shift- or right-drag
+//   (or two fingers) moves around the zoomed view, Reset view undoes it all.
 // - the Distances list: every placed object, nearest first, with its source and error; then what has no distance, and
 //   any source that is still answering (pending, asked again after retry_after) or not answering (unavailable).
 // Nothing without a catalog distance gets a number. Names from the network are set with textContent.
@@ -52,7 +53,7 @@ function stage(box) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(20, 1, .05, 400);
-  const S = { W: 1, H: 1, renderer, scene, camera, keep: [] };   // keep: boxes over the view (x0, y0, x1, y1) labels stay clear of
+  const S = { W: 1, H: 1, z: 1, renderer, scene, camera, keep: [], placed: [], floor: 1 };   // keep: boxes over the view (x0, y0, x1, y1) labels stay clear of; z: the zoom (render())
   S.size = () => { const W = box.clientWidth || 1, H = box.clientHeight || 1; if (W === S.W && H === S.H) return false; S.W = W; S.H = H; renderer.setSize(W, H, false); camera.aspect = W / H; camera.updateProjectionMatrix(); return true; };
   S.sprite = (tex, order = 6) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false })); s.renderOrder = order; scene.add(s); return s; };
   S.lines = (max, order = 7) => {
@@ -69,19 +70,27 @@ function stage(box) {
   const tmp = V();
   S.label = (text, cls = '') => {
     const el = document.createElement('div'); el.className = 'lbl ' + cls; el.textContent = text; layer.append(el);
-    return { el, at(p, [dx, dy, ax, ay] = [10, -5, 0, 0], a = 1) {
-      tmp.copy(p).project(camera); const vis = a > .01 && tmp.z < 1;
+    // own: what the name belongs to (a ring, whose name sits above it at p); zoomed, it shows while that is in view
+    return { el, at(p, [dx, dy, ax, ay] = [10, -5, 0, 0], a = 1, own = p) {
+      tmp.copy(own).project(camera); const vis = a > .01 && tmp.z < 1 && (S.z === 1 || Math.abs(tmp.x) <= 1 && Math.abs(tmp.y) <= 1);   // zoomed: none for what is out of view
       el.style.opacity = vis ? a.toFixed(3) : 0; if (!vis) return;
+      tmp.copy(p).project(camera);
       // kept inside the view sideways: a name that would run off an edge slides back in
       const w = el.offsetWidth, h = el.offsetHeight, x = Math.max(4, Math.min(S.W - w - 4, (tmp.x + 1) / 2 * S.W + dx + ax * w));
-      let y = (1 - tmp.y) / 2 * S.H + dy;
-      // under a box it would run beneath (the tabs over the beam): moved down just clear of it
-      for (const [x0, y0, x1, y1] of S.keep) { const top = y + ay * h; if (x < x1 && x + w > x0 && top < y1 + 2 && top + h > y0) y += y1 + 2 - top; }
+      let y = (1 - tmp.y) / 2 * S.H + dy; const slid = y + ay * h < 2; if (slid) y = 2 - ay * h;   // one that would run off the top slides down into it
+      // under a box it would run beneath (the tabs over the beam): moved down just clear of it, and of the names placed
+      // before it (zoomed in, several can land under the tabs)
+      const clear = (boxes, gap = 0) => { let moved = false; for (const [x0, y0, x1, y1] of boxes) { const top = y + ay * h; if (x < x1 + gap && x + w + gap > x0 && top < y1 + 2 && top + h > y0) { y += y1 + 2 - top; moved = true; } } return moved; };
+      // zoomed, the rows over the beam's (steeper) edge can cross too: then every name clears the ones placed before it
+      const moved = clear(S.keep) || slid; if (moved || S.z > 1) for (let i = 0; i < 8 && clear(S.placed, 8); i++);   // again while it moves (a later box can cover it); never end to end
+      // moved off the bottom, or zoomed and down among the note and hint: hidden, not squeezed in at the edge
+      if ((moved || S.z > 1) && y + ay * h + h > S.floor) { el.style.opacity = 0; return; }
+      if (!cls.includes('tip')) S.placed.push([x, y + ay * h, x + w, y + ay * h + h]);   // a hover name clears the names, never its own past places
       el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(0,${ay * 100}%)`;
     }, remove() { el.remove(); } };
   };
   S.px = p => (tmp.copy(p).project(camera), [(tmp.x + 1) / 2 * S.W, (1 - tmp.y) / 2 * S.H]);
-  S.pxAt = p => tmp.copy(p).sub(camera.position).dot(camera.getWorldDirection(V())) * Math.tan(camera.fov / 2 * D2R) * 2 / S.H;   // world size of one CSS px there
+  S.pxAt = p => tmp.copy(p).sub(camera.position).dot(camera.getWorldDirection(V())) * Math.tan(camera.fov / 2 * D2R) * 2 / S.H / S.z;   // world size of one CSS px there
   S.aim = ({ pos, tgt, up, fov }) => { camera.fov = fov; camera.position.copy(pos); camera.up.copy(up); camera.lookAt(tgt); camera.updateProjectionMatrix(); camera.updateMatrixWorld(); };
   // the camera that looks along -dir with these points filling the rectangle [x0, y0, x1, y1] (CSS px) of the view
   S.fit = (pts, dir, up, fov, [x0, y0, x1, y1]) => {
@@ -99,7 +108,7 @@ function stage(box) {
   return S;
 }
 function ringTex(color, dash) {
-  const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d');
+  const c = document.createElement('canvas'); c.width = c.height = 384; const g = c.getContext('2d'); g.scale(4, 4);   // sharp at 8x zoom
   g.strokeStyle = color; g.lineWidth = 7; if (dash) g.setLineDash([14, 9.56]); g.beginPath(); g.arc(48, 48, 36, 0, TAU); g.stroke();
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
@@ -126,6 +135,7 @@ export function depthView(page) {
   const { box, list, status } = page;
   let S = null, gl = true, scene3 = null, data = null, asked = null, retry = 0, tries = 0, ctl = null, open = false, raf = 0;
   const yaw = { a: 0, p: 0, t0: 0 };   // drag: the turn and tilt added to the side view; t0: when the swing out started
+  const Z = { k: 1, x: 0, y: 0 };   // the zoom: k times, the view's top-left corner at (x, y) CSS px of the unzoomed view
 
   // ---------- the answer ----------
   function want(m, f) { return `${page.api}/api/depth?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&t=${f.mjd.toFixed(4)}`; }
@@ -265,19 +275,61 @@ export function depthView(page) {
       if (!best) { tip.el.style.opacity = 0; box.dataset.peek = ''; return; }
       tip.el.textContent = best.text; tip.at(best.pos, [8, -6, 0, -1], 1); box.dataset.peek = best.key;
     };
-    // drag to turn: sideways turns the beam, up and down tilts it (a little)
-    const cv = box.querySelector('canvas'); let drag = null;
-    cv.addEventListener('pointerdown', e => { if (e.button) return; drag = { x: e.clientX, y: e.clientY, a: yaw.a, p: yaw.p }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); box.dataset.turned = '1'; });
-    cv.addEventListener('pointermove', e => { if (!drag) return peek(e); tip.el.style.opacity = 0; yaw.a = Math.max(-1.3, Math.min(1.9, drag.a + (e.clientX - drag.x) / 260)); yaw.p = Math.max(-.15, Math.min(.9, drag.p + (e.clientY - drag.y) / 300)); render(); });
-    const up = e => { if (drag && e?.type === 'pointerup' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) peek(e); drag = null; cv.classList.remove('drag'); };
+    // drag to turn: sideways turns the beam, up and down tilts it (a little). Two fingers zoom about their midpoint and
+    // move with it (as on Explore and the photo): a second finger ends the turn, and none starts until both lift.
+    const cv = box.querySelector('canvas'), fingers = new Map(); let drag = null, pinch = null, pan = null;
+    const two = () => { const [a, b] = fingers.values(), r = cv.getBoundingClientRect(); return { m: [(a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top], d: Math.hypot(a[0] - b[0], a[1] - b[1]) }; };
+    cv.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'mouse') fingers.set(e.pointerId, [e.clientX, e.clientY]);
+      if (fingers.size === 2) { if (drag) { yaw.a = drag.a; yaw.p = drag.p; drag = null; cv.classList.remove('drag'); } cv.setPointerCapture(e.pointerId); pinch = two(); tip.el.style.opacity = 0; render(); return; }
+      if (fingers.size > 2 || pinch) return;
+      // a shift- or right-drag moves the zoomed view, as in 3D viewers (nothing to move at 1x)
+      if (e.button === 2 || (!e.button && e.shiftKey)) { pan = { x: e.clientX, y: e.clientY, zx: Z.x, zy: Z.y }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); tip.el.style.opacity = 0; return; }
+      if (e.button) return;
+      drag = { x: e.clientX, y: e.clientY, a: yaw.a, p: yaw.p }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); box.dataset.turned = '1'; });
+    cv.addEventListener('pointermove', e => {
+      if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pinch) { if (fingers.size === 2 && fingers.has(e.pointerId)) { const n = two(); if (n.d > 0 && pinch.d > 0) zoomAt(n.d / pinch.d, ...pinch.m, ...n.m); pinch = n; } return; }
+      if (pan) { Z.x = pan.zx - (e.clientX - pan.x) / Z.k; Z.y = pan.zy - (e.clientY - pan.y) / Z.k; return zoomAt(1, 0, 0); }   // zoomAt keeps it in the scene
+      if (!drag) return peek(e); tip.el.style.opacity = 0; yaw.a = Math.max(-1.3, Math.min(1.9, drag.a + (e.clientX - drag.x) / 260)); yaw.p = Math.max(-.15, Math.min(.9, drag.p + (e.clientY - drag.y) / 300)); render(); });
+    const up = e => { fingers.delete(e?.pointerId); if (!fingers.size) pinch = null; if (drag && e?.type === 'pointerup' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) peek(e); drag = pan = null; cv.classList.remove('drag'); };
+    cv.addEventListener('contextmenu', e => e.preventDefault());   // the right button pans
     cv.addEventListener('pointerleave', () => { if (!drag) tip.el.style.opacity = 0; });
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    // the wheel and a trackpad pinch (a ctrl wheel: smaller steps, so stronger each) zoom toward the pointer, and neither
+    // the page nor the browser zooms or scrolls over the view. Safari's trackpad pinch is a gesture, not a ctrl wheel.
+    const local = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    cv.addEventListener('wheel', e => {
+      e.preventDefault();
+      const px = e.deltaY * [1, 33, cv.clientHeight][e.deltaMode];   // pixels, lines or pages
+      zoomAt(Math.exp(-Math.max(-300, Math.min(300, px)) * (e.ctrlKey ? .01 : .002)), ...local(e));
+    }, { passive: false });
+    let gs = 1;
+    cv.addEventListener('gesturestart', e => { e.preventDefault(); gs = 1; });
+    cv.addEventListener('gesturechange', e => { e.preventDefault(); if (!fingers.size && e.scale > 0) { zoomAt(e.scale / gs, ...local(e)); gs = e.scale; } });   // on iPhone the fingers above zoom
+    cv.addEventListener('gestureend', e => e.preventDefault());
+    const mid = () => [S.W / 2, S.H / 2];
+    box.querySelector('.xp-d3-zoom')?.addEventListener('click', e => {
+      const z = e.target.closest('button')?.dataset.zoom;
+      if (z === 'in') zoomAt(1.5, ...mid()); else if (z === 'out') zoomAt(1 / 1.5, ...mid());
+      else if (z === 'reset') { Object.assign(Z, { k: 1, x: 0, y: 0 }); yaw.a = yaw.p = 0; tip.el.style.opacity = 0; render(); }
+    });
     cv.addEventListener('keydown', e => {
+      const z = { '+': 1.5, '=': 1.5, '-': 1 / 1.5, '_': 1 / 1.5 }[e.key];   // Ctrl or Cmd with them is the browser's own zoom
+      if (z && !e.ctrlKey && !e.metaKey && !e.altKey) { zoomAt(z, ...mid()); e.preventDefault(); e.stopPropagation(); return; }
       const k = { ArrowLeft: [-.12, 0], ArrowRight: [.12, 0], ArrowUp: [0, -.08], ArrowDown: [0, .08] }[e.key]; if (!k) return;
       yaw.a = Math.max(-1.3, Math.min(1.9, yaw.a + k[0])); yaw.p = Math.max(-.15, Math.min(.9, yaw.p + k[1])); render(); e.preventDefault(); e.stopPropagation();
     });
     new ResizeObserver(() => open && render()).observe(box);
     return true;
+  }
+  // zoom by f about the view point (x0, y0), which lands at (x1, y1): what was under it stays under it. 1x to 8x, and
+  // never past the edges of the unzoomed view
+  function zoomAt(f, x0, y0, x1 = x0, y1 = y0) {
+    if (!S) return;
+    const u = Z.x + x0 / Z.k, v = Z.y + y0 / Z.k; Z.k = Math.max(1, Math.min(8, Z.k * f));
+    Z.x = Math.max(0, Math.min(S.W - S.W / Z.k, u - x1 / Z.k)); Z.y = Math.max(0, Math.min(S.H - S.H / Z.k, v - y1 / Z.k));
+    render();
   }
   let scale = null, shown = { rings: [], dots: [] };   // shown: which objects the beam draws as named rings, which as dots (for tests)
   function build() {   // the objects of the answer on screen: positions, the scale, the named ones
@@ -336,10 +388,13 @@ export function depthView(page) {
   const q = V();
   function render() {
     if (!S || !open) return;
-    S.size();
+    S.size(); S.z = 1; S.camera.clearViewOffset();   // the fit below is of the unzoomed view
     const br = box.getBoundingClientRect();
     S.keep = (page.cover?.() ?? []).filter(Boolean).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
       .map(r => [r.left - br.left, r.top - br.top, r.right - br.left, r.bottom - br.top]);
+    S.placed = [];   // the names placed so far this frame
+    // the lowest a name may reach: the frame's foot, or zoomed in (names can get there then) the top of the note and hint
+    S.floor = Math.min(S.H, ...(Z.k > 1 ? [...box.querySelectorAll('.xp-d3-note, .xp-d3-hint')].map(e => e.getBoundingClientRect()).filter(r => r.height).map(r => r.top - br.top - 2) : []));
     const { W, H } = S, small = W < 500, T = yaw.t0 ? (performance.now() - yaw.t0) / 1000 : 9;
     const s = sm(T / 1.8);   // the swing: from through the telescope (the photo fills the view, as in Photo) out to the side
     const frame = small ? [14, 64, W - 20, H - 40] : [36, 110, W - 46, H - 70];
@@ -349,9 +404,13 @@ export function depthView(page) {
     const eye = { pos: V(.02, 0, 0), tgt: V(L, 0, 0), fov: 2 * Math.atan(Math.max(hh, hw * H / W) / L) / D2R };
     const mid = V(1.6, .5, 3.2), k = 1 - s;
     S.aim({ pos: V().addScaledVector(eye.pos, k * k).addScaledVector(mid, 2 * k * s).addScaledVector(to.pos, s * s), tgt: eye.tgt.clone().lerp(to.tgt, s), up: Y, fov: eye.fov + (to.fov - eye.fov) * sm(s * 1.4) });
+    // the zoom: the camera draws the part of that view it covers. Rings and the photo grow with it; names, lines and the
+    // gaps between them stay their size on screen (S.pxAt is per screen px)
+    if (Z.k > 1) { Z.x = Math.min(Z.x, W - W / Z.k); Z.y = Math.min(Z.y, H - H / Z.k); S.camera.setViewOffset(W, H, Z.x, Z.y, W / Z.k, H / Z.k); S.z = Z.k; }
+    for (const [n, off] of [['in', Z.k >= 8], ['out', Z.k <= 1]]) { const bt = box.querySelector(`[data-zoom=${n}]`); if (bt) bt.disabled = off; }
     const a = sm((s - .45) / .4), la = sm((s - .8) / .2);
     const { guides, craft, beam, cloud, unk } = scene3;
-    craft.visible = s > .02; beam.material.opacity = .055 * a; cloud.material.opacity = (small ? .14 : .28) * a; cloud.material.size = small ? 2.5 : 4;   // a phone's narrower beam packs them closer unk.material.opacity = a;
+    unk.material.size = 11 * S.z; craft.visible = s > .02; beam.material.opacity = .055 * a; cloud.material.opacity = (small ? .14 : .28) * a; cloud.material.size = small ? 2.5 : 4; unk.material.opacity = a;   // a phone's narrower beam packs the dots closer
     guides.begin();
     for (const c of corners) guides.seg(top, c, WHITE, .3 * a, .6 * a);
     corners.forEach((c, i) => guides.seg(c, corners[(i + 1) % 4], WHITE, .9 * a));
@@ -361,7 +420,7 @@ export function depthView(page) {
       guides.seg(t0, t1, WHITE, .7 * la); m.lab.at(t1, [0, 5, -.5, 0], la);
     }
     for (const b of scene3.beads) {
-      const w = S.pxAt(b.pos), col = b.acc ? ACCENT : WHITE; b.sp.position.copy(b.pos); b.sp.scale.setScalar(w * b.size); b.sp.material.opacity = a;
+      const w = S.pxAt(b.pos), col = b.acc ? ACCENT : WHITE; b.sp.position.copy(b.pos); b.sp.scale.setScalar(w * b.size * S.z); b.sp.material.opacity = a;
       guides.seg(top, b.pos, col, .12 * a, .5 * a); guides.seg(b.pos, P(b.u, b.v), col, .5 * a, .25 * a);   // its line of sight, on to the photo
       if (b.err) {   // the distance's error, along the line of sight
         const e0 = at(b.u, b.v, b.err[0]), e1 = at(b.u, b.v, b.err[1]); guides.seg(e0, e1, col, la);
@@ -369,7 +428,7 @@ export function depthView(page) {
       }
       // its name over the beam's upper edge, each on its own row, joined to the ring by a thin line
       const lift = q.set(b.pos.x, b.f * hh, b.pos.z).clone().addScaledVector(Y, ((small ? 6 : 9) + b.tier * (small ? 14 : 18)) * w);
-      guides.seg(b.pos.clone().addScaledVector(Y, b.size / 2 * w), lift, col, .45 * la); b.lab.at(lift, [-3, -4, -1, -1], la);
+      guides.seg(b.pos.clone().addScaledVector(Y, b.size / 2 * S.z * w), lift, col, .45 * la); b.lab.at(lift, [-3, -4, -1, -1], la, b.pos);
     }
     guides.end();
     scene3.fixed[0].at(P(1, -1), [0, small ? 6 : 9, -1, 0], la); scene3.fixed[1].at(V(-CR * .6, -CR, 0), [0, small ? 6 : 10, -.5, 0], la);
@@ -397,6 +456,18 @@ export function depthView(page) {
       this.frame(); if (data?.d && asked === data.url) build();
     },
     get data() { return data; }, get url() { return asked; }, get gl() { return gl; }, get shown() { return shown; },
+    // for tests: the zoom and turn (and the dashed rings' fade), the camera, and the target's ring on screen ([x, y, diameter] in client px)
+    get view() { return { k: Z.k, x: Z.x, y: Z.y, a: yaw.a, p: yaw.p, unk: scene3?.unk.material.opacity }; },
+    get cam() { return S && [...S.camera.matrixWorld.elements, ...S.camera.projectionMatrix.elements]; },
+    ringOf() {
+      const b = scene3?.beads.find(x => x.acc); if (!b) return null;
+      const r = box.querySelector('canvas').getBoundingClientRect(), [x, y] = S.px(b.pos), [x2, y2] = S.px(V().setFromMatrixColumn(S.camera.matrixWorld, 0).multiplyScalar(b.sp.scale.x / 2).add(b.pos));
+      return [r.left + x, r.top + y, 2 * Math.hypot(x2 - x, y2 - y)];
+    },
+    ringsOn() {   // every ring on screen (client px), its name, and whether the name shows
+      const r = box.querySelector('canvas').getBoundingClientRect();
+      return (scene3?.beads ?? []).map(b => { const [x, y] = S.px(b.pos); return { xy: [r.left + x, r.top + y], name: b.lab.el.textContent, shown: +b.lab.el.style.opacity > .5 }; });
+    },
     screenOf(key) { const d = scene3?.dots.find(x => x.key === key); if (!d) return null; const [x, y] = S.px(d.pos), r = box.querySelector('canvas').getBoundingClientRect(); return [r.left + x, r.top + y]; },
   };
 }
