@@ -697,8 +697,11 @@ function verdict(m, f) {
   const live = m.key.startsWith('live'), id = tg.id, onDot = !!id.star.match;
   // the motion is fit from the sources measured visit by visit: it is the dot's only when this visit's source is on the
   // dot. Off it (id.srcOff), or with none measured this visit, nothing here says the dot moved
-  const srcOn = f.x != null && id.srcOff == null, mo = srcOn ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
-  const offTxt = !m.motion || srcOn ? null : id.srcOff != null
+  // opened from a comet's page (&comet= with &t=): the view is about a comet, so no star-style motion line (a proper motion
+  // fit to the patch's middle across visits says nothing about a comet, which is in the middle in one visit only)
+  const cv = m.comet != null && m.t != null;
+  const srcOn = f.x != null && id.srcOff == null, mo = srcOn && !cv ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
+  const offTxt = cv || !m.motion || srcOn ? null : id.srcOff != null
     ? `The source measured near the middle this visit sits ${Math.round(id.srcOff)} arcseconds off the dot, so the motion measured here may belong to something else.`
     : 'No source was measured on the dot this visit, so the motion measured in other visits may belong to something else.';
   const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : pub ? { total: pub.total, label: pub.source, tol: 35 } : null;
@@ -707,7 +710,9 @@ function verdict(m, f) {
   // ({ gaia: its proper motion }) or a passer on the dot ({ sso: its name })
   const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g ? { kind: 'gaia', id: id.star.match.gaiaId } : null };
   const seen = m.frames.filter(x => x.x != null).length;
-  if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
+  const tf = cv && m.frames.find(x => x.at_t);
+  if (cv) { if (!f.at_t) out.parts.push(`This visit shows the same patch of sky; ${m.comet} is in the middle only in the ${tf ? monthYear(tf.start) : 'linked'} visit its page opened.`); }
+  else if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
   else if (mo && ref) {
     const pct = 100 * mo.total / ref.total;
     out.star = name ?? 'a Gaia star'; out.known = true;
@@ -981,7 +986,7 @@ function show(m, query, opts = {}) {
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   candTrack.commit(query);
-  document.getElementById('pv-name').textContent = targetName(m) ?? 'Sky spot';
+  document.getElementById('pv-name').textContent = targetName(m) ?? m.comet ?? 'Sky spot';   // &comet=: the comet its page opened
   window.__aim3d?.();   // Advanced's "View this spot on Explore's 3D sky" follows the address
   panel(m); draw(); photo();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());

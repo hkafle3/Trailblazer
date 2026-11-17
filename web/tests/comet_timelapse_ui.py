@@ -9,7 +9,8 @@ and on a phone (390x844):
 - stepping the timeline moves the link to the next photo;
 - following it opens the time-lapse on that exposure, the white ring within 2 px of the comet's position for it;
 - the time-lapse names the dot as that comet (the identity rule, 2 px, from the link's place, not SkyBoT's, which is
-  60 arcsec off for C/2026 A2), says it is already known, and does not invite a report of a new find;
+  60 arcsec off for C/2026 A2), says it is already known, and does not invite a report of a new find; the panel title is
+  the comet's name, and the verdict opens with the comet, not a star-style motion line;
 - the Depth tab draws its beam (a canvas that is not blank);
 - no page or console errors."""
 import asyncio, math, sys, urllib.parse
@@ -99,11 +100,14 @@ async def run(b, cid, size, kw):
     # what the page says about the dot, once SkyBoT has answered for every exposure (or after 2 minutes)
     try: await pg.wait_for_function("(t => t && !/checking/i.test(t))(document.getElementById('vKnown')?.textContent)", timeout=120000)
     except Exception: pass
-    say, note = await pg.evaluate("['pv-say', 'state-note'].map(i => document.getElementById(i).textContent)")
+    say, note, title = await pg.evaluate("['pv-say', 'state-note', 'pv-name'].map(i => document.getElementById(i).textContent.trim())")
     names = (cid, cid.split(" (")[0])   # the page's id, or SkyBoT's name for it (C/2026 A2)
     check(any(f"The dot in the middle matches the known comet {n}." in say for n in names) and "too far to be it" not in say
           and "already known, so there is nothing to report" in note and "Tells other hunters" not in note,
           f"{tag}: the time-lapse names the dot as the comet, already known, no report invitation: '{say}' / '{note}'")
+    check(title == cid, f"{tag}: the panel title is the comet's name ('{title}')")
+    check(say.startswith("The dot in the middle matches the known comet") and "arcseconds a year" not in say and "No motion measured" not in say,
+          f"{tag}: the verdict opens with the comet, no star-style motion line ('{say}')")
     await pg.click("#tab-depth")
     lit = 0
     for _ in range(60):
