@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About the film · Trailblazer</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="header.css">
+<link rel="icon" href="favicon.ico">
+<style>
+  /* the credits of the intro film "How this map was made" (intro.js): what is real, what is drawn, and whose pictures it uses */
+  .film { max-width: 720px; padding-bottom: 80px; }
+  .film h1 { margin: 34px 0 12px; font-size: clamp(30px, 5vw, 44px); }
+  .film h2 { margin: 40px 0 10px; font-size: 20px; }
+  .film p, .film li { color: var(--ink-2); line-height: 1.6; }
+  .film ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+  .film b { color: var(--ink); font-weight: 600; }
+  .film a { color: var(--ink); text-underline-offset: 3px; }
+</style>
+</head>
+<body class="page">
+
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
+  <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
+</header>
+
+<main class="shell film">
+  <h1>About the film</h1>
+  <p>"How this map was made" is the short film that opens the Explore page. <a href="explore.html?intro=1">Watch it again.</a></p>
+
+  <h2>Pictures and data</h2>
+  <ul>
+    <li><b>The photos and the sky.</b> SPHEREx images, their pointings and wavelengths: NASA/JPL-Caltech, from the NASA/IPAC Infrared Science Archive. The first photo is the first in the public archive, taken on 24 April 2025.</li>
+    <li><b>Earth.</b> NASA Blue Marble Next Generation (April), Blue Marble clouds, and Black Marble 2016 night lights: NASA Earth Observatory and NASA Goddard Space Flight Center.</li>
+    <li><b>The galaxy.</b> Its photo is from the Sloan Digital Sky Survey (SDSS DR18), used under CC BY. Its distance comes from the 2MASS Redshift Survey.</li>
+    <li><b>The two stars.</b> Their colors and distances come from Gaia DR3 (ESA/Gaia/DPAC). Each color is that of a glowing body at the star's measured temperature.</li>
+    <li><b>The two asteroids.</b> Their names, places and distances that day come from IMCCE SkyBoT.</li>
+    <li><b>Orbits.</b> Earth, the planets and the comets: NASA JPL Horizons.</li>
+  </ul>
+
+  <h2>What is drawn, not measured</h2>
+  <ul>
+    <li><b>The asteroids' shapes are imagined.</b> Nobody has seen Sheba or Pyrrhus as more than a point of light. Sunlight falls on them from the Sun's real direction.</li>
+    <li><b>Distances are real, on a compressed scale.</b> The order and the numbers are true. The spacing is squeezed so that 2.6 AU and 480 million light-years fit in one flight.</li>
+    <li><b>Sizes are not real.</b> Earth, SPHEREx, its orbit and every body flown past are drawn far larger than life. The model of SPHEREx is a simple one, not the flight design.</li>
+    <li><b>The light that lands on the photo is a picture of an idea.</b> Each thing in a photo is recorded as a direction, not a distance, so near and far end up side by side. Five things are flown past. The rest of the photo's stars arrive together at the end.</li>
+    <li><b>The colors stand for infrared wavelengths.</b> Infrared has no colors we can see. This one detector's 17 stripes are spread from violet to green so that a step is easy to see. The three steps shown are the next three real photos, about two minutes apart. Six detectors give 102 colors in all.</li>
+    <li><b>Earth turns as it really did</b> while the first photos are taken. After that the film's days fly by, and its turning is slowed.</li>
+    <li><b>The sphere of sky has no true size.</b> It is a way to draw directions. The flat map is a Mollweide projection of it.</li>
+    <li><b>Speed lines</b> are drawn. They are not stars.</li>
+  </ul>
+</main>
+
+<script src="ui.js"></script>
+</body>
+</html>

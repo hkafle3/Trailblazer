@@ -9,6 +9,7 @@
 #intro-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 #intro .lbl { position: absolute; left: 0; top: 0; font: 400 11px/1 var(--mono); letter-spacing: .02em; color: var(--ink2); white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; will-change: transform, opacity; }
 #intro .lbl.accent { color: var(--accent); }
+#intro .lbl.land { color: var(--ink); font-size: 12px; }   /* what each dot on the finished photo is */
 /* the flight down the beam: how far from Earth, ticking over */
 #intro-odo { position: absolute; left: 50%; bottom: 236px; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; opacity: 0; pointer-events: none; white-space: nowrap; text-shadow: 0 0 8px #000, 0 0 3px #000; }
 #intro-odo b { font: 400 26px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -21,7 +22,7 @@
 #intro button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 #intro-skip { position: absolute; right: 28px; top: 20px; }
 
-/* caption: one straight rule, the line of text under it; it owns the bottom band so it never sits on the subject */
+/* caption: one straight rule, one line of text under it and nothing else; it owns the bottom band so it never sits on the subject */
 #intro-cap { position: absolute; left: 50%; bottom: max(34px, env(safe-area-inset-bottom)); width: min(700px, calc(100vw - 40px)); transform: translateX(-50%); }
 /* the close looks at one photo fill the window: the words keep a dark ground of their own */
 #intro-cap::before { content: ""; position: absolute; z-index: -1; left: -100vw; right: -100vw; top: -56px; bottom: -80px; background: linear-gradient(to bottom, rgba(1, 2, 6, 0), rgba(1, 2, 6, .9) 56px); pointer-events: none; }
@@ -30,9 +31,13 @@
 #intro-cap-ticks i { width: 18px; height: 2px; background: rgba(255, 255, 255, .28); }
 #intro-cap-ticks i.on { background: var(--accent); }
 #intro #intro-next { margin-left: auto; min-height: 32px; }
-#intro-cap-text { margin-top: 14px; min-height: 3em; font-size: 17px; line-height: 1.5; color: var(--ink); text-wrap: balance; }
+#intro-cap-text { margin-top: 14px; min-height: 1.5em; font-size: 17px; line-height: 1.5; color: var(--ink); }
 #intro-cap-text b { font-weight: 400; color: var(--accent); }
-#intro-cap-note { margin-top: 6px; min-height: 1.5em; font-size: 11px; color: var(--ink3); }
+/* the credits: one quiet line on the finished map, where the caption was, with a link to the film's own page */
+#intro-credit { position: absolute; left: 50%; bottom: max(40px, env(safe-area-inset-bottom)); transform: translateX(-50%); font-size: 11px; color: var(--ink3); white-space: nowrap; opacity: 0; visibility: hidden; text-shadow: 0 0 6px #000, 0 0 2px #000; }
+#intro-credit a { color: var(--ink2); text-underline-offset: 3px; }
+#intro.still #intro-credit { bottom: auto; top: 78px; }   /* reduced motion: the last still keeps its caption and Next, so the credits sit under Skip */
+#intro-credit a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 #intro-loading { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); font-size: 12px; color: var(--ink3); letter-spacing: .04em; }
 
@@ -43,7 +48,7 @@
   #intro-odo b { font-size: 20px; }
   #intro #intro-next { min-height: 44px; }
   #intro-cap { bottom: max(22px, env(safe-area-inset-bottom)); }
-  #intro-cap-text { font-size: 14px; min-height: 4.5em; }
-  #intro-cap-note { font-size: 10px; min-height: 3em; }
-  #intro .lbl { font-size: 10px; }
+  #intro-cap-text { font-size: 14px; }
+  #intro .lbl, #intro .lbl.land { font-size: 10px; }
 }
+@media (max-width: 350px) { #intro-cap-text { font-size: 13px; } }   /* the longest caption is 33 characters: still one line on the narrowest phone */

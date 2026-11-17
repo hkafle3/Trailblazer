@@ -7,13 +7,17 @@ it and does not fetch intro.js, intro.css, three.js or data/intro/. Links with ?
 browser that has seen the tour (ch.tour, which the other suites set), do not play it either.
 The "How this map was made" button replays it over a panned and zoomed map on another day and lands on that same view
 (edges within 2 px, the view and the day unchanged, focus back on the button). Skip and Escape end it within 4 s, and
-Skip works before the film has loaded. Reduced motion: eight stills with eight captions and a Next button, no animation.
+Skip works before the film has loaded. Reduced motion: ten stills with ten captions and a Next button, no animation, the credit line on the last.
 The film's own scenes are checked from the pixels it really draws (frame by frame through ?intro=rec): the flight down the
-beam passes two rocks, two stars and a galaxy as solid bodies in order of distance and ends with the whole photo in view;
-there the photo's stripes of color come on, one star is ringed, and at each of the telescope's three steps the photo
-being taken moves a stripe along while the star stays put and its wavelength changes. The film is one camera move: from
-the start of the flight to the ring of photos the camera never jumps from one frame to the next and nothing fades out.
-The flight and its arrival are also checked at 320 x 1000 and 320 x 1280. Leaving the page while it loads (pagehide, and a
+beam passes two rocks, two stars and a galaxy as solid bodies in order of distance and ends with the whole photo in view.
+The photo assembles from the flight: its frame starts empty, each body's light lands on it as a dot at that body's own
+place, in the order the bodies are passed, and only after the last does the rest of the photo arrive. The filter's stripes
+are on the photo all the way (violet on one side, green on the other). There one star is ringed, and at each of the
+telescope's three steps the photo being taken moves a stripe along while the star stays put and its wavelength changes.
+The film is one camera move: from the start of the flight to the ring of photos the camera never jumps from one frame to
+the next and nothing fades out. Words: every caption is one line with nothing under it, no credit or small print shows
+while the film plays, and the credits come on the finished map with a link to film.html, which names every source.
+The flight, its arrival, the photo's assembly and the captions are also checked at 320 x 1000 and 320 x 1280. Leaving the page while it loads (pagehide, and a
 real navigation away and back) takes the film off at once and it does not come back.
 Run: uv run -q --with playwright python web/tests/intro_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, sys
@@ -93,6 +97,62 @@ async def arrival(pg, name, m, vw, vh):
     wide, high = math.dist(ed[0], ed[1]), math.dist(ed[2], ed[3])
     assert max(wide / vw, high / vh) > .6 and min(wide, high) > .8 * max(wide, high), f"{name}: at arrival the photo is {wide:.0f} by {high:.0f} px in a {vw} by {vh} window"
     return wide
+
+
+async def assembly(pg, name, m, flight):
+    """The photo assembles from the flight. Its frame is empty when the flight sets off; each body's light lands at
+    that body's place on the photo, in the order the bodies are passed and not before the body has been reached; the
+    rest of the photo comes only after the fifth; at the end all five dots are on a whole photo. The dots are read from
+    the pixels drawn: a bright point where there was none before the light set off (unless an earlier dot is a few pixels away, or the body itself was in front of that place)."""
+    look = lambda u, pts, r=1: pg.evaluate(f"window.__intro.look({u}, {pts}, {r})")
+    first = (await pg.evaluate(f"window.__intro.probe({m['FLY0'] + 1.2})"))
+    assert first["fill"] < .01 and all(b["landed"] == 0 for b in first["flight"]), f"{name}: the photo is not empty when the flight sets off: {first['fill']}, {[b['landed'] for b in first['flight']]}"
+    lands = [b["lands"] for b in flight[0][1]]   # in order of distance
+    reached = [next(u for u, bs, _ in flight if bs[j]["r"] > 12) for j in range(5)]
+    assert all(a < b for a, b in zip(lands, lands[1:])), f"{name}: the lights do not land in the order of distance: {lands}"
+    assert all(r < l < m["FLY1"] - .3 for r, l in zip(reached, lands)), f"{name}: a light lands before its body is reached, or too late to be seen: reached {reached}, lands {lands}"
+    lit = []
+    for j, t in enumerate(lands):
+        before, after = await pg.evaluate(f"window.__intro.probe({t - 1.2})"), await pg.evaluate(f"window.__intro.probe({t + .4})")
+        b0, b1 = sorted(before["flight"], key=lambda b: b["au"]), sorted(after["flight"], key=lambda b: b["au"])
+        assert [b["landed"] > .99 for b in b1] == [i <= j for i in range(5)] and b0[j]["landed"] == 0, f"{name}: at {t:.1f}s the lights on the photo are {[b['landed'] for b in b1]}"
+        assert after["fill"] < .01 or j == 4, f"{name}: the rest of the photo arrives before {b1[j]['name']}'s light"
+        (was,), (now,) = await look(t - 1.2, [b0[j]["land"]]), await look(t + .4, [b1[j]["land"]])
+        crowded = any(math.dist(b1[i]["land"], b1[j]["land"]) < 14 for i in range(j)) or math.dist(b0[j]["at"], b0[j]["land"]) < 8 * b0[j]["r"] + 20   # an earlier dot, or the body itself with its glow, in front of that place
+        assert now[1] > 200 and (crowded or was[1] < now[1] - 60), f"{name}: no dot appears on the photo for {b1[j]['name']}: brightest {was[1]} before, {now[1]} after"
+        lit.append(now[1])
+    end = await pg.evaluate(f"window.__intro.probe({m['FLY1']})")
+    assert end["fill"] > .99 and all(b["landed"] > .99 for b in end["flight"]), f"{name}: at arrival the photo is not whole with its five dots: {end['fill']}, {[b['landed'] for b in end['flight']]}"
+    # the stripes ride with it: across the photo the tint runs from violet (more red than green) to green, half way down the beam and at arrival
+    hues = []
+    for u in ((m["FLY0"] + m["FLY1"]) / 2, m["FLY1"]):
+        ed = (await pg.evaluate(f"window.__intro.probe({u})"))["photoEdges"]; (rx, ry), (lx, ly), (tx, ty), (bx, by) = ed
+        at = lambda i, k: [lx + (rx - lx) * i + (tx - bx) * k, ly + (ry - ly) * i + (ty - by) * k]
+        got = await look(u, [at(i, k) for i in (.06, .1, .14, .86, .9, .94) for k in (-.3, .38)], 2)
+        left, right = [sum(g[2][c] for g in got[:6]) / 6 for c in range(3)], [sum(g[2][c] for g in got[6:]) / 6 for c in range(3)]
+        assert left[2] > left[1] + 10 and right[1] - right[0] > left[1] - left[0] + 12, f"{name}: the photo's stripes do not run violet to green at {u:.1f}s: left {left}, right {right}"
+        hues.append(round(right[1] - right[0] - left[1] + left[0]))
+    return lands, lit, hues
+
+
+async def words(pg, name, m, vw):
+    """One line per caption, nothing under it, and no credit or small print on screen while the film plays. The credits
+    come on the finished map, in one quiet line with a link to the film's own page."""
+    assert not await pg.evaluate("document.getElementById('intro-cap-note')"), f"{name}: there is a note under the caption"
+    longest = 0
+    for a, b in m["CAPS"]:
+        got = await pg.evaluate(f"""(() => {{ window.__intro.render({(a + b) / 2}); const el = document.getElementById('intro-cap-text'), r = document.createRange(); r.selectNodeContents(el);
+          const rows = new Set([...r.getClientRects()].map(q => Math.round(q.top))), box = el.getBoundingClientRect(), cr = getComputedStyle(document.getElementById('intro-credit'));
+          return [el.textContent, rows.size, box.left, box.right, +getComputedStyle(el).opacity, cr.visibility, +cr.opacity, [...document.getElementById('intro-cap').children].map(e => e.id || e.className)]; }})()""")
+        said, rows, left, right, shown, vis, cred, kids = got
+        assert said and shown > .9 and rows == 1 and left >= 0 and right <= vw, f"{name}: the caption at {(a + b) / 2:.1f}s is not one line inside the window: {got}"
+        assert vis == "hidden" and cred == 0, f"{name}: the credit line shows during the film, at {(a + b) / 2:.1f}s"
+        assert kids == ["cap-top", "intro-cap-text"], f"{name}: something sits under the caption: {kids}"
+        longest = max(longest, len(said))
+    got = await pg.evaluate(f"""(() => {{ window.__intro.render({m['CREDIT'] + .1}); const el = document.getElementById('intro-credit'), cs = getComputedStyle(el), b = el.getBoundingClientRect();
+      return [el.textContent, cs.visibility, +cs.opacity, el.querySelector('a')?.getAttribute('href'), b.left, b.right, +getComputedStyle(document.getElementById('intro-cap')).opacity]; }})()""")
+    assert got[1] == "visible" and got[2] > .9 and got[3] == "film.html" and got[4] >= 0 and got[5] <= vw and got[6] == 0, f"{name}: the credits are not on the finished map, alone, with their link: {got}"
+    return len(m["CAPS"]), longest
 
 
 async def one_move(pg, name, m):
@@ -245,7 +305,8 @@ async def run(b, name, opts):
         ring = lambda k: [[x + k * r, y], [x - k * r, y], [x, y + k * r], [x, y - k * r]]
         if kind == "asteroid":
             face, sky = await look(u, [[x, y]] + ring(.45), 2), await look(u, ring(1.9), 2)
-            assert sum(g[0] > 22 for g in face) >= 4 and mean(face) > 2 * mean(sky), f"{name}: {obj} is not a lit, solid body at {u:.2f}s: face {face}, sky round it {sky}"
+            dark = sorted(g[0] for g in sky)[1]   # the photo ahead may be behind one of the four places round it
+            assert sum(g[0] > 22 for g in face) >= 4 and mean(face) > 2 * dark, f"{name}: {obj} is not a lit, solid body at {u:.2f}s: face {face}, sky round it {sky}"
         elif kind == "star":
             (core,), near, out = await look(u, [[x, y]], max(1, r / 4)), await look(u, ring(1.5), 2), await look(u, ring(7), 2)
             red, green, blue = core[2]
@@ -270,15 +331,10 @@ async def run(b, name, opts):
     rest = flight[10]; assert rest[2] < .01 and all(b["r"] < 20 for b in rest[1]), f"{name}: the flight should not have moved off by {rest[0]:.2f}s: {rest}"
     lines, still = await streaks(next(u for u, _, rush in flight if rush > .8)), await streaks(rest[0])
     assert lines > 2 * still + 20, f"{name}: no speed lines are drawn in the rush: {lines} places against {still} at rest"
-    # The colors. On the photo the stripes come on (a row across it turns from grey to violet and blue), one star is
-    # ringed, and at each step the photo being taken moves a sixteenth of its width while the star stays where it is
-    # on the photo and is seen at the next wavelength.
-    async def row(u):
-        ed = (await probe(u))["photoEdges"]; (rx, ry), (lx, ly) = ed[0], ed[1]
-        got = await look(u, [[lx + (rx - lx) * i / 40, ly + (ry - ly) * i / 40 - 30] for i in range(2, 39)], 3)
-        return sum(g[2][2] - g[2][0] for g in got) / len(got), sum(g[0] for g in got) / len(got)
-    grey, tinted = await row(m["FLY1"]), await row(m["STEPS"][0] - .5)
-    assert tinted[0] > grey[0] + 12 and tinted[1] > grey[1] + 8, f"{name}: the photo's stripes do not come on: blue over red and brightness {grey} before, {tinted} after"
+    # The photo assembles from the flight, with the filter's stripes on it all the way
+    lands, lit, hues = await assembly(pg, name, m, flight)
+    # The colors. One star is ringed, and at each step the photo being taken moves a sixteenth of its width while the
+    # star stays where it is on the photo and is seen at the next wavelength.
     said, offs = [], []
     for u in [m["STEPS"][0] - .5] + [t + .45 for t in m["STEPS"]]:
         p = await probe(u); ed = p["photoEdges"]; wd = math.dist(ed[0], ed[1])
@@ -293,8 +349,12 @@ async def run(b, name, opts):
     assert all(.045 < d < .07 for d in steps) and math.dist(offs[0], offs[3]) > .15, f"{name}: the photo being taken does not step a sixteenth of its width each time: {steps}"
     # one camera move, flight to ring
     worst = await one_move(pg, name, m)
+    ncap, longest = await words(pg, name, m, vw)
+    page_text = await (await pg.request.get(BASE + "/film")).text()
+    missing = [k for k in ("Sloan Digital Sky Survey", "CC BY", "Gaia", "shapes are imagined", "compressed scale", "Blue Marble", "SkyBoT", "Horizons") if k not in page_text]
+    assert not missing, f"film.html does not name {missing}"
     await pg.context.close()
-    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), the stripes come on (blue over red {grey[0]:.0f} to {tinted[0]:.0f}), the star is seen at {um} microns as the telescope steps, and flight to ring is one camera move (most in one frame: {worst[0]:.3f} of its distance, {worst[1]:.2f} degrees, lens {worst[2]:.3f})")
+    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), the photo assembles from the flight (lights land at {[round(t, 1) for t in lands]} s, in order, each a new dot of brightness {lit}; then the rest; stripes violet to green by {hues}), the star is seen at {um} microns as the telescope steps, and flight to ring is one camera move (most in one frame: {worst[0]:.3f} of its distance, {worst[1]:.2f} degrees, lens {worst[2]:.3f}); {ncap} captions, each one line (longest {longest} characters) with nothing under it, no credits during the film, then the credit line and its link on the finished map; film.html names every source")
 
     # ---- leaving the page while the film loads: it is taken off at once and does not come back ----
     pg = await page(b, opts, errs, seen_tour=True)
@@ -328,16 +388,18 @@ async def run(b, name, opts):
     await pg.goto(BASE + "/explore"); await film_up(pg)
     assert await pg.evaluate("window.__intro.reduced") and await pg.is_visible("#intro-next")
     seen = []
-    for i in range(8):
+    for i in range(10):
         await pg.wait_for_timeout(600); seen.append(await pg.inner_text("#intro-cap-text"))
         assert await pg.evaluate("window.__perf.frames.length") == 0, "reduced motion ran the animation"
+        cred = await pg.evaluate("(() => { const el = document.getElementById('intro-credit'), cs = getComputedStyle(el), b = el.getBoundingClientRect(), c = document.getElementById('intro-cap').getBoundingClientRect(); return [cs.visibility === 'visible' && +cs.opacity === 1, el.querySelector('a').getAttribute('href'), b.left >= 0 && b.right <= innerWidth && b.bottom < c.top]; })()")
+        assert cred == [i == 9, "film.html", True], f"reduced motion: the credits should be on the last still only, clear of the caption: still {i + 1}, {cred}"
         await pg.click("#intro-next")
-    assert len(set(seen)) == 8, f"reduced motion: {len(set(seen))} captions, not 8"
+    assert len(set(seen)) == 10, f"reduced motion: {len(set(seen))} captions, not 10"
     await gone(pg, f"{name} reduced motion"); await pg.wait_for_function(f"{TOUR} === 'Welcome to Trailblazer'", timeout=4000)
     await pg.keyboard.press("Escape"); await pg.wait_for_function(f"!{TOUR}")   # close the tour
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.click("#intro-skip"); await gone(pg, f"{name} reduced motion Skip", 1500)
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.keyboard.press("Escape"); await gone(pg, f"{name} reduced motion Escape", 1500)
-    print(f"{name}: reduced motion shows 8 stills with Next and no animation, then the tour; Skip and Escape end it")
+    print(f"{name}: reduced motion shows 10 stills with Next and no animation, the credits and their link on the last, then the tour; Skip and Escape end it")
     await pg.context.close()
     assert not errs, f"{name}: page errors {errs}"
 
@@ -352,10 +414,11 @@ async def main():
             pg = await page(b, dict(viewport={"width": 320, "height": height}, device_scale_factor=2, has_touch=True, is_mobile=True), errs, seen_tour=True)
             await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
             m = await pg.evaluate("window.__intro.marks")
-            await flight_samples(pg, name, m); wide = await arrival(pg, name, m, 320, height); await one_move(pg, name, m)
+            flight = await flight_samples(pg, name, m); wide = await arrival(pg, name, m, 320, height); await one_move(pg, name, m)
+            await assembly(pg, name, m, flight); await words(pg, name, m, 320)
             assert not errs, f"{name}: page errors {errs}"
             await pg.context.close()
-            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, and flight to ring is one camera move")
+            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, the photo assembles from the flight in order, flight to ring is one camera move, and every caption is one line")
         await b.close()
     print("intro_ui: all checks passed")
 
