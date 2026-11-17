@@ -21,6 +21,7 @@ from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8873"
 SHOTS = sys.argv[2] if len(sys.argv) > 2 else None
+ONLY = __import__("os").environ.get("ONLY")   # "depth" or "list": run just that part
 SIZES = [("desktop", dict(viewport={"width": 1440, "height": 900})),
          ("phone", dict(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True))]
 SHOT_IDS = {"C/2026 A2 (Bok)": "bok", "235P/LINEAR": "235p"}
@@ -94,6 +95,15 @@ def sep(ra1, dec1, ra2, dec2):   # arcsec
     return math.degrees(math.acos(max(-1, min(1, c)))) * 3600
 
 
+def want_hero(d):   # a measured comet's brightest baked photo; else the visit picture with the highest SNR where SPHEREx detected it, else the first not-detected one
+    if d.get("photos"):
+        p = max(d["photos"], key=lambda p: p["flux"]); return f"data/comets/{d['dir']}/{p['file']}"
+    vs = [v for v in ((d.get("facts") or {}).get("inv") or {}).get("visits", []) if v.get("img")]
+    seen = [v for v in vs if v["verdict"] == "seen"]
+    v = max(seen, key=lambda v: v["snr"]) if seen else next((v for v in vs if v["verdict"] == "faint"), vs[0] if vs else None)
+    return v["img"] if v else None
+
+
 def link_ok(href, cid, shots):
     q = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
     try: ra, dec, det, t, c = float(q["ra"][0]), float(q["dec"][0]), q["det"][0], float(q["t"][0]), q["comet"][0]
@@ -133,6 +143,8 @@ async def comet_page(ctx, size, cid, c):
     check(g["tags"] == 0, f"{why}: a tag vote shows ({g['tags']} parts)")
     check(g["discussOpen"] is False, f"{why}: Discuss is not folded ({g['discussOpen']})")
     check(not g["imgs"], f"{why}: images that did not load {g['imgs'][:3]}")
+    hero = await pg.evaluate("document.getElementById('c-hero')?.getAttribute('src') ?? null")
+    check(hero == want_hero(c["detail"]), f"{why}: main picture {hero}, want {want_hero(c['detail'])}")
     r = await pg.evaluate(CLIPPED)
     check(r["overflow"] <= 0 and not r["out"], f"{why}: overflow {r['overflow']} px, past the edge {r['out']}")
     if cid in SHOT_IDS and SHOTS:
@@ -149,7 +161,7 @@ async def comet_page(ctx, size, cid, c):
     await pg.close()
 
 
-async def list_page(ctx, size, known):
+async def list_page(ctx, size, known, listing):
     why = f"list ({size})"
     pg = await ctx.new_page(); errors = watch(pg)
     await pg.goto(BASE + "/comet.html")
@@ -164,8 +176,44 @@ async def list_page(ctx, size, known):
     nums = await pg.evaluate(NUMBERS)
     bad = [n for n in nums if n["label"] not in LABELS or not n["shown"]]
     check(nums and not bad, f"{why}: {len(bad)} of {len(nums)} numbers without a shown label, e.g. {bad[:3]}")
+    thumbs = dict(await pg.evaluate("[...document.querySelectorAll('#l-all a.crow')].map(a => [a.dataset.id, a.querySelector('img')?.getAttribute('src') ?? null])"))
+    wrong = [i for i, t in thumbs.items() if t != listing[i].get("thumb")]
+    check(not wrong, f"{why}: rows whose thumbnail is not the API's: {wrong[:3]}")
+    await pg.evaluate("document.querySelectorAll('main details').forEach(d => d.open = false)")
+    # search: only the matching rows show, a folded group opens when it holds a match, nothing matching says so
+    shown = "[...document.querySelectorAll('#l-all a.crow')].filter(a => a.getClientRects().length).map(a => a.dataset.id)"
+    for q in ("bok", "encke", "K1-"):
+        await pg.fill("#l-q", q); await pg.wait_for_timeout(150)
+        got = sorted(await pg.evaluate(shown)); want = sorted(i for i in known if q.lower() in i.lower())
+        check(got == want, f"{why}: search {q!r} shows {got}, want {want}")
+    await pg.fill("#l-q", "no such comet"); await pg.wait_for_timeout(150)
+    check(await pg.is_visible("#l-none") and not await pg.evaluate(shown), f"{why}: a search with no match does not say so")
+    await pg.fill("#l-q", ""); await pg.wait_for_timeout(150)
+    check(len(await pg.evaluate("[...document.querySelectorAll('#l-all a.crow')].filter(a => !a.hidden)")) == len(known), f"{why}: clearing the search brings every row back")
     check(not errors, f"{why}: page or console errors {errors[:3]}")
     await pg.close()
+
+
+async def depth_solution(ctx):
+    """Depth never joins the daily snapshot to the baked path when they come from different JPL solutions (x.same)."""
+    for soln, joined in ((None, True), ("JPL#999", False)):
+        pg = await ctx.new_page(); errors = watch(pg)
+        if soln:
+            def other(soln):
+                async def handle(route):
+                    r = await route.fetch(); body = await r.json(); body["now"]["soln"] = soln
+                    await route.fulfill(response=r, json=body)
+                return handle
+            await pg.route("**/api/comets/C%2F2026%20A2%20(Bok)", other(soln))
+        await pg.goto(BASE + "/comet.html?id=" + urllib.parse.quote("C/2026 A2 (Bok)", safe=""))
+        await ready(pg, "depth solution")
+        await pg.click("#tab-depth"); await pg.wait_for_timeout(400)
+        g = await pg.evaluate("({ sight: !!document.querySelector('.shot .depth .sight'), now: !!document.querySelector('.shot .depth .now'), src: document.getElementById('c-scene-src').textContent })")
+        why = f"Depth with {'another JPL solution' if soln else 'the same solution'} in the snapshot"
+        if joined: check(g["sight"] and g["now"] and "as of" in g["src"], f"{why}: {g}")
+        else: check(not g["sight"] and g["now"] and "as of" not in g["src"], f"{why}: the snapshot is drawn onto the baked path {g}")
+        check(not errors, f"{why}: errors {errors[:3]}")
+        await pg.close()
 
 
 async def missing(ctx):
@@ -181,18 +229,24 @@ async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
         api = await p.request.new_context()
-        listing = await (await api.get(BASE + "/api/comets")).json()
-        known = [c["id"] for c in listing["comets"] if c["kind"] == "known"]
+        listing = {c["id"]: c for c in (await (await api.get(BASE + "/api/comets")).json())["comets"] if c["kind"] == "known"}
+        known = list(listing)
         recs = {}
         for cid in known:
             recs[cid] = await (await api.get(BASE + "/api/comets/" + urllib.parse.quote(cid, safe=""))).json()
+        if ONLY == "depth":   # just the solution check (quick)
+            ctx = await b.new_context(viewport={"width": 1440, "height": 900}); await depth_solution(ctx); await ctx.close()
+            print(f"{'FAIL' if fails else 'PASS'} Depth solution check, {len(fails)} failures"); sys.exit(1 if fails else 0)
+        if ONLY == "list":
+            ctx = await b.new_context(viewport={"width": 1440, "height": 900}); await list_page(ctx, "desktop", known, listing); await ctx.close()
+            print(f"{'FAIL' if fails else 'PASS'} list check, {len(fails)} failures"); sys.exit(1 if fails else 0)
         for size, kw in SIZES:
             ctx = await b.new_context(**kw)
             await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
-            await list_page(ctx, size, known)
+            await list_page(ctx, size, known, listing)
             for cid in known:
                 await comet_page(ctx, size, cid, recs[cid])
-            if size == "desktop": await missing(ctx)
+            if size == "desktop": await missing(ctx); await depth_solution(ctx)
             await ctx.close()
         await b.close()
     print(f"{'FAIL' if fails else 'PASS'} comet pages: {len(known)} comets and the list at 1440x900 and 390x844, {len(fails)} failures")

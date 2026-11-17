@@ -44,7 +44,9 @@ CACHE = ROOT / "bake" / "cache" / "facts"
 HZ = "https://ssd.jpl.nasa.gov/api/horizons.api?"
 JD_UNIX, MJD_JD = 2440587.5, 2400000.5
 GAP = 5            # days between pictures that start a new visit
-MEASURE = 5        # pictures measured per visit at most (a visit is seen when any of them is)
+MEASURE = 5        # pictures measured first in each visit (a detection in any of them makes the visit seen)
+FULL = 12          # a visit not seen in those gets the rest measured, up to this many in all (R8: not detected means
+                   # every picture fell below SNR 5; a visit with more pictures than this says how many were measured)
 SPHEREX = "500@-163182"
 HZ_LOCK = __import__("threading").Lock()   # Horizons' observer code for the spacecraft
 # CUR: comets reported to have broken up. A person reviews this list; the page then gates its brightness forecast (R2).
@@ -56,7 +58,7 @@ DISRUPTED = {
 
 args = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] not in ("--api", "--today")]
 opt = lambda k, d: next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == k), d)
-OUT_NAME, ONLY = args[0], set(args[1:])
+OUT_NAME, ONLY = (args[0] if args else None), set(args[1:])   # no arguments: imported (bake/test_comet_facts.py)
 API = opt("--api", "http://127.0.0.1:8873")
 TODAY = datetime.strptime(opt("--today", datetime.now(timezone.utc).strftime("%Y-%m-%d")), "%Y-%m-%d").replace(tzinfo=timezone.utc)
 JD_TODAY = TODAY.timestamp() / 86400 + JD_UNIX
@@ -299,6 +301,40 @@ def visits_of(pics):
     return vs
 
 
+def pkey(p): return f"{p['obs']}_{p['det']}"
+
+
+def more_to_measure(pics, measured, cap=FULL):
+    """The visit's pictures not measured yet (measured: their obs_det keys), all of them when they fit under cap in all,
+    else as many as fit, spread through the visit."""
+    rest = [p for p in pics if pkey(p) not in set(measured)]
+    room = cap - len(measured)
+    if room <= 0: return []
+    if len(rest) <= room: return rest
+    return [rest[round(k * (len(rest) - 1) / (room - 1))] for k in range(room)] if room > 1 else rest[len(rest) // 2:][:1]
+
+
+def visit_verdict(got, n, near_parent=None):
+    """R8 from the measurements of a visit's pictures: seen when any is (light near the parent's position, for a fragment
+    within 25 arcsec of it: "parent"); faint only when every one of its n pictures was tried and the valid ones fell below
+    SNR 5; some measured and none seen, the rest not tried: unseen; none valid: unmeasured (a failed fetch is never faint)."""
+    if any(g["verdict"] == "seen" for g in got):
+        return "parent" if near_parent is not None and near_parent <= 25 else "seen"
+    if not any(g["verdict"] == "faint" for g in got): return "unmeasured"
+    return "faint" if len(got) >= n else "unseen"
+
+
+def show(got):
+    """What a visit shows: the clearest detection that has a picture (its picture, SNR, colour and time-lapse link are one
+    measurement's), else the first measured picture that has one, else the first measured."""
+    seen = sorted((g for g in got if g["verdict"] == "seen"), key=lambda g: -g["snr"])
+    with_png = [g for g in seen if g.get("png_ok")] or seen or [g for g in got if g.get("png_ok") and g["verdict"] == "faint"] or [g for g in got if g.get("png_ok")] or got
+    b = with_png[0]
+    snr = round(b["snr"], 1) if b["verdict"] == "seen" else None
+    return dict(snr=snr, pic=dict(obs=b["obs"], det=b["det"], snr=snr), img=b["png"].replace("web/", "", 1) if b.get("png_ok") else None,
+                lam=b.get("lam"), link=dict(t=b["t"], ra=b["ra"], dec=b["dec"], det=b["det"]))
+
+
 def to_measure(v):
     """Up to MEASURE pictures of a visit, the middle one first, spread through the visit."""
     n = len(v)
@@ -415,12 +451,30 @@ def main():
     with ThreadPoolExecutor(3) as pool:
         done = dict(zip(ids, pool.map(lambda cid: facts(cid, recs[cid]), ids)))
     # measuring: the page's own measurement (web/live/cutout.js knownPhoto) through node, cached per picture
-    jobs = [dict(cid=cid, visit=k, obs=p["obs"], det=p["det"], t=p["t"], ra=p["ra"], dec=p["dec"],
-                 png=f"web/data/comets/visits/{slug(cid)}/{p['obs']}_{p['det']}.png")
-            for cid, f in done.items() for k, v in enumerate(f["visits"]) for p in v["measure"]]
-    jf = CACHE / "measure-jobs.json"; jf.write_text(json.dumps(jobs))
-    if "--no-measure" not in sys.argv:
-        subprocess.run(["node", str(ROOT / "bake/visit_verdicts.mjs"), str(jf), API, str(CACHE / "measure-results.json")], check=True)
+    jf, rf = CACHE / "measure-jobs.json", CACHE / "measure-results.json"
+    png = lambda cid, p: f"web/data/comets/visits/{slug(cid)}/{p['obs']}_{p['det']}.png"
+    def measure():
+        jobs = [dict(cid=cid, visit=k, obs=p["obs"], det=p["det"], t=p["t"], ra=p["ra"], dec=p["dec"], png=png(cid, p))
+                for cid, f in done.items() for k, v in enumerate(f["visits"]) for p in v["measure"]]
+        jf.write_text(json.dumps(jobs))
+        if "--no-measure" not in sys.argv:
+            subprocess.run(["node", str(ROOT / "bake/visit_verdicts.mjs"), str(jf), API, str(rf)], check=True)
+        return {r["png"]: r for r in (json.loads(rf.read_text()) if rf.exists() else [])}
+    res = measure()
+    # a visit not seen in its first pictures: the rest measured (up to FULL), at their exact positions
+    more = 0
+    for cid, f in done.items():
+        extra = {}
+        for v in f["visits"]:
+            if any(res.get(png(cid, p), {}).get("verdict") == "seen" for p in v["measure"]): continue
+            extra[id(v)] = (v, more_to_measure(v["pics"], [pkey(p) for p in v["measure"]]))
+        ts = sorted({p["t"] for _, ps in extra.values() for p in ps})
+        ex = at_times(cid, ts) if ts else {}
+        for v, ps in extra.values():
+            v["measure"] = v["measure"] + [dict(p, ra=ex[p["t"]][0], dec=ex[p["t"]][1]) for p in ps]
+            more += len(ps)
+    print(f"{more} more pictures to measure in visits not seen in their first {MEASURE}", flush=True)
+    if more: measure()
     def build():
         rf = CACHE / "measure-results.json"
         res = {r["png"]: r for r in (json.loads(rf.read_text()) if rf.exists() else [])}   # one comet's picture: two comets can share a picture
@@ -433,25 +487,16 @@ def main():
             for v in f["visits"]:
                 key = lambda p: f"web/data/comets/visits/{slug(cid)}/{p['obs']}_{p['det']}.png"
                 got = [dict(res[key(p)], **p) for p in v["measure"] if key(p) in res]
-                seen = [g for g in got if g["verdict"] == "seen"]
                 valid = [g for g in got if g["verdict"] in ("seen", "faint")]
-                verdict = "seen" if seen else "faint" if valid else "unmeasured"
-                best = max(seen, key=lambda g: g["snr"]) if seen else (got[0] if got else v["measure"][0])
-                mine = [p for p in photos if v["start"] - 0.01 <= p["mjd"] <= v["end"] + 0.01]   # baked photos in this visit
-                if mine:   # a measured comet's clearest photo of the visit is its picture and its link
-                    ph = max(mine, key=lambda p: p["flux"])
-                    link = dict(t=ph["mjd"], ra=ph["ra"], dec=ph["dec"], det=ph["file"].rsplit("_", 1)[1][:2])
-                    img = f"data/comets/{d['dir']}/{ph['file']}"
-                else:
-                    link = dict(t=best["t"], ra=best["ra"], dec=best["dec"], det=best["det"])
-                    img = best.get("png", "").replace("web/", "", 1) if best.get("png_ok") else None
+                sh = show(got) if got else dict(snr=None, pic=None, img=None, lam=None, link=dict(t=v["measure"][0]["t"], ra=v["measure"][0]["ra"], dec=v["measure"][0]["dec"], det=v["measure"][0]["det"]))
                 near = None
-                if seen and designation(cid)[1]:   # a fragment: is its light within the 25 arcsec circle of its parent's position?
-                    near = parent_sep(cid, link)
+                if sh["snr"] is not None and designation(cid)[1]:   # a fragment: is its light within the 25 arcsec circle of its parent's position?
+                    near = parent_sep(cid, sh["link"])
+                verdict = visit_verdict(got, v["n"], near)
                 out_vs.append(dict(start=v["start"], end=v["end"], n=v["n"], dets=v["dets"], delta=v["delta"], verdict=verdict,
-                                   lam=best.get("lam") if not mine else ph["lam"], near_parent=near if near is not None and near <= 25 else None,
-                                   snr=round(max(g["snr"] for g in seen), 1) if seen else None, measured=len(valid), tried=len(got),
-                                   why=next((g["why"] for g in got if g.get("why")), None), link=link, img=img))
+                                   lam=sh["lam"], near_parent=near if verdict == "parent" else None, snr=sh["snr"], pic=sh["pic"],
+                                   measured=len(valid), tried=len(got), why=next((g["why"] for g in got if g.get("why")), None),
+                                   link=sh["link"], img=sh["img"]))
             # magnitude at the link's exposure: interpolated in the daily table (B1)
             Tj, Tv = [r[0] for r in f["eph"]["T"]], [r[1] for r in f["eph"]["T"]]
             for v in out_vs:

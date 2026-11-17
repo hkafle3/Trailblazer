@@ -84,7 +84,8 @@ function hero(c, x) {
     $('c-when').textContent = when;
     $('c-lam').textContent = `Infrared${lam ? ` ${lam.toFixed(2)} µm` : ''}, brightness stretched per picture`;
     $('c-lam').append(mark('measured'));
-    if (verdict !== 'seen') $('c-lam').before(el('span', 'cnote', verdict === 'faint' ? 'Not detected here: the ring marks where JPL puts it.' : 'Could not be measured here: the ring marks where JPL puts it.'));
+    const NOTE = { faint: 'Not detected here', unseen: 'No detection in this picture', parent: 'Light near the parent’s position, maybe the parent’s', unmeasured: 'Could not be measured here' };
+    if (verdict !== 'seen') $('c-lam').before(el('span', 'cnote', `${NOTE[verdict] ?? NOTE.unmeasured}: the ring marks where JPL puts it.`));
   } else { $('c-hero').remove(); $('c-ring').remove(); $('c-nopic').hidden = false; }
   if (link) { $('c-lapse').href = lapseHref(c.id, link); $('c-lapse').hidden = false; }
 }
@@ -194,13 +195,16 @@ function at(rows, jd) {   // linear between the two rows around jd; the end row 
 }
 async function scene(box, x) {
   const f = x.f, rows = f?.path?.rows ?? [];
-  $('c-scene-src').textContent = f ? `Real positions from JPL Horizons (${f.orb.soln})${x.now ? `, as of ${F.day(F.dayMs(x.now.as_of))}` : ''}` : 'Path needs data';
+  // the daily snapshot joins the baked path only when both come from one JPL solution (x.same); otherwise the comet
+  // today is where the baked path puts it, dated by the bake
+  const useNow = !!(x.now && x.same);
+  $('c-scene-src').textContent = f ? `Real positions from JPL Horizons (${f.orb.soln})${useNow ? `, as of ${F.day(F.dayMs(x.now.as_of))}` : `, computed ${F.day(F.dayMs(f.baked))}`}` : 'Path needs data';
   $('c-scene-src').prepend(el('i'));
   if (!rows.length) return;
   let pl;
   try { pl = await planets(); } catch { pl = { earth: [], mars: [], jupiter: [] }; }
   const jdNow = TODAY / 864e5 + 2440587.5;
-  const cometNow = x.now ? [x.now.x, x.now.y, x.now.z] : at(rows, jdNow);
+  const cometNow = useNow ? [x.now.x, x.now.y, x.now.z] : at(rows, jdNow);
   const earthNow = at(pl.earth, jdNow);
   const periodic = f.orb.per != null && f.orb.per < 30;
   const earthLap = pl.earth.filter(r => r[0] >= jdNow - 183 && r[0] <= jdNow + 183);
@@ -248,7 +252,7 @@ async function scene(box, x) {
     }
     if (earthNow) {
       const e = Pj(earthNow);
-      if (cometNow && x.now) {
+      if (cometNow && useNow) {
         const c2 = Pj(cometNow);
         svg('line', { x1: e[0], y1: e[1], x2: c2[0], y2: c2[1], class: 'sight' }, s);
         label((e[0] + c2[0]) / 2, (e[1] + c2[1]) / 2, F.dist(x.now.delta), 'lab');
@@ -437,7 +441,7 @@ function list() {
     const groups = F.GROUPS.map(g => {
       const cs = known.filter(c => F.group(c) === g.key).sort((a, b2) => order(a) - order(b2) || a.id.localeCompare(b2.id));
       if (!cs.length) return null;
-      const folded = g.key === 'faint' || g.key === 'unchecked';
+      const folded = g.key === 'faint' || g.key === 'partial' || g.key === 'unchecked';
       const sec = el(folded ? 'details' : 'section', `grp card ${g.key}`);
       const head = el(folded ? 'summary' : 'div', 'grp-h'), ht = el('div');
       ht.append(el('h2', null, g.name), el('p', null, g.say));

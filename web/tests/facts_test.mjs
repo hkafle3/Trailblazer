@@ -151,11 +151,11 @@ const v8 = F.visits(X('C/2026 A2 (Bok)', facts({}, { inv: { visits: [vis({ verdi
   vis({}), vis({ start: MJD('2026-09-10'), end: MJD('2026-10-04'), n: 558, delta: 2.03 }), vis({ verdict: 'unmeasured', snr: null, delta: null })] } }), now({}),
   { co2: BOK_CO2 }));
 eq(v8.map(v => [v.when, v.title, ...v.d.map(s => F.plain(s.text))]), [
-  ['10–22 Jun 2025', 'Not detected. The ring marks where JPL puts it.', '850 million km away.', 'Magnitude 22.3 then.', 'A part of the sky SPHEREx photographs often.', 'Before it was found.', 'Measured in 3 of its 113 pictures.'],
+  ['10–22 Jun 2025', 'Not detected. The ring marks where JPL puts it.', '850 million km away.', 'Magnitude 22.3 then.', 'A part of the sky SPHEREx photographs often.', 'Before it was found.'],
   ['15 Feb–2 Mar 2026', 'First seen.', "Its light stood 60 times above the picture's noise.", '580 million km away.'],
   ['10 Sep–4 Oct 2026', 'Seen.', "Its light stood 60 times above the picture's noise.", '304 million km away.', 'A part of the sky SPHEREx photographs often.', "Carbon dioxide detected in September's combined measurements."],
   ['15 Feb–2 Mar 2026', 'Could not be measured here.']], 'R8 Bok-like visits');
-eq(F.visits(X('240P/NEAT-B', facts({}, { status: 'fragment', inv: { visits: [vis({ near_parent: 12 })] } })))[0].title, 'Light near the parent’s position.', 'R8 a fragment within 25 arcsec of its parent');
+eq(F.visits(X('240P/NEAT-B', facts({}, { status: 'fragment', inv: { visits: [vis({ verdict: 'parent', near_parent: 12 })] } })))[0].title, 'Light near the parent’s position.', 'R8 a fragment within 25 arcsec of its parent');
 eq(F.span(Date.parse('2025-07-27T05:00:00Z'), Date.parse('2025-07-27T09:00:00Z')), '27 Jul 2025', 'R8 a one-day visit');
 eq(F.span(Date.parse('2025-12-20T00:00:00Z'), Date.parse('2026-01-03T00:00:00Z')), '20 Dec 2025–3 Jan 2026', 'R8 a visit across the new year');
 
@@ -186,6 +186,22 @@ eq(F.upcoming(X('C/2026 A2 (Bok)', facts({}, { peri: { prev: null, next: P('2026
   [{ when: 'This week', what: 'Near its closest to Earth', now: true }, { when: '22 Dec 2026', what: 'Closest to the Sun' }], 'next box Bok');
 eq(F.upcoming(X('235P/LINEAR', facts({}, { peri: { prev: P('2025-12-19', 1.98), next: P('2032-05-28', 1.98) } }))), [{ when: 'May 2032', what: 'Closest to the Sun' }], 'next box 235P');
 
+// ---------- review of ea27606: partial non-detections, parent light (fix 1, fix 2) ----------
+// a visit not detected in only some of its pictures never reads as a flat "Not detected" (R8: all valid pictures below 5)
+const part = F.visits(X('C/x', facts({}, { inv: { visits: [vis({ verdict: 'unseen', snr: null, n: 6, measured: 5, tried: 5 })] } })))[0];
+eq([part.title, ...part.d.map(s => F.plain(s.text))], ['No detection in the 5 of 6 pictures measured. The ring marks where JPL puts it.', '580 million km away.', 'Magnitude 15.2 then.'], 'fix 1: a partly measured visit');
+eq(F.visits(X('C/x', facts({}, { inv: { visits: [vis({ verdict: 'faint', snr: null, n: 6, measured: 6, tried: 6 })] } })))[0].title, 'Not detected. The ring marks where JPL puts it.', 'fix 1: a fully measured visit');
+eq(F.lead(X('C/x', facts({ e: 1.0003, per: null }, { inv: { n: 50, visits: [vis({ verdict: 'unseen', snr: null, n: 30, measured: 12, tried: 12 }), vis({ verdict: 'faint', snr: null, n: 20, measured: 20, tried: 20 })] } }), now({ rdot: 3 }))).map(s => s.text).at(-1),
+  'No detection in the 32 of 50 SPHEREx pictures measured.', 'fix 1: the lead does not claim a non-detection beyond what was measured');
+eq(F.chips(X('C/x', facts({}, { inv: { visits: [vis({ verdict: 'unseen', snr: null })] } }))).map(s => s.text)[0], 'No detection in the pictures measured', 'fix 1: chip');
+eq(F.group({ seen: 0, parent: 0, measured: 2, unseen: 1, visits: 2 }), 'partial', 'fix 1: list group');
+// a fragment's light within its parent's measuring circle is never counted as the fragment detected
+const frag = X('C/2023 R1-B (PANSTARRS)', facts({ e: 1.0003, per: null }, { status: 'fragment', inv: { visits: [vis({ verdict: 'faint', snr: null }), vis({ verdict: 'parent', near_parent: 23 }), vis({ verdict: 'parent', near_parent: 12.2 })] } }), now({ rdot: 3 }));
+eq(F.lead(frag).map(s => s.text).at(-1), 'SPHEREx caught light near its parent’s position on 2 of 3 visits; it may be the parent’s light.', 'fix 2: lead');
+eq(F.chips(frag).map(s => s.text)[0], 'Light near its parent on 2 of 3 visits', 'fix 2: chip');
+eq(F.visits(frag).map(v => v.title), ['Not detected. The ring marks where JPL puts it.', 'Light near the parent’s position.', 'Light near the parent’s position.'], 'fix 2: visit titles');
+eq(F.group({ seen: 0, parent: 2, measured: 3, unseen: 0, visits: 3 }), 'parent', 'fix 2: list group');
+
 // ---------- every known comet: nothing forbidden, nothing empty ----------
 const FIX = new URL('./fixtures/comets.json', import.meta.url);
 if (fs.existsSync(FIX)) {
@@ -200,6 +216,12 @@ if (fs.existsSync(FIX)) {
     eq(bad, [], `${c.id}: forbidden phrases`);
     eq(p.cards.filter(k => !k.a && !k.needs && !k.kv).map(k => k.q), [], `${c.id}: every card answers or says needs data`);
     eq(p.cards.length, 6, `${c.id}: six cards`);
+    // fix 1: "faint" only for a visit whose every picture was measured; fix 2: no "seen" fragment visit within 25 arcsec of its parent
+    const vs = c.detail?.facts?.inv?.visits ?? [];
+    eq(vs.filter(v => v.verdict === 'faint' && v.tried < v.n).length, 0, `${c.id}: faint visits not fully measured`);
+    eq(vs.filter(v => v.verdict === 'seen' && v.near_parent != null).length, 0, `${c.id}: fragment visits counted as seen within the parent's circle`);
+    // fix 4: a visit's quoted SNR is the shown picture's own: the picture file is the measurement's
+    eq(vs.filter(v => v.snr != null && !(v.pic && v.img && v.img.endsWith(`/${v.pic.obs}_${v.pic.det}.png`) && v.pic.snr === v.snr)).length, 0, `${c.id}: visits whose SNR is not the shown picture's`);
   }
   console.log(`${comets.length} known comets scanned (${today})`);
 } else { fails++; console.log(`FAIL no fixture at ${FIX.pathname} (python3 bake/comet_facts_fixture.py)`); }

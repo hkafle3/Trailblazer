@@ -261,12 +261,14 @@ async function comets(url, env) {
     json_extract(detail, '$.facts.inv.n') AS pictures, json_extract(detail, '$.facts.inv.first') AS first, json_extract(detail, '$.facts.inv.last') AS last,
     (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') = 'seen') AS seen,
     (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') != 'unmeasured') AS measured,
+    (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') = 'parent') AS parent,
+    (SELECT count(*) FROM json_each(detail, '$.facts.inv.visits') v WHERE json_extract(v.value, '$.verdict') = 'unseen') AS unseen,
     json_array_length(detail, '$.facts.inv.visits') AS visits,
     json_extract(detail, '$.facts.peri.prev.jd') AS peri_prev, json_extract(detail, '$.facts.peri.next.jd') AS peri_next,
     'data/comets/' || json_extract(detail, '$.dir') || '/' || (SELECT json_extract(p.value, '$.file') FROM json_each(detail, '$.photos') p
       ORDER BY json_extract(p.value, '$.flux') DESC LIMIT 1) AS thumb
     FROM comets`).all(), tallies(env.DB)]);
-  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, pictures: c.pictures, first: c.first, last: c.last, seen: c.seen, measured: c.measured,
+  return json({ comets: rows.results.map(c => ({ ...cometRow(c, tags), ...(c.kind === 'known' ? { co2: c.co2, photos: c.photos, faint: !!c.faint, pictures: c.pictures, first: c.first, last: c.last, seen: c.seen, measured: c.measured, parent: c.parent, unseen: c.unseen,
     visits: c.visits, peri_prev: c.peri_prev, peri_next: c.peri_next, thumb: c.thumb ?? (THUMBS[c.id] ? `data/comets/thumbs/${THUMBS[c.id].file}` : null) } : {}) })) });
 }
 

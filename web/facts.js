@@ -282,20 +282,23 @@ export function visits(x) {
     const s = mjdMs(v.start), e = mjdMs(v.end), out = [];
     let title;
     if (v.verdict === 'seen') {
-      title = v.near_parent != null ? 'Light near the parent’s position.' : firstSeen ? 'First seen.' : 'Seen.';
+      title = firstSeen ? 'First seen.' : 'Seen.';
       firstSeen = false;
       out.push(S(`Its light stood ${b(Math.round(v.snr) + ' times')} above the picture's noise.`, 'measured'));
+    } else if (v.verdict === 'parent') {   // a fragment's light within its parent's measuring circle: maybe the parent's
+      title = 'Light near the parent’s position.';
+      out.push(S(`It may be the parent comet’s light: the two were ${b(Math.round(v.near_parent) + ' arcseconds')} apart, inside the measuring circle.`, 'measured'));
     } else if (v.verdict === 'faint') title = 'Not detected. The ring marks where JPL puts it.';
+    else if (v.verdict === 'unseen') title = `No detection in the ${v.tried} of ${v.n.toLocaleString('en-US')} pictures measured. The ring marks where JPL puts it.`;
     else title = 'Could not be measured here.';
     if (v.delta != null) out.push(S(`${b(dist(v.delta))} away.`, 'predicted'));
-    if (v.verdict === 'faint' && v.T != null && v.T <= 30 && !x.f?.status) out.push(S(`Magnitude ${v.T.toFixed(1)} then.`, 'predicted'));
+    if ((v.verdict === 'faint' || v.verdict === 'unseen') && v.T != null && v.T <= 30 && !x.f?.status) out.push(S(`Magnitude ${v.T.toFixed(1)} then.`, 'predicted'));
     if (v.n >= 100) out.push(S('A part of the sky SPHEREx photographs often.', 'measured'));
     if (w && e < w.start) out.push(S('Before it was found.', 'measured'));
     const spanned = [];
     for (let m = new Date(Date.UTC(new Date(s).getUTCFullYear(), new Date(s).getUTCMonth(), 1)); m.getTime() <= e; m.setUTCMonth(m.getUTCMonth() + 1)) spanned.push(monthKey(m.getTime()));
     const months = spanned.filter(m => co2[m]?.state === 'detected');
     if (months.length) out.push(S(`Carbon dioxide detected in ${MONTHS[+months[0].slice(5) - 1]}'s combined measurements.`, 'measured'));
-    if (v.verdict === 'faint' && v.tried) out.push(S(`Measured in ${v.measured} of its ${v.n.toLocaleString('en-US')} pictures.`, 'measured'));
     return { k, when: span(s, e), start: s, end: e, title, d: out, verdict: v.verdict, n: v.n, link: v.link, img: v.img, lam: v.lam ?? null };
   });
 }
@@ -325,13 +328,17 @@ export function orbitClause(x) {
 }
 export function counts(x) {
   const vs = x.f?.inv?.visits ?? [];
-  return { n: vs.length, seen: vs.filter(v => v.verdict === 'seen').length, measured: vs.filter(v => v.verdict !== 'unmeasured').length };
+  const k = verdict => vs.filter(v => v.verdict === verdict).length;
+  return { n: vs.length, seen: k('seen'), parent: k('parent'), unseen: k('unseen'), measured: vs.filter(v => v.verdict !== 'unmeasured').length,
+    tried: vs.reduce((t, v) => t + (v.tried ?? 0), 0), pictures: x.f?.inv?.n ?? 0 };
 }
 export function sxClause(x) {
   const v = x.d.co2_verdict, c = counts(x);
   let s;
   if (v === 'detected') s = 'SPHEREx detected carbon dioxide around it';
-  else if (c.seen) s = `SPHEREx detected it on ${c.seen} of ${c.n} visit${c.n === 1 ? '' : 's'}`;
+  else if (c.seen) s = `SPHEREx detected it on ${c.seen} of ${c.n} visit${c.n === 1 ? '' : 's'}` + (c.parent ? `; on ${c.parent} more, light near its parent’s position may be the parent’s` : '');
+  else if (c.parent) s = `SPHEREx caught light near its parent’s position on ${c.parent} of ${c.n} visit${c.n === 1 ? '' : 's'}; it may be the parent’s light`;
+  else if (c.unseen) s = `No detection in the ${c.tried.toLocaleString('en-US')} of ${c.pictures.toLocaleString('en-US')} SPHEREx pictures measured`;
   else if (c.n && c.measured === c.n) s = 'SPHEREx’s pictures did not detect it';
   else if (c.n && !c.measured) s = `None of its ${c.n} SPHEREx visit${c.n === 1 ? '' : 's'} could be measured`;
   else if (c.n) s = `SPHEREx’s pictures did not detect it; ${c.measured} of ${c.n} visit${c.n === 1 ? '' : 's'} could be measured`;
@@ -352,6 +359,8 @@ export function chips(x, g = going(x)) {
   if (v === 'detected') out.push(S('Carbon dioxide detected', 'measured'));
   else if (v === 'unclear') out.push(S('Carbon dioxide: not settled', 'measured'));
   else if (c.seen) out.push(S(`Detected on ${c.seen} of ${c.n} visits`, 'measured'));
+  else if (c.parent) out.push(S(`Light near its parent on ${c.parent} of ${c.n} visits`, 'measured'));
+  else if (c.unseen) out.push(S('No detection in the pictures measured', 'measured'));
   else if (c.measured) out.push(S('Not detected in SPHEREx pictures', 'measured'));
   const { prev, next } = x.f?.peri ?? {}, t = x.today;   // the passage nearer today
   const p = [prev, next].filter(Boolean).sort((a, b2) => Math.abs(jdMs(a.jd) - t) - Math.abs(jdMs(b2.jd) - t))[0];
@@ -385,6 +394,8 @@ export function group(c) {   // L4, from SPHEREx verdicts only
   if (v === 'detected') return 'co2';
   if (v === 'unclear') return 'unsettled';
   if (c.seen > 0 || v === 'quiet') return 'seen';
+  if (c.parent > 0) return 'parent';
+  if (c.unseen > 0) return 'partial';
   if (c.measured > 0) return 'faint';
   return 'unchecked';
 }
@@ -392,7 +403,9 @@ export const GROUPS = [
   { key: 'co2', name: 'Carbon dioxide detected', say: 'SPHEREx measured the carbon dioxide glow around them.' },
   { key: 'unsettled', name: 'Measured, not settled', say: 'Their light was split by colour; the carbon dioxide answer is not clear.' },
   { key: 'seen', name: 'Detected in pictures', say: 'SPHEREx pictures show them. Their gases are not measured.' },
+  { key: 'parent', name: 'Light near the parent comet', say: 'Pieces of comets that broke up: SPHEREx saw light where they should be, close enough to the parent comet to be its light.' },
   { key: 'faint', name: 'Not detected', say: 'SPHEREx photographed where they were, but they did not show.' },
+  { key: 'partial', name: 'No detection so far', say: 'SPHEREx measured some of their pictures and found nothing; the rest are not checked yet.' },
   { key: 'unchecked', name: 'Not yet checked', say: 'No SPHEREx picture of them could be measured.' },
 ];
 
