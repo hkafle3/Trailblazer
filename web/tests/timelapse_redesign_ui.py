@@ -120,6 +120,14 @@ async def main():
         check(f"t={visit}" in url and "ra=269.4463" in url, f"Depth: asks /api/depth for this patch and the visit on screen ({url})")
         check(got == [k for _, k in want] and len(got) > 10, f"Depth: the list matches /api/depth object for object, nearest first ({len(got)} on the page, {len(want)} in the API)")
         check(await pg.evaluate("+document.getElementById('depth3d').dataset.objects") == len(want), "Depth: the beam places the same number of objects")
+        # the beam: the target and the lettered objects as named rings, every other placed object as a faint dot
+        shown = await pg.evaluate("__depth.shown")
+        ring_rows = await pg.evaluate("[...document.querySelectorAll('#dist-list li[data-key]')].filter(l => /^(Barnard's Star|Star [A-D]|Galaxy [A-D]|The star in the middle)/.test(l.querySelector('.nm').textContent) || l.querySelector('.dmk.a')).map(l => l.dataset.key)")
+        check(1 <= len(shown["rings"]) <= 5 and want[0][1] in shown["rings"] and sorted(shown["rings"]) == sorted(ring_rows),
+              f"Depth: the target and the lettered objects are the beam's rings ({len(shown['rings'])}), the same ones the list names")
+        check(sorted(shown["rings"] + shown["dots"]) == sorted(k for _, k in want) and not set(shown["rings"]) & set(shown["dots"])
+              and await pg.evaluate("+document.getElementById('depth3d').dataset.dots") == len(want) - len(shown["rings"]),
+              f"Depth: every other placed object is a dot ({len(shown['dots'])}), so rings and dots together are /api/depth's list")
         first = await pg.evaluate("(l => [l.querySelector('.nm').textContent, l.querySelector('small').textContent, l.querySelector('.dd').textContent])(document.querySelector('#dist-list li'))")
         check(first[0] == "Barnard's Star" and first[1].startswith("Gaia parallax, ±") and first[2] == "6", f"Depth: the nearest is the target, with its source and error: {first}")
         await pg.wait_for_timeout(2200)   # the swing out from the telescope ends
@@ -128,6 +136,15 @@ async def main():
         await pg.mouse.move(cx, cy); await pg.mouse.down(); await pg.mouse.move(cx + 160, cy + 30, steps=8); await pg.mouse.up(); await pg.wait_for_timeout(200)
         b1 = await pg.evaluate(BEAM)
         check(b0[1] > 200 and b1[0] != b0[0], f"Depth: the beam is drawn ({b0[1]} lit samples) and a drag turns it")
+        # hovering a dot names it
+        cv = await pg.locator("#depth3d canvas").bounding_box(); spot = None
+        for k in shown["dots"][::7]:
+            xy = await pg.evaluate("k => __depth.screenOf(k)", k)
+            if xy and cv["x"] + 20 < xy[0] < cv["x"] + cv["width"] - 20 and cv["y"] + 60 < xy[1] < cv["y"] + cv["height"] - 40: spot = xy; break
+        await pg.mouse.move(*spot); await pg.wait_for_timeout(200)
+        peek = await pg.evaluate("[document.getElementById('depth3d').dataset.peek, document.querySelector('#depth3d .lbl.tip').textContent, getComputedStyle(document.querySelector('#depth3d .lbl.tip')).opacity]")
+        check(peek[0] in shown["dots"] and " ly" in peek[1] and peek[2] == "1", f"Depth: hovering a dot shows its name and distance: {peek[1]}")
+        await pg.mouse.move(cv["x"] + 5, cv["y"] + 5)
         # a shared link reopens Depth; Copy link copies the view; Photo drops it
         await pg.click("#share-depth"); await pg.wait_for_timeout(200)
         clip = await pg.evaluate("navigator.clipboard.readText()")

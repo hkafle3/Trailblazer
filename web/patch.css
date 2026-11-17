@@ -307,6 +307,7 @@ body.ringed #legend .lg-merged { display: none; }
 .xp-d3 .lbl { position: absolute; left: 0; top: 0; font: 400 calc(12 * var(--m)) / 1.3 var(--panel-font); letter-spacing: .02em; color: rgba(255, 255, 255, .82); white-space: pre; text-shadow: 0 0 6px #000, 0 0 3px #000, 0 0 2px #000; }
 .xp-d3 .lbl.accent { color: #ff9a4d; }
 .xp-d3 .lbl.mark { color: rgba(255, 255, 255, .55); font-size: calc(11 * var(--m)); }
+.xp-d3 .lbl.tip { padding: 2px 6px; border-radius: 4px; background: rgba(0, 0, 0, .75); color: #fff; transition: opacity .12s; }
 .xp-d3-hint, .xp-d3-note { position: absolute; bottom: calc(14 * var(--m)); margin: 0; font: 400 calc(11 * var(--m)) / 1.3 var(--panel-font); letter-spacing: .03em; color: rgba(255, 255, 255, .5); pointer-events: none; }
 .xp-d3-hint { right: calc(18 * var(--m)); display: flex; align-items: center; gap: calc(7 * var(--m)); }
 .xp-d3-hint svg { width: calc(15 * var(--m)); height: calc(15 * var(--m)); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }

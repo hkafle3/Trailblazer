@@ -31,6 +31,12 @@ function errText(o) {
   return `±${half < 100 ? +half.toPrecision(half < 1 ? 1 : 2) : lyText(half, true).replace(/ ly$/, '')}`;
 }
 const how = { sso: 'SkyBoT orbit', stars: 'Gaia parallax', galaxies: 'SIMBAD redshift' };
+// a small soft dot: the objects that are not named in the beam, so the crowd reads as "a lot is out there" without rings
+function dotTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'), r = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.35, 'rgba(255,255,255,.9)'); r.addColorStop(.6, 'rgba(255,255,255,.2)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 32, 32); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 
 // Every placed object of an answer as one list: { key, src, ra, dec, ly, o }. key is what the tests compare with the API.
 export function placedOf(data) {
@@ -210,17 +216,27 @@ export function depthView(page) {
     const craft = spherex(); craft.scale.setScalar(CR); craft.rotation.z = -Math.PI / 2; craft.position.set(-CR, 0, 0); scene.add(craft);
     const sun = new THREE.DirectionalLight(0xfff4e2, 3); sun.position.set(-2, 5, 8); scene.add(sun, new THREE.HemisphereLight(0x8fb4ff, 0x0a1020, .6));
     const rW = ringTex('#fff'), rA = ringTex('#ff9a4d'), rU = ringTex('rgba(255,255,255,.6)', true);
-    // every other placed object: one cloud of small rings, one draw call
-    const cloud = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: rW, size: 7, sizeAttenuation: false, transparent: true, opacity: .55, depthTest: false, depthWrite: false }));
+    // every other placed object: faint small dots, no ring and no name (one draw call); hover or tap one for its name
+    const cloud = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: dotTex(), size: 4, sizeAttenuation: false, transparent: true, opacity: .3, depthTest: false, depthWrite: false }));
     cloud.renderOrder = 8; cloud.frustumCulled = false; scene.add(cloud);
     const unk = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: rU, size: 11, sizeAttenuation: false, transparent: true, depthTest: false, depthWrite: false }));
     unk.renderOrder = 8; unk.frustumCulled = false; scene.add(unk);
-    scene3 = { photo, beam, craft, cloud, unk, rW, rA, rU, guides: S.lines(400), beads: [], marks: [], fixed: [S.label('the photo'), S.label('SPHEREx')] };
+    scene3 = { photo, beam, craft, cloud, unk, rW, rA, rU, guides: S.lines(400), beads: [], marks: [], dots: [], fixed: [S.label('the photo'), S.label('SPHEREx')] };
+    const tip = S.label('', 'tip'); tip.el.style.opacity = 0;
+    // the dot nearest the pointer (within 10 px): its name and distance beside it; a tap does the same on a phone
+    const peek = e => {
+      const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      let best = null, bd = 10;
+      for (const d of scene3.dots) { const [px, py] = S.px(d.pos), dd = Math.hypot(px - x, py - y); if (dd < bd) { bd = dd; best = d; } }
+      if (!best) { tip.el.style.opacity = 0; box.dataset.peek = ''; return; }
+      tip.el.textContent = best.text; tip.at(best.pos, [8, -6, 0, -1], 1); box.dataset.peek = best.key;
+    };
     // drag to turn: sideways turns the beam, up and down tilts it (a little)
     const cv = box.querySelector('canvas'); let drag = null;
     cv.addEventListener('pointerdown', e => { if (e.button) return; drag = { x: e.clientX, y: e.clientY, a: yaw.a, p: yaw.p }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); box.dataset.turned = '1'; });
-    cv.addEventListener('pointermove', e => { if (!drag) return; yaw.a = Math.max(-1.3, Math.min(1.9, drag.a + (e.clientX - drag.x) / 260)); yaw.p = Math.max(-.15, Math.min(.9, drag.p + (e.clientY - drag.y) / 300)); render(); });
-    const up = () => { drag = null; cv.classList.remove('drag'); };
+    cv.addEventListener('pointermove', e => { if (!drag) return peek(e); tip.el.style.opacity = 0; yaw.a = Math.max(-1.3, Math.min(1.9, drag.a + (e.clientX - drag.x) / 260)); yaw.p = Math.max(-.15, Math.min(.9, drag.p + (e.clientY - drag.y) / 300)); render(); });
+    const up = e => { if (drag && e?.type === 'pointerup' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) peek(e); drag = null; cv.classList.remove('drag'); };
+    cv.addEventListener('pointerleave', () => { if (!drag) tip.el.style.opacity = 0; });
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     cv.addEventListener('keydown', e => {
       const k = { ArrowLeft: [-.12, 0], ArrowRight: [.12, 0], ArrowUp: [0, -.08], ArrowDown: [0, .08] }[e.key]; if (!k) return;
@@ -229,7 +245,7 @@ export function depthView(page) {
     new ResizeObserver(() => open && render()).observe(box);
     return true;
   }
-  let scale = null;
+  let scale = null, shown = { rings: [], dots: [] };   // shown: which objects the beam draws as named rings, which as dots (for tests)
   function build() {   // the objects of the answer on screen: positions, the scale, the named ones
     if (!open || !data?.d || !init()) return;
     const all = placedOf(data.d), { m } = data, year = data.f.year ?? 2026;
@@ -238,12 +254,12 @@ export function depthView(page) {
     let lo = Math.min(...lg, 0) - .4, hi = Math.max(...lg, 3) + .3; if (hi - lo < 2) hi = lo + 2;
     scale = ly => .12 + .74 * clamp01((Math.log10(ly) - lo) / (hi - lo));
     const uv = p => page.onScreen(m, p.ra, p.dec, p.src === 'stars' ? { year, pmra: p.o.pmra, pmdec: p.o.pmdec } : null);
-    const pos = [], ids = [];
+    const pos = []; scene3.dots = [];
     for (const s of scene3.beads) { s.sp.removeFromParent(); s.lab.remove(); }
     scene3.beads = [];
     all.forEach((p, i) => {
       const [u, v] = uv(p), f = scale(p.ly), name = i === picked.target || picked.letters.has(i);
-      if (!name) { pos.push(...at(u, v, f).toArray()); ids.push(i); return; }
+      if (!name) { const q = at(u, v, f); pos.push(...q.toArray()); scene3.dots.push({ pos: q, key: p.key, text: `${p.src === 'sso' ? p.o.name : p.src === 'galaxies' ? p.o.id : `star, G ${p.o.g?.toFixed(1) ?? '?'}`} · ${lyText(p.ly, true)}` }); return; }
       const acc = i === picked.target, L0 = picked.letters.get(i), d = lyText(p.ly, S.W < 500);
       const text = acc ? `${page.targetName(m) ?? 'the star in the middle'} · ${d}` : `${p.src === 'sso' ? p.o.name : `${p.src === 'galaxies' ? 'galaxy' : 'star'} ${L0}`} · ${d}`;
       const err = p.o.d_lo_pc != null ? [scale(p.o.d_lo_pc * LY_PC), scale(p.o.d_hi_pc * LY_PC)] : null;
@@ -262,6 +278,8 @@ export function depthView(page) {
     const pickD = near.length <= (small ? 2 : 3) ? near : small ? [near[0], near[near.length - 1]] : [near[0], near[Math.floor(near.length / 2)], near[near.length - 1]];
     scene3.marks = pickD.map(x => ({ f: scale(10 ** x), lab: S.label(lyText(10 ** x, false), 'mark') }));
     box.dataset.objects = String(all.length);
+    box.dataset.rings = String(scene3.beads.length); box.dataset.dots = String(scene3.dots.length);
+    shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i)).map(p => p.key), dots: scene3.dots.map(d => d.key) };
     photo();
     render();
   }
@@ -288,7 +306,7 @@ export function depthView(page) {
     S.aim({ pos: V().addScaledVector(eye.pos, k * k).addScaledVector(mid, 2 * k * s).addScaledVector(to.pos, s * s), tgt: eye.tgt.clone().lerp(to.tgt, s), up: Y, fov: eye.fov + (to.fov - eye.fov) * sm(s * 1.4) });
     const a = sm((s - .45) / .4), la = sm((s - .8) / .2);
     const { guides, craft, beam, cloud, unk } = scene3;
-    craft.visible = s > .02; beam.material.opacity = .055 * a; cloud.material.opacity = .55 * a; unk.material.opacity = a;
+    craft.visible = s > .02; beam.material.opacity = .055 * a; cloud.material.opacity = (small ? .14 : .28) * a; cloud.material.size = small ? 2.5 : 4;   // a phone's narrower beam packs them closer unk.material.opacity = a;
     guides.begin();
     for (const c of corners) guides.seg(top, c, WHITE, .3 * a, .6 * a);
     corners.forEach((c, i) => guides.seg(c, corners[(i + 1) % 4], WHITE, .9 * a));
@@ -329,6 +347,7 @@ export function depthView(page) {
       yaw.t0 = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : performance.now();
       this.frame(); if (data?.d && asked === data.url) build();
     },
-    get data() { return data; }, get url() { return asked; }, get gl() { return gl; },
+    get data() { return data; }, get url() { return asked; }, get gl() { return gl; }, get shown() { return shown; },
+    screenOf(key) { const d = scene3?.dots.find(x => x.key === key); if (!d) return null; const [x, y] = S.px(d.pos), r = box.querySelector('canvas').getBoundingClientRect(); return [r.left + x, r.top + y]; },
   };
 }
