@@ -226,11 +226,22 @@ async def main():
         sp = await pg.evaluate("[document.body.classList.contains('speccing'), (r => r.width > 0 && r.height > 0)(document.getElementById('dist').getBoundingClientRect()), (r => r.width > 0)(document.getElementById('spec').getBoundingClientRect()), location.search]")
         check(was and not sp[0] and sp[1] and not sp[2] and "spec=" not in sp[3], f"Spectrum then Depth: the card closes and Distances shows ({sp})")
         # another visit whose distances cannot be had: the old beam goes at once and the failure is said over it
+        mjd = await pg.evaluate("__lapse.state.m.frames.map(f => f.mjd.toFixed(4))")
+        photo_before = await pg.evaluate("document.getElementById('depth3d').dataset.photo")
         await pg.route("**/api/depth**", lambda r: r.fulfill(status=503, json={"error": "archive down"}))
         await pg.focus("#play"); await pg.keyboard.press("Home")
         await pg.wait_for_function("document.getElementById('depth3d').dataset.state === 'error'", timeout=20000)
+        photo_after = await pg.evaluate("document.getElementById('depth3d').dataset.photo")
+        check(photo_before == mjd[-1] and photo_after == mjd[0], f"Depth failure: the far end shows the new visit's photo anyway ({photo_before} -> {photo_after})")
         st = await pg.evaluate("(b => [b.dataset.objects, b.dataset.rings, b.dataset.dots, b.querySelectorAll('.lbl:not(.tip):not(.mark)').length, document.getElementById('depth-msg').textContent, document.querySelectorAll('#dist-list li').length])(document.getElementById('depth3d'))")
         check(st[:3] == ["0", "0", "0"] and "Could not ask the catalogs" in st[4] and st[5] == 0, f"Depth failure: the old beam and list are gone, the failure is said ({st})")
+        await pg.unroute("**/api/depth**")
+        # the server's own fault switch (DEPTH_FAULTS=1): every catalog fails for another visit; the photo still follows it
+        await pg.route("**/api/depth**", lambda route: route.continue_(url=route.request.url + "&fail=sso,stars,galaxies"))
+        await pg.keyboard.press("ArrowRight")
+        await pg.wait_for_function("/No catalog is answering/.test(document.getElementById('depth-msg').textContent)", timeout=30000)
+        fs = await pg.evaluate("[document.getElementById('depth3d').dataset.photo, document.getElementById('depth3d').dataset.state, document.getElementById('depth3d').dataset.objects]")
+        check(fs == [mjd[1], "error", "0"], f"Depth with every catalog failing (fault switch): the photo is visit 2's, the failure is said, no objects ({fs})")
         await pg.unroute("**/api/depth**")
         # Copy link keeps the visit on screen: the link reopens that visit, and Depth asks for its date
         await pg.focus("#play"); await pg.keyboard.press("End"); await pg.wait_for_timeout(300)
@@ -254,12 +265,17 @@ async def main():
         ctx, pg = await page(b)
         await pg.goto(f"{BASE}/timelapse.html?target=rdra"); await pg.wait_for_function(READY)
         # a known asteroid is the dot only when SkyBoT puts it on the dot; 30 arcsec away it is "nearby", not a match
-        K = """(east => { const ra = 10 + east / 3600 / Math.cos(5 * Math.PI / 180), f = { x: 50, y: 50, mjd: 61000, known: { left: 0, failed: 0, bodies: new Map([['2001 AB', { kind: 'asteroid', mag: 18, pts: [[61000, ra, 5]] }]]) } };
+        K = """((east, east2) => { const ra = e => 10 + e / 3600 / Math.cos(5 * Math.PI / 180);
+              const pts = east2 == null ? [[61000, ra(east), 5]] : [[60999.5, ra(east), 5], [61000.5, ra(east2), 5]];   // two exposure times either side of the visit's middle
+              const f = { x: 50, y: 50, mjd: 61000, known: { left: 0, failed: 0, bodies: new Map([['2001 AB', { kind: 'asteroid', mag: 18, pts }]]) } };
               const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, grid: 101, arcsec_per_pixel: 6.15, motion: null, gaia: null, ref: null, frames: [f, { ...f, known: null }] };
               const v = __lapse.verdict(m, f); return [v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), v.known]; })"""
-        on, off = await pg.evaluate(K + "(4)"), await pg.evaluate(K + "(30)")
+        on, off, passing = await pg.evaluate(K + "(4)"), await pg.evaluate(K + "(30)"), await pg.evaluate(K + "(-25, 55)")
         check("matches the known asteroid 2001 AB" in on[0] and on[1] and "Nearby: the known asteroid 2001 AB passed 30 arcseconds" in off[0] and not off[1] and "matches" not in off[0],
               f"known at the middle: 4 arcsec is the dot ({on[1]}), 30 arcsec is only nearby ({off})")
+        # an asteroid crossing the patch, 25 arcsec from the dot at one exposure and 15 at the visit's middle: nearby, never the
+        # target (its own motion does not widen the match); Barnard's Star still matches Gaia (checked in 1)
+        check("Nearby: the known asteroid 2001 AB passed 15 arcseconds" in passing[0] and not passing[1] and "matches" not in passing[0], f"a passing asteroid a little off the middle is nearby, not the target: {passing}")
         # the facts follow the patch: a different wavelength shows, though the verdict's words are the same
         await pg.evaluate("__lapse.state.m.lam0 = 1.234; document.getElementById('split').click(); document.getElementById('split').click()")
         check("1.23 µm" in await pg.text_content("#pv-facts"), f"facts: a new wavelength shows ({await pg.text_content('#pv-facts')})")

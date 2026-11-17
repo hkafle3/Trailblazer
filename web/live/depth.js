@@ -144,7 +144,10 @@ export function depthView(page) {
     }
     if (asked !== url) return;
     data = { url, m, f, d };
-    msg(''); paintList(); build();
+    const down = Object.entries(d.sources).filter(([, s]) => s.status === 'unavailable').map(([k]) => SOURCE[k]);
+    msg(down.length === Object.keys(d.sources).length ? `No catalog is answering for this visit (${down.join(', ')}). Trying again in a minute.` : '', down.length === Object.keys(d.sources).length);
+    paintList(); build();
+    if (down.length === Object.keys(d.sources).length && tries++ < 8) retry = setTimeout(() => fetchNow(url, m, f), 60000);
     // a pending source is asked again after retry_after (it keeps fetching in the background), at most 8 times
     const wait = Object.values(d.sources).filter(s => s.status === 'pending').map(s => s.retry_after || 5);
     if (wait.length && tries++ < 8) retry = setTimeout(() => fetchNow(url, m, f), 1000 * Math.min(...wait));
@@ -298,7 +301,7 @@ export function depthView(page) {
   function photo() {   // the region's photo for the visit on screen, as the beam's far end
     if (!scene3) return;
     const r = page.region(); if (!r) return;
-    const mat = scene3.photo.material;
+    const mat = scene3.photo.material; box.dataset.photo = r.f.mjd.toFixed(4);   // which visit's photo (for tests)
     if (!mat.map || mat.map.image !== r.canvas) { mat.map?.dispose(); mat.map = new THREE.CanvasTexture(r.canvas); mat.map.colorSpace = THREE.SRGBColorSpace; mat.map.magFilter = THREE.NearestFilter; mat.map.minFilter = THREE.LinearFilter; mat.needsUpdate = true; }
     else mat.map.needsUpdate = true;
   }
@@ -349,9 +352,10 @@ export function depthView(page) {
     frame() {
       if (!open) return;
       const r = page.region(); if (!r) return;
+      if (init()) photo();   // the far end shows this visit's photo straight away, whatever the catalogs answer
       const url = want(r.m, r.f);
       if (asked !== url) { asked = url; tries = 0; fetchNow(url, r.m, r.f); }
-      else { photo(); render(); }
+      else render();
     },
     show(on) {
       open = on; box.hidden = !on;

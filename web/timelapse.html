@@ -699,10 +699,11 @@ function verdict(m, f) {
   else if (m.frames.some(x => x.blob)) out.parts.push('Too bright to measure: this star saturates the detector, so no motion can be read.');
   else out.parts.push(`No motion measured: the middle shows a source in ${seen} of ${m.frames.length} visits, and a motion needs 3 over 6 months.`);
   // known comets and asteroids SkyBoT put in this visit, and whether one is the dot in the middle
-  // A known comet or asteroid is the dot in the middle only when SkyBoT puts it on that dot: within two SPHEREx pixels
-  // (about the PSF's width plus a measured position's error) of where the middle's source was measured, widened by half
-  // the step it moved between two exposure times (a median of the exposures sits between them). Closer than 60″ but not
-  // on the dot is "nearby", said as such; it does not make the dot known.
+  // A known comet or asteroid is the dot in the middle only when SkyBoT puts it on that dot at the visit's time (its
+  // positions at the exposure times, interpolated to the visit's middle): within two SPHEREx pixels, about the PSF's
+  // width plus a measured position's error, and never wider for how far it moves (only a star's own proper motion,
+  // in the Gaia match the pipeline makes, widens a match). Closer than 60″ but not on the dot is "nearby", said as
+  // such; it does not make the dot known.
   const k = f.known, { hit, near } = k ? knownAtMiddle(m, f) : {};
   if (hit) { out.known = true; out.who = hit.name; out.parts.push(' ', { ok: `The dot in the middle matches the known ${hit.kind} ${hit.name}.` }); }
   else if (near) out.parts.push(` Nearby: the known ${near.kind} ${near.name} passed ${Math.round(near.d)} arcseconds from the dot in the middle, too far to be it.`);
@@ -712,13 +713,19 @@ function verdict(m, f) {
   }
   return out;
 }
+// [east, north] of a body at time t, between its two nearest positions [t, east, north] (sorted by t), or the nearer end
+function bodyAt(pts, t) {
+  if (pts.length === 1 || t <= pts[0][0]) return pts[0].slice(1);
+  if (t >= pts.at(-1)[0]) return pts.at(-1).slice(1);
+  const k = pts.findIndex(p => p[0] >= t), [t0, e0, n0] = pts[k - 1], [t1, e1, n1] = pts[k], u = (t - t0) / (t1 - t0);
+  return [e0 + u * (e1 - e0), n0 + u * (n1 - n0)];
+}
 function knownAtMiddle(m, f) {
   const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, tgt = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : [0, 0];   // east, north of the middle's source
   let hit = null, near = null;
   for (const [name, b] of f.known?.bodies ?? []) {
-    const p = b.pts.map(([, ra, dec]) => offset(m, ra, dec));
-    const step = p.slice(1).reduce((s, q, i) => Math.max(s, Math.hypot(q[0] - p[i][0], q[1] - p[i][1])), 0);
-    const d = Math.min(...p.map(([e, n]) => Math.hypot(e - tgt[0], n - tgt[1]))), r = 2 * a + step / 2;
+    const pts = b.pts.map(([t, ra, dec]) => [t, ...offset(m, ra, dec)]), [e, n] = bodyAt(pts, f.mjd);
+    const d = Math.hypot(e - tgt[0], n - tgt[1]), r = 2 * a;
     if (d <= r && (!hit || d < hit.d)) hit = { name, kind: b.kind, d };
     else if (d > r && d <= 60 && (!near || d < near.d)) near = { name, kind: b.kind, d };
   }
