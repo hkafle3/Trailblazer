@@ -14,7 +14,7 @@ SIMBAD through /api/depth).
 8. phone (390x844): one column in the mockup's order, nothing sideways, the tabs and Advanced are 44 px taps, Depth
    shows Distances under the timeline.
 Run: uv run -q --with playwright python web/tests/timelapse_redesign_ui.py [base url]   (default http://127.0.0.1:8787)"""
-import asyncio, json, sys
+import asyncio, json, math, sys
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
@@ -70,7 +70,7 @@ async def main():
         mover = await pg.evaluate(V + "([{ total: 29, err: 8.3, years: 1 }, null, null, 4, 4])")
         check(one == ["Only one visit here so far, so nothing can be seen moving yet.", False], f"verdict, one visit: {one}")
         check(none[0].startswith("No motion measured: the middle shows a source in 2 of 4 visits") and not none[1], f"verdict, nothing measured: {none}")
-        check(mover == ["Seems to move 29 arcseconds a year, give or take 8.3. No Gaia star is here to match it.", False], f"verdict, a mover with no Gaia star: {mover}")
+        check(mover == ["Seems to move 29 arcseconds a year, give or take 8.3. No Gaia star is on the dot to match it.", False], f"verdict, a mover with no Gaia star: {mover}")
         # the merged mark: one "already known" key; Split draws the predicted ring and known passing apart again
         legend = lambda: pg.evaluate("[...document.querySelectorAll('#legend .lg-row')].filter(r => getComputedStyle(r).display !== 'none').map(r => r.textContent)")
         merged = await legend()
@@ -116,9 +116,18 @@ async def main():
         url = await pg.evaluate("__depth.url")
         visit = await pg.evaluate("__lapse.state.m.frames[__lapse.state.i].mjd.toFixed(4)")
         api = await (await pg.request.get(url if url.startswith('http') else BASE + url)).json()
-        want = sorted(((o["d_pc"], f"{src}:{o.get('id') or o.get('name')}") for src in ("sso", "stars", "galaxies") for o in api["sources"][src].get("placed") or []))
+        geo = await pg.evaluate("(({ m, i }) => ({ ra: m.ra, dec: m.dec, half: m.grid * m.arcsec_per_pixel / 2, year: m.frames[i].year }))(__lapse.state)")
+        def in_patch(o, star):   # the patch square on the sky (a TAN projection about its centre), a star at its place this visit
+            ra, dec = o["ra"], o["dec"]
+            if star: dt = geo["year"] - 2016; dec2 = dec + o["pmdec"] / 3.6e6 * dt; ra = ra + o["pmra"] / 3.6e6 * dt / math.cos(math.radians(dec)); dec = dec2
+            d0, d, da = math.radians(geo["dec"]), math.radians(dec), math.radians(ra - geo["ra"])
+            cc = math.sin(d0) * math.sin(d) + math.cos(d0) * math.cos(d) * math.cos(da)
+            e = math.cos(d) * math.sin(da) / cc * 206264.806; n = (math.cos(d0) * math.sin(d) - math.sin(d0) * math.cos(d) * math.cos(da)) / cc * 206264.806
+            return abs(e) <= geo["half"] and abs(n) <= geo["half"]
+        cone = [(o["d_pc"], f"{src}:{o.get('id') or o.get('name')}", in_patch(o, src == "stars")) for src in ("sso", "stars", "galaxies") for o in api["sources"][src].get("placed") or []]
+        want = sorted((d, k) for d, k, inside in cone if inside)
         check(f"t={visit}" in url and "ra=269.4463" in url, f"Depth: asks /api/depth for this patch and the visit on screen ({url})")
-        check(got == [k for _, k in want] and len(got) > 10, f"Depth: the list matches /api/depth object for object, nearest first ({len(got)} on the page, {len(want)} in the API)")
+        check(got == [k for _, k in want] and len(got) > 10 and len(want) < len(cone), f"Depth: the list matches /api/depth object for object inside the photographed patch, nearest first ({len(got)} on the page, {len(want)} of the API's {len(cone)} in its cone)")
         check(await pg.evaluate("+document.getElementById('depth3d').dataset.objects") == len(want), "Depth: the beam places the same number of objects")
         # the beam: the target and the lettered objects as named rings, every other placed object as a faint dot
         shown = await pg.evaluate("__depth.shown")
@@ -176,7 +185,7 @@ async def main():
         await pg.wait_for_function("document.querySelectorAll('#dist-list li').length >= 4")
         rows = await pg.evaluate("[...document.querySelectorAll('#dist-list li')].map(l => [l.querySelector('.nm').textContent, l.querySelector('small').textContent, l.querySelector('.dd').textContent])")
         status = await pg.text_content("#dist-status")
-        check(["LEDA 1", "SIMBAD redshift: no redshift", "unknown"] in rows and any(r[0] == "7 more stars" and r[2] == "unknown" for r in rows), f"unknown: named rows with their reason, and the stars without a usable parallax counted: {rows[-2:]}")
+        check(["LEDA 1", "SIMBAD redshift: no redshift", "unknown"] in rows and any(r[0] == "7 more stars in and around the patch" and r[2] == "unknown" for r in rows), f"unknown: named rows with their reason, and the stars without a usable parallax counted: {rows[-2:]}")
         check("still answering, asking again in 2 s" in status, f"pending: said plainly: {status}")
         await pg.wait_for_timeout(4500)
         check(len(asked) >= 2, f"pending: asked again after retry_after ({len(asked)} requests)")
@@ -329,12 +338,14 @@ async def main():
               const f = { x: 50, y: 50, mjd: 61000, known: { left: 0, failed: 0, bodies: new Map([['2001 AB', { kind: 'asteroid', mag: 18, pts }]]) } };
               const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, grid: 101, arcsec_per_pixel: 6.15, motion: null, gaia: null, ref: null, frames: [f, { ...f, known: null }] };
               const v = __lapse.verdict(m, f); return [v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), v.known]; })"""
-        on, off, passing = await pg.evaluate(K + "(4)"), await pg.evaluate(K + "(30)"), await pg.evaluate(K + "(-25, 55)")
+        on, off, passing, crossing = await pg.evaluate(K + "(4)"), await pg.evaluate(K + "(30)"), await pg.evaluate(K + "(-25, 55)"), await pg.evaluate(K + "(-120, 120)")
         check("matches the known asteroid 2001 AB" in on[0] and on[1] and "Nearby: the known asteroid 2001 AB passed 30 arcseconds" in off[0] and not off[1] and "matches" not in off[0],
               f"known at the middle: 4 arcsec is the dot ({on[1]}), 30 arcsec is only nearby ({off})")
-        # an asteroid crossing the patch, 25 arcsec from the dot at one exposure and 15 at the visit's middle: nearby, never the
-        # target (its own motion does not widen the match); Barnard's Star still matches Gaia (checked in 1)
-        check("Nearby: the known asteroid 2001 AB passed 15 arcseconds" in passing[0] and not passing[1] and "matches" not in passing[0], f"a passing asteroid a little off the middle is nearby, not the target: {passing}")
+        # the same rule as web/tests/identity_check.mjs, through the page: an asteroid 25 arcsec off at its nearest exposure is
+        # nearby; one that crossed the middle between two exposures and was 120 arcsec off in both is neither the dot nor
+        # nearby (no position between exposures is used); Barnard's Star still matches Gaia (checked in 1)
+        check("Nearby: the known asteroid 2001 AB passed 25 arcseconds" in passing[0] and not passing[1] and "matches" not in passing[0], f"a passing asteroid a little off the middle is nearby, not the target: {passing}")
+        check("passed through during this visit" in crossing[0] and not crossing[1] and "Nearby" not in crossing[0] and "matches" not in crossing[0], f"an asteroid that crossed between exposures, far in each, is not the dot: {crossing}")
         # the facts follow the patch: a different wavelength shows, though the verdict's words are the same
         await pg.evaluate("__lapse.state.m.lam0 = 1.234; document.getElementById('split').click(); document.getElementById('split').click()")
         check("1.23 µm" in await pg.text_content("#pv-facts"), f"facts: a new wavelength shows ({await pg.text_content('#pv-facts')})")

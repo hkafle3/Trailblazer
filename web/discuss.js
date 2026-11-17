@@ -153,7 +153,7 @@ export function discuss(page) {
     if (openOn?.[1] !== f) return;
     if (offer(m, f)) q('[data-f=its]').focus();
   }
-  // "It's X": the passer the page's verdict put on the dot (timelapse.html knownAtMiddle). SkyBoT's answers can land after
+  // "It's X": the passer the page's verdict put on the dot (timelapse.html identityAt, live/identity.js). SkyBoT's answers can land after
   // the sheet opened, so frame() asks again on every redraw until it is offered or the person has started on the form.
   let offered = false;
   function offer(m, f) {

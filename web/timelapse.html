@@ -216,7 +216,8 @@ import { recenterable, panToSky, heatCell } from './live/recenter.js';
 import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
 import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
 import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Report a new find, and Discovered for reported dots
-import { depthView } from './live/depth.js';   // the Depth tab: the beam and the Distances list, from /api/depth
+import { depthView } from './live/depth.js';
+import { middle, identify } from './live/identity.js';   // the one rule for what the dot in the middle is   // the Depth tab: the beam and the Distances list, from /api/depth
 import { MJD0 } from './skymap.js';
 import * as candTrack from './live/candtrack.js';   // &cand=: a detector candidate's track and votes
 
@@ -682,12 +683,16 @@ function verdict(m, f) {
   // a detector candidate (&cand=) is a dot on its own track, not the source the patch measures in its middle: the
   // middle's motion and Gaia match say nothing about it, so the verdict claims neither
   if (candTrack.on()) return { parts: [`${candTrack.title()} is a detector candidate. Its track is the dotted line; nothing here checks it against Gaia or the asteroid catalogs, so it is not called known.`], star: null, known: false, who: candTrack.title() };
-  const mo = m.motion, g = m.gaia, live = m.key.startsWith('live'), name = candTrack.title() ?? (live ? null : m.name);
-  const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : m.ref ? { total: m.ref.total, label: m.ref.source, tol: 35 } : null;
+  const live = m.key.startsWith('live'), name = candTrack.title() ?? (live ? null : m.name);
+  // what is the dot in the middle in this visit (live/identity.js, the one rule): the catalog star only when Gaia's (or a
+  // published) place for it this visit is on the dot; a passer only when SkyBoT puts it on the dot at an exposure's time
+  const id = identityAt(m, f), onDot = !!id.star.match;
+  const mo = m.motion, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
+  const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : pub ? { total: pub.total, label: pub.source, tol: 35 } : null;
   const starName = name ? `${ref?.label === 'Gaia' || g ? "Gaia's " : ''}${name}` : 'a star in Gaia';
-  // match: what the middle was matched to, for every other place that names "the target" (Depth, Discuss): the Gaia
-  // star the pipeline matched by position and proper motion ({ gaia: pmra, pmdec }), or a passer on the dot ({ sso })
-  const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g && !m.t ? { kind: 'gaia', pmra: g.pmra, pmdec: g.pmdec } : null };
+  // match: what the dot was matched to, for every other place that names "the target" (Depth, Discuss): the Gaia star
+  // ({ gaia: its proper motion }) or a passer on the dot ({ sso: its name })
+  const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g ? { kind: 'gaia', pmra: g.pmra, pmdec: g.pmdec } : null };
   const seen = m.frames.filter(x => x.x != null).length;
   if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
   else if (mo && ref) {
@@ -697,16 +702,12 @@ function verdict(m, f) {
     else out.parts.push(`Moved about ${arc(mo.total)} arcseconds a year, but ${ref.label} says ${arc(ref.total)}, so this measurement is likely off. `, { ok: `${name ?? 'The star'} is already known.` });
   } else if (g && g.total <= 1) { out.star = name ?? 'a Gaia star'; out.known = true; out.parts.push(`Stays put: Gaia says it moves ${g.total.toFixed(2)} arcseconds a year, too little to see here. `, { ok: `${name ? starName : 'A Gaia star'}, already known.` }); }
   else if (g) { out.star = name ?? 'a Gaia star'; out.known = true; out.parts.push(`Gaia says it moves ${arc(g.total)} arcseconds a year, but too few clean positions here to measure it. `, { ok: 'Already known.' }); }
-  else if (mo) out.parts.push(`Seems to move ${arc(mo.total)} arcseconds a year${mo.err != null && Number.isFinite(mo.err) ? `, give or take ${arc(mo.err)}` : ''}. ${live ? 'No Gaia star is here to match it.' : 'It is not in Gaia (too faint in visible light).'}`);
+  else if (mo) out.parts.push(`Seems to move ${arc(mo.total)} arcseconds a year${mo.err != null && Number.isFinite(mo.err) ? `, give or take ${arc(mo.err)}` : ''}. ${id.star.nearby ? '' : live || m.gaia ? 'No Gaia star is on the dot to match it.' : 'It is not in Gaia (too faint in visible light).'}`);
   else if (m.frames.some(x => x.blob)) out.parts.push('Too bright to measure: this star saturates the detector, so no motion can be read.');
   else out.parts.push(`No motion measured: the middle shows a source in ${seen} of ${m.frames.length} visits, and a motion needs 3 over 6 months.`);
-  // known comets and asteroids SkyBoT put in this visit, and whether one is the dot in the middle
-  // A known comet or asteroid is the dot in the middle only when SkyBoT puts it on that dot at the visit's time (its
-  // positions at the exposure times, interpolated to the visit's middle): within two SPHEREx pixels, about the PSF's
-  // width plus a measured position's error, and never wider for how far it moves (only a star's own proper motion,
-  // in the Gaia match the pipeline makes, widens a match). Closer than 60″ but not on the dot is "nearby", said as
-  // such; it does not make the dot known.
-  const k = f.known, { hit, near } = k ? knownAtMiddle(m, f) : {};
+  if (id.star.nearby) out.parts.push(` Nearby: the catalog's place for ${name ?? 'the Gaia star here'} is ${Math.round(id.star.nearby.d)} arcseconds from the dot this visit, too far to be it.`);
+  // known comets and asteroids SkyBoT put in this visit: on the dot, nearby, or just passing through
+  const k = f.known, hit = id.pass.match, near = id.pass.nearby;
   if (hit) { out.known = true; out.who = hit.name; out.match = { kind: 'sso', name: hit.name }; out.parts.push(' ', { ok: `The dot in the middle matches the known ${hit.kind} ${hit.name}.` }); }
   else if (near) out.parts.push(` Nearby: the known ${near.kind} ${near.name} passed ${Math.round(near.d)} arcseconds from the dot in the middle, too far to be it.`);
   else if (k?.bodies.size) {
@@ -715,26 +716,17 @@ function verdict(m, f) {
   }
   return out;
 }
-// [east, north] of a body at time t, between its two nearest positions [t, east, north] (sorted by t), or the nearer end
-function bodyAt(pts, t) {
-  if (pts.length === 1 || t <= pts[0][0]) return pts[0].slice(1);
-  if (t >= pts.at(-1)[0]) return pts.at(-1).slice(1);
-  const k = pts.findIndex(p => p[0] >= t), [t0, e0, n0] = pts[k - 1], [t1, e1, n1] = pts[k], u = (t - t0) / (t1 - t0);
-  return [e0 + u * (e1 - e0), n0 + u * (n1 - n0)];
-}
-function knownAtMiddle(m, f) {
-  // the dot in the middle: the patch's centre (the spot asked for, or clicked), at the source measured there when one
-  // was measured within two pixels of it (a better position); a source measured farther off is something else
-  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, ms = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null;
-  const tgt = ms && Math.hypot(...ms) <= 2 * a ? ms : [0, 0];   // east, north of the patch centre, arcsec
-  let hit = null, near = null;
-  for (const [name, b] of f.known?.bodies ?? []) {
-    const pts = b.pts.map(([t, ra, dec]) => [t, ...offset(m, ra, dec)]), [e, n] = bodyAt(pts, f.mjd);
-    const d = Math.hypot(e - tgt[0], n - tgt[1]), r = 2 * a;
-    if (d <= r && (!hit || d < hit.d)) hit = { name, kind: b.kind, mag: b.mag, t: b.pts.reduce((x, p) => (Math.abs(p[0] - f.mjd) < Math.abs(x - f.mjd) ? p[0] : x), b.pts[0][0]), d };
-    else if (d > r && d <= 60 && (!near || d < near.d)) near = { name, kind: b.kind, d };
-  }
-  return { hit, near };
+// the identity rule (live/identity.js) on this patch and visit: the dot, the catalog star's place this visit (Gaia's, or
+// a published motion's: pred_east/north, its own proper motion applied; not in &t= views, where the place is a comet's),
+// and each passer at each exposure's own time. { mid, star: { match, nearby }, pass: { match, nearby } }; a passer match
+// carries the exposure time it matched at (t) and its magnitude, for the Discuss sheet.
+function identityAt(m, f) {
+  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, mid = middle(f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null, a);
+  const stars = (m.gaia || m.ref) && m.t == null && f.pred_east != null ? [{ kind: 'star', name: m.name, pos: [[f.pred_east, f.pred_north]] }] : [];
+  const passers = [...(f.known?.bodies ?? [])].map(([name, b]) => ({ kind: b.kind, name, mag: b.mag, pts: b.pts, pos: b.pts.map(([, ra, dec]) => offset(m, ra, dec)) }));
+  const star = identify(mid, stars, a), pass = identify(mid, passers, a);
+  if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.pts[k][0]; }
+  return { mid, a, star, pass };
 }
 let saidKey = '';
 function sayVerdict(m, f) {
@@ -1153,7 +1145,7 @@ function back() {
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
-talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => knownAtMiddle(state.m, f).hit,
+talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => identityAt(state.m, f).pass.match,
   opening: () => { if (spec.at || spec.mode) closeSpec(false); } });   // one card in the right column: the sheet closes the Spectrum card
 window.__lapse = { state, recenter, verdict, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
@@ -1453,17 +1445,16 @@ const depth = depthView({
   target(m, f, all) {
     const mt = state.verdict?.match; if (!mt) return -1;
     if (mt.kind === 'sso') return all.findIndex(p => p.src === 'sso' && p.o.name === mt.name);
-    const G = m.grid, half = G * m.arcsec_per_pixel / 2, tx = f.x != null ? (f.x - (G - 1) / 2) * m.arcsec_per_pixel : 0, ty = f.y != null ? (f.y - (G - 1) / 2) * m.arcsec_per_pixel : 0;
-    return all.findIndex(p => {
-      if (p.src !== 'stars' || Math.abs(p.o.pmra - mt.pmra) > 1 || Math.abs(p.o.pmdec - mt.pmdec) > 1) return false;
-      const [u, v] = this.onScreen(m, p.ra, p.dec, { year: f.year, pmra: p.o.pmra, pmdec: p.o.pmdec });
-      return Math.hypot(u * half - tx, v * half - ty) <= 10;   // u runs west, as FITS x does
-    });
+    // the Gaia star the verdict matched: the same proper motion (within 1 mas/yr both ways), on the dot by the same rule
+    const { mid } = identityAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
+    const near = all.map((p, i) => [p, i]).filter(([p]) => p.src === 'stars' && Math.abs(p.o.pmra - mt.pmra) <= 1 && Math.abs(p.o.pmdec - mt.pmdec) <= 1)
+      .map(([p, i]) => { const [u, v] = this.onScreen(m, p.ra, p.dec, { year: f.year, pmra: p.o.pmra, pmdec: p.o.pmdec }); return { i, pos: [[-u * half, v * half]] }; });   // u runs west
+    return identify(mid, near, m.arcsec_per_pixel).match?.i ?? -1;
   },
-  // where the middle's source is on the region (-1 to 1, north up) and what to call it, for its "distance unknown" mark
+  // where the dot is on the region (-1 to 1, north up) and what to call it, for its "distance unknown" mark
   middle(m, f) {
-    const c = (m.grid - 1) / 2, half = m.grid / 2;
-    return { u: f.x != null ? (f.x - c) / half : 0, v: f.y != null ? (f.y - c) / half : 0, name: candTrack.title() ?? (m.key.startsWith('live') ? 'the dot in the middle' : m.name) };
+    const { mid } = identityAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
+    return { u: -mid[0] / half, v: mid[1] / half, name: candTrack.title() ?? (m.key.startsWith('live') ? 'the dot in the middle' : m.name) };
   },
   targetName: m => candTrack.title() ?? (m.key.startsWith('live') ? null : m.name),
   matchKey: () => JSON.stringify(state.verdict?.match ?? null),   // what the target pick depends on, besides the depth answer

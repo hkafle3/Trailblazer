@@ -189,24 +189,31 @@ export function depthView(page) {
     if (p.src === 'galaxies') return L ? `Galaxy ${L} · ${p.o.id}` : p.o.id;
     return L ? `Star ${L}` : `Star, G ${p.o.g?.toFixed(1) ?? '?'}`;
   }
+  // what is in the photo: the patch square (the API's cone is wider), a star at its place this visit
+  function inPatch(ra, dec, pm) { const [u, v] = page.onScreen(data.m, ra, dec, pm); return Math.abs(u) <= 1 && Math.abs(v) <= 1; }
+  function placedHere() {
+    const year = data.f.year ?? 2026;
+    return placedOf(data.d).filter(p => inPatch(p.ra, p.dec, p.src === 'stars' ? { year, pmra: p.o.pmra, pmdec: p.o.pmdec } : null));
+  }
+  const unknownHere = src => (data.d.sources[src]?.unknown ?? []).filter(o => inPatch(o.ra, o.dec, null));
   function paintList() {
     list.replaceChildren();
     if (!data?.d) return;
-    const all = placedOf(data.d); picked = choose(all);
+    const all = placedHere(); picked = choose(all);
     const S0 = data.d.sources, frag = document.createDocumentFragment();
     all.forEach((p, i) => frag.append(row(i === picked.target ? 'a' : '', nameOf(p, i),
       `${how[p.src]}, ${errText(p.o)}${p.src === 'stars' ? ` · Gaia DR3 ${p.o.id}` : ''}`, lyText(p.ly, true).replace(/ ly$/, ''), p.key)));
     // no distance: named rows with their reasons, then the count of stars Gaia measured too roughly
-    for (const src of ['sso', 'galaxies']) for (const o of S0[src]?.unknown ?? [])
+    for (const src of ['sso', 'galaxies']) for (const o of unknownHere(src))
       frag.append(row('u', o.name ?? o.id, `${how[src]}: ${o.reason}`, 'unknown', `${src}?:${o.id ?? o.name}`));
     if (picked.target < 0) {   // the patch's own object has no catalog distance: said first among the unknowns, never borrowed
       const mid = page.middle(data.m, data.f), cap = mid.name[0].toUpperCase() + mid.name.slice(1);
       frag.append(row('u a', cap, 'no catalog distance for it here', 'unknown', 'middle?:unknown'));
     }
     const su = S0.stars?.unknown_count;
-    if (su) frag.append(row('u', `${su.toLocaleString('en-US')} more star${su === 1 ? '' : 's'}`, 'Gaia parallax too rough, or the star not clean enough to trust it', 'unknown'));
+    if (su) frag.append(row('u', `${su.toLocaleString('en-US')} more star${su === 1 ? '' : 's'} in and around the patch`, 'Gaia parallax too rough, or the star not clean enough to trust it', 'unknown'));
     const gu = S0.galaxies?.unknown_count, gl = (S0.galaxies?.unknown ?? []).length;
-    if (gu > gl) frag.append(row('u', `${(gu - gl).toLocaleString('en-US')} more galaxies`, 'no usable redshift in SIMBAD', 'unknown'));
+    if (gu > gl) frag.append(row('u', `${(gu - gl).toLocaleString('en-US')} more galaxies in and around the patch`, 'no usable redshift in SIMBAD', 'unknown'));
     list.append(frag);
     // the sources that did not answer in full, said plainly
     const notes = [];
@@ -268,7 +275,7 @@ export function depthView(page) {
   let scale = null, shown = { rings: [], dots: [] };   // shown: which objects the beam draws as named rings, which as dots (for tests)
   function build() {   // the objects of the answer on screen: positions, the scale, the named ones
     if (!open || !data?.d || !init()) return;
-    const all = placedOf(data.d), { m } = data, year = data.f.year ?? 2026;
+    const all = placedHere(), { m } = data, year = data.f.year ?? 2026;
     // the scale: log10 of light-years across [lo, hi], drawn from 12% to 86% of the way to the photo
     const lg = all.map(p => Math.log10(p.ly));
     let lo = Math.min(...lg, 0) - .4, hi = Math.max(...lg, 3) + .3; if (hi - lo < 2) hi = lo + 2;
@@ -293,7 +300,7 @@ export function depthView(page) {
     scene3.cloud.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); scene3.cloud.geometry.computeBoundingSphere();
     // what has a position and no distance: dashed rings by the photo
     const up = [];
-    for (const src of ['sso', 'galaxies']) for (const o of data.d.sources[src]?.unknown ?? []) { const [u, v] = page.onScreen(m, o.ra, o.dec, null); up.push(...at(u, v, .95).toArray()); }
+    for (const src of ['sso', 'galaxies']) for (const o of unknownHere(src)) { const [u, v] = page.onScreen(m, o.ra, o.dec, null); up.push(...at(u, v, .95).toArray()); }
     scene3.unk.geometry.setAttribute('position', new THREE.Float32BufferAttribute(up, 3));
     // the scale marks: one decade of light-years per mark, at most three, spread out
     for (const k of scene3.marks) k.lab.remove();
