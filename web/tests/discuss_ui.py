@@ -82,7 +82,8 @@ async def main():
         await pg.wait_for_selector("#talk", state="visible")
         await pg.wait_for_timeout(2500)
         assert await pg.locator("#talk").is_visible() and not await pg.evaluate("__lapse.state.playing"), "playback went on and closed the sheet"
-        assert not await pg.locator(".pv-who").is_visible() and not await pg.locator(".pv-report").is_visible(), "the sheet did not replace the right column"
+        if W > 900:   # a wide screen: the sheet takes the right column's place (a phone keeps one column, the sheet over its foot)
+            assert not await pg.locator(".pv-who").is_visible() and not await pg.locator(".pv-report").is_visible(), "the sheet did not replace the right column"
         assert "RA" in await pg.locator("#talk [data-f=where]").text_content()
         assert await pg.locator("#talk .talk-form").is_visible() and not await pg.locator("#talk .match").is_visible(), "a known object was offered with none near"
         assert "tester" in await pg.locator("#talk [data-f=as]").text_content()

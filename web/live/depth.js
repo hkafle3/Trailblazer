@@ -129,7 +129,7 @@ export function depthView(page) {
   async function fetchNow(url, m, f) {
     ctl?.abort(); clearTimeout(retry);
     const c = ctl = new AbortController();
-    if (!data || data.url !== url) { data = null; say('Asking the catalogs how far each thing is...'); paintList(); }
+    if (!data || data.url !== url) { data = null; say('Asking the catalogs how far each thing is...'); paintList(); clearBeam('Asking the catalogs how far each thing is...'); }
     let d;
     try {
       const r = await fetch(url, { signal: c.signal });
@@ -138,17 +138,29 @@ export function depthView(page) {
     } catch (e) {
       if (c.signal.aborted) return;
       data = { url, m, f, failed: String(e.message || e) }; say(`Could not ask the catalogs: ${data.failed}. Trying again in 30 s.`); paintList();
+      clearBeam(`Could not ask the catalogs for distances (${data.failed}). Trying again in 30 s.`, true);
       retry = setTimeout(() => fetchNow(url, m, f), 30000);
       return;
     }
     if (asked !== url) return;
     data = { url, m, f, d };
-    paintList(); build();
+    msg(''); paintList(); build();
     // a pending source is asked again after retry_after (it keeps fetching in the background), at most 8 times
     const wait = Object.values(d.sources).filter(s => s.status === 'pending').map(s => s.retry_after || 5);
     if (wait.length && tries++ < 8) retry = setTimeout(() => fetchNow(url, m, f), 1000 * Math.min(...wait));
   }
   function say(t) { status.textContent = t; }
+  function msg(t, err = false) { const el = box.querySelector('.xp-d3-msg'); if (el) { el.textContent = t; el.classList.toggle('err', err); } box.dataset.state = err ? 'error' : t ? 'asking' : 'ready'; }
+  // the beam of the last answer goes at once: no rings, dots, names or scale marks from another patch or visit
+  function clearBeam(t, err = false) {
+    msg(t, err); shown = { rings: [], dots: [] }; box.dataset.objects = box.dataset.rings = box.dataset.dots = '0';
+    if (!scene3) return;
+    for (const s of scene3.beads) { s.sp.removeFromParent(); s.lab.remove(); }
+    for (const k of scene3.marks) k.lab.remove();
+    scene3.beads = []; scene3.marks = []; scene3.dots = [];
+    for (const p of [scene3.cloud, scene3.unk]) p.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    render();
+  }
 
   // ---------- the list ----------
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -240,7 +252,7 @@ export function depthView(page) {
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     cv.addEventListener('keydown', e => {
       const k = { ArrowLeft: [-.12, 0], ArrowRight: [.12, 0], ArrowUp: [0, -.08], ArrowDown: [0, .08] }[e.key]; if (!k) return;
-      yaw.a = Math.max(-1.3, Math.min(1.9, yaw.a + k[0])); yaw.p = Math.max(-.15, Math.min(.9, yaw.p + k[1])); render(); e.preventDefault();
+      yaw.a = Math.max(-1.3, Math.min(1.9, yaw.a + k[0])); yaw.p = Math.max(-.15, Math.min(.9, yaw.p + k[1])); render(); e.preventDefault(); e.stopPropagation();
     });
     new ResizeObserver(() => open && render()).observe(box);
     return true;

@@ -188,6 +188,48 @@ async def main():
         check(True, f"unavailable: said plainly: {await pg.text_content('#dist-status')}")
         await ctx.close()
 
+        # ---------- 9: honest states (Codex review, 2026-11-17) ----------
+        ctx, pg = await page(b)
+        # a detector candidate is not the patch's middle: no motion or catalog match is claimed for it
+        await pg.route("**/data/candidates.json", lambda r: r.fulfill(status=404, body="not found"))
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&cand=K-0001&sample=1"); await pg.wait_for_function(READY + " && !!window.__cand?.ring")
+        say, note = await pg.evaluate("['pv-say', 'state-note'].map(i => document.getElementById(i).textContent)")
+        check("detector candidate" in say and "known" not in say.replace("not called known", "") and "already known" not in note and "Gaia's" not in say,
+              f"candidate: the verdict claims no motion or match for it: {say} / {note}")
+        await pg.unroute("**/data/candidates.json")
+        # the arrows a tab or the 3D view use do not step the visit
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
+        i0 = await pg.evaluate("__lapse.state.i")
+        await pg.focus("#tab-photo"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(200)
+        i1, v1 = await pg.evaluate("[__lapse.state.i, document.getElementById('tab-depth').getAttribute('aria-selected')]")
+        await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects > 0", timeout=60000)
+        await pg.focus("#depth3d canvas"); await pg.keyboard.press("ArrowLeft"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(200)
+        check(i1 == i0 and v1 == "true" and await pg.evaluate("__lapse.state.i") == i0, f"arrows: the tabs and the 3D view keep the visit ({i0} -> {i1}, Depth {v1})")
+        # another visit whose distances cannot be had: the old beam goes at once and the failure is said over it
+        await pg.route("**/api/depth**", lambda r: r.fulfill(status=503, json={"error": "archive down"}))
+        await pg.focus("#play"); await pg.keyboard.press("Home")
+        await pg.wait_for_function("document.getElementById('depth3d').dataset.state === 'error'", timeout=20000)
+        st = await pg.evaluate("(b => [b.dataset.objects, b.dataset.rings, b.dataset.dots, b.querySelectorAll('.lbl:not(.tip):not(.mark)').length, document.getElementById('depth-msg').textContent, document.querySelectorAll('#dist-list li').length])(document.getElementById('depth3d'))")
+        check(st[:3] == ["0", "0", "0"] and "Could not ask the catalogs" in st[4] and st[5] == 0, f"Depth failure: the old beam and list are gone, the failure is said ({st})")
+        await pg.unroute("**/api/depth**")
+        # Copy link keeps the visit on screen: the link reopens that visit, and Depth asks for its date
+        await pg.focus("#play"); await pg.keyboard.press("End"); await pg.wait_for_timeout(300)
+        last = await pg.evaluate("[__lapse.state.i, __lapse.state.m.frames[__lapse.state.i].mjd.toFixed(4)]")
+        await pg.click("#share-depth"); await pg.wait_for_timeout(200)
+        clip = await pg.evaluate("navigator.clipboard.readText()")
+        p2 = await ctx.new_page(); await p2.goto(clip); await p2.wait_for_function(READY)
+        await p2.wait_for_function("!!window.__depth?.url", timeout=20000)
+        got = await p2.evaluate("[__lapse.state.i, __depth.url]")
+        check("day=" in clip and got[0] == last[0] and f"t={last[1]}" in got[1], f"Copy link: the link reopens visit {last[0]} and Depth asks for its date ({clip} -> visit {got[0]}, {got[1]})")
+        await p2.close()
+        # a live spot whose images cannot be found: the failure shows beside the photo with Advanced shut
+        await pg.route("**/api/images**", lambda r: r.fulfill(status=502, json={"error": "IRSA is not answering"}))
+        await pg.goto(f"{BASE}/timelapse.html?ra=10.1234&dec=-20.5678&det=D1")
+        await pg.wait_for_function("document.getElementById('status').className === 'err'", timeout=60000)
+        err = await pg.evaluate("[document.getElementById('adv-btn').getAttribute('aria-expanded'), document.getElementById('pv-err').textContent, (r => r.width > 0 && r.height > 0)(document.getElementById('pv-err').getBoundingClientRect())]")
+        check(err[0] == "false" and err[1] and err[2], f"image failure: said beside the photo with Advanced shut ({err[1]})")
+        await ctx.close()
+
         # ---------- 8: phone ----------
         ctx, pg = await page(b, phone=True)
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY); await pg.wait_for_timeout(300)

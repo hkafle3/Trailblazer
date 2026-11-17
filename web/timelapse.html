@@ -36,6 +36,7 @@
     <div class="pv-title"><a class="pv-back" href="explore.html" aria-label="Back to Explore"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4M10 6l-6 6 6 6"/></svg></a><h1 id="pv-name"></h1></div>
     <p class="pv-say" id="pv-say"></p>
     <p class="pv-facts" id="pv-facts"></p>
+    <p class="pv-err" id="pv-err" role="alert"></p>
   </section>
 
   <div class="pv-frame">
@@ -50,6 +51,7 @@
       <p class="xp-d3-note"><span class="w">Distances are real. Spacing is squeezed so near and far both fit.</span><span class="n">Real distances, squeezed to fit</span></p>
       <p class="xp-d3-hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 0 1 13-5.1M19.5 12a7.5 7.5 0 0 1-13 5.1"/><path d="M17.8 3.4v3.8H14M6.2 20.6v-3.8H10"/></svg>Drag to turn</p>
       <p class="xp-d3-nogl">This browser cannot draw the 3D view. The Distances list has every distance.</p>
+      <p class="xp-d3-msg" id="depth-msg" role="status"></p>
     </div>
     <!-- while a time-lapse builds: what it is doing and how far along (the status line in Advanced says it to screen readers) -->
     <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
@@ -677,6 +679,9 @@ function knownBadge(x, y, r = 9) {
 // object is in the middle, who: what to call it }.
 const arc = x => (x >= 10 ? Math.round(x) : +x.toFixed(1)).toLocaleString('en-US');
 function verdict(m, f) {
+  // a detector candidate (&cand=) is a dot on its own track, not the source the patch measures in its middle: the
+  // middle's motion and Gaia match say nothing about it, so the verdict claims neither
+  if (candTrack.on()) return { parts: [`${candTrack.title()} is a detector candidate. Its track is the dotted line; nothing here checks it against Gaia or the asteroid catalogs, so it is not called known.`], star: null, known: false, who: candTrack.title() };
   const mo = m.motion, g = m.gaia, live = m.key.startsWith('live'), name = candTrack.title() ?? (live ? null : m.name);
   const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : m.ref ? { total: m.ref.total, label: m.ref.source, tol: 35 } : null;
   const starName = name ? `${ref?.label === 'Gaia' || g ? "Gaia's " : ''}${name}` : 'a star in Gaia';
@@ -991,6 +996,7 @@ const statusEl = document.getElementById('status');
 const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
 let busyWas = false;
 function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : '';
+  document.getElementById('pv-err').textContent = err ? text : '';   // under the name and verdict, where it is seen with Advanced shut
   if (document.body.classList.toggle('busy', !!job && !err) !== busyWas) { busyWas = !busyWas; draw(); }   // names move off the caption, and back
   moreBelow(); }
 // a card whose content runs past its height fades out at the bottom until it is scrolled to the end (patch.css .more)
@@ -1439,7 +1445,7 @@ for (const t of viewTabs) t.addEventListener('click', () => setView(t.dataset.vi
 document.querySelector('.pv-views').addEventListener('keydown', e => {   // tabs: arrows move between them
   const k = { ArrowLeft: -1, ArrowRight: 1, Home: -99, End: 99 }[e.key]; if (!k) return;
   const i = Math.max(0, Math.min(viewTabs.length - 1, viewTabs.findIndex(t => t.dataset.view === pvView) + k));
-  setView(viewTabs[i].dataset.view, true); viewTabs[i].focus(); e.preventDefault();
+  setView(viewTabs[i].dataset.view, true); viewTabs[i].focus(); e.preventDefault(); e.stopPropagation();
 });
 
 // ---------- Advanced: the drawer with every control. Open or shut, it stays that way next time (localStorage ch.adv) ----------
@@ -1460,7 +1466,9 @@ document.getElementById('split').onchange = e => { state.split = e.target.checke
 // ---------- Copy link to this view: the address already names the spot, the visit's band, the layers and the view ----------
 for (const b of [document.getElementById('share'), document.getElementById('share-depth')]) b.onclick = async () => {
   const t = b.querySelector('span');
-  try { await navigator.clipboard.writeText(location.href); t.textContent = 'Link copied'; }
+  const u = new URL(location.href);
+  if (state.m) u.searchParams.set('day', String(Math.round(state.m.frames[state.i].mjd - MJD0)));   // the visit on screen (nearestVisit opens it)
+  try { await navigator.clipboard.writeText(u.href.replace(/%2C/g, ',')); t.textContent = 'Link copied'; }
   catch { t.textContent = 'Copy the address bar to share'; }
   setTimeout(() => { t.textContent = 'Copy link to this view'; }, 2000);
 };
@@ -1505,6 +1513,7 @@ for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat
   document.getElementById(id).onchange = e => { state[key] = e.target.checked; draw(); };
 addEventListener('keydown', e => {
   if (!state.m || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.target === playBtn) return;   // typing a comment moves the caret, not the visit
+  if (e.defaultPrevented || e.target.closest?.('.pv-views, #depth3d')) return;   // the tabs and the 3D view use the arrows themselves
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); state.i = (state.i + (e.key === 'ArrowRight' ? 1 : -1) + state.m.frames.length) % state.m.frames.length; draw(); }
 });
 
