@@ -179,7 +179,6 @@ async def run(b, name, opts):
     assert 12 < px < 40, f"{name}: a detector pixel is {px:.1f} window px wide at the push-in"
     got = await look(u, [[sx, sy], [sx + 2 * px, sy], [sx - 2 * px, sy], [sx, sy + 2 * px], [sx, sy - 2 * px]], px / 4)
     assert got[0][0] > 150 and all(g[0] < 70 for g in got[1:]), f"{name}: Sheba's pixel is not one lit square among dark ones: {got}"
-    before = await look(m["SH_U"] - .3, [[vw / 2, vh / 3]], 1)   # and before the push the same test finds no such thing
     # the deck: its sheets are drawn (lines crossed along its near edge), some are empty, and the comet blazes in the CO2 band
     u = m["DK_U"] + m["D_LIT"] + 3; d = (await probe(u))["deck"]; (ax, ay), (bx, by) = d["scan"]; n = int(max(abs(bx - ax), abs(by - ay)))
     line = [g[1] for g in await look(u, [[ax + (bx - ax) * i / n, ay + (by - ay) * i / n] for i in range(n + 1)], 0)]

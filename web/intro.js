@@ -970,7 +970,7 @@ function edges(x, y) {
 const css = q => { tmp.copy(q).project(camera); return [(tmp.x + 1) / 2 * W, (1 - tmp.y) / 2 * H]; };
 function probe(U) {   // where things are in the frame at film time U (window pixels)
   render(U); const c = ZM.corners.map(q => photoPoint(q[0], q[1]));
-  return { sheba: css(sheba.pos), pixel: c[0].distanceTo(c[1]) / ZM.n / (camera.position.distanceTo(sheba.pos) * Math.tan(camera.fov / 2 * D2R) * 2 / H),
+  return { sheba: css(sheba.pos), pixel: c[0].distanceTo(c[1]) / ZM.n / (camera.position.distanceTo(photoPoint(ZM.at[0], ZM.at[1])) * Math.tan(camera.fov / 2 * D2R) * 2 / H),
     photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), deck: deckFrame.info };
 }
 function look(U, pts, r = 2) {   // the brightness really drawn round each point at film time U: [mean, max] of 0 to 255 over a square of 2r + 1 window pixels
