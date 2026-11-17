@@ -1,0 +1,44 @@
+{
+ "version": "eval-v4 (v3 b5f0c1b + 7b8147a + D5 repair + A10, A11, A14-A18)",
+ "w2_from_gaia": {
+  "poly_bp_rp": [
+   -0.21929338891584,
+   1.0801282910138197,
+   -0.23681859020730217,
+   1.1973683750441562
+  ],
+  "sigma": 0.1629039696887499,
+  "note": "W2 = G - poly(BP-RP)"
+ },
+ "summary": {
+  "iso": {
+   "n": 371,
+   "rate": 0.7681940700808625,
+   "pos_p68": 1.3614323267042205,
+   "pm_p68": 2.641617664370903,
+   "radial_mean": 0.0,
+   "radial_sd": 0.0,
+   "pm_radial_mean": 0.0,
+   "dmag_median": 0.09239419203401944
+  },
+  "crowd": {
+   "n": 367,
+   "rate": 0.9618528610354223,
+   "pos_p68": 1.7088654274795902,
+   "pm_p68": 1.7839042602017479,
+   "radial_mean": 0.01747733362078957,
+   "radial_sd": 0.07592164463268283,
+   "pm_radial_mean": 0.000911553019306595,
+   "dmag_median": 0.0704657041790746
+  }
+ },
+ "crowd_model": {
+  "row_prob": 0.98,
+  "pos_scale": 1.255196746808886,
+  "pm_scale": 1.0,
+  "bias_arcsec": 0.01747733362078957,
+  "pm_bias": 0.000911553019306595,
+  "dmag": -0.021928487854944834
+ },
+ "note": "crowded plants: row withheld with 1 - row_prob; donor errors x ERR_INFLATE x scale; position (and motion) shifted toward the neighbour by the bias; W2 offset dmag"
+}
