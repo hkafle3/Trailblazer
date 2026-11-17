@@ -601,19 +601,31 @@ function flightPath() {
     const A = way[k], B = way[k + 1], hh = (d, e) => e * Math.pow(1 + d * d / e / e, FLY_P / 2); let lo = A.f, hi = B.f;
     for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; hh(m - A.f, A.e) < hh(B.f - m, B.e) ? lo = m : hi = m; }
     const sA = Math.asinh((lo - A.f) / A.e), sB = Math.asinh((B.f - lo) / B.e);
-    for (let i = 1; i <= n; i++) { const go = k ? 1 + 1.4 * sm(sA * i / n / 1.2) : 1; put(Math.pow(Math.cosh(sA * (i - .5) / n), 1 - FLY_P) * sA / n / go, A.f + A.e * Math.sinh(sA * i / n), sg(A.e * go, sA * i / n)); }   // go: it leaves a body faster than it came
+    for (let i = 1; i <= n; i++) { const go = k ? 1 + 1.4 * sm(sA * i / n / 1.2) * (1 - sm((i / n - .55) / .45)) : 1; put(Math.pow(Math.cosh(sA * (i - .5) / n), 1 - FLY_P) * sA / n / go, A.f + A.e * Math.sinh(sA * i / n), sg(A.e * go, sA * i / n)); }   // go: it leaves a body faster than it came
     for (let i = n - 1; i >= 0; i--) put(Math.pow(Math.cosh(sB * (i + .5) / n), 1 - FLY_P) * sB / n, B.f - B.e * Math.sinh(sB * i / n), sg(B.e, sB * i / n));
   }
-  const k = FLY_S / t.at(-1); for (let i = 1; i < t.length; i++) { t[i] *= k; phi.push(phi[i - 1] + (sig[i] + sig[i - 1]) / 2 * (t[i] - t[i - 1])); }
+  const k = FLY_S / t.at(-1); for (let i = 1; i < t.length; i++) t[i] *= k;
+  // The rush comes on and goes off over about half a second, never in a frame: sig is averaged over that much time either side, then scaled back up to the same full rush
+  { const I = [0], top = Math.max(...sig); for (let i = 1; i < t.length; i++) I.push(I[i - 1] + (sig[i] + sig[i - 1]) / 2 * (t[i] - t[i - 1]));
+    const It = q => flyAt({ t }, Math.min(FLY_S, Math.max(0, q)), I), h = .2;
+    for (let pass = 0; pass < 2; pass++) { const sm2 = t.map(q => (It(q + h) - It(q - h)) / (2 * h)); for (let i = 0; i < t.length; i++) sig[i] = sm2[i]; for (let i = 1; i < t.length; i++) I[i] = I[i - 1] + (sig[i] + sig[i - 1]) / 2 * (t[i] - t[i - 1]); }
+    const k = top / Math.max(...sig); for (let i = 0; i < t.length; i++) { sig[i] *= k; if (i) phi.push(I[i] * k); } }
+  // when, in the flight's own seconds, the camera is at a given place on the beam. Each body is let go of over time, not over distance (the camera
+  // is quick as it passes one): the glance at it eases off during rel, ending just before it is passed, so the body slides to the side and out of the picture; the galaxy's flat photo fades during out
+  const when = ff => { let j = 0; while (j < f.length - 1 && f[j] < ff) j++; return t[j]; };
+  const rel = way.slice(1, -1).map(q => { const b = when(q.bf - 1.2 * q.e0); return [b - .9, b]; }), out = way.slice(1, -1).map(q => { const b = when(q.bf - .5 * q.e0); return [b - .6, b]; });
   // each body's light leaves it where the camera is slowest before it, and lands on the photo RAY_S seconds later
   const emit = beads.map((b, i) => { let j = 0; while (f[j] < way[i + 1].f) j++; return Math.min(FLY0 + (t[j] - .25) / FLY_S * (FLY1 - FLY0), FLY1 - .45 - RAY_T); });
-  return fl = { key, way, L, t, f, sig, phi, emit, fov: end > fitEnd ? fovFill(HALF * st.R, L * (1 - end), FILL, .9) : flyFov(), cu: pchip(way.map(q => [q.bf, q.u])), cv: pchip(way.map(q => [q.bf, q.v])) };
+  return fl = { key, way, L, t, f, sig, phi, emit, rel, out, fov: end > fitEnd ? fovFill(HALF * st.R, L * (1 - end), FILL, .9) : flyFov(), cu: pchip(way.map(q => [q.bf, q.u])), cv: pchip(way.map(q => [q.bf, q.v])) };
+}
+function flyAt(F, q, a) {   // the value of a (one of F's lists) when the flight has run q of its own seconds
+  let lo = 0, hi = F.t.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; F.t[m] <= q ? lo = m : hi = m; }
+  return a[lo] + (a[hi] - a[lo]) * clamp01((q - F.t[lo]) / Math.max(1e-9, F.t[hi] - F.t[lo]));
 }
 function flyNow(T) {   // st.fly: how far down the beam (0 at the telescope, 1 at the photo); st.sig: how hard it is rushing, 0 to 1; st.phi: how far the speed lines have run
-  if (T < 8) { st.fly = st.sig = st.phi = 0; return; }   // the telescope is still turning to its field: no path yet
-  const F = flightPath(), q = clamp01((T - FLY0) / (FLY1 - FLY0)) * FLY_S; let lo = 0, hi = F.t.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; F.t[m] <= q ? lo = m : hi = m; }
-  const k = clamp01((q - F.t[lo]) / Math.max(1e-9, F.t[hi] - F.t[lo])), mix = a => a[lo] + (a[hi] - a[lo]) * k;
-  st.fly = mix(F.f); st.sig = mix(F.sig) * flyA(T); st.phi = mix(F.phi);
+  if (T < 8) { st.fly = st.sig = st.phi = st.q = 0; return; }   // the telescope is still turning to its field: no path yet
+  const F = flightPath(), q = clamp01((T - FLY0) / (FLY1 - FLY0)) * FLY_S;
+  st.fly = flyAt(F, q, F.f); st.sig = flyAt(F, q, F.sig) * flyA(T); st.phi = flyAt(F, q, F.phi); st.q = q;   // st.q: the flight's own seconds
 }
 
 // ---------- labels ----------
@@ -663,13 +675,17 @@ function eyePose() { const C = photoPoint(0, 0), d = st.top.clone().sub(C), L = 
 const flyFov = () => wide() ? 55 : 80, CREEP = .14;   // CREEP: how much farther back the camera is when the pull-out begins
 const flyCam = (f, o) => o.copy(st.top).lerp(photoPoint(fl.cu(f), fl.cv(f), tmp), f);
 function flyPose(T) {
-  const F = flightPath(), f = st.fly, pos = flyCam(f, V()), view = flyCam(Math.min(1, f + 2e-4), V()).sub(flyCam(Math.max(0, f - 2e-4), tmp2)).normalize();
+  const F = flightPath(), f = st.fly, pos = flyCam(f, V()), view = V(), pa = V(), pb = V(), end = F.way.at(-1).f;
+  for (let j = -8; j <= 8; j++) {   // the way the path runs, taken over 0.4 s either side, so that the camera eases into each bend of it
+    const fj = Math.min(end, flyAt(F, Math.max(0, st.q + j * .05), F.f) + 2e-4); view.addScaledVector(flyCam(fj, pa).sub(flyCam(Math.max(0, fj - 4e-4), pb)).normalize(), 9 - Math.abs(j));
+  }
+  const framing = sm((f - F.way.at(-2).bf) / (end - F.way.at(-2).bf));   // after the last body it turns to look straight at the photo's middle
+  view.normalize().lerp(photoPoint(0, 0, pa).sub(pos).normalize(), framing).normalize();
   for (const b of beads) {   // a glance at each body as it comes up, let go as it is passed
-    const q = F.way[b.i + 1], xi = (f - q.bf) / q.e0, g = GLANCE * sm((xi + 40) / 30) * (1 - sm((xi + 1.4) / 2.4));
+    const q = F.way[b.i + 1], xi = (f - q.bf) / q.e0, [r0, r1] = F.rel[b.i], g = GLANCE * sm((xi + 40) / 30) * (1 - sm((st.q - r0) / (r1 - r0)));
     if (g > 0) view.lerp(tmp2.copy(st.top).lerp(photoPoint(b.u, b.v, tmp), b.f).sub(pos).normalize(), g).normalize();
   }
   const D = F.L * (1 - f), back = 1 + CREEP * (Math.max(0, T - FLY1) / (X - FLY1)) ** 2;
-  const framing = sm((f - F.way.at(-2).bf) / (F.way.at(-1).f - F.way.at(-2).bf));
   return pose(pos.addScaledVector(view, D), view.negate(), D * back, upPhoto, wide() ? .07 + .04 * framing : .15, flyFov() + (F.fov - flyFov()) * framing + (wide() ? 16 : 10) * st.sig);   // the lens opens up in the rush
 }
 // the way out of the photo: straight back along its line of sight, past the telescope, to over Earth's shoulder. The photo
@@ -700,7 +716,7 @@ const SHOTS = [   // a and b in film seconds; the shots after X are the first cu
     const dir = tmp2.copy(st.s).multiplyScalar(-.45 + .95 * far).addScaledVector(st.t, .75).addScaledVector(st.r, .44 - .5 * far).normalize();
     return pose(tmp.copy(st.p).addScaledVector(st.look, CRAFT * .35).lerp(tmp5.copy(st.E).addScaledVector(st.r, EARTH_R * .25), far), dir, d,
       tmp3.copy(st.r).lerp(wide() ? tmp4.crossVectors(dir, st.r).normalize().multiplyScalar(-.95).addScaledVector(st.r, .3) : st.r, far).normalize(), (wide() ? .09 : .225) * far + .03 * (1 - far)); } },   // on a phone, high enough that the orbit line clears the caption's rule
-  { a: 6.9, b: 8.4, f: eyePose },
+  { a: 6.9, b: 8.4, f: eyePose, round: true },   // round: the move in to the telescope's eye keeps outside Earth and its air
   { a: FLY0, b: X, f: flyPose },
   { a: X + 2, b: X + 2.2, f: backPose },
   { a: X + 3.6, b: wi(10.4), f: (T, t) => pose(st.E, tmp2.copy(st.s).multiplyScalar(.78).addScaledVector(Y, .42).addScaledVector(tmp3.crossVectors(st.s, Y), .46 + .03 * (t - 8)), fitDist(.38), Y) },
@@ -715,8 +731,13 @@ function poseAt(T) {
   let i = 0; while (i < SHOTS.length - 1 && T >= SHOTS[i + 1].a) i++;
   const t = w(T), A = SHOTS[i].f(T, t); if (T <= SHOTS[i].b || i === SHOTS.length - 1) return A;
   const B = SHOTS[i + 1].f(T, t), k = sm((T - SHOTS[i].b) / (SHOTS[i + 1].a - SHOTS[i].b)), mix = (a, b) => Math.exp(Math.log(a) * (1 - k) + Math.log(b) * k);
-  return { tgt: A.tgt.lerp(B.tgt, k), dir: A.dir.lerp(B.dir, k).normalize(), dist: mix(A.dist, B.dist), up: A.up.lerp(B.up, k).normalize(), shift: A.shift + (B.shift - A.shift) * k, fov: mix(A.fov, B.fov),
+  const P = { tgt: A.tgt.lerp(B.tgt, k), dir: A.dir.lerp(B.dir, k).normalize(), dist: mix(A.dist, B.dist), up: A.up.lerp(B.up, k).normalize(), shift: A.shift + (B.shift - A.shift) * k, fov: mix(A.fov, B.fov),
     skew: B.skew?.map((v, j) => (j < 4 ? (j % 3 ? 0 : 1) * (1 - k) + v * k : v)) };
+  if (SHOTS[i + 1].round) {   // wherever the blend would take the camera into Earth's air (in a tall window, through Earth itself), it is lifted out, smoothly, to just over the air; it looks the same way
+    const p = P.tgt.clone().addScaledVector(P.dir, P.dist).sub(st.E), r = p.length(), x = ((AIR + .03) * EARTH_R - r) / (.02 * EARTH_R), lift = .02 * EARTH_R * (x > 1 ? x : x > -1 ? (x + 1) ** 2 / 4 : 0);   // a smooth hinge: nothing at 0.08 radii above the ground or more (the telescope is at 0.10), up to 0.06 from below
+    P.tgt.addScaledVector(p, lift / r);
+  }
+  return P;
 }
 
 // ---------- one frame ----------
@@ -784,6 +805,7 @@ function render(U) {
   const fov = P.fov ?? VFOV;
   camera.fov = fov; camera.aspect = W / H; camera.near = Math.exp(Math.log(P.dist * .02) * (1 - fa) + Math.log((fl?.L ?? 1) * 2e-5) * fa); camera.far = P.dist * 60 + 60;
   camera.position.copy(P.tgt).addScaledVector(P.dir, P.dist); camera.up.copy(P.up); camera.lookAt(P.tgt);
+  { const air = camera.position.distanceTo(E) - AIR * EARTH_R; if (air > 0) camera.near = Math.min(camera.near, Math.max(air / 2, camera.near / 20)); }   // nothing in front of the near plane is cut away inside Earth's air: it is never more than half the camera's height above the air
   camera.setViewOffset(W, H, 0, P.shift * H, W, H); camera.updateMatrixWorld();
   if (P.skew) {   // a turn and a stretch of the picture about window point (cx, cy), written for the camera
     const [a, b, c, d, cx, cy] = P.skew, nx = 2 * cx / W - 1, ny = 1 - 2 * cy / H, bb = -b * H / W, cc = -c * W / H;
@@ -835,7 +857,7 @@ function render(U) {
     const dz = depth(b.pos), dc = camera.position.distanceTo(b.pos), B = BODY[b.kind], rw = B.r * b.f * HALF * R * PHOTO_R, rpx = b.rpx = rw / (Math.max(dc, 1e-12) * ppx);   // rpx: the body's radius on screen
     // the body itself, with a size in space. Far ahead it is a point of light
     const q = fl?.way[b.i + 1], xi = q ? (st.fly - q.bf) / q.e0 : -99, far = fa * (1 - sm((rpx - (b.kind === 'galaxy' ? 4 : 1.5)) / 3));
-    b.front = dz > 0; b.lab = fa * sm((rpx * (b.kind === 'star' ? 2.5 : 1) - 24) / 14) * sm((xi + 16) / 8) * (1 - sm((xi + .5) / 1.3));
+    b.front = dz > 0; b.lab = fa * sm((rpx * (b.kind === 'star' ? 2.5 : 1) - 24) / 14) * sm((xi + 16) / 8) * (fl ? 1 - sm((st.q - fl.rel[b.i][1] + .5) / .5) : 0);
     if (b.core) {
       b.core.visible = dz > camera.near && far > 0;
       if (b.core.visible) { const cs = dz * ppx * (b.kind === 'galaxy' ? 7 : 3.4); b.core.position.copy(b.pos); b.core.scale.set(cs * (b.kind === 'galaxy' ? 1.7 : 1), cs, 1); b.core.material.opacity = far; }
@@ -859,7 +881,7 @@ function render(U) {
         un.uLight.value.copy(E).addScaledVector(b.dir, b.au).normalize().negate();
       } else if (b.kind === 'star') {
         un.uTime.value = U; b.glow.position.copy(b.pos); b.glow.scale.setScalar(Math.max(rw * 20, Math.max(dz, 0) * ppx * 9)); b.glow.material.opacity = fa * (.6 + .4 * sm(rpx / 4));
-      } else un.uA.value = fa * (1 - sm((xi + 1.1) / .9)) * sm(rpx / 5) * (1 - sm((rpx / H - .42) / .3));   // a flat photo: gone before it is seen edge on, or so large that it is a blur
+      } else un.uA.value = fa * sm(rpx / 5) * (fl ? 1 - sm((st.q - fl.out[b.i][0]) / (fl.out[b.i][1] - fl.out[b.i][0])) : 0);   // a flat photo: it fades over more than half a second as it slides to the side, and is gone before it is seen edge on
     }
   }
   photoPoint(PH.star.u, PH.star.v, starSpot);
@@ -936,9 +958,9 @@ const css = q => { tmp.copy(q).project(camera); return [(tmp.x + 1) / 2 * W, (1 
 function probe(U) {   // where things are in the frame at film time U (window pixels), and the camera itself
   render(U);
   return { photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), star: css(starSpot), sky: backdrop.material.uniforms.uA.value, wash: { a: photoU.uWashA.value, p: washP(v2(U)), flux: fluxAt(washP(v2(U))), tint: rampAt(washP(v2(U))) }, flash: photoU.uFlash.value,
-    cam: { pos: camera.position.toArray(), dir: camera.getWorldDirection(V()).toArray(), fov: camera.fov, dist: st.dist },
+    cam: { pos: camera.position.toArray(), dir: camera.getWorldDirection(V()).toArray(), fov: camera.fov, dist: st.dist, near: camera.near },
     earth: { r: earth.scale.x, alt: st.p.distanceTo(st.E) / earth.scale.x - 1, cam: camera.position.distanceTo(st.E) / earth.scale.x - 1, craft: camera.position.distanceTo(st.p) / CRAFT, shown: earth.visible ? earthU.uShow.value : 0 },
-    flight: beads.map(b => ({ name: b.name, kind: b.kind, au: b.au, at: css(b.pos), r: b.rpx, front: b.front, drawn: b.mesh.visible && b.mesh.material.uniforms.uA.value > .5, land: css(photoPoint(b.u, b.v)), landed: b.landed, lands: fu(fl.emit[b.i] + RAY_T) })), fly: st.fly, rush: st.sig, fill: photoU.uShow.value / SPREAD };   // fill: how much of the photo is shown
+    flight: beads.map(b => ({ name: b.name, kind: b.kind, au: b.au, at: css(b.pos), r: b.rpx, front: b.front, drawn: b.mesh.visible && b.mesh.material.uniforms.uA.value > .5, a: b.mesh.visible ? b.mesh.material.uniforms.uA.value : 0, land: css(photoPoint(b.u, b.v)), landed: b.landed, lands: fu(fl.emit[b.i] + RAY_T) })), fly: st.fly, rush: st.sig, fill: photoU.uShow.value / SPREAD };   // fill: how much of the photo is shown
 }
 function look(U, pts, r = 2) {   // the brightness really drawn round each point at film time U: [mean, max, mean color] of 0 to 255 over a square of 2r + 1 window pixels
   render(U); const gl = renderer.getContext(), k = renderer.getPixelRatio(), n = Math.max(1, Math.round((2 * r + 1) * k)), px = new Uint8Array(n * n * 4);

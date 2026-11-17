@@ -18,8 +18,11 @@ and SPHEREx is at its true height above it, so the opening shows Earth's horizon
 green, then red, a band of that color crosses it from left to right, and the one measured star is bright in the early
 colors and faint in the late ones while the rest of the photo keeps its brightness. There is no step beat: no ringed
 star, no wavelength on screen, no stripes.
-The film is one camera move: from the start of the flight to the ring of photos the camera never jumps from one frame to
-the next and nothing fades out. Words: the nine captions are exactly Ed's, one per beat with nothing under it, on one line
+The film is one camera move: in no frame of the whole film does the camera turn more than TURN degrees or change its lens
+much, from the start of the flight to the ring it never jumps and nothing fades out, and as the camera passes the galaxy it
+loses its light over at least several frames, never in one. Wherever Earth is drawn, the camera is outside its air with
+room for the near plane (every frame, every layout), and at 6.3 to 6.7 s, the move in to the telescope's eye, no blue of
+the air washes the window. Words: the nine captions are exactly Ed's, one per beat with nothing under it, on one line
 on a desktop and on at most two on a phone at the same text size (the rule above them never moves); no credit or small
 print shows while the film plays, and the credits come on the finished map with a link to film.html, which names every source.
 The flight, its arrival, the photo's assembly, the colors and the captions are also checked at 320 x 1000 and 320 x 1280. Leaving the page while it loads (pagehide, and a
@@ -36,7 +39,9 @@ ON = "document.documentElement.dataset.intro"
 RECT = "(() => { const b = document.getElementById('map').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()"
 DAY = "+document.getElementById('time').value"
 TOUR = "document.querySelector('.tour-card h2')?.textContent"
-MOVE, GLANCE, TURN, ZOOM = .16, 15, 4, .2   # the most the camera may do in one frame: move (as a share of its distance to its subject), turn during the flight's glances at the bodies and turn after it (degrees), change its lens (log of the ratio)
+MOVE, TURN, ZOOM = .16, 2.5, .2   # the most the camera may do in one frame at 60 fps: move (as a share of its distance to its subject), turn (degrees, anywhere in the film), change its lens (log of the ratio)
+AIR = 1.03   # Earth's air ends this many radii out (intro.js AIR): wherever Earth is drawn the camera stays outside it, with room for the near plane
+FADE = .12   # the most of its own light the galaxy may lose in one frame at 60 fps (a fade over half a second loses at most about .06)
 FILM_S = "window.__perf.frames.reduce((a, b) => a + b, 0) / 1000"   # seconds of film played so far
 CAPS = ["This is SPHEREx, a NASA telescope circling Earth.", "It takes a picture of the sky.", "Let's follow the light into that picture.", "Some of it is close. Some is very far away.",
         "Here's the picture it took.", "It sees every spot in 102 colors.", "Picture after picture forms a ring.", "In six months it covers the whole sky.", "Lay it flat and you get this map."]   # Ed's wording, exactly
@@ -117,12 +122,17 @@ async def true_scale(pg, name, m, vw, vh):
     the opening, beside the telescope, has Earth's horizon right across the view below it (both sides of the window lit
     low down, black above), and the whole globe comes into view only because the camera draws far back."""
     probe = lambda u: pg.evaluate(f"window.__intro.probe({u})")
-    seen = [(await probe(u))["earth"] for u in (.05, 2, 4.3, m["CLICK"], m["FLY0"] + 2, m["OUT"] + 4, m["RING"] + 6, m["CAPS"][8][0] - 6)]
+    seen = [(await probe(u))["earth"] for u in (.05, 2, 4.3, m["CLICK"], m["FLY0"] + 2, m["OUT"] + 4, m["RING"] + 6, m["CAPS"][8][0] - 6, 5.5, 6.5)]
     assert len({e["r"] for e in seen}) == 1, f"{name}: Earth changes size: {[e['r'] for e in seen]}"
     assert all(abs(e["alt"] - 650 / 6371) < .002 for e in seen[:5]), f"{name}: SPHEREx is not 650 km up: {[e['alt'] for e in seen]}"
     assert seen[0]["cam"] < .2 and seen[0]["craft"] < 30 and seen[2]["cam"] > 2 and seen[0]["shown"] == 1, f"{name}: the opening should start beside the telescope, just above Earth, and end far out: {seen[0]}, {seen[2]}"
     low, high = await pg.evaluate(f"window.__intro.look(.05, {[[vw * .04, vh * .7], [vw * .96, vh * .7]]}, 3)"), await pg.evaluate(f"window.__intro.look(.05, {[[vw * .04, vh * .1], [vw * .5, vh * .1], [vw * .96, vh * .1]]}, 3)")
     assert all(g[0] > 20 for g in low) and all(g[0] < 10 for g in high), f"{name}: in the opening Earth is not a horizon across the view: low {low}, high {high}"
+    # the move in to the telescope's eye goes round Earth: every thirtieth of a second from 6.3 to 6.7 s, no share of the window is the air's blue (seen from inside it, it covered the window)
+    pts = [[vw * (i + .5) / 12, vh * (j + .5) / 20] for i in range(12) for j in range(20)]
+    for k in range(13):
+        g = await pg.evaluate(f"window.__intro.look({6.3 + k / 30}, {pts}, 2)"); blue = sum(q[2][2] > 60 and q[2][2] > q[2][0] + 25 for q in g) / len(g)
+        assert blue < .05, f"{name}: at {6.3 + k / 30:.2f}s {blue:.0%} of the window is the blue of Earth's air"
     return round(seen[0]["cam"], 2), round(seen[2]["cam"], 1)
 
 
@@ -172,10 +182,10 @@ async def assembly(pg, name, m, flight):
     assert len(darks) >= 3 and m["FLY1"] - gone > .3, f"{name}: too little of the approach is clear of the galaxy to check: from {gone:.1f} to {m['FLY1']:.1f}s"
     t1 = m["SHOW"][1] + .2; end = await probe(t1); dark, bright = max(darks), sum(g[0] for g in await look(t1, band(end), 2)) / 15
     assert dark < 6 and bright > dark + 25, f"{name}: the photo's own picture should be black all through the approach and lit after the reveal: at most {dark:.1f}, then {bright:.1f}"
-    # the sky behind does not change at the reveal: the same starry backdrop from the approach through the reveal and the colors (its strength, and the lit places counted in the window's four corner regions outside the photo)
+    # the sky behind does not change at the reveal: the same starry backdrop from the approach through the reveal and the colors (its strength, and the lit places counted all round the photo, above the captions)
     async def sky(u):
         p = await probe(u); xs, ys = [q[0] for q in p["photoEdges"]], [q[1] for q in p["photoEdges"]]; vw, vh = await pg.evaluate("[innerWidth, innerHeight]")
-        pts = [[x, y] for x in range(8, vw - 8, max(6, vw // 60)) for y in range(8, int(vh * .6), max(6, vh // 60)) if not (min(xs) - 12 < x < max(xs) + 12 and min(ys) - 12 < y < max(ys) + 12)]
+        pts = [[x, y] for x in range(8, vw - 8, max(6, vw // 60)) for y in range(8, int(vh * .8), max(6, vh // 60)) if not (min(xs) - 12 < x < max(xs) + 12 and min(ys) - 12 < y < max(ys) + 12)]
         got = await look(u, pts, 1); return p["sky"], sum(g[1] > 40 for g in got) / len(got)
     skies = [await sky(u) for u in (m["FLY1"] - .4, m["FLY1"] + .1, m["SHOW"][1], m["WASH"][0] + 1, m["WASH"][1] - .5)]
     assert len({a for a, _ in skies}) == 1 and skies[0][0] > .2 and all(n > .5 * skies[0][1] and n > .02 for _, n in skies), f"{name}: the sky behind the photo changes at the reveal or in the colors: {skies}"
@@ -245,21 +255,44 @@ async def words(pg, name, m, vw):
 
 
 async def one_move(pg, name, m):
-    """No hard cut from the start of the flight to the ring: at 60 frames a second the camera never moves more than a
-    small share of its distance to what it looks at, turns more than a little, or changes its lens much between two
-    frames, and the picture stays fully shown. (Half a second apart the same measures are far past these limits.)"""
-    n = int((m["RING"] + 1 - m["FLY0"]) * 60)
+    """No hard cut. Every frame of the whole film at 60 frames a second: the camera turns less than TURN degrees and its lens
+    changes little. From the start of the flight to the ring it also never moves more than a small share of its distance
+    to what it looks at, and the picture stays fully shown (the opening's hundredfold draw-back is a steady move of its own,
+    checked by true_scale). Wherever Earth is drawn, the camera is outside its air by more than the near plane's distance,
+    so neither the globe nor the air is ever seen from inside or cut open. (Half a second apart the same measures are far past these limits.)"""
+    n = int(await pg.evaluate("window.__intro.T_END") * 60)
     cams = await pg.evaluate(f"""(() => {{ const out = [], op = id => +getComputedStyle(document.getElementById(id)).opacity;
-      for (let i = 0; i <= {n}; i++) {{ const c = window.__intro.probe({m['FLY0']} + i / 60).cam; out.push([c.pos, c.dir, c.fov, c.dist, op('intro') * op('intro-gl')]); }} return out; }})()""")
+      for (let i = 0; i <= {n}; i++) {{ const p = window.__intro.probe(i / 60), c = p.cam, e = p.earth; out.push([c.pos, c.dir, c.fov, c.dist, op('intro') * op('intro-gl'), e.cam + 1 - AIR_ - c.near / e.r, e.shown]); }} return out; }})()""".replace("AIR_", str(AIR)))
     def jump(a, b):
         return (math.dist(a[0], b[0]) / min(a[3], b[3]), math.degrees(math.acos(max(-1, min(1, sum(p * q for p, q in zip(a[1], b[1])))))), abs(math.log(a[2] / b[2])))
-    worst = [max(jump(a, b)[k] for a, b in zip(cams, cams[1:])) for k in range(3)]
-    join = cams[int((m['FLY1'] - m['FLY0']) * 60):]; calm = max(jump(a, b)[1] for a, b in zip(join, join[1:]))   # after the flight's own glances at the bodies
-    assert all(c[4] == 1 for c in cams), f"{name}: the picture fades between the flight and the ring"
-    assert worst[0] < MOVE and worst[1] < GLANCE and calm < TURN and worst[2] < ZOOM, f"{name}: the camera jumps between the flight and the ring: moves {worst[0]:.3f} of its distance, turns {worst[1]:.2f} degrees, lens changes {worst[2]:.3f} in one frame"
-    apart = [max(jump(a, b)[k] for a, b in zip(cams, cams[30:])) for k in range(3)]
+    steps = [jump(a, b) for a, b in zip(cams, cams[1:])]; i0, i1 = int(m["FLY0"] * 60), int((m["RING"] + 1) * 60)
+    turn, lens, move = max(range(len(steps)), key=lambda i: steps[i][1]), max(s[2] for s in steps), max(s[0] for s in steps[i0:i1])
+    assert all(c[4] == 1 for c in cams[i0:i1 + 1]), f"{name}: the picture fades between the flight and the ring"
+    assert steps[turn][1] < TURN and lens < ZOOM and move < MOVE, f"{name}: the camera jumps: turns {steps[turn][1]:.2f} degrees at {(turn + 1) / 60:.2f}s, lens changes {lens:.3f}, moves {move:.3f} of its distance in one frame"
+    apart = [max(jump(a, b)[k] for a, b in zip(cams[i0:i1], cams[i0 + 30:i1])) for k in range(3)]
     assert apart[0] > 3 * MOVE, f"{name}: the continuity check would not see a cut: {apart}"
-    return [worst[0], calm, worst[2]]
+    shown = [(i / 60, c[5]) for i, c in enumerate(cams) if c[6] > 0]; low = min(shown, key=lambda q: q[1])
+    assert low[1] > 0, f"{name}: at {low[0]:.2f}s, with Earth drawn, the camera is {low[1]:+.3f} Earth radii clear of its air and near plane; frames under: {[round(u, 2) for u, c in shown if c <= 0][:12]}"
+    return [move, steps[turn][1], lens, low[1]]
+
+
+async def galaxy_goes(pg, name, m, flight):
+    """As the camera passes the galaxy it does not vanish in a frame. Every frame at 60 fps from when the last of the nearer
+    bodies' light has landed (it can land behind the galaxy) until the camera has passed it: the light the galaxy itself adds
+    to the window (61 places spread over its middle, moving and growing with it, each less the sky's own level there; places
+    off the window count as dark) never drops by more than FADE of its brightest in one frame."""
+    start, end = max(b["lands"] for b in flight[0][1][:4]) + .1, next(u for u, bs, _ in flight if not bs[4]["front"]) + .1
+    n = int((end - start) * 60)
+    got = await pg.evaluate(f"""(() => {{ const out = [], ring = [[0, 1], [.1, 6], [.2, 12], [.3, 18], [.4, 24]].flatMap(([d, k]) => [...Array(k)].map((_, j) => [d * Math.cos(6.283 * j / k), d * Math.sin(6.283 * j / k)]));
+      for (let i = 0; i <= {n}; i++) {{ const u = {start} + i / 60, g = window.__intro.probe(u).flight.find(b => b.kind === 'galaxy'), bg = [];
+        const on = g.front ? ring.map(([x, y]) => [g.at[0] + x * g.r, g.at[1] + y * g.r]).filter(([x, y]) => x >= 2 && y >= 2 && x <= innerWidth - 2 && y <= innerHeight - 2) : [];
+        for (let x = 8; x < innerWidth; x += 48) for (let y = 8; y < innerHeight; y += 48) if (Math.hypot(x - g.at[0], y - g.at[1]) > 1.2 * g.r) bg.push([x, y]);
+        const sky = window.__intro.look(u, bg, 2).map(q => q[0]).sort((p, q) => p - q)[bg.length >> 1] ?? 0;
+        out.push([u, (on.length ? window.__intro.look(u, on, 2) : []).reduce((a, q) => a + Math.max(0, q[0] - sky), 0) / ring.length]); }} return out; }})()""")
+    top = max(g for _, g in got); drop = max(((a - b) / top, u) for (_, a), (u, b) in zip(got, got[1:]))
+    assert top > 20 and got[-1][1] < .1 * top, f"{name}: the galaxy is not seen and then left behind: brightest {top:.0f}, last {got[-1][1]:.0f}"
+    assert drop[0] < FADE, f"{name}: the galaxy loses {drop[0]:.0%} of its light in one frame at {drop[1]:.2f}s"
+    return round(drop[0], 3)
 
 
 async def run(b, name, opts):
@@ -423,14 +456,14 @@ async def run(b, name, opts):
     scale = await true_scale(pg, name, m, vw, vh)
     lands, lit, shown = await assembly(pg, name, m, flight)
     star = await colors(pg, name, m)
-    # one camera move, flight to ring
-    worst = await one_move(pg, name, m)
+    # one camera move, the whole film; the galaxy goes gradually
+    worst = await one_move(pg, name, m); gal = await galaxy_goes(pg, name, m, flight)
     ncap, most = await words(pg, name, m, vw)
     page_text = await (await pg.request.get(BASE + "/film")).text()
     missing = [k for k in ("Sloan Digital Sky Survey", "CC BY", "Gaia", "shapes are imagined", "compressed scale", "Blue Marble", "SkyBoT", "Horizons", "102 colors", "wash of color over the whole photo is drawn") if k not in page_text]
     assert not missing, f"film.html does not name {missing}"
     await pg.context.close()
-    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), Earth is one size throughout with SPHEREx 650 km up (the camera starts {scale[0]} Earth radii above the ground and draws back to {scale[1]}), the shutter flashes over an empty frame and the photo is not shown until arrival (lights land at {[round(t, 1) for t in lands]} s, in order, each a new dot of brightness {lit}; the photo's bright band reads at most {shown[0]} through the whole approach and {shown[1]} after, with five labels), the colors wash over it violet to red while the measured star goes from {star[0]} to {star[1]} and nothing of the step beat is left, and flight to ring is one camera move (most in one frame: {worst[0]:.3f} of its distance, {worst[1]:.2f} degrees, lens {worst[2]:.3f}); {ncap} captions in Ed's words, at most {most} line{'s' if most > 1 else ''} each at full size with nothing under them, none over the whole sky, no credits during the film, then the credit line and its link on the finished map; film.html names every source")
+    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), Earth is one size throughout with SPHEREx 650 km up (the camera starts {scale[0]} Earth radii above the ground and draws back to {scale[1]}), the shutter flashes over an empty frame and the photo is not shown until arrival (lights land at {[round(t, 1) for t in lands]} s, in order, each a new dot of brightness {lit}; the photo's bright band reads at most {shown[0]} through the whole approach and {shown[1]} after, with five labels), the colors wash over it violet to red while the measured star goes from {star[0]} to {star[1]} and nothing of the step beat is left, and the film is one camera move (most in one frame: {worst[0]:.3f} of its distance from flight to ring, {worst[1]:.2f} degrees and lens {worst[2]:.3f} anywhere; the camera stays at least {worst[3]:.3f} Earth radii clear of the air and near plane wherever Earth is drawn; the galaxy loses at most {gal:.0%} of its light in a frame); {ncap} captions in Ed's words, at most {most} line{'s' if most > 1 else ''} each at full size with nothing under them, none over the whole sky, no credits during the film, then the credit line and its link on the finished map; film.html names every source")
 
     # ---- leaving the page while the film loads: it is taken off at once and does not come back ----
     pg = await page(b, opts, errs, seen_tour=True)
@@ -490,11 +523,11 @@ async def main():
             pg = await page(b, dict(viewport={"width": 320, "height": height}, device_scale_factor=2, has_touch=True, is_mobile=True), errs, seen_tour=True)
             await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
             m = await pg.evaluate("window.__intro.marks")
-            flight = await flight_samples(pg, name, m); wide = await arrival(pg, name, m, 320, height); await one_move(pg, name, m)
+            flight = await flight_samples(pg, name, m); wide = await arrival(pg, name, m, 320, height); worst = await one_move(pg, name, m); gal = await galaxy_goes(pg, name, m, flight)
             await true_scale(pg, name, m, 320, height); await assembly(pg, name, m, flight); await colors(pg, name, m); await words(pg, name, m, 320)
             assert not errs, f"{name}: page errors {errs}"
             await pg.context.close()
-            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, the photo is not shown until arrival, the colors wash over it, flight to ring is one camera move, and the captions are Ed's, on one or two lines at full size")
+            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, the photo is not shown until arrival, the colors wash over it, the film is one camera move (at most {worst[1]:.2f} degrees in a frame, at least {worst[3]:.3f} Earth radii clear of the air), the galaxy loses at most {gal:.0%} of its light in a frame, and the captions are Ed's, on one or two lines at full size")
         await b.close()
     print("intro_ui: all checks passed")
 
