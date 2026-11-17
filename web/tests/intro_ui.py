@@ -14,12 +14,13 @@ beam passes two rocks, two stars and a galaxy as solid bodies in order of distan
 The photo is not shown before the flight arrives: the shutter flashes over an empty frame, the frame stays empty through
 the flight, each body's light lands on it as a dot at that body's own place, in the order the bodies are passed, and only
 after arrival does the photo itself come on, whole, with its five lights, while the starry sky behind it stays as it was. Earth is one size throughout
-and SPHEREx is at its true height above it, so the opening shows Earth's horizon across the view. Then the colors: the photo is tinted violet, then
-green, then red, a band of that color crosses it from left to right, and the one measured star is bright in the early
-colors and faint in the late ones while the rest of the photo keeps its brightness. There is no step beat: no ringed
-star, no wavelength on screen, no stripes.
+and SPHEREx is at its true height above it, so the opening shows Earth's horizon across the view. Then the colors: the photo gives way to
+the same sky in SPHEREx's six bands (real exposures: the sky itself changes), blue, then green, then red, and the
+measured star is bright in the short bands and faint in the long ones. Then the galaxy's own measured light is drawn
+beside it, with how far its glow has slid towards red, and its distance is lit. There is no step beat: no ringed star,
+no wavelength on screen, no stripes.
 The film is one camera move: in no frame of the whole film does the camera turn more than TURN degrees or change its lens
-much, from the start of the flight to the ring it never jumps and nothing fades out, and as the camera passes the galaxy it
+much (the turn is of the camera's whole orientation, rolls included), from the start of the flight to the ring it never jumps and nothing fades out, and as the camera passes the galaxy it
 loses its light over at least several frames, never in one. Wherever Earth is drawn, the camera is outside its air with
 room for the near plane (every frame, every layout), and at 6.3 to 6.7 s, the move in to the telescope's eye, no blue of
 the air washes the window. Words: the nine captions are exactly Ed's, one per beat with nothing under it, on one line
@@ -44,7 +45,7 @@ AIR = 1.03   # Earth's air ends this many radii out (intro.js AIR): wherever Ear
 FADE = .12   # the most of its own light the galaxy may lose in one frame at 60 fps (a fade over half a second loses at most about .06)
 FILM_S = "window.__perf.frames.reduce((a, b) => a + b, 0) / 1000"   # seconds of film played so far
 CAPS = ["This is SPHEREx, a NASA telescope circling Earth.", "It takes a picture of the sky.", "Let's follow the light into that picture.", "Some of it is close. Some is very far away.",
-        "Here's the picture it took.", "It sees every spot in 102 colors.", "Picture after picture forms a ring.", "In six months it covers the whole sky.", "Lay it flat and you get this map."]   # Ed's wording, exactly
+        "Here's the picture it took.", "It sees 102 colors. They tell how far each galaxy is.", "Picture after picture forms a ring.", "In six months it covers the whole sky.", "Lay it flat and you get this map."]   # Ed's wording, exactly
 
 
 async def page(b, opts, errs, seen_tour=False, **more):
@@ -195,34 +196,75 @@ async def assembly(pg, name, m, flight):
     return lands, lit, [round(dark, 1), round(bright, 1)]
 
 
-async def colors(pg, name, m):
-    """The color wash. Over the finished photo the tint runs violet, green, red (read from the photo's own bright band);
-    a band of that color crosses from left to right (each side is brighter when the band is over it); the one measured
-    star is bright early and faint late, as its real spectrum goes, while the photo keeps its brightness. One label
-    stays, the star's. Nothing of the old step beat is on screen: no ringed star, no wavelengths, no stripes."""
+async def colors(pg, name, m, vw, vh):
+    """The colors. Over the finished photo the picture becomes the same sky in SPHEREx's six bands, one after another, in
+    the color that stands for each (blue first, then green, then red, read from the glow of the picture's brightest star). They are
+    real exposures: the sky itself changes, with far fewer places lit in the longest band than in the shortest, and
+    most of those still lit were lit before (the same sky, not noise). The measured star is bright early and faint
+    late as its real spectrum goes, while the galaxy holds its light better (both from SPHEREx). One label stays in the
+    bands, the star's. Then color tells distance: the photo steps back, and beside the galaxy its own measured light is
+    drawn as a line; a dashed copy of its bump marks where that glow sits nearby, an arrow runs from it towards red to
+    where the bump is, and the label says how much redder, which is the galaxy's redshift in photo.json; then the
+    galaxy's label, the only one, is lit. The drawing is inside the window, clear of the caption, and gone before and
+    after. The data behind it is checked too: the top of the bump is where the redshift puts it. No wavelengths, no stripes."""
     look = lambda u, pts, r=2: pg.evaluate(f"window.__intro.look({u}, {pts}, {r})")
     probe = lambda u: pg.evaluate(f"window.__intro.probe({u})")
-    w0, w1 = m["WASH"]; at = lambda p: w0 + (w1 - w0) * p
-    async def see(u, us, vs=(-.6, -.3, 0, .3, .6)):
-        got = await look(u, grid((await probe(u))["photoEdges"], us, vs)); return [sum(g[2][c] for g in got) / len(got) for c in range(3)]
-    plain, violet, green, red = [await see(u, (.82, .86, .9)) for u in (w0 - .6, at(.03), at(.5), at(.97))]
-    assert max(plain) - min(plain) < 30, f"{name}: the photo is tinted before the wash: {plain}"
-    assert violet[2] > violet[1] + 15 and violet[2] > violet[0], f"{name}: the wash does not start violet: {violet}"
-    assert green[1] > green[0] + 15 and green[1] > green[2] + 15, f"{name}: the wash is not green half way: {green}"
-    assert red[0] > red[1] + 15 and red[0] > red[2] + 15, f"{name}: the wash does not end red: {red}"
-    assert min(max(violet), max(green), max(red)) > .6 * max(plain), f"{name}: the photo loses its brightness in the wash: {plain}, {violet}, {green}, {red}"
-    left, right = (-.8, -.75, -.7), (.45, .5, .55); pl, pr = (-.75 + 1.35) / 2.7, (.5 + 1.35) / 2.7   # when the band is over each side
-    on_l, off_l, on_r, off_r = [max(await see(at(p), us)) for p, us in ((pl, left), (pr, left), (pr, right), (pl, right))]
-    assert on_l > off_l + 12 and on_r > off_r + 12, f"{name}: no band of color crosses the photo from left to right: left {on_l:.0f} against {off_l:.0f}, right {on_r:.0f} against {off_r:.0f}"
-    early, late = await probe(at(.08)), await probe(at(.92))
-    (s0,), (s1,) = await look(at(.08), [early["star"]], 3), await look(at(.92), [late["star"]], 3)
+    w0, w1 = m["WASH"]; s0, s1 = m["SHIFT"]
+    async def band(k):   # the film time at which the picture is k bands along
+        lo, hi = w0, w1
+        for _ in range(30):
+            mid = (lo + hi) / 2
+            if (await probe(mid))["wash"]["band"] < k: lo = mid
+            else: hi = mid
+        return hi
+    t_early, t_mid, t_late = await band(.4), await band(2.5), await band(4.9)
+    early, mid, late = await probe(t_early), await probe(t_mid), await probe(t_late)
+    assert all(p["wash"]["a"] > .95 for p in (early, mid, late)) and (await probe(w0 - .5))["wash"]["a"] == 0, f"{name}: the bands are not fully shown, or are shown before the colors"
+    # the color of each band, read where the picture is brightest (the glow of its brightest star), on a grid of places over the photo clear of the two measured lights
+    us = [-.9 + 1.8 * i / 35 for i in range(36)]
+    keep = [math.dist(q, early["star"]) > 40 for q in grid(early["photoEdges"], us, us)]   # the same places of the photo each time (the camera drifts a little)
+    async def places(u, p): return await look(u, [q for q, k in zip(grid(p["photoEdges"], us, us), keep) if k], 2)
+    seen = [await places(u, p) for u, p in ((t_early, early), (t_mid, mid), (t_late, late))]
+    tints = [max(g, key=lambda q: q[0])[2] for g in seen]
+    assert tints[0][2] > tints[0][0] + 15, f"{name}: the colors do not start blue: {tints[0]}"
+    assert tints[1][1] > tints[1][2] + 15, f"{name}: the colors are not green or yellow half way: {tints[1]}"
+    assert tints[2][0] > tints[2][1] + 15 and tints[2][0] > tints[2][2] + 15, f"{name}: the colors do not end red: {tints[2]}"
+    # the sky itself changes
+    a, c = [g[1] > 45 for g in seen[0]], [g[1] > 45 for g in seen[2]]
+    assert sum(a) > 25 and sum(c) > 3 and sum(a) > 1.5 * sum(c), f"{name}: the sky does not change from the shortest band to the longest: {sum(a)} places lit, then {sum(c)}"
+    both = sum(g[1] > 20 and y for g, y in zip(seen[0], c)); chance = sum(g[1] > 20 for g in seen[0]) / len(a)   # lit at all in the shortest band, where the longest is clearly lit; chance: how often that would happen anywhere
+    assert both > .7 * sum(c) and both / sum(c) > chance + .25, f"{name}: the longest band does not show the same sky: {both} of its {sum(c)} lit places were lit in the shortest ({chance:.0%} of all places are)"
+    (b0,), (b1,) = await look(t_early, [early["star"]], 3), await look(t_late, [late["star"]], 3)
     assert early["wash"]["flux"] > .8 and late["wash"]["flux"] < .2, f"{name}: the star's measured brightness: {early['wash']['flux']:.2f} early, {late['wash']['flux']:.2f} late"
-    assert s0[0] > 2 * s1[0] and s0[0] > s1[0] + 50, f"{name}: the star does not glow in the early colors and fade in the late ones: {s0[0]:.0f}, then {s1[0]:.0f}"
-    said = await pg.evaluate(f"(window.__intro.render({at(.5)}), [...document.querySelectorAll('#intro-labels .lbl')].filter(el => +el.style.opacity > .5).map(el => el.textContent))")
-    assert len(said) == 1 and said[0].startswith("star"), f"{name}: in the wash only the star keeps its label: {said}"
-    every = await pg.evaluate("[...document.querySelectorAll('#intro-labels .lbl')].map(el => el.textContent + ' ' + el.className).join(' | ')")
+    assert late["wash"]["gal"] > 1.5 * late["wash"]["flux"] and mid["wash"]["gal"] > 1.3 * mid["wash"]["flux"] and early["wash"]["gal"] < .7, f"{name}: the galaxy should hold its light where the star fades: {mid['wash']}, {late['wash']}"
+    assert b0[0] > 1.6 * b1[0] and b0[0] > b1[0] + 40, f"{name}: the star does not glow in the short bands and fade in the long ones: {b0[0]:.0f}, then {b1[0]:.0f}"
+    labels = lambda u: pg.evaluate(f"(window.__intro.render({u}), [...document.querySelectorAll('#intro-labels .lbl')].filter(el => +el.style.opacity > .5).map(el => el.textContent + '|' + el.className))")
+    said = await labels(t_mid)
+    assert len(said) == 1 and said[0].startswith("star"), f"{name}: in the bands only the star keeps its label: {said}"
+    # color tells distance
+    box = "(() => { const el = document.getElementById('intro-shift'), cs = getComputedStyle(el), b = el.getBoundingClientRect(), q = k => el.querySelector(k), n = (k, a) => +q(k).getAttribute(a), o = k => +getComputedStyle(q(k)).opacity, r = k => { const c = q(k).getBoundingClientRect(); return [c.left, c.right, c.top, c.bottom]; };" \
+          " return { vis: cs.visibility, op: +cs.opacity, box: [b.left, b.top, b.right, b.bottom], cap: document.querySelector('#intro .cap-top').getBoundingClientRect().top, clip: n('#intro-sc rect', 'width') / 300, arrow: [n('.move line', 'x1'), n('.move line', 'x2')], rest: o('.rest'), move: o('.s-move'), said: q('.s-move').textContent, texts: ['.s-rest', '.s-here', '.s-move'].map(r), ghost: q('line.ghost').getBoundingClientRect().left }; })()"
+    see = lambda u: pg.evaluate(f"(window.__intro.render({u}), {box})")
+    for u in (w0 + .5, s0 - .05, s1 + .6):
+        g = await see(u); assert g["vis"] == "hidden" and g["op"] == 0, f"{name}: the galaxy's light is drawn outside its moment, at {u:.1f}s: {g}"
+    start, done = await see(s0 + .5), await see(m["FOUND"] + .3); p = await probe(m["FOUND"] + .3)
+    assert start["op"] > .9 and start["clip"] < .5 and start["rest"] == 0 and start["move"] == 0, f"{name}: the galaxy's light should be drawn on, line first: {start}"
+    assert done["vis"] == "visible" and done["op"] > .99 and done["clip"] == 1 and done["rest"] == 1 and done["move"] == 1, f"{name}: the galaxy's light is not fully drawn when its distance is lit: {done}"
+    assert done["arrow"][1] > done["arrow"][0] + 20, f"{name}: the arrow does not run towards red (to the right): {done['arrow']}"
+    assert done["box"][0] >= 0 and done["box"][2] <= vw and done["box"][1] >= 0 and done["box"][3] < done["cap"] - 20, f"{name}: the drawing is not inside the window, clear of the caption: {done['box']}, caption at {done['cap']}"
+    assert all(0 <= t[0] and t[1] <= vw for t in done["texts"]) and done["texts"][0][1] <= done["texts"][1][0], f"{name}: the drawing's words are cut off or run into each other: {done['texts']}"
+    gal = next(b for b in p["flight"] if b["kind"] == "galaxy")
+    assert 0 < gal["land"][0] < vw and done["box"][3] < gal["land"][1] < done["cap"], f"{name}: the galaxy is not in view under its drawing: {gal['land']}"
+    assert p["wash"]["dim"] < .6 and (await probe(w0 + 1))["wash"]["dim"] == 1 and p["wash"]["a"] == 0, f"{name}: the photo should step back, untinted, while the galaxy's light is read: {p['wash']}"
+    light = await pg.evaluate("fetch('data/intro/photo.json').then(r => r.json()).then(p => p.light)")
+    clean = [q for q in light["fine"] if not q[2]]; top = max(clean, key=lambda q: q[1])[0]
+    assert abs(top / light["rest"] - 1 - light["z"]) < .006 and light["sigma"] > 5 and len(clean) >= 15, f"{name}: the galaxy's glow is not where its redshift puts it in the data: top {top}, rest {light['rest']}, z {light['z']}, {light['sigma']} sigma"
+    assert done["said"] == f"{light['z'] * 100:.1f}% redder", f"{name}: the drawing says {done['said']!r}, the galaxy's redshift is {light['z']}"
+    before, after = await labels(m["FOUND"] - .4), await labels(m["FOUND"] + .3)
+    assert len(before) == 1 and before[0].startswith("galaxy") and "found" not in before[0] and len(after) == 1 and after[0].startswith("galaxy · 480 million light-years") and "found" in after[0], f"{name}: the galaxy's label should be the only one, and lit once the arrow has arrived: {before}, {after}"
+    every = await pg.evaluate("[...document.querySelectorAll('#intro-labels .lbl')].map(el => el.textContent + ' ' + el.className).join(' | ') + document.getElementById('intro-shift').textContent")
     assert "STEPS" not in m and not any(k in every for k in ("micron", "stripe", "accent", "helium")), f"{name}: the step beat is still in the film: {every}"
-    return [round(s0[0]), round(s1[0])]
+    return [round(b0[0]), round(b1[0]), sum(a), sum(c), top]
 
 
 async def words(pg, name, m, vw):
@@ -255,16 +297,16 @@ async def words(pg, name, m, vw):
 
 
 async def one_move(pg, name, m):
-    """No hard cut. Every frame of the whole film at 60 frames a second: the camera turns less than TURN degrees and its lens
+    """No hard cut. Every frame of the whole film at 60 frames a second: the camera turns (rolls included) less than TURN degrees and its lens
     changes little. From the start of the flight to the ring it also never moves more than a small share of its distance
     to what it looks at, and the picture stays fully shown (the opening's hundredfold draw-back is a steady move of its own,
     checked by true_scale). Wherever Earth is drawn, the camera is outside its air by more than the near plane's distance,
-    so neither the globe nor the air is ever seen from inside or cut open. (Half a second apart the same measures are far past these limits.)"""
+    so neither the globe nor the air is ever seen from inside or cut open, and the near plane is never more than half the camera's height above the air. (Half a second apart the same measures are far past these limits.)"""
     n = int(await pg.evaluate("window.__intro.T_END") * 60)
     cams = await pg.evaluate(f"""(() => {{ const out = [], op = id => +getComputedStyle(document.getElementById(id)).opacity;
-      for (let i = 0; i <= {n}; i++) {{ const p = window.__intro.probe(i / 60), c = p.cam, e = p.earth; out.push([c.pos, c.dir, c.fov, c.dist, op('intro') * op('intro-gl'), e.cam + 1 - AIR_ - c.near / e.r, e.shown]); }} return out; }})()""".replace("AIR_", str(AIR)))
+      for (let i = 0; i <= {n}; i++) {{ const p = window.__intro.probe(i / 60), c = p.cam, e = p.earth; out.push([c.pos, c.quat, c.fov, c.dist, op('intro') * op('intro-gl'), e.cam + 1 - AIR_ - c.near / e.r, e.shown, c.near / e.r - (e.cam + 1 - AIR_) / 2]); }} return out; }})()""".replace("AIR_", str(AIR)))
     def jump(a, b):
-        return (math.dist(a[0], b[0]) / min(a[3], b[3]), math.degrees(math.acos(max(-1, min(1, sum(p * q for p, q in zip(a[1], b[1])))))), abs(math.log(a[2] / b[2])))
+        return (math.dist(a[0], b[0]) / min(a[3], b[3]), math.degrees(2 * math.acos(min(1, abs(sum(p * q for p, q in zip(a[1], b[1])))))), abs(math.log(a[2] / b[2])))   # the turn is of the whole orientation (the two quaternions), so a roll about the line of sight counts
     steps = [jump(a, b) for a, b in zip(cams, cams[1:])]; i0, i1 = int(m["FLY0"] * 60), int((m["RING"] + 1) * 60)
     turn, lens, move = max(range(len(steps)), key=lambda i: steps[i][1]), max(s[2] for s in steps), max(s[0] for s in steps[i0:i1])
     assert all(c[4] == 1 for c in cams[i0:i1 + 1]), f"{name}: the picture fades between the flight and the ring"
@@ -273,6 +315,8 @@ async def one_move(pg, name, m):
     assert apart[0] > 3 * MOVE, f"{name}: the continuity check would not see a cut: {apart}"
     shown = [(i / 60, c[5]) for i, c in enumerate(cams) if c[6] > 0]; low = min(shown, key=lambda q: q[1])
     assert low[1] > 0, f"{name}: at {low[0]:.2f}s, with Earth drawn, the camera is {low[1]:+.3f} Earth radii clear of its air and near plane; frames under: {[round(u, 2) for u, c in shown if c <= 0][:12]}"
+    over = [(i / 60, c[7]) for i, c in enumerate(cams) if c[6] > 0 and c[5] > 0 and c[7] > 1e-9]
+    assert not over, f"{name}: the near plane is more than half the camera's height above the air at {over[:6]}"
     return [move, steps[turn][1], lens, low[1]]
 
 
@@ -455,15 +499,15 @@ async def run(b, name, opts):
     # The photo is not shown until the flight arrives; then the colors wash over it
     scale = await true_scale(pg, name, m, vw, vh)
     lands, lit, shown = await assembly(pg, name, m, flight)
-    star = await colors(pg, name, m)
+    star = await colors(pg, name, m, vw, vh)
     # one camera move, the whole film; the galaxy goes gradually
     worst = await one_move(pg, name, m); gal = await galaxy_goes(pg, name, m, flight)
     ncap, most = await words(pg, name, m, vw)
     page_text = await (await pg.request.get(BASE + "/film")).text()
-    missing = [k for k in ("Sloan Digital Sky Survey", "CC BY", "Gaia", "shapes are imagined", "compressed scale", "Blue Marble", "SkyBoT", "Horizons", "102 colors", "wash of color over the whole photo is drawn") if k not in page_text]
+    missing = [k for k in ("Sloan Digital Sky Survey", "CC BY", "Gaia", "shapes are imagined", "compressed scale", "Blue Marble", "SkyBoT", "Horizons", "102 colors", "six bands", "3.29 microns", "not at zero") if k not in page_text]
     assert not missing, f"film.html does not name {missing}"
     await pg.context.close()
-    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), Earth is one size throughout with SPHEREx 650 km up (the camera starts {scale[0]} Earth radii above the ground and draws back to {scale[1]}), the shutter flashes over an empty frame and the photo is not shown until arrival (lights land at {[round(t, 1) for t in lands]} s, in order, each a new dot of brightness {lit}; the photo's bright band reads at most {shown[0]} through the whole approach and {shown[1]} after, with five labels), the colors wash over it violet to red while the measured star goes from {star[0]} to {star[1]} and nothing of the step beat is left, and the film is one camera move (most in one frame: {worst[0]:.3f} of its distance from flight to ring, {worst[1]:.2f} degrees and lens {worst[2]:.3f} anywhere; the camera stays at least {worst[3]:.3f} Earth radii clear of the air and near plane wherever Earth is drawn; the galaxy loses at most {gal:.0%} of its light in a frame); {ncap} captions in Ed's words, at most {most} line{'s' if most > 1 else ''} each at full size with nothing under them, none over the whole sky, no credits during the film, then the credit line and its link on the finished map; film.html names every source")
+    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), Earth is one size throughout with SPHEREx 650 km up (the camera starts {scale[0]} Earth radii above the ground and draws back to {scale[1]}), the shutter flashes over an empty frame and the photo is not shown until arrival (lights land at {[round(t, 1) for t in lands]} s, in order, each a new dot of brightness {lit}; the photo's bright band reads at most {shown[0]} through the whole approach and {shown[1]} after, with five labels), the picture goes through six real bands, blue to red, while the measured star goes from {star[0]} to {star[1]} and the lit places of the sky from {star[2]} to {star[3]}, the galaxy's measured glow (top at {star[4]} microns) is drawn with its shift towards red and its distance lit, and nothing of the step beat is left, and the film is one camera move (most in one frame: {worst[0]:.3f} of its distance from flight to ring, {worst[1]:.2f} degrees and lens {worst[2]:.3f} anywhere; the camera stays at least {worst[3]:.3f} Earth radii clear of the air and near plane wherever Earth is drawn; the galaxy loses at most {gal:.0%} of its light in a frame); {ncap} captions in Ed's words, at most {most} line{'s' if most > 1 else ''} each at full size with nothing under them, none over the whole sky, no credits during the film, then the credit line and its link on the finished map; film.html names every source")
 
     # ---- leaving the page while the film loads: it is taken off at once and does not come back ----
     pg = await page(b, opts, errs, seen_tour=True)
@@ -524,7 +568,7 @@ async def main():
             await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
             m = await pg.evaluate("window.__intro.marks")
             flight = await flight_samples(pg, name, m); wide = await arrival(pg, name, m, 320, height); worst = await one_move(pg, name, m); gal = await galaxy_goes(pg, name, m, flight)
-            await true_scale(pg, name, m, 320, height); await assembly(pg, name, m, flight); await colors(pg, name, m); await words(pg, name, m, 320)
+            await true_scale(pg, name, m, 320, height); await assembly(pg, name, m, flight); await colors(pg, name, m, 320, height); await words(pg, name, m, 320)
             assert not errs, f"{name}: page errors {errs}"
             await pg.context.close()
             print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, the photo is not shown until arrival, the colors wash over it, the film is one camera move (at most {worst[1]:.2f} degrees in a frame, at least {worst[3]:.3f} Earth radii clear of the air), the galaxy loses at most {gal:.0%} of its light in a frame, and the captions are Ed's, on one or two lines at full size")

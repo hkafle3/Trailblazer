@@ -4,7 +4,7 @@ At each size: the headline and "Start with a real example" are shown in Sansatio
 clear of the header (logo, nav, account circle) and of the SPHEREx telescope; the art behind each (read with the text
 hidden) is dark enough that white text on its brightest 5% has a contrast of at least 4.5. The link opens Barnard's
 Star's time-lapse (its manifest loads), and a click on the art still lifts off to Explore.
-Under the link is a second, quieter line, "Watch the intro (54 s)": in Sansation, below the link, inside the window,
+Under the link is a second, quieter line, "Watch the intro (55 s)": in Sansation, below the link, inside the window,
 clear of the header and the telescope, at least 44 px tall, smaller and dimmer than the link and with no rule under it,
 still readable on the art (its own dimmer color has a contrast of at least 4.5). The length it gives is the film's, to
 the second. It opens Explore with the film playing, and when the film is left the map is there.

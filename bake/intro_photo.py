@@ -4,9 +4,10 @@
                direction c + u e + v f with u, v = -1..1 across and down, f = c x e. 2048 px, about the photo's own pixels.
   galaxy.jpg   the galaxy in the photo as the Sloan Digital Sky Survey saw it (SkyServer DR18 colour cutout, 72 arcseconds
                wide, north up, east left; CC-BY, credit Sloan Digital Sky Survey), for the film's flight past it.
-  photo.json   where known things sit in that square and how far away they are, the star the film follows, and that
+  photo.json   where known things sit in that square and how far away they are, the star the film follows, that
                star's brightness in each of SPHEREx's 102 colors ("spectrum": microns, mJy, 1 if a flagged pixel was
-               nearby, day of the survey, detector).
+               nearby, day of the survey, detector), and the galaxy's own light ("light", explained where it is made).
+               "bands" is added by bake/intro_bands.py and kept.
 Real distances: asteroids from IMCCE SkyBoT at the photo's time (geocentric), stars from Gaia DR3 parallaxes (IRSA),
 the galaxy from its redshift in the 2MASS Redshift Survey (Huchra et al. 2012, VizieR J/ApJS/199/26) with H0 = 70 km/s/Mpc.
 Real star colours: each star's Gaia DR3 temperature (teff_gspphot), turned into the colour of a black body that hot.
@@ -142,13 +143,31 @@ spec_f = CACHE / "star_spectrum.json"
 if spec_f.exists(): spectrum = [[round(p["lam"], 4), round(p["flux"], 2), int(bool(p["doubt"])), round(p["t"] - 60789, 2), int(p["det"][1])] for p in json.loads(spec_f.read_text())["points"]]
 else: spectrum = json.loads((OUT / "photo.json").read_text())["spectrum"]   # keep the committed one
 assert len(spectrum) == 102 and sorted({p[4] for p in spectrum}) == [1, 2, 3, 4, 5, 6]
+# The galaxy's own light in SPHEREx's colors (bake/intro_spectrum.py), for the film's "color tells distance": its 102 colors
+# as the star's, and every exposure of detector 4 that saw it between 2.9 and 3.84 microns ("fine": microns, mJy, 1 if a
+# flagged pixel was nearby). A glow of sooty molecules (PAH) that sits at 3.29 microns in the laboratory and in nearby
+# galaxies shows in this one near 3.40: "peak" is the middle of that bump (the light above a straight line through the
+# points either side of it), and peak / 3.29 - 1 must agree with the redshift the distance above comes from.
+REST, C_KMS = 3.29, 299792.458
+gs_f, gf_f, old_doc = CACHE / "galaxy_spectrum.json", CACHE / "galaxy_fine.json", json.loads((OUT / "photo.json").read_text())
+if gs_f.exists() and gf_f.exists():
+    fine = sorted([round(p["lam"], 4), round(p["flux"], 2), int(bool(p["doubt"]))] for p in json.loads(gf_f.read_text())["points"] if p.get("flux") is not None)
+    clean = np.array([p[:2] for p in fine if not p[2]]); side = clean[((clean[:, 0] > 3.1) & (clean[:, 0] < 3.33)) | ((clean[:, 0] > 3.48) & (clean[:, 0] < 3.72))]
+    line = np.polyfit(side[:, 0], side[:, 1], 1); bump = clean[(clean[:, 0] > 3.33) & (clean[:, 0] < 3.48)]; over = bump[:, 1] - np.polyval(line, bump[:, 0])
+    peak = float((bump[:, 0] * over).sum() / over.sum()); noise = float(np.std(side[:, 1] - np.polyval(line, side[:, 0])))
+    assert over.max() > 5 * noise and abs(peak / REST - 1 - cz / C_KMS) < .01, f"the galaxy's 3.3 micron glow is not where its redshift puts it: peak {peak:.3f}, {over.max() / noise:.1f} sigma"
+    light = dict(z=round(cz / C_KMS, 4), rest=REST, peak=round(peak, 3), sigma=round(float(over.max() / noise), 1), fine=fine,
+                 spectrum=[[round(p["lam"], 4), round(p["flux"], 2), int(bool(p["doubt"]))] for p in json.loads(gs_f.read_text())["points"]])
+else: light = old_doc["light"]   # keep the committed one
 star = gaia[STAR]; su, sv = uv(star["ra"], star["dec"])
 doc = dict(
     photo=dict(obs=OBS, det=1, mjd=round(mjd, 5), day=round(mjd - 60789, 5), utc=hd["DATE-AVG"][:16], width_deg=round(2 * math.degrees(math.atan(math.sqrt(e @ e))), 3),
                src=f"SPHEREx level 2 image {OBS} D1 (DR1), NASA/IPAC IRSA; zodiacal light model subtracted"),
     objects=objects, n_bodies=len(bodies),
-    star=dict(id=STAR, ra=star["ra"], dec=star["dec"], g=round(star["g"], 2), u=round(float(su), 4), v=round(float(sv), 4)), spectrum=spectrum)
+    star=dict(id=STAR, ra=star["ra"], dec=star["dec"], g=round(star["g"], 2), u=round(float(su), 4), v=round(float(sv), 4)), spectrum=spectrum, light=light,
+    **({"bands": old_doc["bands"]} if "bands" in old_doc else {}))   # bands: bake/intro_bands.py
 (OUT / "photo.json").write_text(json.dumps(doc, separators=(",", ":")))
 print(f"photo.jpg {(OUT / 'photo.jpg').stat().st_size / 1e6:.2f} MB; {doc['photo']}")
 for o in objects: print(f"  {o['name']:20s} u {o['u']:+.3f} v {o['v']:+.3f}  {o['dist']:28s} light there: {o['snr']} sigma   {o['src']}")
+print(f"  the galaxy's glow: peak {light['peak']} microns against {REST} at rest, {light['peak'] / REST - 1:.1%} redder ({light['sigma']} sigma); its redshift {light['z']:.1%}; {len(light['fine'])} fine points")
 print(f"  {len(bodies)} known asteroids and comets on the detector; star we follow at u {su:+.3f} v {sv:+.3f}; spectrum {len(spectrum)} points, {sum(p[2] for p in spectrum)} with a flagged pixel nearby")
