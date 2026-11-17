@@ -371,6 +371,45 @@ async def main():
         check(not pg.errors, f"cards: no page errors {pg.errors}")
         await ctx.close()
 
+        # ---------- 11: one target in every view (Codex review, seventh pass) ----------
+        # For each mode the page has, the target's mark on the Photo, Depth's marker for it (its u, v put back on the sky)
+        # and the names shown agree: within 2 px, the same name. photo False: nothing on the photo marks it (no source
+        # measured this visit), so Depth puts "the dot in the middle" at the patch centre.
+        TGT = """() => { const s = __lapse.state, m = s.m, f = m.frames[s.i], v = __lapse.view(), W = patch.width, H = patch.height, G = m.grid, a = m.arcsec_per_pixel;
+              const sky = p => { if (!p) return null; const x = p[0] / (W / v.cw) + v.ox - 0.5, y = G - 1 - (p[1] / (H / v.ch) + v.oy - 0.5); return [((G - 1) / 2 - x) * a, (y - (G - 1) / 2) * a]; };
+              const dm = __depth.shown?.mark, half = G * a / 2;
+              return { a, i: s.i, n: m.frames.length, name: document.getElementById('pv-name').textContent, aria: patch.getAttribute('aria-label'), mark: window.__mark?.name ?? null,
+                photo: sky(window.__mark?.px), depth: dm ? [-dm.uv[0] * half, dm.uv[1] * half] : null, label: dm?.label ?? null, ring: !!window.__cand?.ring,
+                rows: [...document.querySelectorAll('#dist-list li')].map(l => l.querySelector('.nm').textContent) }; }"""
+        SETTLED = "!!__depth.shown?.target && !!document.getElementById('dist-list').dataset.state && !document.getElementById('dist-list').dataset.state.includes('pending')"
+        MODES = [   # mode, query, the name beside the photo, the name Depth gives its marker, a mark on the photo
+            ("plain target", "target=barnard&day=9999", "Barnard's Star", "barnard's star", True),
+            ("detector candidate, sample=1", "target=barnard&cand=K-0001&sample=1", "Sample candidate K-0001", "sample candidate k-0001", True),
+            ("baked star that stays put", "target=rdra", "R Draconis", "r draconis", True),
+            ("live patch", "ra=248.1674&dec=66.7552&det=D2", "Sky spot", "the star in the middle", True),
+            ("&t= comet view (3I/ATLAS)", "ra=167.1309&dec=5.1732&det=D1&t=61023.3194", "Sky spot", "the dot in the middle", False)]
+        dist = lambda p, q: math.hypot(p[0] - q[0], p[1] - q[1])
+        for mode, q, pv, dn, marked in MODES:
+            ctx, pg = await page(b)
+            await pg.goto(f"{BASE}/timelapse.html?{q}&view=depth"); await pg.wait_for_function(READY, timeout=180000)
+            await pg.wait_for_function(SETTLED, timeout=90000); await pg.wait_for_timeout(500)
+            r = await pg.evaluate(TGT)
+            tol, at = 2 * r["a"], r["photo"] if marked else [0, 0]
+            ok = (r["name"] == pv and r["label"] and r["label"].split(" · ")[0].lower() == dn and (r["mark"] or "Sky spot") == pv
+                  and (pv if pv != "Sky spot" else "a sky spot") in r["aria"] and at is not None and (r["photo"] is None) == (not marked)
+                  and r["depth"] is not None and dist(at, r["depth"]) <= tol)
+            check(ok, f"one target, {mode}: '{r['name']}' / Depth '{r['label']}', photo {r['photo']} vs Depth {r['depth']} (within {tol} arcsec)")
+            if mode.startswith("detector"):   # a visit without a detection: nothing places it, and Depth names it without a marker
+                for _ in range(r["n"]):
+                    if not r["ring"]: break
+                    await pg.focus("#play"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(300)
+                    await pg.wait_for_function(SETTLED, timeout=90000); await pg.wait_for_timeout(300); r = await pg.evaluate(TGT)
+                if r["ring"]: check(True, "one target, candidate: every visit has a detection (no empty visit to check)")
+                else: check(r["photo"] is None and r["depth"] is None and "Sample candidate K-0001" in r["rows"],
+                            f"one target, candidate in a visit without a detection (visit {r['i']}): no mark on the photo or in Depth, the list still names it ({r['rows'][:3]})")
+            check(not pg.errors, f"one target, {mode}: no page errors {pg.errors}")
+            await ctx.close()
+
         # ---------- 8: phone ----------
         ctx, pg = await page(b, phone=True)
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY); await pg.wait_for_timeout(300)

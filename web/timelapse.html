@@ -572,9 +572,11 @@ function draw() {
   // passers as dashed paths in their own colours (comets orange, asteroids blue), as before the redesign.
   // a time-lapse opened at a comet's place on a date (&t=, from its page) rings that place: the comet is the subject, not the star
   const say = verdict(m, f), merged = !state.split, starMark = merged && !!say.star && m.t == null && !candTrack.on();
+  // the target and its place this visit (targetAt, the one source every view reads): its check goes there
+  const tg = targetAt(m, f), tgPx = tg.pos && toPx((G - 1) / 2 - tg.pos[0] / m.arcsec_per_pixel, (G - 1) / 2 + tg.pos[1] / m.arcsec_per_pixel);
   let tLab = null;   // the target's "Already known" name, kept clear of by the passers' names below
   if (starMark) {
-    const cur = shown.at(-1) === f ? toPx(f.x, f.y) : f.pred_east != null ? predPx(f) : toPx((G - 1) / 2, (G - 1) / 2);
+    const cur = tgPx;
     const bx = cur[0] + 12, by = cur[1] - 12;
     knownBadge(bx, by);
     ctx.font = `400 ${Math.round(H / 34)}px "Space Mono", ui-monospace, monospace`; ctx.textBaseline = 'middle';
@@ -655,6 +657,9 @@ function draw() {
   }
   specRing(toPx, f);
   candTrack.draw(ctx, m, f, toPx, offset);
+  // for tests: the target's mark as drawn, in canvas pixels: the candidate's ring, the known star's check, or this
+  // visit's orange dot when it is the dot (a source measured off it is something else); null when nothing marks it
+  window.__mark = { name: tg.name, px: candTrack.on() ? window.__cand.ring : starMark ? tgPx : f.x != null && tg.id.srcOff == null ? toPx(f.x, f.y) : null };
   sayVerdict(m, f);
   if (pvView === 'depth') depth.frame();
   knownList(f);
@@ -662,7 +667,7 @@ function draw() {
   showVisit(m, f);
   moreBelow();
   talk?.frame();
-  patch.setAttribute('aria-label', `SPHEREx image of ${candTrack.title() ?? m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
+  patch.setAttribute('aria-label', `SPHEREx image of ${tg.name ?? 'a sky spot'}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
 }
 
 // "Already known": a blue disc with a black check, outlined so it reads on a white star (the legend's .kn)
@@ -682,11 +687,11 @@ const arc = x => (x >= 10 ? Math.round(x) : +x.toFixed(1)).toLocaleString('en-US
 function verdict(m, f) {
   // a detector candidate (&cand=) is a dot on its own track, not the source the patch measures in its middle: the
   // middle's motion and Gaia match say nothing about it, so the verdict claims neither
-  if (candTrack.on()) return { parts: [`${candTrack.title()} is a detector candidate. Its track is the dotted line; nothing here checks it against Gaia or the asteroid catalogs, so it is not called known.`], star: null, known: false, who: candTrack.title() };
-  const live = m.key.startsWith('live'), name = candTrack.title() ?? (live ? null : m.name);
+  const tg = targetAt(m, f), name = tg.name;
+  if (!tg.id) return { parts: [`${name} is a detector candidate. Its track is the dotted line; nothing here checks it against Gaia or the asteroid catalogs, so it is not called known.`], star: null, known: false, who: name };
   // what is the dot in the middle in this visit (live/identity.js, the one rule): the catalog star only when Gaia's (or a
   // published) place for it this visit is on the dot; a passer only when SkyBoT puts it on the dot at an exposure's time
-  const id = identityAt(m, f), onDot = !!id.star.match;
+  const live = m.key.startsWith('live'), id = tg.id, onDot = !!id.star.match;
   // the motion is fit from the source measured each visit: when this visit's lies off the dot (id.srcOff), the motion
   // is not the dot's, so nothing here says the dot moved
   const mo = id.srcOff == null ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
@@ -735,6 +740,19 @@ function identityAt(m, f) {
   if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.pts[k][0]; }
   return { mid, srcOff, a, star, pass };
 }
+// ---------- the target: what the page is about and where it is this visit, the one source for every view ----------
+// The Photo's mark on it, the verdict, Depth's marker and its label, the Discuss offer, the mini-map's ring and the
+// aria-labels all read these, so no view names one thing and places another. A detector candidate (&cand=) is the
+// target while it is open: its detection in this visit, never the patch's middle, and no catalog identity (the verdict
+// claims none). Otherwise the dot by the identity rule (identityAt). name: null for a live patch's dot (each place says
+// "the dot in the middle" its own way); pos: [east, north] arcsec from the patch centre, null when the candidate has no
+// detection in this visit (then nothing places it); id: identityAt, null for a candidate.
+const targetName = m => candTrack.title() ?? (m.key.startsWith('live') ? null : m.name);
+function targetAt(m, f) {
+  if (candTrack.on()) return { name: targetName(m), pos: candTrack.at(m, f, offset), id: null };
+  const id = identityAt(m, f);
+  return { name: targetName(m), pos: id.mid, id };
+}
 let saidKey = '';
 function sayVerdict(m, f) {
   const v = verdict(m, f), key = JSON.stringify([v.parts, m.key, m.ra, m.dec, m.frames.length, m.detector, m.lam0, m.channel ?? null]);   // the facts line too
@@ -770,16 +788,19 @@ function drawMini(m, f, v) {
   mini2d.fillStyle = 'rgba(0,0,0,.5)'; mini2d.beginPath(); mini2d.rect(x0, y0, S, S); mini2d.rect(bx, by, bw, bh); mini2d.fill('evenodd');
   mini2d.strokeStyle = 'rgba(255,255,255,.35)'; mini2d.lineWidth = 2; mini2d.strokeRect(x0, y0, S, S);
   mini2d.strokeStyle = '#fff'; mini2d.lineWidth = 3; mini2d.strokeRect(bx, by, bw, bh);
-  // the target: where it was measured this visit, or the middle of the region
-  const tx = f.x != null ? f.x : (G - 1) / 2, ty = f.y != null ? f.y : (G - 1) / 2;
-  const px = x0 + (tx + 0.5) * k, py = y0 + (G - 1 - ty + 0.5) * k;
-  for (const [color, width] of [['rgba(0,0,0,.8)', 7], ['#ff9a4d', 3]]) { mini2d.strokeStyle = color; mini2d.lineWidth = width; mini2d.beginPath(); mini2d.arc(px, py, 11, 0, 7); mini2d.stroke(); }
+  // the target where it is this visit (targetAt); none when it has no place in it
+  const pos = targetAt(m, f).pos;
+  if (pos) {
+    const tx = (G - 1) / 2 - pos[0] / m.arcsec_per_pixel, ty = (G - 1) / 2 + pos[1] / m.arcsec_per_pixel;
+    const px = x0 + (tx + 0.5) * k, py = y0 + (G - 1 - ty + 0.5) * k;
+    for (const [color, width] of [['rgba(0,0,0,.8)', 7], ['#ff9a4d', 3]]) { mini2d.strokeStyle = color; mini2d.lineWidth = width; mini2d.beginPath(); mini2d.arc(px, py, 11, 0, 7); mini2d.stroke(); }
+  }
   // the sizes: the whole region beside it, the frame's part under it
   const arcmin = G * m.arcsec_per_pixel / 60;
   mini2d.fillStyle = 'rgba(255,255,255,.85)'; mini2d.font = '40px "Space Mono", ui-monospace, monospace'; mini2d.textBaseline = 'bottom';
   mini2d.fillText(`${+arcmin.toFixed(1)}′`, x0 + S + 14, y0 + S);
   mini2d.textBaseline = 'top'; mini2d.fillText(`${+(v.cw * m.arcsec_per_pixel / 60).toFixed(1)}′`, x0 + S + 14, y0);
-  mini.setAttribute('aria-label', `The whole ${+arcmin.toFixed(1)} arcmin region; the outlined box is the ${state.fov} arcmin the big frame shows, the ring is the target`);
+  mini.setAttribute('aria-label', `The whole ${+arcmin.toFixed(1)} arcmin region; the outlined box is the ${state.fov} arcmin the big frame shows${pos ? ', the ring is the target' : ''}`);
 }
 
 function showVisit(m, f) {
@@ -921,7 +942,7 @@ function show(m, query, opts = {}) {
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   candTrack.commit(query);
-  document.getElementById('pv-name').textContent = candTrack.title() ?? (m.key.startsWith('live') ? 'Sky spot' : m.name);
+  document.getElementById('pv-name').textContent = targetName(m) ?? 'Sky spot';
   window.__aim3d?.();   // Advanced's "View this spot on Explore's 3D sky" follows the address
   panel(m); draw(); photo();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
@@ -1152,9 +1173,9 @@ function back() {
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
-talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => identityAt(state.m, f).pass.match,
+talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => targetAt(state.m, f).id?.pass.match ?? null,
   opening: () => { if (spec.at || spec.mode) closeSpec(false); } });   // one card in the right column: the sheet closes the Spectrum card
-window.__lapse = { state, recenter, verdict, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
+window.__lapse = { state, recenter, verdict, targetAt, view: () => view(state.m), get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 // ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
 // The main channel is the lowest active layer, or with none the dial's channel once the dial is turned (before that, and
@@ -1453,17 +1474,19 @@ const depth = depthView({
     const mt = state.verdict?.match; if (!mt) return -1;
     if (mt.kind === 'sso') return all.findIndex(p => p.src === 'sso' && p.o.name === mt.name);
     // the Gaia star the verdict matched: the same proper motion (within 1 mas/yr both ways), on the dot by the same rule
-    const { mid } = identityAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
+    const { pos } = targetAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
+    if (!pos) return -1;
     const near = all.map((p, i) => [p, i]).filter(([p]) => p.src === 'stars' && Math.abs(p.o.pmra - mt.pmra) <= 1 && Math.abs(p.o.pmdec - mt.pmdec) <= 1)
       .map(([p, i]) => { const [u, v] = this.onScreen(m, p.ra, p.dec, { year: f.year, pmra: p.o.pmra, pmdec: p.o.pmdec }); return { i, pos: [[-u * half, v * half]] }; });   // u runs west
-    return identify(mid, near, m.arcsec_per_pixel).match?.i ?? -1;
+    return identify(pos, near, m.arcsec_per_pixel).match?.i ?? -1;
   },
-  // where the dot is on the region (-1 to 1, north up) and what to call it, for its "distance unknown" mark
+  // where the target is on the region (-1 to 1, north up; u null when it has no place this visit) and what to call it,
+  // for its "distance unknown" mark (targetAt)
   middle(m, f) {
-    const { mid } = identityAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
-    return { u: -mid[0] / half, v: mid[1] / half, name: candTrack.title() ?? (m.key.startsWith('live') ? 'the dot in the middle' : m.name) };
+    const { name, pos } = targetAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
+    return { u: pos ? -pos[0] / half : null, v: pos ? pos[1] / half : null, name: name ?? 'the dot in the middle' };
   },
-  targetName: m => candTrack.title() ?? (m.key.startsWith('live') ? null : m.name),
+  targetName,
   matchKey: () => JSON.stringify(state.verdict?.match ?? null),   // what the target pick depends on, besides the depth answer
 });
 window.__depth = depth;   // for tests/timelapse_redesign_ui.py

@@ -292,8 +292,8 @@ export function depthView(page) {
       const err = p.o.d_lo_pc != null ? [scale(p.o.d_lo_pc * LY_PC), scale(p.o.d_hi_pc * LY_PC)] : null;
       scene3.beads.push({ u, v, f, pos: at(u, v, f), err, acc, sp: S.sprite(acc ? scene3.rA : scene3.rW, 9), lab: S.label(text, acc ? 'accent' : ''), size: acc ? 20 : 15 });
     });
-    if (picked.target < 0) {   // the middle, at the photo's end of its line of sight: a dashed orange ring, "distance unknown"
-      const mid = page.middle(m, data.f);
+    const mid = picked.target < 0 && page.middle(m, data.f);
+    if (mid && mid.u != null) {   // the target, at the photo's end of its line of sight: a dashed orange ring, "distance unknown" (none when it has no place this visit)
       scene3.beads.push({ u: mid.u, v: mid.v, f: .95, pos: at(mid.u, mid.v, .95), err: null, acc: true, sp: S.sprite(scene3.rAu, 9), lab: S.label(`${mid.name} · distance unknown`, 'accent'), size: 20, unknown: true });
     }
     scene3.beads.sort((a, b) => a.f - b.f).forEach((b, k) => { b.tier = k; });
@@ -310,7 +310,8 @@ export function depthView(page) {
     scene3.marks = pickD.map(x => ({ f: scale(10 ** x), lab: S.label(lyText(10 ** x, false), 'mark') }));
     box.dataset.objects = String(all.length);
     box.dataset.rings = String(scene3.beads.length); box.dataset.dots = String(scene3.dots.length);
-    shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i)).map(p => p.key), dots: scene3.dots.map(d => d.key), target: picked.target >= 0 ? all[picked.target].key : 'unknown' };
+    shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i)).map(p => p.key), dots: scene3.dots.map(d => d.key), target: picked.target >= 0 ? all[picked.target].key : 'unknown',
+      mark: (b => b ? { uv: [b.u, b.v], label: b.lab.el.textContent } : null)(scene3.beads.find(b => b.acc)) };   // the target's ring and its label, for tests
     photo();
     render();
   }
