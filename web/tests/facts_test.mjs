@@ -204,8 +204,14 @@ eq(F.group({ seen: 0, parent: 2, measured: 3, unseen: 0, visits: 3 }), 'parent',
 
 // ---------- the visit cards' one short line (Ed, 17 Nov) ----------
 eq(F.visits(X('C/x', facts({}, { inv: { visits: [vis({ snr: 111.6 }), vis({ verdict: 'parent', near_parent: 12 }), vis({ verdict: 'faint', snr: null }),
-  vis({ verdict: 'unseen', snr: null, n: 113, tried: 12 }), vis({ verdict: 'unmeasured', snr: null })] } }))).map(v => v.short),
+  vis({ verdict: 'unseen', snr: null, n: 113, tried: 12, measured: 12 }), vis({ verdict: 'unmeasured', snr: null })] } }))).map(v => v.short),
   ["Seen: 112 times above the picture's noise.", 'Light near its parent’s position; maybe the parent’s.', 'Too faint here.', 'Not seen in the 12 of 113 pictures measured.', 'Could not be measured here.'], 'visit cards: one short line each');
+
+// ---------- counts printed are valid measurements, never failed attempts (re-review of 7c1af63) ----------
+const mixed = F.visits(X('C/x', facts({}, { inv: { visits: [vis({ verdict: 'unseen', snr: null, n: 77, tried: 12, measured: 11 })] } })))[0];
+eq([mixed.short, mixed.title], ['Not seen in the 11 of 77 pictures measured.', 'No detection in the 11 of 77 pictures measured. The ring marks where JPL puts it.'], 'a visit with one failed attempt: 11 measured, not 12');
+eq(F.lead(X('C/x', facts({ e: 1.0003, per: null }, { inv: { n: 300, visits: [vis({ verdict: 'unseen', snr: null, n: 200, tried: 12, measured: 11 }), vis({ verdict: 'faint', snr: null, n: 100, tried: 100, measured: 99 })] } }), now({ rdot: 3 }))).map(s => s.text).at(-1),
+  'No detection in the 110 of 300 SPHEREx pictures measured.', 'the lead counts valid measurements');
 
 // ---------- every known comet: nothing forbidden, nothing empty ----------
 const FIX = new URL('./fixtures/comets.json', import.meta.url);
@@ -225,6 +231,11 @@ if (fs.existsSync(FIX)) {
     const vs = c.detail?.facts?.inv?.visits ?? [];
     eq(vs.filter(v => v.verdict === 'faint' && v.tried < v.n).length, 0, `${c.id}: faint visits not fully measured`);
     eq(vs.filter(v => v.verdict === 'seen' && v.near_parent != null).length, 0, `${c.id}: fragment visits counted as seen within the parent's circle`);
+    // every printed "k of n pictures measured" is the valid count (measured), never the attempts (tried)
+    const pv = F.visits(F.inputs(c, c.now, T0));
+    eq(pv.filter((v, i) => vs[i].verdict === 'unseen' && !(v.short.includes(`the ${vs[i].measured} of`) && v.title.includes(`the ${vs[i].measured} of`))).map(v => v.when), [], `${c.id}: visit counts are valid measurements`);
+    const lm = p.lead.map(s => s.text).join(' ').match(/in the ([\d,]+) of [\d,]+ SPHEREx pictures measured/);
+    if (lm) eq(+lm[1].replace(/,/g, ''), vs.reduce((t, v) => t + v.measured, 0), `${c.id}: the lead's count is the valid measurements`);
     // fix 4: a visit's quoted SNR is the shown picture's own: the picture file is the measurement's
     eq(vs.filter(v => v.snr != null && !(v.pic && v.img && v.img.endsWith(`/${v.pic.obs}_${v.pic.det}.png`) && v.pic.snr === v.snr)).length, 0, `${c.id}: visits whose SNR is not the shown picture's`);
   }

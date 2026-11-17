@@ -289,7 +289,7 @@ export function visits(x) {
       title = 'Light near the parent’s position.';
       out.push(S(`It may be the parent comet’s light: the two were ${b(Math.round(v.near_parent) + ' arcseconds')} apart, inside the measuring circle.`, 'measured'));
     } else if (v.verdict === 'faint') title = 'Not detected. The ring marks where JPL puts it.';
-    else if (v.verdict === 'unseen') title = `No detection in the ${v.tried} of ${v.n.toLocaleString('en-US')} pictures measured. The ring marks where JPL puts it.`;
+    else if (v.verdict === 'unseen') title = `No detection in the ${v.measured} of ${v.n.toLocaleString('en-US')} pictures measured. The ring marks where JPL puts it.`;
     else title = 'Could not be measured here.';
     if (v.delta != null) out.push(S(`${b(dist(v.delta))} away.`, 'predicted'));
     if ((v.verdict === 'faint' || v.verdict === 'unseen') && v.T != null && v.T <= 30 && !x.f?.status) out.push(S(`Magnitude ${v.T.toFixed(1)} then.`, 'predicted'));
@@ -301,7 +301,7 @@ export function visits(x) {
     if (months.length) out.push(S(`Carbon dioxide detected in ${MONTHS[+months[0].slice(5) - 1]}'s combined measurements.`, 'measured'));
     // the card's one short line (Ed, 17 Nov): the full sentences go to the card's hover and to Advanced
     const short = { seen: `Seen: ${Math.round(v.snr ?? 0)} times above the picture's noise.`, parent: 'Light near its parent’s position; maybe the parent’s.',
-      faint: 'Too faint here.', unseen: `Not seen in the ${v.tried} of ${v.n.toLocaleString('en-US')} pictures measured.` }[v.verdict] ?? 'Could not be measured here.';
+      faint: 'Too faint here.', unseen: `Not seen in the ${v.measured} of ${v.n.toLocaleString('en-US')} pictures measured.` }[v.verdict] ?? 'Could not be measured here.';
     return { k, when: span(s, e), start: s, end: e, title, short, d: out, verdict: v.verdict, n: v.n, link: v.link, img: v.img, lam: v.lam ?? null };
   });
 }
@@ -333,7 +333,7 @@ export function counts(x) {
   const vs = x.f?.inv?.visits ?? [];
   const k = verdict => vs.filter(v => v.verdict === verdict).length;
   return { n: vs.length, seen: k('seen'), parent: k('parent'), unseen: k('unseen'), measured: vs.filter(v => v.verdict !== 'unmeasured').length,
-    tried: vs.reduce((t, v) => t + (v.tried ?? 0), 0), pictures: x.f?.inv?.n ?? 0 };
+    valid: vs.reduce((t, v) => t + (v.measured ?? 0), 0), pictures: x.f?.inv?.n ?? 0 };
 }
 export function sxClause(x) {
   const v = x.d.co2_verdict, c = counts(x);
@@ -341,7 +341,7 @@ export function sxClause(x) {
   if (v === 'detected') s = 'SPHEREx detected carbon dioxide around it';
   else if (c.seen) s = `SPHEREx detected it on ${c.seen} of ${c.n} visit${c.n === 1 ? '' : 's'}` + (c.parent ? `; on ${c.parent} more, light near its parent’s position may be the parent’s` : '');
   else if (c.parent) s = `SPHEREx caught light near its parent’s position on ${c.parent} of ${c.n} visit${c.n === 1 ? '' : 's'}; it may be the parent’s light`;
-  else if (c.unseen) s = `No detection in the ${c.tried.toLocaleString('en-US')} of ${c.pictures.toLocaleString('en-US')} SPHEREx pictures measured`;
+  else if (c.unseen) s = `No detection in the ${c.valid.toLocaleString('en-US')} of ${c.pictures.toLocaleString('en-US')} SPHEREx pictures measured`;
   else if (c.n && c.measured === c.n) s = 'SPHEREx’s pictures did not detect it';
   else if (c.n && !c.measured) s = `None of its ${c.n} SPHEREx visit${c.n === 1 ? '' : 's'} could be measured`;
   else if (c.n) s = `SPHEREx’s pictures did not detect it; ${c.measured} of ${c.n} visit${c.n === 1 ? '' : 's'} could be measured`;
