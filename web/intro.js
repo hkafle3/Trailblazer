@@ -156,7 +156,7 @@ const CAPTIONS = [   // [from, to (U), step 1..8, text, small note]. Few words: 
   [fw(19.9), fw(30.2), 7, 'Every photo together: the <b>whole sky</b>.', 'The sphere has no true size. It is only a way to draw directions. Planet orbits from NASA JPL.'],
   [fw(30.7), fw(36.9), 8, 'Unfold it, and you get the <b>map</b>.', NOTE_MAP],
 ];
-const STILLS = [3.6, 8.2, fu(15.6), fu(20.6), SH_U + 3, fu(25.4), fu(30.7), fu(35.2), DK_U + 3, DK_U + 8, DK_U + 12.6, DK_U + 15, fw(11), fw(15), fw(22.9), fw(35.6)];   // one frame per caption, for reduced motion
+const STILLS = [3.6, 8.2, FLY0 + 6.4, fu(20.6), SH_U + 3, fu(25.4), fu(30.7), fu(35.2), DK_U + 3, DK_U + 8, DK_U + 12.6, DK_U + 15, fw(11), fw(15), fw(22.9), fw(35.6)];   // one frame per caption, for reduced motion
 
 // ---------- renderer ----------
 const canvas = $('gl');
@@ -521,7 +521,7 @@ const starMat = tint => new THREE.ShaderMaterial({ transparent: true, uniforms: 
       gl_FragColor = vec4(col, uA * smoothstep(0., .22, mu)); }` });
 const galMat = map => new THREE.ShaderMaterial({ transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { uPic: { value: map }, uA: { value: 0 } }, vertexShader: BODY_VS,
   fragmentShader: `uniform sampler2D uPic; uniform float uA; varying vec2 vUv;
-    void main(){ float r = length(vUv - .5) * 2.; vec3 c = max(texture2D(uPic, vUv).rgb - .07, 0.) * 2. * (1. - smoothstep(.36, .72, r));   // the sky around it taken down to black
+    void main(){ float r = length(vUv - .5) * 2.; vec3 c = texture2D(uPic, vUv).rgb; c = max(c - .07, 0.) * 2. * smoothstep(.1, .24, dot(c, vec3(.4, .4, .2))) * (1. - smoothstep(.36, .72, r));   // the sky around it, and the grain of its faint edge, taken down to black
       gl_FragColor = vec4(c, uA); }` });
 const haloTex = glowTex([[0, 'rgba(255,255,255,.85)'], [.1, 'rgba(255,255,255,.85)'], [.15, 'rgba(255,255,255,.4)'], [.28, 'rgba(255,255,255,.14)'], [.55, 'rgba(255,255,255,.035)'], [1, 'rgba(255,255,255,0)']]);   // the disc's edge is a tenth of the way out
 const ballGeo = new THREE.SphereGeometry(1, 64, 32), flatGeo = new THREE.PlaneGeometry(2, 2);
@@ -1009,7 +1009,7 @@ function render(U) {
     if (b.sp.visible) { b.sp.position.copy(b.pos); b.sp.scale.setScalar(dz * ppx * b.px); b.sp.material.opacity = b.a; }
     // in flight: the body itself, with a size in space. Far ahead it is a point of light
     const q = fl?.way[b.i + 1], xi = q ? (st.fly - q.bf) / q.e0 : -99, far = b.kind === 'star' ? 0 : fa * (1 - sm((rpx - (b.kind === 'galaxy' ? 4 : 1.5)) / 3));
-    b.front = dz > 0; b.lab = fa * sm((rpx * (b.kind === 'star' ? 2.5 : 1) - 12) / 14) * sm((xi + 30) / 12) * (1 - sm((xi + .5) / 1.3));
+    b.front = dz > 0; b.lab = fa * sm((rpx * (b.kind === 'star' ? 2.5 : 1) - 24) / 14) * sm((xi + 16) / 8) * (1 - sm((xi + .5) / 1.3));
     b.core.visible = dz > camera.near && (ca > 0 || far > 0);
     if (b.core.visible) { const cs = dz * ppx * (ca > 0 ? b.px * (b.kind === 'asteroid' ? .2 : .42) : b.kind === 'galaxy' ? 7 : 3.4); b.core.position.copy(b.pos); b.core.scale.set(cs * (b.kind === 'galaxy' ? 1.7 : 1), cs, 1); b.core.material.opacity = Math.max(ca, far); }
     b.mesh.visible = fa > 0; if (b.glow) b.glow.visible = fa > 0;
@@ -1020,7 +1020,7 @@ function render(U) {
         un.uLight.value.copy(E).addScaledVector(b.dir, b.au).normalize().negate();
       } else if (b.kind === 'star') {
         un.uTime.value = U; b.glow.position.copy(b.pos); b.glow.scale.setScalar(Math.max(rw * 20, Math.max(dz, 0) * ppx * 9)); b.glow.material.opacity = fa * (.6 + .4 * sm(rpx / 4));
-      } else un.uA.value = fa * (1 - sm((xi + 1.1) / .9)) * sm(rpx / 5);   // a flat photo: gone before it is seen edge on
+      } else un.uA.value = fa * (1 - sm((xi + 1.1) / .9)) * sm(rpx / 5) * (1 - sm((rpx / H - .42) / .3));   // a flat photo: gone before it is seen edge on, or so large that it is a blur
     }
     if (beam > 0 && f < .999) guides.seg(top, b.pos, WHITE, .05 * beam * b.a, .3 * beam * b.a);
   }
