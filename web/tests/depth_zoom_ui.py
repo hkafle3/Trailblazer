@@ -7,7 +7,10 @@ At 1440x900:
 3. labels keep their font size at any zoom; hovering a dot and clicking one still name it while zoomed;
 4. a drag still turns the beam while zoomed, and keeps the zoom; the zoom stays between 1x and 8x;
 5. the + and - buttons and keys zoom about the middle; Reset view undoes the zoom and the turn (the camera is the
-   first one again); no page errors.
+   first one again);
+6. shift-drag and right-drag pan the zoomed view (no turn), only as far as the edges of the whole scene; the canvas
+   holds back the context menu, the rest of the page does not; the dashed no-distance rings fade in with the swing;
+   no page errors.
 At 390x844 with touch: a two-finger pinch (CDP touch) zooms toward the fingers' midpoint, the page does not zoom
 (visualViewport.scale 1) or scroll, and no two names overlap; one finger still turns; a one-finger swipe outside the canvas still scrolls the page;
 the zoom buttons are 44 px taps.
@@ -129,6 +132,33 @@ async def main():
             zr = await pg.evaluate("(r => [r.left, r.top, r.right, r.bottom])(document.querySelector('#depth3d .xp-d3-zoom').getBoundingClientRect())")
             under = [l for l in labels if l[0] < zr[2] and l[2] > zr[0] and l[1] < zr[3] and l[3] > zr[1]]
             check(not under, f"no label runs under the zoom buttons ({under})")
+            # 6. pan: shift-drag and right-drag move the zoomed view (the scene follows the pointer); a plain drag still turns
+            async def drag(dx, dy, how=None):
+                if how == "shift": await pg.keyboard.down("Shift")
+                await pg.mouse.move(cx, cy); await pg.mouse.down(button="right" if how == "right" else "left")
+                await pg.mouse.move(cx + dx, cy + dy, steps=6); await pg.mouse.up(button="right" if how == "right" else "left")
+                if how == "shift": await pg.keyboard.up("Shift")
+                await pg.wait_for_timeout(80); return await st()
+            s6 = await drag(-80, 0, "shift")
+            check(s6["v"]["x"] == 0 and s6["v"]["y"] == 0 and s6["v"]["a"] == 0, f"pan: at 1x a shift-drag moves nothing and turns nothing ({s6['v']})")
+            await zin.click(); await zin.click(); s6 = await st(); r6 = s6["ring"]
+            s7 = await drag(-60, -40, "shift")
+            check(off(s7["ring"], [r6[0] - 60, r6[1] - 40]) <= 2 and s7["v"]["a"] == s6["v"]["a"] and k_of(s7) == k_of(s6),
+                  f"pan: a shift-drag moves the zoomed scene with the pointer (ring {off(s7['ring'], [r6[0] - 60, r6[1] - 40]):.2f} px off), no turn, same zoom ({s7['v']})")
+            s8 = await drag(50, 30, "right")
+            check(off(s8["ring"], [s7["ring"][0] + 50, s7["ring"][1] + 30]) <= 2 and s8["v"]["a"] == s6["v"]["a"],
+                  f"pan: a right-drag moves it too (ring {off(s8['ring'], [s7['ring'][0] + 50, s7['ring'][1] + 30]):.2f} px off), no turn")
+            menu = await pg.evaluate("[!document.querySelector('#depth3d canvas').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })), document.querySelector('.pv-who').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))]")
+            check(menu == [True, True], f"pan: the context menu is held back on the canvas only (canvas, elsewhere: {menu})")
+            W, H, k = cv["width"], cv["height"], k_of(s8)
+            for _ in range(5): s9 = await drag(250, 250, "shift")
+            for _ in range(5): s10 = await drag(-250, -250, "shift")
+            check(s9["v"]["x"] == 0 and s9["v"]["y"] == 0 and abs(s10["v"]["x"] - (W - W / k)) < 1 and abs(s10["v"]["y"] - (H - H / k)) < 1,
+                  f"pan: stops at the edges of the whole scene ({s9['v']['x']:.1f}, {s9['v']['y']:.1f} and {s10['v']['x']:.1f}, {s10['v']['y']:.1f} of {W - W / k:.1f}, {H - H / k:.1f})")
+            # the dashed "no distance" rings fade in with the swing, as everything else does
+            await pg.click("#tab-photo"); await pg.click("#tab-depth"); u0 = await pg.evaluate("__depth.view.unk")
+            await pg.wait_for_timeout(2400); u1 = await pg.evaluate("__depth.view.unk")
+            check(u0 is not None and u0 < .05 and u1 == 1, f"the dashed no-distance rings fade in with the swing (opacity {u0} at its start, {u1} after)")
         else: check(False, "the Depth panel has + , - and Reset view buttons")
         check(not pg.errors, f"desktop: no page errors {pg.errors}")
         await ctx.close()

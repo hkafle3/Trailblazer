@@ -2,7 +2,8 @@
 // for the patch and the visit on screen. Two parts, fed by one answer:
 // - the beam: SPHEREx at the near end, the whole region's photo at the far end, and each placed object on its own line
 //   of sight at its distance, on a compressed log scale (the UX mockup's 3D view, ux-mockups/src/depth3d.js sky(), on
-//   real data). Drag turns it; the wheel, a pinch, + and - zoom toward the pointer or the fingers, Reset view undoes both.
+//   real data). Drag turns it; the wheel, a pinch, + and - zoom toward the pointer or the fingers, a shift- or right-drag
+//   (or two fingers) moves around the zoomed view, Reset view undoes it all.
 // - the Distances list: every placed object, nearest first, with its source and error; then what has no distance, and
 //   any source that is still answering (pending, asked again after retry_after) or not answering (unavailable).
 // Nothing without a catalog distance gets a number. Names from the network are set with textContent.
@@ -271,18 +272,23 @@ export function depthView(page) {
     };
     // drag to turn: sideways turns the beam, up and down tilts it (a little). Two fingers zoom about their midpoint and
     // move with it (as on Explore and the photo): a second finger ends the turn, and none starts until both lift.
-    const cv = box.querySelector('canvas'), fingers = new Map(); let drag = null, pinch = null;
+    const cv = box.querySelector('canvas'), fingers = new Map(); let drag = null, pinch = null, pan = null;
     const two = () => { const [a, b] = fingers.values(), r = cv.getBoundingClientRect(); return { m: [(a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top], d: Math.hypot(a[0] - b[0], a[1] - b[1]) }; };
     cv.addEventListener('pointerdown', e => {
       if (e.pointerType !== 'mouse') fingers.set(e.pointerId, [e.clientX, e.clientY]);
       if (fingers.size === 2) { if (drag) { yaw.a = drag.a; yaw.p = drag.p; drag = null; cv.classList.remove('drag'); } cv.setPointerCapture(e.pointerId); pinch = two(); tip.el.style.opacity = 0; render(); return; }
-      if (fingers.size > 2 || pinch || e.button) return;
+      if (fingers.size > 2 || pinch) return;
+      // a shift- or right-drag moves the zoomed view, as in 3D viewers (nothing to move at 1x)
+      if (e.button === 2 || (!e.button && e.shiftKey)) { pan = { x: e.clientX, y: e.clientY, zx: Z.x, zy: Z.y }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); tip.el.style.opacity = 0; return; }
+      if (e.button) return;
       drag = { x: e.clientX, y: e.clientY, a: yaw.a, p: yaw.p }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); box.dataset.turned = '1'; });
     cv.addEventListener('pointermove', e => {
       if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
       if (pinch) { if (fingers.size === 2 && fingers.has(e.pointerId)) { const n = two(); if (n.d > 0 && pinch.d > 0) zoomAt(n.d / pinch.d, ...pinch.m, ...n.m); pinch = n; } return; }
+      if (pan) { Z.x = pan.zx - (e.clientX - pan.x) / Z.k; Z.y = pan.zy - (e.clientY - pan.y) / Z.k; return zoomAt(1, 0, 0); }   // zoomAt keeps it in the scene
       if (!drag) return peek(e); tip.el.style.opacity = 0; yaw.a = Math.max(-1.3, Math.min(1.9, drag.a + (e.clientX - drag.x) / 260)); yaw.p = Math.max(-.15, Math.min(.9, drag.p + (e.clientY - drag.y) / 300)); render(); });
-    const up = e => { fingers.delete(e?.pointerId); if (!fingers.size) pinch = null; if (drag && e?.type === 'pointerup' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) peek(e); drag = null; cv.classList.remove('drag'); };
+    const up = e => { fingers.delete(e?.pointerId); if (!fingers.size) pinch = null; if (drag && e?.type === 'pointerup' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) peek(e); drag = pan = null; cv.classList.remove('drag'); };
+    cv.addEventListener('contextmenu', e => e.preventDefault());   // the right button pans
     cv.addEventListener('pointerleave', () => { if (!drag) tip.el.style.opacity = 0; });
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     // the wheel and a trackpad pinch (a ctrl wheel: smaller steps, so stronger each) zoom toward the pointer, and neither
@@ -397,7 +403,7 @@ export function depthView(page) {
     for (const [n, off] of [['in', Z.k >= 8], ['out', Z.k <= 1]]) { const bt = box.querySelector(`[data-zoom=${n}]`); if (bt) bt.disabled = off; }
     const a = sm((s - .45) / .4), la = sm((s - .8) / .2);
     const { guides, craft, beam, cloud, unk } = scene3;
-    unk.material.size = 11 * S.z; craft.visible = s > .02; beam.material.opacity = .055 * a; cloud.material.opacity = (small ? .14 : .28) * a; cloud.material.size = small ? 2.5 : 4;   // a phone's narrower beam packs them closer unk.material.opacity = a;
+    unk.material.size = 11 * S.z; craft.visible = s > .02; beam.material.opacity = .055 * a; cloud.material.opacity = (small ? .14 : .28) * a; cloud.material.size = small ? 2.5 : 4; unk.material.opacity = a;   // a phone's narrower beam packs the dots closer
     guides.begin();
     for (const c of corners) guides.seg(top, c, WHITE, .3 * a, .6 * a);
     corners.forEach((c, i) => guides.seg(c, corners[(i + 1) % 4], WHITE, .9 * a));
@@ -443,8 +449,8 @@ export function depthView(page) {
       this.frame(); if (data?.d && asked === data.url) build();
     },
     get data() { return data; }, get url() { return asked; }, get gl() { return gl; }, get shown() { return shown; },
-    // for tests: the zoom and turn, the camera, and the target's ring on screen ([x, y, diameter] in client px)
-    get view() { return { k: Z.k, x: Z.x, y: Z.y, a: yaw.a, p: yaw.p }; },
+    // for tests: the zoom and turn (and the dashed rings' fade), the camera, and the target's ring on screen ([x, y, diameter] in client px)
+    get view() { return { k: Z.k, x: Z.x, y: Z.y, a: yaw.a, p: yaw.p, unk: scene3?.unk.material.opacity }; },
     get cam() { return S && [...S.camera.matrixWorld.elements, ...S.camera.projectionMatrix.elements]; },
     ringOf() {
       const b = scene3?.beads.find(x => x.acc); if (!b) return null;
