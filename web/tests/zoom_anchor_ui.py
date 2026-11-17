@@ -10,8 +10,9 @@ dives does the same at another point; after an off-centre dive, or an off-centre
 where the engine's numbers put it; "Dive in" after a partial off-centre scroll opens the middle; with the middle of the
 view off the sky oval (near the north pole), a pinch over sky dives there, and a second one does too; a Safari trackpad
 pinch (gesture events, dispatched here as plain events, so only the page's handling is checked) is prevented, zooms
-around the pointer, and at the deepest zoom dives to the sky under it; on a phone, a pinch at the deepest zoom that a
-third finger ends puts the aim and "Dive in" back in the middle.
+around the pointer, and at the deepest zoom dives to the sky under it, while one that arrives there and pauses does
+not; on a phone, a pinch at the deepest zoom that a third finger ends puts the aim and "Dive in" back in the middle, and
+a lopsided pinch (one finger still, so the sky follows the midpoint) dives to the sky between the fingers.
 Run: uv run -q --with playwright python web/tests/zoom_anchor_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, re, sys
 from playwright.async_api import async_playwright
@@ -241,6 +242,20 @@ async def safari(p):
     check("Safari pinch: gesture events over the map are prevented", all(r), str(r))
     check("Safari pinch: it zooms 1.5x around the pointer", abs(b["W"] / a["W"] - 1.5) < 0.01 and off < 2, f"x{b['W'] / a['W']:.3f}, {off:.2f} px off")
 
+    # a Safari pinch that arrives at the deepest zoom, pauses longer than a scroll's gap, and goes on: no dive
+    gesture = """([x, y, scales]) => { const el = document.elementFromPoint(x, y);
+      for (const [type, scale] of scales) { const e = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(e, { scale: { value: scale }, clientX: { value: x }, clientY: { value: y } }); el.dispatchEvent(e); } }"""
+    await pg.evaluate(gesture, [x, y, [["gesturestart", 1]] + [["gesturechange", 1.5 ** k] for k in range(1, 13)]])
+    arrived = (await pg.evaluate(SKY, [x, y]))["max"]
+    await asyncio.sleep(0.4)
+    await pg.evaluate(gesture, [x, y, [["gesturechange", 1.5 ** 12 * 1.5 ** k] for k in range(1, 5)]])
+    await asyncio.sleep(1)
+    none = await pg.evaluate("window.__diveState()") is None or (await pg.evaluate("window.__diveState()"))["phase"] == "ready"
+    check("Safari pinch: one that arrives at the deepest zoom, pauses and goes on does not dive", arrived and none and "explore" in pg.url, pg.url.split("/")[-1])
+    await pg.evaluate(gesture, [x, y, [["gestureend", 1]]])
+    await asyncio.sleep(0.3)
+
     # at the deepest zoom a new Safari pinch dives, to the sky under the pointer
     await scroll(pg, x, y, 40)
     await asyncio.sleep(0.4)
@@ -290,6 +305,17 @@ async def third_finger(p):
     check("phone: a pinch at the deepest zoom moves the aim between the fingers and fades Dive in", during["max"] and math.hypot(during["aim"][0] - 170, during["aim"][1] - 300) < 2 and not during["button"] and 0 < during["fill"] < 1, str(during))
     check("phone: a third finger ends it, and with all fingers up the aim and Dive in are back in the middle",
           after["dive"] is None and after["fill"] == 0 and after["button"] and math.hypot(after["aim"][0] - after["mid"][0], after["aim"][1] - after["mid"][1]) < 2, str(after))
+
+    # a lopsided pinch: one finger stays, the other moves away, so the midpoint and the sky under it move together
+    await asyncio.sleep(0.4)
+    a, b = [(150, 300), (190, 300)], [(150, 300), (300, 300)]
+    under = (await pg.evaluate(SKY, [170, 300]))["sky"]
+    await spread(a, b, steps=20)
+    ok = await until(pg, "window.__diveState()?.phase === 'open'")
+    at = spot(pg.url)
+    off = sep(*at, *under) if at else 99
+    # 0.03 degrees is about 2.5 px here; the dive at the first midpoint's screen point is about 12 px (0.14 degrees) off
+    check("phone: a lopsided pinch dives to the sky between the fingers", ok and off < 0.03, f"{off:.4f} deg off")
     await browser.close()
 
 

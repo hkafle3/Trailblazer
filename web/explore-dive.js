@@ -127,7 +127,8 @@ function pushBy(d) {
 }
 function aimAt() {
   const c = there();
-  if (dive?.phase === 'ready' && dive.ra != null && (!c || round4(c[0]) !== dive.ra || round4(c[1]) !== dive.dec)) drop();   // the view moved: that spot is off
+  // the view moved: that spot is off. Not while fingers pinch: their midpoint may wander, and start() checks the spot
+  if (!pinch && dive?.phase === 'ready' && dive.ra != null && (!c || round4(c[0]) !== dive.ra || round4(c[1]) !== dive.dec)) drop();
   if (dive && dive.phase !== 'ready') return;
   const on = !!c && view.atMax();
   // the button opens the middle: it shows only while the aim is there (faded, not hidden, so keyboard focus stays on it)
@@ -140,10 +141,10 @@ function aimAt() {
 view.onView(() => { aimAt(); clearTimeout(saveQ); saveQ = setTimeout(save, 300); });
 addEventListener('resize', () => setTimeout(aimAt));   // after the map files have re-measured
 
-// the wheel and Safari's trackpad pinch: only a zoom that starts at the deepest zoom adds up (capture, so this runs
-// before the map zooms). A scroll ends when a timer set at its last wheel event runs out, not by comparing event times:
-// when the page is busy Chrome holds wheel events back and delivers them before any timer, so a stall in the middle of
-// one scroll cannot pass for a pause. A Safari pinch is one gesture from gesturestart.
+// the wheel: only a scroll that starts at the deepest zoom adds up (capture, so this runs before the map zooms)
+// A scroll ends when a timer set at its last wheel event runs out, not by comparing event times: when the page is busy
+// Chrome holds wheel events back and delivers them before any timer, so a stall in the middle of one scroll cannot
+// pass for a pause.
 let resting = true, restT = 0, zoomOk = false;
 function zoomIn(k, x, y) {   // k: how much zoom is asked for at window point (x, y), as a log (in > 0)
   if (resting) zoomOk = view.atMax() && !!view.skyAt(x, y);
@@ -158,18 +159,29 @@ addEventListener('wheel', e => {
   const dy = Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1)));
   zoomIn(-dy * (e.ctrlKey ? .01 : .002), e.clientX, e.clientY);
 }, { capture: true, passive: true });
-// Safari: e.scale since the gesture began. With fingers on a touch screen the pinch below counts instead
-let gestureScale = 1;
-addEventListener('gesturestart', e => { if (zoomable(e) && !fingers.size) { gestureScale = 1; resting = true; } }, true);
-addEventListener('gesturechange', e => {
-  if (!zoomable(e) || fingers.size || !(e.scale > 0)) return;
-  const k = Math.log(e.scale / gestureScale); gestureScale = e.scale;
-  zoomIn(k, e.clientX, e.clientY);
+// Safari's trackpad pinch: one gesture from gesturestart to gestureend, e.scale since it began. Only a gesture that
+// starts at the deepest zoom adds up, without pauses counting (no timer): it dives once its own zoom passes the
+// threshold, and gestureend lets go of what it added. With fingers on a touch screen the pinch below counts instead.
+let gesture = null;
+addEventListener('gesturestart', e => {
+  if (push && !(dive && dive.phase !== 'ready')) setPush(0);   // whatever an earlier gesture left (one whose gestureend never came)
+  gesture = zoomable(e) && !fingers.size ? { ok: view.atMax() && !!view.skyAt(e.clientX, e.clientY), scale: 1 } : null;
 }, true);
+addEventListener('gesturechange', e => {
+  if (!gesture || !zoomable(e) || !(e.scale > 0)) return;
+  const k = Math.log(e.scale / gesture.scale); gesture.scale = e.scale;
+  if (k < 0 || !view.atMax()) gesture.ok = false;   // zooming out, or no longer at the deepest zoom: this gesture is done adding up
+  if (!gesture.ok) { if (push) setPush(0); return; }
+  if (!push) { at = [e.clientX, e.clientY]; aimAt(); }
+  clearTimeout(pushT); setPush(push + k / PUSH); target();
+  if (push >= 1) { gesture = null; start(); }
+}, true);
+addEventListener('gestureend', () => { if (gesture && push && !(dive && dive.phase !== 'ready')) setPush(0); gesture = null; }, true);
 // in flight: the wheel and Safari's pinch land on the cover over everything (see the top of this file)
 for (const type of ['wheel', 'gesturestart', 'gesturechange']) addEventListener(type, e => { if (dive && (dive.phase === 'in' || dive.phase === 'out')) e.preventDefault(); }, { passive: false });
 
-// a pinch: only one that starts at the deepest zoom, by how far the fingers spread from where they began
+// a pinch: only one that starts at the deepest zoom, by how far the fingers spread from where they began. It dives to
+// the sky between the fingers where they are when it passes the threshold.
 const fingers = new Map();
 let pinch = null;
 const spread = () => { const [a, b] = [...fingers.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]); };
@@ -181,16 +193,21 @@ stageEl.addEventListener('pointerdown', e => {
   pinch = c && view.A && view.atMax() && view.skyAt(...c) && !(dive && dive.phase !== 'ready') ? { d0: spread() } : null;
   if (pinch) { at = c; aimAt(); } else if (was) setPush(0);   // a third finger ends the pinch: the aim goes back
 }, true);
-addEventListener('pointermove', e => {
+function pinchMove(e) {
   if (!fingers.has(e.pointerId)) return;
   fingers.set(e.pointerId, [e.clientX, e.clientY]);
   if (!pinch || fingers.size !== 2) return;
   if (!view.atMax()) { pinch = null; return setPush(0); }
+  const [a, b] = [...fingers.values()];
+  at = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; aimAt();
   const p = Math.log(spread() / pinch.d0) / PINCH;
   setPush(p);
   if (p > .15) target();
   if (p >= 1) { pinch = null; start(); }
-});
+}
+// added once every file has loaded: on phones explore-phone.js moves the map with the fingers first, so the sky under
+// the midpoint is read from the view this move left (a listener added now would run before it)
+setTimeout(() => addEventListener('pointermove', pinchMove));
 const lift = e => { if (!fingers.delete(e.pointerId)) return; if (pinch) { pinch = null; setPush(0); } };
 addEventListener('pointerup', lift);
 addEventListener('pointercancel', lift);
@@ -248,6 +265,7 @@ function mapScale(ra, dec) {
 }
 
 async function start(pushEntry = true, spot = there()) {
+  if (spot && dive?.phase === 'ready' && dive.ra != null && (round4(spot[0]) !== dive.ra || round4(spot[1]) !== dive.dec)) drop();   // loaded for another spot
   const d = target(spot);
   if (d.ra == null || d.phase !== 'ready') return;
   try { await takeOff(d, pushEntry); }

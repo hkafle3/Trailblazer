@@ -266,6 +266,9 @@ async def phone(browser):
     at = spot(pg.url)
     off = sep(at[0], at[1], *under) if at else 99
     check("phone: to the sky between the fingers, within 0.1 degree", off < 0.1, f"{off:.5f} deg off")
+    # the map follows the fingers until the dive starts (each finger's move shifts their midpoint), so "where it was" is
+    # the view the dive left, read underneath it
+    before = await pg.evaluate(VIEW)
     check("phone: the time-lapse in the frame can scroll", await pg.evaluate("getComputedStyle(document.body).touchAction") == "auto")
     await pg.go_back()
     check("phone: back closes it", await until(pg, f"{DIVE} === null") and "/explore" in pg.url)
