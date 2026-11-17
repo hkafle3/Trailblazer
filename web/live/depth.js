@@ -53,7 +53,7 @@ function stage(box) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(20, 1, .05, 400);
-  const S = { W: 1, H: 1, z: 1, renderer, scene, camera, keep: [], placed: [] };   // keep: boxes over the view (x0, y0, x1, y1) labels stay clear of; z: the zoom (render())
+  const S = { W: 1, H: 1, z: 1, renderer, scene, camera, keep: [], placed: [], floor: 1 };   // keep: boxes over the view (x0, y0, x1, y1) labels stay clear of; z: the zoom (render())
   S.size = () => { const W = box.clientWidth || 1, H = box.clientHeight || 1; if (W === S.W && H === S.H) return false; S.W = W; S.H = H; renderer.setSize(W, H, false); camera.aspect = W / H; camera.updateProjectionMatrix(); return true; };
   S.sprite = (tex, order = 6) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false })); s.renderOrder = order; scene.add(s); return s; };
   S.lines = (max, order = 7) => {
@@ -75,12 +75,14 @@ function stage(box) {
       el.style.opacity = vis ? a.toFixed(3) : 0; if (!vis) return;
       // kept inside the view sideways: a name that would run off an edge slides back in
       const w = el.offsetWidth, h = el.offsetHeight, x = Math.max(4, Math.min(S.W - w - 4, (tmp.x + 1) / 2 * S.W + dx + ax * w));
-      let y = Math.max(2 - ay * h, (1 - tmp.y) / 2 * S.H + dy);   // and one that would run off the top slides down into it
-      // under a box it would run beneath (the tabs over the beam): moved down just clear of it, and of the names moved
-      // there before it (zoomed in, several can land under the tabs)
+      let y = (1 - tmp.y) / 2 * S.H + dy; const slid = y + ay * h < 2; if (slid) y = 2 - ay * h;   // one that would run off the top slides down into it
+      // under a box it would run beneath (the tabs over the beam): moved down just clear of it, and of the names placed
+      // before it (zoomed in, several can land under the tabs)
       const clear = boxes => { let moved = false; for (const [x0, y0, x1, y1] of boxes) { const top = y + ay * h; if (x < x1 && x + w > x0 && top < y1 + 2 && top + h > y0) { y += y1 + 2 - top; moved = true; } } return moved; };
-      const moved = clear(S.keep); if (moved) clear(S.placed);
-      if (moved && y + ay * h + h > S.H) { el.style.opacity = 0; return; }   // moved off the bottom: not a sliver at the edge
+      // zoomed, the rows over the beam's (steeper) edge can cross too: then every name clears the ones placed before it
+      const moved = clear(S.keep) || slid; if (moved || S.z > 1) for (let i = 0; i < 8 && clear(S.placed); i++);   // again while it moves (a later box can cover it)
+      // moved off the bottom, or zoomed and down among the note and hint: hidden, not squeezed in at the edge
+      if ((moved || S.z > 1) && y + ay * h + h > S.floor) { el.style.opacity = 0; return; }
       S.placed.push([x, y + ay * h, x + w, y + ay * h + h]);
       el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(0,${ay * 100}%)`;
     }, remove() { el.remove(); } };
@@ -386,10 +388,11 @@ export function depthView(page) {
     if (!S || !open) return;
     S.size(); S.z = 1; S.camera.clearViewOffset();   // the fit below is of the unzoomed view
     const br = box.getBoundingClientRect();
-    // zoomed, names can also reach the note and hint along the bottom: they keep clear of them too (moved below, out of view)
-    S.keep = [...(page.cover?.() ?? []), ...(Z.k > 1 ? box.querySelectorAll('.xp-d3-note, .xp-d3-hint') : [])].filter(Boolean).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
+    S.keep = (page.cover?.() ?? []).filter(Boolean).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
       .map(r => [r.left - br.left, r.top - br.top, r.right - br.left, r.bottom - br.top]);
     S.placed = [];   // the names placed so far this frame
+    // the lowest a name may reach: the frame's foot, or zoomed in (names can get there then) the top of the note and hint
+    S.floor = Math.min(S.H, ...(Z.k > 1 ? [...box.querySelectorAll('.xp-d3-note, .xp-d3-hint')].map(e => e.getBoundingClientRect()).filter(r => r.height).map(r => r.top - br.top - 2) : []));
     const { W, H } = S, small = W < 500, T = yaw.t0 ? (performance.now() - yaw.t0) / 1000 : 9;
     const s = sm(T / 1.8);   // the swing: from through the telescope (the photo fills the view, as in Photo) out to the side
     const frame = small ? [14, 64, W - 20, H - 40] : [36, 110, W - 46, H - 70];

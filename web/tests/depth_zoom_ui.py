@@ -35,6 +35,9 @@ UNDER = """(() => { const box = s => { const e = document.querySelector(s); if (
   for (const l of document.querySelectorAll('#depth3d .lbl:not(.tip)')) { if (+l.style.opacity < .5) continue; const r = l.getBoundingClientRect();
     for (const [s, c] of covers) if (r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top) out.push(l.textContent + ' under ' + s); }
   return out; })()"""
+# pairs of visible names that overlap
+CLASH = """(() => { const r = [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5).map(l => [l.textContent, l.getBoundingClientRect()]), out = [];
+  for (const [i, [a, p]] of r.entries()) for (const [b, q] of r.slice(i + 1)) if (p.left < q.right && p.right > q.left && p.top < q.bottom && p.bottom > q.top) out.push(a + ' / ' + b); return out; })()"""
 fails = []
 
 
@@ -163,6 +166,12 @@ async def main():
             await zreset.click(); rr = (await st())["ring"]; await pg.mouse.move(*rr[:2])   # about 3x toward the target's ring
             for _ in range(28): await pg.mouse.wheel(0, -20)
             await pg.wait_for_timeout(100); unders += await pg.evaluate(UNDER)
+            await zreset.click(); await pg.mouse.move(cv["x"] + 590, cv["y"] + 315.5)   # about 5x toward a dashed ring on the photo (as in the video)
+            for _ in range(40):   # at every step
+                await pg.mouse.wheel(0, -20); await pg.wait_for_timeout(20)
+                unders += await pg.evaluate(UNDER) + await pg.evaluate("""(() => { const n = document.querySelector('#depth3d .xp-d3-note').getBoundingClientRect().top;   // nor squeezed in below them
+                  return [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5 && l.getBoundingClientRect().bottom > n).map(l => l.textContent + ' below the note'); })()""")
+            unders = sorted(set(unders))
             await zin.click(); await zin.click()   # about 7x, then at the scene's four corners
             for xy in ((0, 0), (1, 0), (0, 1), (1, 1)):   # the zoomed view at the scene's four corners
                 for _ in range(5): await drag(-250 if xy[0] else 250, -250 if xy[1] else 250, "shift")
@@ -200,17 +209,19 @@ async def main():
         check(abs(f1 - 3) < 0.05 and s1["ring"] and off(s1["ring"], about(ring0, M, f1)) <= 3,
               f"phone pinch: zooms {f1:.3f}x toward the fingers' midpoint (ring {off(s1['ring'], about(ring0, M, f1)):.2f} px off)")
         check(s1["scale"] == 1 and s1["sy"] == s0["sy"] and (s1["v"] or {}).get("a", 1) == 0, f"phone pinch: the page does not zoom or scroll (scale {s1['scale']}, scrollY {s0['sy']} -> {s1['sy']}) and nothing turns ({s1['v']})")
-        clash = await pg.evaluate("""(() => { const r = [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5).map(l => [l.textContent, l.getBoundingClientRect()]), out = [];
-          for (const [i, [a, p]] of r.entries()) for (const [b, q] of r.slice(i + 1)) if (p.left < q.right && p.right > q.left && p.top < q.bottom && p.bottom > q.top) out.push(a + ' / ' + b); return out; })()""")
+        clash = await pg.evaluate(CLASH)
         check(not clash, f"phone zoomed: no two names overlap ({clash})")
         # the names moved below the note and hint (a pinch like the video's: 3.6x just right of the ring)
         await pg.tap("#depth3d [data-zoom=reset]"); await pg.wait_for_timeout(100)
         N = [ring0[0] + 20, ring0[1] + 10]
         await touch("touchStart", [(0, N[0] - 25, N[1])]); await touch("touchStart", [(0, N[0] - 25, N[1]), (1, N[0] + 25, N[1])])
+        during = set()
         for i in range(1, 11):
             d = 50 + 130 * i / 10
             await touch("touchMove", [(0, N[0] - d / 2, N[1] - d / 6), (1, N[0] + d / 2, N[1] + d / 6)])
+            during.update(await pg.evaluate(CLASH))
         await touch("touchEnd"); await pg.wait_for_timeout(200); f1 = k_of(await st())
+        check(not during, f"phone: no two names overlap at any step of a pinch ({sorted(during)})")
         sliver = await pg.evaluate("""(() => { const b = document.getElementById('depth3d').getBoundingClientRect();
           return [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5).filter(l => { const r = l.getBoundingClientRect(); return r.bottom > b.bottom || r.top < b.top; }).map(l => l.textContent); })()""")
         check(not sliver, f"phone zoomed: no name is cut off at the frame's edge ({sliver})")
