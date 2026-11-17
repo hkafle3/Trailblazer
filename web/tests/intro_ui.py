@@ -244,7 +244,23 @@ async def colors(pg, name, m, vw, vh):
     labels = lambda u: pg.evaluate(f"(window.__intro.render({u}), [...document.querySelectorAll('#intro-labels .lbl')].filter(el => +el.style.opacity > .5).map(el => el.textContent + '|' + el.className))")
     said = await labels(t_mid)
     assert len(said) == 1 and said[0].startswith("star"), f"{name}: in the bands only the star keeps its label: {said}"
-    # color tells distance
+    top = await graph(pg, name, m, vw, vh)
+    return [round(b0[0]), round(b1[0]), sum(a), sum(c), top]
+
+
+async def graph(pg, name, m, vw, vh):
+    """Color tells distance: beside the galaxy its own measured light is drawn as a line; a dashed copy of its bump marks
+    where that glow sits nearby ("where it glows up close"), an arrow runs from it towards red to where the bump is, and
+    the label says how much redder, which is the galaxy's redshift in photo.json; then the galaxy's label, the only one,
+    is lit. The drawing is gone before and after. Every frame it is up (drawn on, read, fading as the camera pulls back) it
+    is inside the window and clear of the caption. It covers neither the photo's frame nor the curved band of light down
+    the photo's right side (found from the pixels drawn under it): it sits on the photo between the two, or above the
+    photo, or beside it, and the galaxy stays in view, not under it. The data behind it is checked too: the top of the
+    bump is where the redshift puts it. Returns the top's wavelength."""
+    look = lambda u, pts, r=2: pg.evaluate(f"window.__intro.look({u}, {pts}, {r})")
+    probe = lambda u: pg.evaluate(f"window.__intro.probe({u})")
+    labels = lambda u: pg.evaluate(f"(window.__intro.render({u}), [...document.querySelectorAll('#intro-labels .lbl')].filter(el => +el.style.opacity > .5).map(el => el.textContent + '|' + el.className))")
+    w0, w1 = m["WASH"]; s0, s1 = m["SHIFT"]
     box = "(() => { const el = document.getElementById('intro-shift'), cs = getComputedStyle(el), b = el.getBoundingClientRect(), q = k => el.querySelector(k), n = (k, a) => +q(k).getAttribute(a), o = k => +getComputedStyle(q(k)).opacity, r = k => { const c = q(k).getBoundingClientRect(); return [c.left, c.right, c.top, c.bottom]; };" \
           " return { vis: cs.visibility, op: +cs.opacity, box: [b.left, b.top, b.right, b.bottom], cap: document.querySelector('#intro .cap-top').getBoundingClientRect().top, clip: n('#intro-sc rect', 'width') / 300, arrow: [n('.move line', 'x1'), n('.move line', 'x2')], rest: o('.rest'), move: o('.s-move'), said: q('.s-move').textContent, mark: q('.s-rest').innerText.replace(/\\s+/g, ' '), texts: ['.s-rest', '.s-here', '.s-move'].map(r), ghost: q('line.ghost').getBoundingClientRect().left }; })()"
     see = lambda u: pg.evaluate(f"(window.__intro.render({u}), {box})")
@@ -259,8 +275,8 @@ async def colors(pg, name, m, vw, vh):
     assert done["mark"] == "where it glows up close", f"{name}: the dashed mark is labelled {done['mark']!r}"
     # clear of the photo's frame and of the band of light down its right side
     (rx, _), (lx, _), (_, by), (_, ty) = p["photoEdges"]; x0, y0, x1, y1 = done["box"]
-    inside = x0 > lx + 8 and y0 > ty + 8 and y1 < by - 8
-    assert inside or y1 < ty - 8, f"{name}: the drawing {done['box']} covers the photo's frame (left {lx:.0f}, top {ty:.0f}, bottom {by:.0f})"
+    inside = x0 > lx + 8 and y0 > ty + 8 and y1 < by - 8 and x1 < rx - 8
+    assert inside or y1 < ty - 8 or x1 < lx - 8 or x0 > rx + 8, f"{name}: the drawing {done['box']} covers the photo's frame (left {lx:.0f}, right {rx:.0f}, top {ty:.0f}, bottom {by:.0f})"
     if inside:   # the band: the first column, going right from the drawing's left edge, whose middle brightness over the drawing's rows is well above the photo's black
         xs = [x0 + 3 * i for i in range(int((rx - 6 - x0) / 3))]; rows = [y0 + (y1 - y0) * k / 6 for k in range(1, 6)]
         lit = await look(m["FOUND"] + .3, [[x, y] for x in xs for y in rows], 1)
@@ -268,7 +284,13 @@ async def colors(pg, name, m, vw, vh):
         floor = sorted(col)[len(col) // 4]; band_x = next((x for x, c in zip(xs, col) if c > floor + 12), None)
         assert band_x is not None and band_x - x1 > 8, f"{name}: the drawing {done['box']} reaches the band of light at x {band_x} (column brightness {[round(c) for c in col[-40:]]})"
     gal = next(b for b in p["flight"] if b["kind"] == "galaxy")
-    assert 0 < gal["land"][0] < vw and done["box"][3] < gal["land"][1] < done["cap"], f"{name}: the galaxy is not in view under its drawing: {gal['land']}"
+    gx, gy = gal["land"]
+    assert 0 < gx < vw and 0 < gy < done["cap"] and not (x0 - 6 < gx < x1 + 6 and y0 - 6 < gy < y1 + 6), f"{name}: the galaxy at {gal['land']} is out of view or under its drawing {done['box']}"
+    # the whole time it is up, from drawing on to fading out as the camera pulls back: every frame at 30 fps inside the window and clear of the caption
+    seq = await pg.evaluate(f"""(() => {{ const out = []; for (let u = {s0}; u < {s1} + .5; u += 1 / 30) {{ window.__intro.render(u); const el = document.getElementById('intro-shift'), cs = getComputedStyle(el);
+      if (cs.visibility === 'visible' && +cs.opacity > 0) {{ const b = el.getBoundingClientRect(); out.push([u, b.left, b.top, b.right, b.bottom, document.querySelector('#intro .cap-top').getBoundingClientRect().top]); }} }} return out; }})()""")
+    out = [[round(q, 1) for q in g] for g in seq if g[1] < 0 or g[2] < 0 or g[3] > vw or g[4] > g[5] - 20]
+    assert len(seq) > 60 and not out, f"{name}: the drawing leaves the window or meets the caption in {len(out)} of {len(seq)} frames: {out[:4]}"
     assert p["wash"]["dim"] < .6 and (await probe(w0 + 1))["wash"]["dim"] == 1 and p["wash"]["a"] == 0, f"{name}: the photo should step back, untinted, while the galaxy's light is read: {p['wash']}"
     light = await pg.evaluate("fetch('data/intro/photo.json').then(r => r.json()).then(p => p.light)")
     clean = [q for q in light["fine"] if not q[2]]; top = max(clean, key=lambda q: q[1])[0]
@@ -278,7 +300,20 @@ async def colors(pg, name, m, vw, vh):
     assert len(before) == 1 and before[0].startswith("galaxy") and "found" not in before[0] and len(after) == 1 and after[0].startswith("galaxy · 480 million light-years") and "found" in after[0], f"{name}: the galaxy's label should be the only one, and lit once the arrow has arrived: {before}, {after}"
     every = await pg.evaluate("[...document.querySelectorAll('#intro-labels .lbl')].map(el => el.textContent + ' ' + el.className).join(' | ') + document.getElementById('intro-shift').textContent")
     assert "STEPS" not in m and not any(k in every for k in ("micron", "stripe", "accent", "helium")), f"{name}: the step beat is still in the film: {every}"
-    return [round(b0[0]), round(b1[0]), sum(a), sum(c), top]
+    return top
+
+
+async def short_screens(b):
+    """The galaxy's drawing on short and small windows, where there is little room above the photo: two laptop screens,
+    a square window and two small phones (graph())."""
+    for w, h in ((1280, 720), (1366, 768), (768, 768), (375, 667), (360, 640)):
+        errs = []; name = f"{w}x{h}"
+        pg = await page(b, dict(viewport={"width": w, "height": h}, **(dict(device_scale_factor=2, has_touch=True, is_mobile=True) if w < 600 else {})), errs, seen_tour=True)
+        await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
+        m = await pg.evaluate("window.__intro.marks"); await graph(pg, name, m, w, h)
+        place = await pg.evaluate(f"(window.__intro.render({m['FOUND'] + .3}), document.getElementById('intro-shift').style.transform)")
+        assert not errs, f"{name}: page errors {errs}"
+        await pg.context.close(); print(f"{name}: the galaxy's drawing stays in the window and clear of the photo's frame and band ({place})")
 
 
 async def words(pg, name, m, vw):
@@ -628,7 +663,7 @@ async def dpr_change(b):
 async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(channel="chrome", args=["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"])
-        await fallbacks(b); await dpr_change(b)
+        await fallbacks(b); await dpr_change(b); await short_screens(b)
         for name, opts in SIZES: await run(b, name, opts)
         for height in (1000, 1280):
             name = f"tall phone 320x{height}"

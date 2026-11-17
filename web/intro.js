@@ -673,24 +673,49 @@ const shiftEl = $('shift'), shift = (() => {
   const q = k => shiftEl.querySelector(k), was = new Map(), set = (el, k, v, attr) => { const id = el.dataset.k ??= String(was.size) + k; if (was.get(id + k) === v) return; was.set(id + k, v); attr ? el.setAttribute(k, v) : (el.style[k] = v); };
   return { xr, xt, set, clip: q('#intro-sc rect'), lead: q('.lead'), rest: q('.rest'), sRest: q('.s-rest'), sHere: q('.s-here'), sMove: q('.s-move'), arrow: q('.move line'), head: q('.move path'), move: q('.move'), top };
 })();
-// The drawing sits on the photo, above the galaxy, between the photo's left edge and the curved band of light down its right
-// side (in photo.jpg the band starts at about u = .7), touching neither. Where that is too narrow for it (a 320 px phone) it
-// sits just above the photo instead.
-const BAND_U = .68, CLEAR = 12;   // CLEAR: px kept free between the drawing and the frame or the band
-function placeShift(T, gal) {   // gal: the galaxy's place in the window. Everything here is a function of T, as the rest of the film is
+// Where the drawing goes. Best: on the photo, above the galaxy, between the photo's left edge and the curved band of light
+// down its right side (in photo.jpg the band starts at about u = .7), touching neither. Else just above the photo, else
+// beside it (left, then right), its lead line then running to the near end of its colored strip. Each place must be wholly
+// in the window, clear of Skip and of the caption. On or above the photo is tried at up to 0.8 of the drawing's size
+// before beside it, and then every place down to 0.6. The place, once found, is kept while
+// it still fits (the photo drifts a little while the drawing is up), and while the drawing fades out as the camera pulls
+// back it stays put in its place, held inside the window.
+const BAND_U = .68, CLEAR = 12, EDGE = 8;   // CLEAR: px kept free between the drawing and the frame or the band; EDGE: from the window's sides
+let spot = null;   // { key, mode, z }: the place chosen for this window size, and the scale
+function placeShift(T, gal) {   // gal: the galaxy's place in the window
   const s = T - SHIFT[0], a = K(T, [[SHIFT[0], 0], [SHIFT[0] + .4, 1], [SHIFT[1], 1], [SHIFT[1] + .45, 0]]), { set } = shift;
   set(shiftEl, 'opacity', +a.toFixed(3)); set(shiftEl, 'visibility', a > 0 ? 'visible' : 'hidden'); if (!(a > 0)) return { a: 0 };
-  const pw = shiftEl.offsetWidth, k = pw / SH.w, ph = SH.h * k, at = (u, v) => css(photoPoint(u, v, tmp2));
-  const frameL = Math.max(at(-1, -1)[0], at(-1, 1)[0]), frameT = Math.max(at(-1, -1)[1], at(1, -1)[1]), band = Math.min(at(BAND_U, -1)[0], at(BAND_U, 1)[0]);
-  const lo = frameL + CLEAR, hi = band - CLEAR, inside = hi - lo >= pw;
-  const left = inside ? Math.min(hi - pw, Math.max(lo, gal[0] - pw / 2)) : Math.min(W - pw - 8, Math.max(8, gal[0] - pw / 2)), topY = inside ? Math.max(frameT + CLEAR, gal[1] - ph - 30) : frameT - CLEAR - ph;
-  set(shiftEl, 'transform', `translate(${left.toFixed(1)}px,${topY.toFixed(1)}px)`);
+  const pw0 = shiftEl.offsetWidth, at = (u, v) => css(photoPoint(u, v, tmp2)), c = [at(-1, -1), at(1, -1), at(1, 1), at(-1, 1)];   // the photo's corners: top left, top right, bottom right, bottom left
+  const inL = Math.max(c[0][0], c[3][0]), inT = Math.max(c[0][1], c[1][1]), outL = Math.min(c[0][0], c[3][0]), outR = Math.max(c[1][0], c[2][0]), outT = Math.min(c[0][1], c[1][1]);
+  const band = Math.min(at(BAND_U, -1)[0], at(BAND_U, 1)[0]), floor = root.querySelector('.cap-top').getBoundingClientRect().top - 24, sk = $('skip').getBoundingClientRect();
+  const free = (x, y, w, h) => x >= EDGE && y >= EDGE && x + w <= W - EDGE && y + h <= floor && !(sk.width && x < sk.right + 6 && x + w > sk.left - 6 && y < sk.bottom + 6);
+  const place = (mode, z) => {   // [left, top] of the drawing at scale z in this place, or null where it does not fit
+    const w = pw0 * z, h = SH.h * w / SH.w, mid = q => Math.min(W - EDGE - w, Math.max(EDGE, q)), side = Math.min(floor - h, Math.max(EDGE, gal[1] - h / 2));
+    const [x, y] = mode === 'in' ? [Math.min(band - CLEAR - w, Math.max(inL + CLEAR, gal[0] - w / 2)), Math.max(inT + CLEAR, gal[1] - h - 30)]
+      : mode === 'above' ? [mid(gal[0] - w / 2), outT - CLEAR - h] : mode === 'left' ? [outL - CLEAR - w, side] : [outR + CLEAR, side];
+    const ok = mode !== 'in' || (x >= inL + CLEAR - .5 && x + w <= band - CLEAR + .5 && y + h <= gal[1] - 14);
+    return ok && free(x, y, w, h) ? [x, y] : null;
+  };
+  const key = W + 'x' + H, MODES = ['in', 'above', 'left', 'right'];
+  if (spot?.key !== key || (T <= SHIFT[1] && !place(spot.mode, spot.z))) {
+    spot = null;
+    const tries = [...[1, .9, .8].flatMap(z => ['in', 'above'].map(m => [m, z])), ...[1, .9, .8, .7, .6].flatMap(z => MODES.map(m => [m, z]))];   // on or above the photo, a little smaller if need be, before beside it
+    const got = tries.find(([m, z]) => place(m, z)); if (got) spot = { key, mode: got[0], z: got[1] };
+    spot ??= { key, mode: 'in', z: .6 };   // nowhere fits: the smallest, held inside the window below
+  }
+  const z = spot.z, pw = pw0 * z, k = pw / SH.w, ph = SH.h * k;
+  let [left, topY] = place(spot.mode, z) ?? (() => { const w = pw, h = ph;   // fading out, or nowhere fits: the same place, moved only as far as needed to stay in the window
+    const x = spot.mode === 'in' ? gal[0] - w / 2 : spot.mode === 'above' ? gal[0] - w / 2 : spot.mode === 'left' ? outL - CLEAR - w : outR + CLEAR, y = spot.mode === 'in' ? gal[1] - h - 30 : spot.mode === 'above' ? outT - CLEAR - h : gal[1] - h / 2;
+    return [Math.min(W - EDGE - w, Math.max(EDGE, x)), Math.min(floor - h, Math.max(EDGE, y))]; })();
+  set(shiftEl, 'transform', `translate(${left.toFixed(1)}px,${topY.toFixed(1)}px) scale(${z})`);
   set(shift.lead, 'x1', ((gal[0] - left) / k).toFixed(1), 1); set(shift.lead, 'y1', ((gal[1] - topY) / k - 5).toFixed(1), 1);
+  const [lx, ly] = spot.mode === 'left' ? [SH.x1 + 4, SH.y0 + 7.5] : spot.mode === 'right' ? [SH.x0 - 4, SH.y0 + 7.5] : [shift.xt, SH.y0 + 9];   // where the lead line meets the drawing
+  set(shift.lead, 'x2', lx.toFixed(1), 1); set(shift.lead, 'y2', ly.toFixed(1), 1);
   const curve = clamp01((s - .25) / .8), rest = sm((s - 1.05) / .35), arrow = sm((s - 1.45) / .55), said = sm((s - 1.7) / .3), x2 = shift.xr + (shift.xt - 7 - shift.xr) * arrow;
   set(shift.clip, 'width', (SH.w * curve).toFixed(1), 1); set(shift.rest, 'opacity', +rest.toFixed(3)); set(shift.sRest, 'opacity', +rest.toFixed(3));
   set(shift.move, 'opacity', +Math.min(1, arrow * 6).toFixed(3)); set(shift.arrow, 'x2', x2.toFixed(1), 1); set(shift.head, 'transform', `translate(${x2.toFixed(1)} ${SH.y1 - 9})`, 1);
   set(shift.sMove, 'opacity', +said.toFixed(3)); set(shift.sHere, 'opacity', +said.toFixed(3));
-  return { a, curve, rest, arrow, said, inside, band };
+  return { a, curve, rest, arrow, said, mode: spot.mode, z };
 }
 // ---------- the flight down the beam ----------
 // The camera leaves the telescope's mouth and passes close by each body in turn, on a path bent a little to do so. Its
