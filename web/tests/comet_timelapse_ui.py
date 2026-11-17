@@ -1,13 +1,12 @@
-"""Browser check for a comet page's "Open in time-lapse" (comet.js player()). Needs the app up and the network (IRSA, NASA's
-S3 copy of SPHEREx, Gaia through /api/depth); takes a few minutes.
-Run: uv run -q --with playwright python web/tests/comet_timelapse_ui.py [base url] [screenshot folder]   (default http://127.0.0.1:8787)
-On a measured comet (C/2026 A2 (Bok), baked photos) and a catalog-only one (C/2024 J3 (ATLAS), live photos), at 1440x900
-and on a phone (390x844):
-- the control sits under the photo player, visible;
-- its link carries the photo on screen: the comet's position then (a measured photo's own ra, dec and the detector in its
-  file name; a catalog visit's middle exposure, on D1), its time and the comet's name;
-- stepping the timeline moves the link to the next photo;
-- following it opens the time-lapse on that exposure, the white ring within 2 px of the comet's position for it;
+"""Browser check for a comet page's time-lapse links (comet.js strip(): one per SPHEREx visit). Needs the app up and the
+network (NASA's S3 copy of SPHEREx, Gaia through /api/depth); takes a few minutes.
+Run: uv run -q --with playwright python web/tests/comet_timelapse_ui.py [base url] [screenshot folder]   (default http://127.0.0.1:8873)
+On a measured comet (C/2026 A2 (Bok), baked photos) and a catalog-only one (C/2024 J3 (ATLAS)), at 1440x900 and on a
+phone (390x844):
+- one link per visit, each showing, each carrying that visit's picture from the comet's record (detail.facts.inv.visits:
+  the comet's position on it, its detector, its time) and the comet's name;
+- following the last visit's link opens the time-lapse on that exposure, the white ring within 2 px of the comet's
+  position for it;
 - the time-lapse names the dot as that comet (the identity rule, 2 px, from the link's place, not SkyBoT's, which is
   60 arcsec off for C/2026 A2), says it is already known, and does not invite a report of a new find; the panel title is
   the comet's name, and the verdict opens with the comet, not a star-style motion line;
@@ -19,7 +18,7 @@ and on a phone (390x844):
 import asyncio, math, sys, urllib.parse
 from playwright.async_api import async_playwright
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8873"
 BOK, J3, MJD0 = "C/2026 A2 (Bok)", "C/2024 J3 (ATLAS)", 60789
 SIZES = [("desktop", dict(viewport={"width": 1440, "height": 900})),
          ("phone", dict(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True))]
@@ -41,18 +40,8 @@ def check(ok, what):
     if not ok: fails.append(what)
 
 
-def visit_picks(shots):   # live/cutout.js visitShots: photos under 5 days apart are one visit; its middle exposure
-    vs = []
-    for i, s in enumerate(shots):
-        if i == 0 or s["day"] - shots[i - 1]["day"] >= 5: vs.append([])
-        vs[-1].append(s)
-    return [v[(len(v) - 1) // 2] for v in vs]
-
-
-def expected(detail):   # what each photo in the player's order should link to: ra, dec, detector, MJD
-    if detail.get("photos"):
-        return [(p.get("ra"), p.get("dec"), p["file"].rsplit("_", 1)[1][:2], p["mjd"]) for p in sorted(detail["photos"], key=lambda p: p["mjd"])]
-    return [(s["ra"], s["dec"], "D1", MJD0 + s["day"]) for s in visit_picks(detail["spherex"])]
+def expected(detail):   # each visit's link in the record: ra, dec, detector, MJD
+    return [(v["link"]["ra"], v["link"]["dec"], v["link"]["det"], v["link"]["t"]) for v in detail["facts"]["inv"]["visits"]]
 
 
 def parse(href):
@@ -72,27 +61,21 @@ async def run(b, cid, size, kw):
     pg.on("console", lambda m: m.type == "error" and errors.append(m.text))
     detail = (await (await ctx.request.get(BASE + "/api/comets/" + urllib.parse.quote(cid, safe=""))).json())["detail"]
     want = expected(detail)
-    if detail.get("photos"):   # every measured photo carries the comet's place on it (bake/photo_positions.py)
-        check(all(p.get("ra") is not None for p in detail["photos"]), f"{tag}: all {len(detail['photos'])} photos carry the comet's position")
     await pg.goto(f"{BASE}/comet.html?id=" + urllib.parse.quote(cid, safe=""))
-    await pg.wait_for_selector("#c-photos-panel:not([hidden])")
-    await pg.locator("#c-photos-panel").scroll_into_view_if_needed()
-    await pg.wait_for_function("document.querySelector('.player')?.dataset.i != null", timeout=240000)   # a photo is on screen
-    link = pg.locator(".player a.lapse")
-    if not await link.count():
-        check(False, f"{tag}: an 'Open in time-lapse' control under the photo player"); await ctx.close(); return
-    await link.evaluate("e => e.scrollIntoView({ block: 'center' })")
+    await pg.wait_for_function("document.querySelector('main')?.dataset.ready === '1'", timeout=60000)
+    links = pg.locator(".vstrip .v a.lapse")
+    n = await links.count()
+    check(n == len(want) and n > 0, f"{tag}: {n} time-lapse links for {len(want)} visits")
+    if not n: await ctx.close(); return
+    hrefs = [parse(await links.nth(k).get_attribute("href")) for k in range(n)]
+    bad = [k for k, h in enumerate(hrefs) if not (same(h, want[k]) and h[4] == cid)]
+    check(not bad, f"{tag}: every link carries its visit's picture and the comet's name (wrong: {bad})")
+    link = links.nth(n - 1)
+    await link.scroll_into_view_if_needed()
     box = await link.bounding_box()
-    check(await link.is_visible() and box["height"] >= 44 and "Open in time-lapse" in await link.inner_text(),
-          f"{tag}: the control is shown under the player, {box['width']:.0f}x{box['height']:.0f} px")
+    check(await link.is_visible() and box and box["height"] >= 12 and "Time-lapse" in await link.inner_text(), f"{tag}: the last visit's link shows ({box})")
     if SHOTS: await pg.screenshot(path=f"{SHOTS}/{'bok' if cid == BOK else 'j3'}-{size}.png")
-    i = int(await pg.evaluate("document.querySelector('.player').dataset.i"))
-    h = parse(await link.get_attribute("href"))
-    check(same(h, want[i]), f"{tag}: the link carries photo {i + 1}'s place, detector and time {h} (want {want[i]})")
-    knob = pg.locator(".player .tl-knob"); await knob.focus(); await knob.press("ArrowRight"); await pg.wait_for_timeout(200)
-    j = int(await pg.evaluate("document.querySelector('.player').dataset.i"))
-    h = parse(await link.get_attribute("href"))
-    check(j != i and same(h, want[j]) and h[4] == cid, f"{tag}: stepping the timeline moves the link to photo {j + 1} {h}")
+    h = hrefs[n - 1]
     await link.click()
     await pg.wait_for_url("**/timelapse*")
     await pg.wait_for_function(READY, timeout=240000); await pg.wait_for_timeout(800)

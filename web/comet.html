@@ -3,151 +3,109 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comet · Trailblazer</title>
+<title>Comets · Trailblazer</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="header.css">
-<link rel="stylesheet" href="search.css">   <!-- Ming's Forums search box and selects (.f-search, .f-row, .f-box) -->
-<link rel="stylesheet" href="patch.css">    <!-- Ming's patch-viewer parts: boxes, cards, the arrow button, check boxes -->
-<link rel="stylesheet" href="discuss.css">  <!-- the candidate page's layout (.cpage), shared by a comet's page -->
-<link rel="stylesheet" href="comet.css">    <!-- what only a comet's page has: photos, measurements, spectrum, visits -->
-<!-- also in header.css; Chrome only honours it reliably when it is in the page itself, so the Explore map can glide into the mini map -->
-<!-- the mini map sits in the right column, after the long left one: hold the first paint until it is parsed, so the
-     Explore map can glide into it (a page transition captures the new page at its first paint) -->
-<link rel="expect" href="#c-mini" blocking="render">
-<style>
-@view-transition { navigation: auto; }
-@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
-</style>
+<link rel="stylesheet" href="comet.css">   <!-- direction A, "answers first" (comet-plan/fact-table.md), in Ming's style -->
 </head>
-<body class="page">
+<body class="page cometpage">
 
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
   <nav><a class="on" href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
 </header>
 
-<main class="shell">
-  <script>if (new URLSearchParams(location.search).get('id')) document.currentScript.parentNode.className = 'cpage';</script>   <!-- one comet: the candidate page's layout -->
-  <!-- The Comets tab (comet.js list()): one compact control row, then the comets by result. One set of elements, two
-       layouts (styles.css): on a phone (640 px or less) the comets with a photo are square tiles in two columns and the
-       rest are rows after them; wider, every comet is a dense row, three to a line. Too faint is folded. -->
-  <section id="c-list" hidden>
-    <h1 class="sr-only">Comets</h1>
-    <div class="ctl">
-      <form class="f-search" role="search" onsubmit="return false">
-        <label class="sr-only" for="l-q">Search comets</label>
-        <svg class="f-search-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
-        <input id="l-q" type="search" placeholder="Search comets" autocomplete="off" spellcheck="false" enterkeyhint="search">
-      </form>
-      <!-- each select fills its outlined box, see-through over the chosen option's text, so the box is as wide as that text -->
-      <label class="sel"><span class="sr-only">Region</span><span class="v" aria-hidden="true">All sky</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-        <select id="l-region">
-          <option value="">All sky</option>
-          <option value="north">Northern sky</option>
-          <option value="south">Southern sky</option>
-          <option value="ecliptic">Near the ecliptic</option>
-        </select>
-      </label>
-      <label class="sel"><span class="sr-only">Sort</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v16M4 16l4 4 4-4M16 20V4M12 8l4-4 4 4"/></svg><span class="v" aria-hidden="true">Result</span>
-        <select id="l-sort">
-          <option value="">Result</option>
-          <option value="photos">Most photos</option>
-          <option value="name">Name</option>
-        </select>
-      </label>
-    </div>
-    <div class="lanes">
-      <h2 class="sec" id="s-all"><i class="g g-flat"></i>Measured and could be<span class="n"></span></h2>   <!-- the phone's one heading over the tiles -->
-      <section class="lane" id="s-c"><h2 class="sec"><i class="g g-co2"></i>CO2 glow<span class="n"></span></h2></section>
-      <section class="lane" id="s-u"><h2 class="sec"><i class="g g-flat"></i>No clear signal<span class="n"></span></h2></section>
-      <section class="lane" id="s-o"><h2 class="sec"><i class="g g-open"></i>Could be measured<span class="n"></span></h2></section>
-    </div>
-    <details class="lane" id="s-f"><summary class="sec"><i class="g g-faint"></i>Too faint<span class="n"></span><span class="more" aria-hidden="true"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><div class="rows"></div></details>
-    <p class="none" id="l-none" hidden>No comets match.</p>
-    <p class="sr-only" id="l-status" role="status" aria-live="polite"></p>   <!-- says how many comets match after each search or filter change -->
-  </section>
-
-  <!-- One comet (comet.js), laid out like the candidate page (Forums.png): wide boxes on the left, cards on the right -->
-  <div class="left">
-    <section class="pv-frame head comet-head">
-      <h1 id="c-id">&nbsp;</h1>
-      <span class="pv-info" id="c-cat"><span></span></span>
-      <span class="pv-info" id="c-verdict" hidden></span>
-    </section>
-
-    <div class="left comet-grid">
-      <div class="left col">
-        <section class="pv-frame empty-box" id="c-empty" hidden>
-          <div class="actions"><a class="pv-state" href="comet.html?id=3I%2FATLAS"><span>See a real one: 3I/ATLAS</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a></div>
-        </section>
-
-        <section class="pv-frame" id="c-photos-panel" aria-label="SPHEREx photos" hidden>
-          <div class="frames" id="c-photos"></div>
-        </section>
-
-        <section class="pv-frame measures" id="c-measures" hidden>
-          <div><span class="pv-info">Speed across the sky</span><b><span data-f="speed"></span> <small>arcsec / hour</small></b></div>
-          <div><span class="pv-info">Direction</span><b data-f="dir"></b></div>
-          <div><span class="pv-info">First photographed</span><b data-f="first"></b></div>
-          <div><span class="pv-info">SPHEREx photos</span><b data-f="n"></b></div>
-        </section>
-
-        <section class="pv-frame spectrum" id="c-spec-panel" hidden>
-          <div class="spec-head"><h2>Light by wavelength</h2><span class="pv-info" id="c-spec-note"></span></div>
-          <svg id="spec" viewBox="0 0 900 250" role="img" aria-label="SPHEREx spectrum of the comet"></svg>
-          <div class="legend pv-info" id="c-legend"></div>
-        </section>
-      </div>
-
-      <section class="left talk" aria-label="Comments">
-        <div class="left" id="t-list"></div>
-        <form class="composer pv-desc compose" id="c-compose">
-          <textarea class="box" rows="2" maxlength="1000" placeholder="Add a comment" aria-label="Your comment"></textarea>
-          <input class="box nick" name="author" maxlength="24" placeholder="Your nickname" aria-label="Your nickname" autocomplete="nickname" hidden>
-          <!-- Turnstile site key (public). On localhost the always-pass test key is used instead, to match the test secret in worker/.dev.vars -->
-          <div class="cf-turnstile" data-sitekey="0x4AAAAAAGBTgXAx-fdK_qGx" data-theme="dark" data-size="flexible" data-appearance="interaction-only"></div>
-          <div class="row"><span class="pv-info" id="c-note" role="status">A tag is optional. It counts as your vote.</span><button class="pv-state" type="submit" disabled><span>Post</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></button></div>
-        </form>
-      </section>
-    </div>
-  </div>
-
-  <div class="right comet-side">
-    <!-- Where it is: the Explore map in small, the comet on its path for the date in ?day= (comet.js where()).
-         In the page from the first paint, so the Explore map can glide into it (view-transition-name: sky). -->
-    <section class="pv-card wherecard" id="c-map" aria-labelledby="c-map-h" hidden>
-      <h2 id="c-map-h">Where it is</h2>
-      <div class="where">
-        <div class="skymini" id="c-mini">
-          <svg viewBox="0 0 2000 1000" preserveAspectRatio="none" aria-hidden="true"><path id="c-mini-path"/></svg>
-          <i id="c-mini-dot" hidden></i>
+<main class="wrap" id="main">
+  <!-- One comet (comet.js one()): the photo and one plain sentence, six short answers, one card per SPHEREx visit.
+       Every number sits in a block that says where it comes from (data-label: measured by SPHEREx, predicted by JPL,
+       needs data, or how comet names work), shown by the card's source line or the mark after the number. -->
+  <article id="c-one" hidden>
+    <section class="chero">
+      <div class="txt">
+        <a class="crumb" href="comet.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>All comets</a>
+        <p class="kicker">Comet</p>
+        <h1 id="c-id" data-label="name"></h1>
+        <p class="decode" id="c-decode" data-label="name" title="How comet names work"></p>
+        <p class="lead" id="c-lead"></p>
+        <div class="chips" id="c-chips"></div>
+        <p class="key"><span><i class="lb lm"></i>measured by SPHEREx</span><span><i class="lb lp"></i>predicted by JPL</span><span><i class="lb ln"></i>needs data</span></p>
+        <div class="actions">
+          <a class="state" id="c-lapse" hidden><span>Open in time-lapse</span><span class="cgo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+          <a class="clink" id="c-find"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>Find on map</a>
         </div>
       </div>
-      <p class="pv-info" id="c-when"></p>
-      <p class="pv-info" id="c-where">&nbsp;</p>
-      <a class="pv-state" id="c-find" hidden><span>Find on map</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+      <figure class="shot">
+        <div class="tabs" role="tablist" aria-label="Picture">
+          <button type="button" role="tab" id="tab-photo" aria-selected="true" class="on"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><circle cx="12" cy="12" r="3"/></svg>Photo</button>
+          <button type="button" role="tab" id="tab-depth" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L5 12l15 6"/><circle cx="5" cy="12" r="1"/></svg>Depth</button>
+        </div>
+        <div class="pane photo" id="c-photo" data-label="measured">
+          <div class="box cph"><img id="c-hero" alt=""><span class="cring" id="c-ring"></span><p class="nopic" id="c-nopic" hidden>No SPHEREx picture of it to show</p></div>
+          <figcaption class="cap"><span class="date" id="c-when"></span><span id="c-lam"></span></figcaption>
+        </div>
+        <div class="pane depth" id="c-depth" data-label="predicted" hidden>
+          <div class="box scene" id="c-scene"></div>
+          <figcaption class="cap"><span class="src lp" id="c-scene-src"></span><span id="c-scene-hint">Drag to turn</span></figcaption>
+        </div>
+      </figure>
     </section>
-    <script>document.getElementById('c-map').hidden = !new URLSearchParams(location.search).get('id');</script>
 
-    <section class="pv-card verdict" aria-labelledby="c-tags-h">
-      <h2 id="c-tags-h">Tags</h2>
-      <fieldset class="tags"><legend class="sr-only">Your tag</legend>
-        <label class="pv-row" style="--c:var(--comet)"><input class="cbx" type="radio" name="tag" value="comet" form="c-compose"><span>Comet</span><span class="count" data-t="comet">0</span></label>
-        <label class="pv-row" style="--c:var(--asteroid)"><input class="cbx" type="radio" name="tag" value="asteroid" form="c-compose"><span>Asteroid</span><span class="count" data-t="asteroid">0</span></label>
-        <label class="pv-row" style="--c:var(--glitch)"><input class="cbx" type="radio" name="tag" value="glitch" form="c-compose"><span>Glitch</span><span class="count" data-t="glitch">0</span></label>
-        <label class="pv-row" style="--c:var(--unsure)"><input class="cbx" type="radio" name="tag" value="unsure" form="c-compose"><span>Not sure</span><span class="count" data-t="unsure">0</span></label>
-        <label class="pv-row" style="--c:var(--star)"><input class="cbx" type="radio" name="tag" value="star" form="c-compose"><span>Star</span><span class="count" data-t="star">0</span></label>
-      </fieldset>
-      <p class="pv-info" id="t-head">&nbsp;</p>
+    <section class="answers" id="c-answers" aria-label="Answers"></section>
+
+    <section class="saw">
+      <div class="saw-head"><h2 class="h2">What SPHEREx saw</h2><p class="info" id="c-saw" data-label="measured"></p></div>
+      <p class="saw-def" data-label="fact">A visit is a run of pictures with no gap of 5 days or more. Each card shows the visit's clearest picture, and its link opens the time-lapse on that picture.</p>
+      <div class="vstrip" id="c-strip"></div>
     </section>
-  </div>
+
+    <section class="folds">
+      <details class="card fold adv" id="c-adv">
+        <summary><span><span class="ft">Advanced</span><small id="c-adv-say">Orbit numbers, sky position and every measured photo</small></span><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="adv-body" id="c-adv-body"></div>
+      </details>
+      <details class="card fold discuss" id="c-discuss">
+        <summary><span><span class="ft">Discuss</span><small>Ask a question or share what you notice</small></span><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="ctalk">
+          <div id="t-list"></div>
+          <form class="cform" id="c-compose">
+            <textarea rows="2" maxlength="1000" placeholder="Add a comment" aria-label="Your comment"></textarea>
+            <input class="nick" name="author" maxlength="24" placeholder="Your nickname" aria-label="Your nickname" autocomplete="nickname" hidden>
+            <!-- Turnstile site key (public), loaded when Discuss first opens. On localhost the always-pass test key is used instead, to match the test secret in worker/.dev.vars -->
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAAGBTgXAx-fdK_qGx" data-theme="dark" data-size="flexible" data-appearance="interaction-only"></div>
+            <div class="crow"><span class="cnote" id="c-note" role="status"></span><button class="state sm" type="submit" disabled><span>Post</span><span class="cgo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></button></div>
+          </form>
+        </div>
+      </details>
+    </section>
+  </article>
+
+  <!-- The Comets list (comet.js list()): what the list is, the comets to start with, then every comet by what SPHEREx found -->
+  <section id="l-all" hidden>
+    <div class="top">
+      <div>
+        <h1>Comets</h1>
+        <p class="lead"><span id="l-intro" data-label="measured"></span> <span data-label="fact">For the brightest, SPHEREx's 102 infrared colours show which gases they give off.</span></p>
+      </div>
+      <form class="csearch" role="search" onsubmit="return false">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+        <label class="sr-only" for="l-q">Search comets by name</label>
+        <input id="l-q" type="search" placeholder="Search by name" autocomplete="off" spellcheck="false" enterkeyhint="search">
+      </form>
+    </div>
+    <p class="key"><span><i class="lb lm"></i>measured by SPHEREx</span><span><i class="lb lp"></i>predicted by JPL</span></p>
+    <section class="feat" id="l-feat" aria-label="Start here"></section>
+    <div id="l-groups"></div>
+    <p class="cnone" id="l-none" hidden>No comets match.</p>
+    <p class="sr-only" id="l-status" role="status" aria-live="polite"></p>
+  </section>
+
+  <p class="missing" hidden></p>
 </main>
 
 <script>
   if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) document.querySelector('.cf-turnstile').dataset.sitekey = '1x00000000000000000000AA';
 </script>
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script type="module" src="comet.js"></script>
 <script src="ui.js"></script>
 </body>

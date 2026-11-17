@@ -1042,7 +1042,7 @@ async function knownNext() {
 // &comet= (a comet page's "Open in time-lapse") is a claim in a shareable address, so it is checked before anything uses
 // it: that comet's own record (GET /api/comets/:id on this site, what its page reads) must hold a photo taken at the
 // view's time t (within 5 s), on this detector, at this spot (within 2 pixels): a measured photo (its ra, dec and the
-// detector in its file name) or a JPL-listed D1 exposure. Then the record's own id; otherwise, or when the record cannot
+// detector in its file name), a JPL-listed D1 exposure or a visit's linked picture. Then the record's own id; otherwise, or when the record cannot
 // be read, null, and the view is an ordinary one.
 async function cometOf(m, hint) {
   try {
@@ -1050,7 +1050,8 @@ async function cometOf(m, hint) {
     if (!r.ok) return null;
     const c = await r.json(), d = c.detail ?? {}, tol = 2 * m.arcsec_per_pixel;
     const shots = [...(d.photos ?? []).filter(p => p.ra != null).map(p => [p.mjd, p.ra, p.dec, p.file?.match(/_(D\d)\.png$/)?.[1]]),
-      ...(d.spherex ?? []).map(s => [MJD0 + s.day, s.ra, s.dec, 'D1'])];
+      ...(d.spherex ?? []).map(s => [MJD0 + s.day, s.ra, s.dec, 'D1']),
+      ...(d.facts?.inv?.visits ?? []).map(v => v.link).filter(Boolean).map(l => [l.t, l.ra, l.dec, l.det])];   // each visit's link (bake/comet_facts.py)
     return shots.some(([t, ra, dec, det]) => Math.abs(t - m.t) * 86400 <= 5 && det === m.detector && Math.hypot(...offset(m, ra, dec)) <= tol) ? c.id : null;
   } catch { return null; }
 }
