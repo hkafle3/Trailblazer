@@ -196,6 +196,20 @@ async def main():
         say, note = await pg.evaluate("['pv-say', 'state-note'].map(i => document.getElementById(i).textContent)")
         check("detector candidate" in say and "known" not in say.replace("not called known", "") and "already known" not in note and "Gaia's" not in say,
               f"candidate: the verdict claims no motion or match for it: {say} / {note}")
+        # its Advanced (opened for its votes) shuts when asked
+        await pg.click("#adv-btn"); await pg.wait_for_timeout(150)
+        check(await pg.get_attribute("#adv-btn", "aria-expanded") == "false" and not await pg.locator("#adv-body").is_visible(), "candidate: Advanced shuts when its button is pressed")
+        # the right column flows: a long name and verdict push Report (and Distances) down instead of running under them
+        LONG = """() => { document.getElementById('pv-name').textContent = 'Sample candidate K-0001 with a much longer name than usual';
+            document.getElementById('pv-say').textContent = 'A long verdict. '.repeat(14); }"""
+        FLOW = """() => { const r = s => document.querySelector(s).getBoundingClientRect(), w = r('.pv-who'), nxt = r(document.body.classList.contains('depth') ? '#dist' : '.pv-report');
+            return [Math.round(w.bottom), Math.round(nxt.top), Math.round(nxt.bottom), Math.round(r('.tl-date').top)]; }"""
+        flows = []
+        for vw, vh in ((1440, 900), (1280, 720)):
+            await pg.set_viewport_size({"width": vw, "height": vh}); await pg.evaluate(LONG); await pg.wait_for_timeout(150)
+            flows.append(await pg.evaluate(FLOW))
+        await pg.set_viewport_size({"width": 1440, "height": 900})
+        check(all(w <= n + 1 for w, n, _, _ in flows), f"long name and verdict: the cards below start after them at 1440 and 1280 wide {flows}")
         await pg.unroute("**/data/candidates.json")
         # the arrows a tab or the 3D view use do not step the visit
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
@@ -205,6 +219,12 @@ async def main():
         await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects > 0", timeout=60000)
         await pg.focus("#depth3d canvas"); await pg.keyboard.press("ArrowLeft"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(200)
         check(i1 == i0 and v1 == "true" and await pg.evaluate("__lapse.state.i") == i0, f"arrows: the tabs and the 3D view keep the visit ({i0} -> {i1}, Depth {v1})")
+        # an open Spectrum card gives way to Distances when Depth is chosen
+        await pg.click("#tab-photo"); await pg.evaluate("__spec.open(269.4463, 4.7671, 2026)"); await pg.wait_for_timeout(300)
+        was = await pg.evaluate("document.body.classList.contains('speccing')")
+        await pg.click("#tab-depth"); await pg.wait_for_timeout(300)
+        sp = await pg.evaluate("[document.body.classList.contains('speccing'), (r => r.width > 0 && r.height > 0)(document.getElementById('dist').getBoundingClientRect()), (r => r.width > 0)(document.getElementById('spec').getBoundingClientRect()), location.search]")
+        check(was and not sp[0] and sp[1] and not sp[2] and "spec=" not in sp[3], f"Spectrum then Depth: the card closes and Distances shows ({sp})")
         # another visit whose distances cannot be had: the old beam goes at once and the failure is said over it
         await pg.route("**/api/depth**", lambda r: r.fulfill(status=503, json={"error": "archive down"}))
         await pg.focus("#play"); await pg.keyboard.press("Home")

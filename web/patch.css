@@ -271,7 +271,7 @@ i.kn-check { display: inline-block; width: calc(16 * var(--m)); height: calc(16 
 #legend i.kn-check { margin: 0; vertical-align: 0; }
 
 /* Report a new find: Ming's state box, the line saying what it does (or why there is nothing to report), the share link */
-.pv-report { left: calc(1928 * var(--e)); top: calc(684 * var(--e)); width: calc(451 * var(--e)); }
+.pv-report { left: calc(1928 * var(--e)); top: calc(229 * var(--e) + max(var(--who-h, 0px), 252 * var(--m)) + 14 * var(--m)); width: calc(451 * var(--e)); }   /* under the name and verdict, however long (timelapse.html --who-h) */
 .pv-report .pv-state { width: 100%; height: calc(58 * var(--m)); padding: 0 calc(9 * var(--m)) 0 calc(22 * var(--m)); border-width: max(1.5px, calc(1.75 * var(--m))); border-radius: calc(10 * var(--m)); font-size: calc(17 * var(--m)); justify-content: space-between; }
 .pv-report .pv-state > span:first-child { flex: 1; text-align: left; }
 .pv-report .pv-state .go { width: calc(40 * var(--m)); height: calc(40 * var(--m)); }
@@ -324,11 +324,11 @@ body.depth :is(#legend, .pv-specbtn, #one-photo, #patch, #hold) { visibility: hi
 body:not(.depth) .pstage > .pv-dist, body.depth .pstage > .pv-report, body.depth #pv-facts { display: none; }
 
 /* Distances (Depth): every object with a distance, nearest first; the list scrolls under its heading */
-.pv-dist { left: calc(1928 * var(--e)); top: calc(496 * var(--e)); width: calc(451 * var(--e)); box-sizing: border-box; padding: calc(16 * var(--m)) 0 calc(10 * var(--m)) calc(27 * var(--m)); }
+.pv-dist { left: calc(1928 * var(--e)); top: calc(229 * var(--e) + var(--who-h, 156 * var(--m))); width: calc(451 * var(--e)); box-sizing: border-box; padding: calc(16 * var(--m)) 0 calc(10 * var(--m)) calc(27 * var(--m)); }
 .pv-dist h2 { margin: 0 0 calc(10 * var(--m)); font-size: calc(21 * var(--m)); }
 .dist-status { margin: 0 calc(14 * var(--m)) calc(10 * var(--m)) 0; color: rgba(255, 255, 255, .62); font-size: calc(11 * var(--m)); line-height: 1.5; }
 .dist-head { display: flex; justify-content: space-between; padding: 0 calc(14 * var(--m)) calc(6 * var(--m)) 0; color: rgba(255, 255, 255, .62); font-size: calc(11 * var(--m)); }
-.pv-dist .pv-scroll { max-height: calc(1130 * var(--e) - 496 * var(--e) - 110 * var(--m)); padding-right: calc(14 * var(--m)); }
+.pv-dist .pv-scroll { max-height: max(calc(80 * var(--m)), calc(1130 * var(--e) - 229 * var(--e) - var(--who-h, 156 * var(--m)) - 110 * var(--m))); padding-right: calc(14 * var(--m)); }
 .dist-list { margin: 0; padding: 0; list-style: none; font-size: calc(12.5 * var(--m)); }
 .drow { display: flex; justify-content: space-between; gap: calc(10 * var(--m)); padding: calc(7 * var(--m)) 0 calc(4 * var(--m)); line-height: 1.3; }
 .drow + .drow { border-top: 1px solid rgba(255, 255, 255, .1); }
@@ -390,7 +390,7 @@ body.adv-open .adv-body { display: block; }
 .adv-link { display: inline-block; margin: calc(16 * var(--m)) 0 0; color: #fff; font-size: calc(12.5 * var(--m)); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255, 255, 255, .45); }
 .adv-link[hidden] { display: none; }
 /* a candidate (?cand=) leads Advanced with its votes, open */
-body.cand .adv-body { display: flex; flex-direction: column; }
+body.cand.adv-open .adv-body { display: flex; flex-direction: column; }
 body.cand .adv-body > .pv-desc { order: -1; margin-top: calc(8 * var(--m)); }
 body.cand .pv-desc .pv-scroll { max-height: calc(420 * var(--m)); }
 /* the sky (no spot yet): the position part alone, where the drawer sits */

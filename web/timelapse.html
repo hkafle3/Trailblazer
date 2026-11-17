@@ -1302,10 +1302,10 @@ function specUrl() {
   if (spec.at) u.searchParams.set('spec', `${spec.at.ra.toFixed(5)},${spec.at.dec.toFixed(5)}`); else u.searchParams.delete('spec');
   history.replaceState(null, '', u);
 }
-function closeSpec() {
+function closeSpec(focus = true) {
   spec.ctl?.abort(); spec.n++; spec.at = spec.gaia = spec.res = null; spec.bright = false;
   document.body.classList.remove('speccing'); specMode(false); specUrl(); draw();
-  specEl('spec-mode').focus();
+  if (focus) specEl('spec-mode').focus();
 }
 specEl('spec-close').onclick = closeSpec;
 specEl('spec').addEventListener('keydown', e => { if (e.key === 'Escape') closeSpec(); });
@@ -1435,7 +1435,7 @@ function setView(v, user = false) {
   pvView = v;
   document.body.classList.toggle('depth', v === 'depth');
   for (const t of viewTabs) { const on = t.dataset.view === v; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; }
-  if (v === 'depth' && spec.mode) specMode(false);   // picking a star is a Photo thing
+  if (v === 'depth' && (spec.mode || spec.at)) closeSpec(false);   // picking a star and its card are Photo things: the right column is Distances
   depth.show(v === 'depth');
   if (user || P.has('view')) history.replaceState(history.state, '', location.href);   // the wrapper writes &view=
   if (v === 'photo') draw();
@@ -1458,7 +1458,9 @@ function setAdv(on, keep = true) {
   moreBelow();
 }
 advBtn.onclick = () => setAdv(advBtn.getAttribute('aria-expanded') !== 'true');
-window.__advOpen = on => setAdv(on, false);   // live/candtrack.js: a candidate's votes are in here
+window.__advOpen = on => setAdv(on, false);
+{ const who = document.querySelector('.pv-who'), stage = document.getElementById('stage');
+  new ResizeObserver(() => stage.style.setProperty('--who-h', `${who.offsetHeight}px`)).observe(who); }   // live/candtrack.js: a candidate's votes are in here
 { let on = false; try { on = localStorage.getItem('ch.adv') === '1'; } catch {} setAdv(on, false); }
 // Split already known: predicted place and known passing drawn apart (draw()); the legend follows (patch.css)
 document.getElementById('split').onchange = e => { state.split = e.target.checked; draw(); };
