@@ -97,7 +97,9 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
 <!-- phones: the two buttons and the whole-sky button float in one row above the timeline; on a desktop this wrapper does nothing (display: contents) -->
 <div class="xbtns">
 <!-- replays the 3D intro over the map (intro.js). First in the page, so the open Examples and Layers panels draw over it -->
-<button class="how" id="how" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 6v12l9.5-6z"/></svg>How this map was made</button>
+<div class="howrow"><button class="how" id="how" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 6v12l9.5-6z"/></svg>How this map was made</button>
+<!-- the film's credits and what in it is drawn (film.html): always here, since the film shows its own credit line for a moment only -->
+<a class="how-about" href="film.html">About this film</a></div>
 <details class="layers examples" id="examples">
   <summary>Examples<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></summary>
   <div class="layers-body" aria-label="Example targets">

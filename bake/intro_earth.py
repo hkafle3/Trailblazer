@@ -20,6 +20,7 @@ MAPS = [  # name, source, width, WebP quality, extra ffmpeg filter
     ("earth_cloud", "https://web.archive.org/web/20210217230404id_/https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_2048.jpg", 2048, 62, ",format=gray"),
     ("earth_night", EO + "imagerecords/144000/144898/BlackMarble_2016_01deg.jpg", 2048, 70, ""),
 ]
+CACHE.mkdir(parents=True, exist_ok=True)   # not in the repository: a clean checkout has no cache yet
 for name, url, width, q, more in MAPS:
     src = CACHE / (name + "_nasa.jpg")
     if not src.exists():
