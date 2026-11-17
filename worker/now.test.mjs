@@ -83,3 +83,14 @@ test('an overlapping run neither fetches a claimed comet nor writes over a newer
   release(); await first;
   assert.equal(rows.get('C/2026 A2 (Bok)').as_of, undefined, 'the stalled run wrote over a newer claim');
 });
+
+test('migration 0018 can be applied twice (CREATE ... IF NOT EXISTS)', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const sql = fs.readFileSync(new URL('./migrations/0018_comet_now.sql', import.meta.url), 'utf8');
+  const db = new DatabaseSync(':memory:');
+  db.exec("CREATE TABLE comets (id TEXT PRIMARY KEY); INSERT INTO comets VALUES ('x')");
+  db.exec(sql);
+  db.exec("INSERT INTO comet_now (id, as_of) VALUES ('x', '2026-11-17')");
+  db.exec(sql);   // again: no error, and the row is still there
+  assert.equal(db.prepare('SELECT as_of FROM comet_now WHERE id = ?').get('x').as_of, '2026-11-17');
+});
