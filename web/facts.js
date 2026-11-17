@@ -299,7 +299,10 @@ export function visits(x) {
     for (let m = new Date(Date.UTC(new Date(s).getUTCFullYear(), new Date(s).getUTCMonth(), 1)); m.getTime() <= e; m.setUTCMonth(m.getUTCMonth() + 1)) spanned.push(monthKey(m.getTime()));
     const months = spanned.filter(m => co2[m]?.state === 'detected');
     if (months.length) out.push(S(`Carbon dioxide detected in ${MONTHS[+months[0].slice(5) - 1]}'s combined measurements.`, 'measured'));
-    return { k, when: span(s, e), start: s, end: e, title, d: out, verdict: v.verdict, n: v.n, link: v.link, img: v.img, lam: v.lam ?? null };
+    // the card's one short line (Ed, 17 Nov): the full sentences go to the card's hover and to Advanced
+    const short = { seen: `Seen: ${Math.round(v.snr ?? 0)} times above the picture's noise.`, parent: 'Light near its parent’s position; maybe the parent’s.',
+      faint: 'Too faint here.', unseen: `Not seen in the ${v.tried} of ${v.n.toLocaleString('en-US')} pictures measured.` }[v.verdict] ?? 'Could not be measured here.';
+    return { k, when: span(s, e), start: s, end: e, title, short, d: out, verdict: v.verdict, n: v.n, link: v.link, img: v.img, lam: v.lam ?? null };
   });
 }
 export function span(s, e) {   // 15-22 Jun 2025, 15 Feb-2 Mar 2026, 27 Jul 2025

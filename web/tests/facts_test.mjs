@@ -202,6 +202,11 @@ eq(F.chips(frag).map(s => s.text)[0], 'Light near its parent on 2 of 3 visits', 
 eq(F.visits(frag).map(v => v.title), ['Not detected. The ring marks where JPL puts it.', 'Light near the parent’s position.', 'Light near the parent’s position.'], 'fix 2: visit titles');
 eq(F.group({ seen: 0, parent: 2, measured: 3, unseen: 0, visits: 3 }), 'parent', 'fix 2: list group');
 
+// ---------- the visit cards' one short line (Ed, 17 Nov) ----------
+eq(F.visits(X('C/x', facts({}, { inv: { visits: [vis({ snr: 111.6 }), vis({ verdict: 'parent', near_parent: 12 }), vis({ verdict: 'faint', snr: null }),
+  vis({ verdict: 'unseen', snr: null, n: 113, tried: 12 }), vis({ verdict: 'unmeasured', snr: null })] } }))).map(v => v.short),
+  ["Seen: 112 times above the picture's noise.", 'Light near its parent’s position; maybe the parent’s.', 'Too faint here.', 'Not seen in the 12 of 113 pictures measured.', 'Could not be measured here.'], 'visit cards: one short line each');
+
 // ---------- every known comet: nothing forbidden, nothing empty ----------
 const FIX = new URL('./fixtures/comets.json', import.meta.url);
 if (fs.existsSync(FIX)) {

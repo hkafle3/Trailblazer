@@ -137,8 +137,8 @@ function strip(c, P) {
     else ph.append(el('span', 'nopic', 'no picture'));
     ph.append(el('span', v.verdict === 'seen' ? 'cring' : 'cring dash'));
     const when = el('p', 'when date', v.when); when.append(mark('measured'));
-    const say = el('p', 'say'); say.append(el('b', null, v.title));
-    if (v.d.length) say.append(' ', sentences(el('span'), v.d, 'measured'));
+    const say = el('p', 'say', v.short); say.append(mark('measured'));
+    card.title = [v.title, ...v.d.map(t => F.plain(t.text))].join(' ');   // the full sentences on hover (and in Advanced)
     const a = el('a', 'clink lapse'); a.href = lapseHref(c.id, v.link); a.innerHTML = `Time-lapse ${ARROW}`;
     a.title = `Open the time-lapse on this visit's clearest picture, centred on where JPL puts the comet`;
     const cap = el('p', 'pcap', `Infrared${v.lam ? ` ${v.lam.toFixed(2)} µm` : ''}, brightness stretched per picture`);
@@ -382,6 +382,14 @@ function advanced(c, x) {
     const s = el('p', 'src lp'); s.append(el('i'), `JPL prediction, as of ${F.day(F.dayMs(n.as_of))}`); sec.append(s);
     body.append(sec);
   }
+  const vis = F.visits(x);
+  if (vis.length) {   // each visit in full: what the card's short line stands for, with its distance and magnitude
+    const sec = el('section', 'adv-sec visits'); sec.dataset.label = 'measured';
+    sec.append(el('h3', null, 'Each visit'));
+    for (const v of vis) { const p = el('p', 'vrow'); p.append(el('b', null, v.when), ' ', v.title, ' '); sentences(p, v.d, 'measured'); sec.append(p); }
+    const s = el('p', 'src lm'); s.append(el('i'), 'Measured by SPHEREx; distances and magnitudes predicted by JPL'); sec.append(s);
+    body.append(sec);
+  }
   if (d.photos?.length) {
     const sec = el('section', 'adv-sec'); sec.dataset.label = 'measured';
     sec.append(el('h3', null, `Every measured photo (${d.photos.length})`));
@@ -394,7 +402,7 @@ function advanced(c, x) {
     sec.append(g, s); body.append(sec);
   }
   if (!body.children.length) body.append(el('p', 'def', 'Nothing more for this comet yet.'));
-  $('c-adv-say').textContent = d.photos?.length ? 'Orbit numbers, sky position and every measured photo' : 'Orbit numbers and sky position';
+  $('c-adv-say').textContent = d.photos?.length ? 'Each visit, orbit numbers, sky position and every measured photo' : 'Each visit, orbit numbers and sky position';
 }
 
 // ---------------------------------------------------------------- Discuss (folded; no tag vote on a known comet)
