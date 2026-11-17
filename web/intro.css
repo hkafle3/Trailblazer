@@ -10,6 +10,11 @@
 #intro .lbl { position: absolute; left: 0; top: 0; font: 400 11px/1 var(--mono); letter-spacing: .02em; color: var(--ink2); white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; will-change: transform, opacity; }
 #intro .lbl.accent { color: var(--accent); }
 #intro .lbl.mark { color: var(--ink3); }
+/* the deck of colours: labels of more than one line, the count and the question marks, the words over the held-up photo */
+#intro .lbl.deck { white-space: pre; line-height: 1.3; text-align: center; }
+#intro .lbl.big { font-size: 14px; color: var(--ink); }
+#intro .lbl.co2 { font-size: 14px; }
+#intro .lbl.ask { font-size: 20px; color: var(--ink); }
 #intro .lbl.lead::after { content: ""; position: absolute; left: 50%; top: 100%; margin-top: 3px; width: 1px; height: 21px; background: rgba(255, 255, 255, .45); }
 #intro-spec { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; }
 
@@ -44,5 +49,6 @@
   #intro-cap-text { font-size: 14px; min-height: 4.5em; }
   #intro-cap-note { font-size: 10px; min-height: 3em; }
   #intro .lbl { font-size: 10px; }
+  #intro .lbl.big, #intro .lbl.co2 { font-size: 12px; }
   #intro .lbl.mark { white-space: pre; text-align: right; line-height: 1.25; }
 }

@@ -7,7 +7,7 @@ it and does not fetch intro.js, intro.css, three.js or data/intro/. Links with ?
 browser that has seen the tour (ch.tour, which the other suites set), do not play it either.
 The "How this map was made" button replays it over a panned and zoomed map on another day and lands on that same view
 (edges within 2 px, the view and the day unchanged, focus back on the button). Skip and Escape end it within 4 s, and
-Skip works before the film has loaded. Reduced motion: fourteen stills with fourteen captions and a Next button, no animation.
+Skip works before the film has loaded. Reduced motion: seventeen stills with seventeen captions and a Next button, no animation.
 Run: uv run -q --with playwright python web/tests/intro_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, sys
 from playwright.async_api import async_playwright
@@ -71,7 +71,7 @@ async def run(b, name, opts):
     await pg.wait_for_selector("body[data-ready='1']")
     assert not await pg.evaluate("document.getElementById('play').classList.contains('on')"), "the sky replay started under the film"
     assert not await pg.evaluate(TOUR), "the tour opened over the film"
-    await pg.wait_for_function(f"{FILM_S} > window.__intro.T_HANDOVER + .3", timeout=90000)   # the flat sky is on the map and dissolving
+    await pg.wait_for_function(f"{FILM_S} > window.__intro.T_HANDOVER + .3", timeout=120000)   # the flat sky is on the map and dissolving
     assert not await pg.evaluate(TOUR), "the tour opened before the film ended"
     fps = await pg.evaluate("""(() => { const f = window.__perf.frames.slice().sort((a, b) => a - b), n = f.length, sum = f.reduce((a, b) => a + b, 0);
       return { frames: n, fps: +(1000 * n / sum).toFixed(1), median: +f[n >> 1].toFixed(1), p99: +f[Math.floor(n * .99)].toFixed(1), worst: +f[n - 1].toFixed(1), slow: f.filter(x => x > 25).length }; })()""")
@@ -163,16 +163,16 @@ async def run(b, name, opts):
     await pg.goto(BASE + "/explore"); await film_up(pg)
     assert await pg.evaluate("window.__intro.reduced") and await pg.is_visible("#intro-next")
     seen = []
-    for i in range(14):
+    for i in range(17):
         await pg.wait_for_timeout(600); seen.append(await pg.inner_text("#intro-cap-text"))
         assert await pg.evaluate("window.__perf.frames.length") == 0, "reduced motion ran the animation"
         await pg.click("#intro-next")
-    assert len(set(seen)) == 14, f"reduced motion: {len(set(seen))} captions, not 14"
+    assert len(set(seen)) == 17, f"reduced motion: {len(set(seen))} captions, not 17"
     await gone(pg, f"{name} reduced motion"); await pg.wait_for_function(f"{TOUR} === 'Welcome to Trailblazer'", timeout=4000)
     await pg.keyboard.press("Escape"); await pg.wait_for_function(f"!{TOUR}")   # close the tour
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.click("#intro-skip"); await gone(pg, f"{name} reduced motion Skip", 1500)
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.keyboard.press("Escape"); await gone(pg, f"{name} reduced motion Escape", 1500)
-    print(f"{name}: reduced motion shows 14 stills with Next and no animation, then the tour; Skip and Escape end it")
+    print(f"{name}: reduced motion shows 17 stills with Next and no animation, then the tour; Skip and Escape end it")
     await pg.context.close()
     assert not errs, f"{name}: page errors {errs}"
 
