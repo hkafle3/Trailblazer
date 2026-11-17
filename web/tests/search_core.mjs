@@ -49,5 +49,11 @@ assert.equal(matchLocal('planet nine', comets).targets.length + matchLocal('plan
 // Sesame's answer
 assert.deepEqual(sesameRaDec('# Vega\n#=S=Simbad: 1\n%J 279.23473479 +38.78368896 = 18:36:56.33 +38:47:01.2\n'), { ra: 279.23473479, dec: 38.78368896 });
 assert.equal(sesameRaDec('#! *** Nothing found *** \n'), null);
+// a %P proper motion moves the star to the year asked: Barnard's Star in 2026.0 is near where SPHEREx photographed it
+// (the baked target, 269.4463 4.7671, from Aug 2025 to Aug 2026), not at its J2000 place 4.5 arcmin south
+{ const b = sesameRaDec("# Barnard's star\n%J 269.45207696 +04.69339088 = 17:57:48.49 +04:41:36.2\n%P -801.551 +10362.394 [0.032 0.036 0] A 2020yCat.1350....0G\n", 2026);
+  assert.ok(sep(b.ra, b.dec, 269.4463, 4.7671) * 3600 < 15, `Barnard's Star in 2026: ${JSON.stringify(b)}`);
+  const j = sesameRaDec("%J 269.45207696 +04.69339088\n%P -801.551 +10362.394\n", 2000);
+  assert.ok(Math.abs(j.ra - 269.45207696) < 1e-9 && Math.abs(j.dec - 4.69339088) < 1e-9, 'year 2000 is the catalog place'); }
 assert.ok(Math.abs(sep(0, 0, 90, 0) - 90) < 1e-9 && sep(10, 20, 10, 20) === 0);
 console.log('PASS search_core: RA and Dec reader, name matching, Sesame answer');

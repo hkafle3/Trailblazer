@@ -74,8 +74,8 @@ if (id) {
     document.body.classList.add('cand', ...(sample ? ['cand-sample'] : []));
     document.title = `${title()} · Trailblazer`;
     for (const a of document.querySelectorAll('.topbar nav a')) a.classList.toggle('on', a.getAttribute('href') === 'candidates.html');
-    // phones show one tool card at a time: open on Info, where this is (after the page has wired its tabs)
-    if (matchMedia('(max-width: 640px)').matches) setTimeout(() => document.querySelector('.pv-tabs [data-t=info]')?.click());
+    // its votes are in Advanced: open it for this page (without changing what the drawer remembers), once the page has wired it
+    setTimeout(() => window.__advOpen?.(true));
     if (!document.querySelector('link[href="candidates.css"]')) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'candidates.css' }));
   }
 }

@@ -94,8 +94,19 @@ export function sep(ra1, dec1, ra2, dec2) {
   return 2 * Math.asin(Math.min(1, Math.sqrt(a))) / r;
 }
 
-// CDS Sesame's plain-text answer: the line starting %J has RA and Dec in degrees. null when it found nothing.
-export function sesameRaDec(text) {
+// CDS Sesame's plain-text answer: the line starting %J has RA and Dec in degrees (J2000, epoch 2000.0). null when it
+// found nothing. A %P line is the proper motion (mas/yr, RA already times cos Dec): the star is moved to `year`, so a
+// fast star opens where SPHEREx sees it now. Barnard's Star has moved 4.5 arcmin since 2000, so its J2000 place is
+// empty sky in a 6 arcmin time-lapse.
+export function sesameRaDec(text, year = 2000 + (Date.now() - Date.UTC(2000, 0, 1, 12)) / 31557600000) {
   const m = text.match(/^%J\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)/m);
-  return m ? { ra: +m[1], dec: +m[2] } : null;
+  if (!m) return null;
+  let ra = +m[1], dec = +m[2];
+  const p = text.match(/^%P\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)/m);
+  if (p) {
+    const dt = year - 2000;
+    dec = Math.max(-90, Math.min(90, dec + +p[2] / 3.6e6 * dt));
+    ra = ((ra + +p[1] / 3.6e6 * dt / Math.cos(dec * Math.PI / 180)) % 360 + 360) % 360;
+  }
+  return { ra, dec };
 }

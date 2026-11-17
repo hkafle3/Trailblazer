@@ -52,15 +52,8 @@
 .cv-note:empty { display: none; }
 /* the Candidates page: the one name field, above the groups */
 .cands > .cv-nick { max-width: 320px; margin-top: 22px; }
-/* the time-lapse: the candidate and its votes head Descriptions, which grows down to the page's foot for them */
-@media (min-width: 641px) {
-  body.cand .pv-mini { display: none; }   /* the region view rings the baked target: the candidate's room instead */
-  body.cand .pv-state { top: calc(332 * var(--e)); }
-  body.cand .pv-desc { top: calc(482 * var(--e)); }
-  body.cand-sample .pv-desc { top: calc(332 * var(--e)); }
-  body.cand .pv-desc .pv-scroll { max-height: calc(460 * var(--e)); }
-  body.cand-sample .pv-desc .pv-scroll { max-height: calc(610 * var(--e)); }
-}
+/* the time-lapse: the candidate and its votes head Advanced, opened for them (patch.css body.cand) */
+body.cand .pv-mini { display: none; }   /* the region view rings the baked target: the candidate's room instead */
 .cand-info .cand-sample { display: block; margin-bottom: 6px; color: var(--comet); }
 .pv-desc .cvote { margin: 0 0 calc(18 * var(--e)); padding-bottom: calc(18 * var(--e)); border-bottom: 1.5px solid #fff; }
 .pv-desc .cvote .cv-b, .pv-desc .cvote .cv-nick { height: 30px; font-size: 11px; padding: 0 4px; }
