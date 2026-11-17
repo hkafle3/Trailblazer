@@ -121,16 +121,20 @@ function pchip(keys) {   // smooth, never-reversing curve through the keys (film
 const CLICK = 6.7;   // T: the shutter. The first photo is taken here, and it is not shown until the flight has arrived on it
 const FLY0 = 9, FLY1 = 13.2;   // T: the flight down the beam, from the telescope's mouth to the photo's frame filling the view
 const FLY_S = 11;   // the flight's own length in film seconds: T runs slow while it plays
-const WASH = [FLY1 + 3, FLY1 + 7.3];   // T: the colors wash over the finished photo, from the first of the 102 to the last
-const X = FLY1 + 7.5;   // T: the look at one photo ends here, and the camera pulls back out of it to the ring
+const WASH = [FLY1 + 3.6, FLY1 + 7.9];   // T: the colors wash over the finished photo, from the first of the 102 to the last
+const X = FLY1 + 8.1;   // T: the look at one photo ends here, and the camera pulls back out of it to the ring
 const WARP = [[0, 0], [4.8, 4.8], [X, 4.8], [X + 3, 8.6], [X + 6.2, 12.2], [X + 10.8, 19.3], [X + 14.8, 23.9], [X + 16.6, 30.2], [X + 26, 39.6]];   // [T, first cut's seconds]
 const w = T => lin(T, WARP, 0, 1), wi = t => lin(t, WARP.slice(2), 1, 0);
 const CLOCK = [[0, 0], [FLY0, FLY0], [FLY0 + FLY_S, FLY1]];   // [U, T]
 const v2 = U => lin(U, CLOCK, 0, 1), fu = T => lin(T, CLOCK, 1, 0);
 const T_END = fu(wi(39.6)), T_HANDOVER = fu(wi(37.7)), UA = fu(FLY1);   // in U; UA: the flight arrives
-const SHOW_U = [UA - .6, UA + 1.7];   // U: the finished photo spreads over its frame, seen for the first time
+const SHOW_U = [UA, UA + 2.1];   // U: the finished photo spreads over its frame, seen for the first time. Not before the flight has arrived: the approach is to an empty frame
 const shellR = T => KL(w(T), [[8, .3], [11, .3], [13, .42], [18.7, .42], [21.7, R_BIG]]);
-const EARTH_R = .022, EARTH_NEAR = .04, ORBIT_R = .054, CRAFT = .0125, R_BIG = 3.2;   // drawing sizes in AU (illustrative)
+// Drawing sizes in AU. Earth is one size from the first frame to the last, and SPHEREx's orbit is at its true height
+// above it (650 km over a radius of 6,371 km), so from beside the telescope Earth is a curved horizon filling the view
+// below, as it really is, and the whole globe is seen only by drawing the camera far back. The model of SPHEREx is far
+// larger than life (about 60 km across on this scale), but small against its height, and the camera sits close to it.
+const EARTH_R = .022, ORBIT_R = EARTH_R * (1 + 650 / 6371), CRAFT = 1e-4, AIR = 1.03, R_BIG = 3.2;   // AIR: the glow of the air ends this many Earth radii out
 
 const fw = t => fu(wi(t));
 // [from, to (U), step 1..7, text]. One caption per beat and nothing under it: every beat has to read with these hidden,
@@ -378,7 +382,7 @@ earth.renderOrder = 3; scene.add(earth);
 const air = new THREE.Mesh(earth.geometry, new THREE.ShaderMaterial({   // the glow of the air past the edge: a slightly larger ball, seen from inside
   uniforms: earthU, vertexShader: EARTH_VS, side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   fragmentShader: `uniform vec3 uSun; uniform float uShow; varying vec3 vN, vP;
-    void main(){ vec3 n = normalize(vN), v = normalize(cameraPosition - vP); float rim = clamp(-dot(n, v) / .36, 0., 1.), l = dot(n, uSun);
+    void main(){ vec3 n = normalize(vN), v = normalize(cameraPosition - vP); float rim = clamp(-dot(n, v) / ${Math.sqrt(1 - 1 / AIR / AIR).toFixed(3)}, 0., 1.), l = dot(n, uSun);
       gl_FragColor = vec4(vec3(.24, .5, 1.) * pow(rim, 2.2) * (.05 + 1.2 * smoothstep(-.35, .35, l)) + vec3(.5, .2, .1) * pow(rim, 5.) * smoothstep(.3, 0., abs(l)) * .5, uShow); }`
 }));
 air.renderOrder = 3.1; scene.add(air);
@@ -413,8 +417,8 @@ const CONES = [[1, .40, .86], [.84, .34, .93], [.68, .28, 1]];   // top radius, 
 const craftU = { uSun: { value: V(1, 0, 0) }, uEarth: { value: V(0, -1, 0) }, uAt: { value: V() }, uAx: { value: V(0, 1, 0) }, uS: { value: 1 } };   // uEarth: the way to Earth; uAt, uAx, uS: where the model is, its axis and its scale
 const CRAFT_FS = `uniform vec3 uSun, uEarth, uAt, uAx, uBase; uniform float uS, uMetal, uRough, uFoil, uIn, uCells; uniform mat4 modelMatrix; varying vec3 vO, vNo, vP; varying vec2 vUv; ${NOISE_GLSL}
   vec3 around(vec3 r, float k, float sunny){                       // what is seen in direction r, blurred by k (0 a mirror, 1 matt)
-    k = max(k, .02); float e = dot(r, uEarth), disc = smoothstep(.55 - .5 * k, .68 + .4 * k, e), lit = smoothstep(-.35, .25, dot(r, uSun));
-    vec3 c = vec3(.012, .016, .03) + vec3(.22, .42, .85) * disc * (.04 + lit) + vec3(.5, .75, 1.) * smoothstep(.2, 0., abs(e - .62)) * (1. - k) * lit * .5;   // space, Earth's day side, the bright edge of its air
+    k = max(k, .02); float e = dot(r, uEarth), disc = smoothstep(.36 - .5 * k, .48 + .4 * k, e), lit = smoothstep(-.35, .25, dot(r, uSun));
+    vec3 c = vec3(.012, .016, .03) + vec3(.22, .42, .85) * disc * (.04 + lit) + vec3(.5, .75, 1.) * smoothstep(.2, 0., abs(e - .42)) * (1. - k) * lit * .5;   // space, Earth's day side, the bright edge of its air
     return c + vec3(1., .95, .86) * pow(max(dot(r, uSun), 0.), mix(900., 5., sqrt(k))) * mix(22., 1.1, sqrt(k)) * sunny; }
   void main(){ vec3 no = normalize(vNo), base = uBase; float rough = uRough, metal = uMetal;
     if (uFoil > 0.) { vec3 p = vO * 7.; float e = .04, b0 = fbm(p); vec3 g = vec3(fbm(p + vec3(e, 0, 0)) - b0, fbm(p + vec3(0, e, 0)) - b0, fbm(p + vec3(0, 0, e)) - b0) / e; no = normalize(no - uFoil * (g - dot(g, no) * no)); }
@@ -470,7 +474,7 @@ function dynLines(max) {
     end() { g.setDrawRange(0, 2 * n); g.attributes.position.needsUpdate = g.attributes.color.needsUpdate = true; }
   };
 }
-const guides = dynLines(600);
+const guides = dynLines(1100);
 const beamFill = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(15, 3)).setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]),   // the beam's faint body: its four sides, from a point to the corners of a photo
   new THREE.MeshBasicMaterial({ color: 0xbfd6ff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
 beamFill.frustumCulled = false; beamFill.renderOrder = 6; scene.add(beamFill);
@@ -627,7 +631,7 @@ label('90°', o => o.copy(st.E).addScaledVector(st.s, st.R * .34).addScaledVecto
 // the flight: each body's name and distance under it while it is the one being passed; then the five lights on the finished photo
 for (const b of beads) label(b.said, o => o.copy(b.pos), () => b.lab, '', () => [0, Math.min(b.rpx * (b.kind === 'star' ? 1.7 : b.kind === 'galaxy' ? .62 : 1.08), H * .2) + 12, -.5, 0]);
 // on the finished photo, each of the five lights says what it is and how far: side by side on one flat picture. The star's stays through the colors: it is the one to watch
-const landA = (T, ours) => K(T, [[FLY1 + .5, 0], [FLY1 + 1.1, 1], ...(ours ? [[WASH[1] - .2, 1], [WASH[1] + .4, 0]] : [[WASH[0] - .7, 1], [WASH[0] - .2, 0]])]);
+const landA = (T, ours) => K(T, [[FLY1 + 1.5, 0], [FLY1 + 2.1, 1], ...(ours ? [[WASH[1] - .2, 1], [WASH[1] + .4, 0]] : [[WASH[0] - .7, 1], [WASH[0] - .2, 0]])]);
 const LAND_AT = [[10, -6, 0, 0], [10, -6, 0, 0], [10, -6, 0, 0], [-9, -8, -1, -1]];   // the far star and the galaxy are a few pixels apart: one label up and to the left, the other to the right (below, on a phone)
 for (const b of beads) label(b.short, o => photoPoint(b.u, b.v, o), T => landA(T, b.ours), 'land', () => LAND_AT[b.i] ?? (wide() ? [10, 1, 0, 0] : [0, 10, -.5, 0]));
 function placeLabels(T) {
@@ -690,10 +694,12 @@ function landPose() {
 }
 function ovalRect() { const w = Math.min(W * .92, H * .56 * 2); return { x: (W - w) / 2, y: H * .42 - w / 4, w, h: w / 2 }; }
 const SHOTS = [   // a and b in film seconds; the shots after X are the first cut's, and are given that cut's seconds (t)
-  // it opens close on SPHEREx from above, Earth filling the view behind it, and draws back until the orbit is in view
-  { a: 0, b: 4.5, f: T => { const k = sm(T / 4.4), near = W > H ? .021 : .024;
-    return pose(tmp.copy(st.p).addScaledVector(st.look, CRAFT * .35).lerp(st.E, .3).lerp(tmp5.copy(st.E).addScaledVector(st.r, .074), k), tmp2.copy(st.s).multiplyScalar(K(T, [[0, .7], [5, .5]])).addScaledVector(st.t, .68).addScaledVector(st.r, .55 - .65 * k),
-      fitDist(near * Math.pow((W > H ? .05 : .062) / near, k)), W > H ? tmp3.copy(st.r).multiplyScalar(.3).addScaledVector(tmp4.crossVectors(tmp2, st.r).normalize(), -.95) : st.r, (W > H ? .09 : .225) * k + .03 * (1 - k)); } },   // on a phone, high enough that the orbit line clears the caption's rule
+  // It opens beside SPHEREx, a little above and behind it, looking down past it at Earth's horizon across the view, and
+  // draws straight back until the whole globe and the orbit round it are in view. Only the camera moves: nothing changes size.
+  { a: 0, b: 4.5, f: T => { const k = sm(T / 4.4), d0 = fitDist(CRAFT * (wide() ? 2.5 : 3.1)), d1 = fitDist(ORBIT_R * (wide() ? 1.22 : 1.3)), d = d0 * Math.pow(d1 / d0, k), far = (d - d0) / (d1 - d0);   // far: 0 beside the telescope, 1 with the orbit in view; the look swings from the one to the other in step with the distance, so the telescope stays in the picture as it shrinks
+    const dir = tmp2.copy(st.s).multiplyScalar(-.45 + .95 * far).addScaledVector(st.t, .75).addScaledVector(st.r, .44 - .5 * far).normalize();
+    return pose(tmp.copy(st.p).addScaledVector(st.look, CRAFT * .35).lerp(tmp5.copy(st.E).addScaledVector(st.r, EARTH_R * .25), far), dir, d,
+      tmp3.copy(st.r).lerp(wide() ? tmp4.crossVectors(dir, st.r).normalize().multiplyScalar(-.95).addScaledVector(st.r, .3) : st.r, far).normalize(), (wide() ? .09 : .225) * far + .03 * (1 - far)); } },   // on a phone, high enough that the orbit line clears the caption's rule
   { a: 6.9, b: 8.4, f: eyePose },
   { a: FLY0, b: X, f: flyPose },
   { a: X + 2, b: X + 2.2, f: backPose },
@@ -756,15 +762,15 @@ function render(U) {
   glassU.uGrid.value = K(t, [[19.5, 0], [22, .2]]); shell.visible = glass.visible = shellU.uAlpha.value > 0; shell.material.depthWrite = shellU.uAlpha.value > .99;
 
   // Sun, Earth, SPHEREx. The model of SPHEREx is put away once the flight has left it behind; from the pull-out on it is a white dot.
-  earthU.uSun.value.copy(s); const er = T < FLY1 ? K(T, [[FLY0 + .5, EARTH_NEAR], [FLY0 + 1.5, EARTH_R]]) : K(t, [[19, EARTH_R], [21.4, .0001]]); earth.position.copy(E); earth.scale.setScalar(er); air.position.copy(E); air.scale.setScalar(er * 1.07);   // larger in the opening, where it is the backdrop; it is changed while the flight looks the other way
-  earth.visible = air.visible = er > .0002;
+  earthU.uSun.value.copy(s); earth.position.copy(E); earth.scale.setScalar(EARTH_R); air.position.copy(E); air.scale.setScalar(EARTH_R * AIR);   // one size, always: it is small or large only by how far the camera is
+  earth.visible = air.visible = sys > 0;
   if (earth.visible) { const turn = Math.min(day, DAY_X) + Math.max(0, T - X) * .003; earthTurn(turn); earthU.uDrift.value = turn * .02; }   // it turns as it really did while the first photos are taken; after that the film's days fly by, and it is slowed to a drift
   const look = st.look; if (idx > 0 && idx < NT) {   // where the telescope points: the last photo, turning to the next one
     const f = sm((day - tDay[idx - 1]) / Math.max(1e-6, tDay[idx] - tDay[idx - 1]) * 1.6 - .6);
     look.fromArray(tC, 3 * (idx - 1)).lerp(tmp.fromArray(tC, 3 * idx), f).normalize();
   } else if (idx === 0) look.copy(r).lerp(c0, sm((T - 2.6) / 1.8)).normalize();   // turning to its first field
   else look.copy(r);
-  const cs = CRAFT * K(T, [[FLY0 + .6, 1], [FLY0 + 1.2, 0]]); craft.visible = cs > 1e-5;   // the model is gone before the camera pulls back past it
+  const cs = CRAFT * K(T, [[FLY0 + .6, 1], [FLY0 + 1.2, 0]]); craft.visible = cs > 0;   // the model is gone before the camera pulls back past it
   top.copy(p).addScaledVector(look, CRAFT * 1.2);   // just clear of the shields, so the camera can sit there
   if (craft.visible) {
     const z = tmp.copy(s).addScaledVector(look, -s.dot(look)).normalize(), x = tmp2.crossVectors(look, z);
@@ -785,14 +791,16 @@ function render(U) {
   }
   // The pull-out goes straight back along the photo's line of sight, which runs through Earth. Earth is not drawn from inside,
   // and it comes into view as the camera draws away from it, not all at once as the camera leaves it.
-  earthU.uShow.value = sm((camera.position.distanceTo(E) / Math.max(earth.scale.x, 1e-9) - 1.15) / 1.6);
-  backdrop.visible = T > FLY0 - .25 && fa > 0; backdrop.position.copy(camera.position); backdrop.scale.setScalar(camera.far * .5); backdrop.material.uniforms.uA.value = .32 * K(T, [[FLY0 - .25, 0], [FLY0 + .1, 1], [FLY1, 1], [FLY1 + .7, 0]]);   // not under the long lens before the flight: there it is a blur
+  earthU.uShow.value = sys * (T < X ? 1 : sm((camera.position.distanceTo(E) / EARTH_R - 1.15) / 1.6));
+  const sky = .32 * K(T, [[FLY0 - .25, 0], [FLY0 + .1, 1], [X + .4, 1], [X + 2.4, 0]]);   // not under the long lens before the flight: there it is a blur. It stays behind the photo through the reveal and the colors, and goes slowly on the way out to the ring
+  backdrop.visible = sky > 0; backdrop.position.copy(camera.position); backdrop.scale.setScalar(camera.far * .5); backdrop.material.uniforms.uA.value = sky;
   const ppx = Math.tan(fov / 2 * D2R) * 2 / H, px = st.px = P.dist * ppx;   // world size of one CSS pixel: per unit of depth, and at the subject
   const depth = q => tmp5.copy(q).sub(camera.position).dot(P.dir) * -1;
 
   sun.scale.setScalar(Math.max(.1, px * 90)); sun.material.opacity = K(t, [[0, 1], [30, 1], [31.4, 0]]);
   earthDot.position.copy(E); earthDot.scale.setScalar(px * 26); earthDot.material.opacity = K(t, [[19.6, 0], [21.4, 1]]) * sys;
-  craftDot.position.copy(p); craftDot.scale.setScalar(px * 7); craftDot.material.opacity = K(t, [[5.2, 0], [7, 1], [10.6, 1], [12, 0]]);
+  craftDot.position.copy(p); craftDot.scale.setScalar(px * 7);   // a white dot stands for SPHEREx wherever its model is too small to see: at the end of the opening pull-back, and from the ring on
+  craftDot.material.opacity = Math.max(K(t, [[5.2, 0], [7, 1], [10.6, 1], [12, 0]]), T < 6 ? (1 - sm((CRAFT / (camera.position.distanceTo(p) * ppx) - 1.5) / 3)) * K(T, [[4.9, 1], [5.7, 0]]) : 0);
   planets.forEach(q => { planetAt(q, day, q.pos); q.line.material.opacity = (q.name === 'Earth' ? K(t, [[5, 0], [7.5, .5]]) : K(t, [[19.8, 0], [22.4, .3]])) * sys; });
   others.forEach((q, i) => q.pos.toArray(planetDots.geometry.attributes.position.array, 3 * i)); planetDots.geometry.attributes.position.needsUpdate = true;
   const inD = K(t, [[21.6, 0], [23.4, 1]]) * sys; planetDots.material.opacity = inD;
@@ -804,8 +812,8 @@ function render(U) {
   // SPHEREx's orbit: put away while the camera looks out through the telescope and from inside Earth
   const ga = close ? K(T, [[4.9, 1], [6.2, 0]]) : K(T, [[X + .6, 0], [X + 1.8, 1]]) * K(t, [[0, 1], [9.6, 1], [11.6, 0]]);
   if (ga > 0) {
-    for (let i = 0; i < 96; i++) {
-      const a0 = i / 96 * TAU, a1 = (i + 1) / 96 * TAU;
+    for (let i = 0; i < 480; i++) {   // fine enough to stay a curve from beside the telescope
+      const a0 = i / 480 * TAU, a1 = (i + 1) / 480 * TAU;
       guides.seg(tmp.copy(E).addScaledVector(u, Math.cos(a0) * ORBIT_R).addScaledVector(v, Math.sin(a0) * ORBIT_R), tmp2.copy(E).addScaledVector(u, Math.cos(a1) * ORBIT_R).addScaledVector(v, Math.sin(a1) * ORBIT_R), WHITE, .3 * ga);
     }
     if (idx > 0 && !close) {   // the telescope's view of the photo it has just taken
@@ -814,7 +822,7 @@ function render(U) {
     }
   }
   // the beam of the first photo: from the telescope to the four corners of the photo, with a gate across it at every tenfold step in distance
-  const beam = close ? K(T, [[4.4, 0], [4.9, .55], [CLICK - .05, .55], [CLICK + .1, 1], [CLICK + 1.2, .55], [8.4, .55], [FLY0, .8], [FLY1, .8], [FLY1 + 1, 0]]) : 0;   // faint while the telescope looks, bright from the shutter on
+  const beam = close ? K(T, [[4.4, 0], [4.9, .55], [CLICK - .05, .55], [CLICK + .1, 1], [CLICK + 1.2, .55], [8.4, .55], [FLY0, .8], [FLY1 + .6, .8], [FLY1 + 3.2, 0]]) : 0;   // faint while the telescope looks, bright from the shutter on; it goes slowly once the photo is whole
   beamFill.visible = beam > 0; beamFill.material.opacity = .05 * beam;
   if (beam > 0) {
     const shut = T < CLICK ? 1 : 1 + 1.6 * Math.exp(-(T - CLICK) / .3), corners = [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([a, b]) => photoPoint(a, b));
@@ -927,8 +935,9 @@ function edges(x, y) {
 const css = q => { tmp.copy(q).project(camera); return [(tmp.x + 1) / 2 * W, (1 - tmp.y) / 2 * H]; };
 function probe(U) {   // where things are in the frame at film time U (window pixels), and the camera itself
   render(U);
-  return { photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), star: css(starSpot), wash: { a: photoU.uWashA.value, p: washP(v2(U)), flux: fluxAt(washP(v2(U))), tint: rampAt(washP(v2(U))) }, flash: photoU.uFlash.value,
+  return { photoEdges: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => css(photoPoint(u, v))), star: css(starSpot), sky: backdrop.material.uniforms.uA.value, wash: { a: photoU.uWashA.value, p: washP(v2(U)), flux: fluxAt(washP(v2(U))), tint: rampAt(washP(v2(U))) }, flash: photoU.uFlash.value,
     cam: { pos: camera.position.toArray(), dir: camera.getWorldDirection(V()).toArray(), fov: camera.fov, dist: st.dist },
+    earth: { r: earth.scale.x, alt: st.p.distanceTo(st.E) / earth.scale.x - 1, cam: camera.position.distanceTo(st.E) / earth.scale.x - 1, craft: camera.position.distanceTo(st.p) / CRAFT, shown: earth.visible ? earthU.uShow.value : 0 },
     flight: beads.map(b => ({ name: b.name, kind: b.kind, au: b.au, at: css(b.pos), r: b.rpx, front: b.front, drawn: b.mesh.visible && b.mesh.material.uniforms.uA.value > .5, land: css(photoPoint(b.u, b.v)), landed: b.landed, lands: fu(fl.emit[b.i] + RAY_T) })), fly: st.fly, rush: st.sig, fill: photoU.uShow.value / SPREAD };   // fill: how much of the photo is shown
 }
 function look(U, pts, r = 2) {   // the brightness really drawn round each point at film time U: [mean, max, mean color] of 0 to 255 over a square of 2r + 1 window pixels

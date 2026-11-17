@@ -7,13 +7,14 @@ it and does not fetch intro.js, intro.css, three.js or data/intro/. Links with ?
 browser that has seen the tour (ch.tour, which the other suites set), do not play it either.
 The "How this map was made" button replays it over a panned and zoomed map on another day and lands on that same view
 (edges within 2 px, the view and the day unchanged, focus back on the button). Skip and Escape end it within 4 s, and
-Skip works before the film has loaded. Next to the button (beside it, or above it on a phone) a link, "About this film", is always there and opens film.html.
+Skip works before the film has loaded.
 Reduced motion: nine stills with nine captions and a Next button, no animation, the credit line on the last.
 The film's own scenes are checked from the pixels it really draws (frame by frame through ?intro=rec): the flight down the
 beam passes two rocks, two stars and a galaxy as solid bodies in order of distance and ends with the whole photo in view.
 The photo is not shown before the flight arrives: the shutter flashes over an empty frame, the frame stays empty through
 the flight, each body's light lands on it as a dot at that body's own place, in the order the bodies are passed, and only
-at arrival does the photo itself come on, whole, with its five lights. Then the colors: the photo is tinted violet, then
+after arrival does the photo itself come on, whole, with its five lights, while the starry sky behind it stays as it was. Earth is one size throughout
+and SPHEREx is at its true height above it, so the opening shows Earth's horizon across the view. Then the colors: the photo is tinted violet, then
 green, then red, a band of that color crosses it from left to right, and the one measured star is bright in the early
 colors and faint in the late ones while the rest of the photo keeps its brightness. There is no step beat: no ringed
 star, no wavelength on screen, no stripes.
@@ -111,6 +112,20 @@ def grid(ed, us, vs):
     return [[cx + (rx - lx) / 2 * u + (bx - tx) / 2 * v, cy + (ry - ly) / 2 * u + (by - ty) / 2 * v] for u in us for v in vs]
 
 
+async def true_scale(pg, name, m, vw, vh):
+    """Earth is one size from first frame to last and SPHEREx circles it at its true height (650 km over 6,371 km), so
+    the opening, beside the telescope, has Earth's horizon right across the view below it (both sides of the window lit
+    low down, black above), and the whole globe comes into view only because the camera draws far back."""
+    probe = lambda u: pg.evaluate(f"window.__intro.probe({u})")
+    seen = [(await probe(u))["earth"] for u in (.05, 2, 4.3, m["CLICK"], m["FLY0"] + 2, m["OUT"] + 4, m["RING"] + 6, m["CAPS"][8][0] - 6)]
+    assert len({e["r"] for e in seen}) == 1, f"{name}: Earth changes size: {[e['r'] for e in seen]}"
+    assert all(abs(e["alt"] - 650 / 6371) < .002 for e in seen[:5]), f"{name}: SPHEREx is not 650 km up: {[e['alt'] for e in seen]}"
+    assert seen[0]["cam"] < .2 and seen[0]["craft"] < 30 and seen[2]["cam"] > 2 and seen[0]["shown"] == 1, f"{name}: the opening should start beside the telescope, just above Earth, and end far out: {seen[0]}, {seen[2]}"
+    low, high = await pg.evaluate(f"window.__intro.look(.05, {[[vw * .04, vh * .7], [vw * .96, vh * .7]]}, 3)"), await pg.evaluate(f"window.__intro.look(.05, {[[vw * .04, vh * .1], [vw * .5, vh * .1], [vw * .96, vh * .1]]}, 3)")
+    assert all(g[0] > 20 for g in low) and all(g[0] < 10 for g in high), f"{name}: in the opening Earth is not a horizon across the view: low {low}, high {high}"
+    return round(seen[0]["cam"], 2), round(seen[2]["cam"], 1)
+
+
 async def assembly(pg, name, m, flight):
     """The photo is not shown before the flight arrives on it. The shutter flashes over an empty frame. The frame is
     empty when the flight sets off; each body's light lands at that body's place on it, in the order the bodies are
@@ -146,11 +161,24 @@ async def assembly(pg, name, m, flight):
     # bright band (near its right edge) is black just before the reveal and lit once it is over
     n = int((m["SHOW"][0] - m["FLY0"]) * 6)
     early = await pg.evaluate(f"(() => {{ const out = []; for (let i = 0; i <= {n}; i++) out.push(window.__intro.probe({m['FLY0']} + i / 6).fill); return out; }})()")
-    assert all(f == 0 for f in early) and m["FLY1"] - 1 < m["SHOW"][0] < m["FLY1"] < m["SHOW"][1] < m["FLY1"] + 2.5, f"{name}: the photo is shown before arrival, or not at it: reveal {m['SHOW']}, arrival {m['FLY1']}, shown {max(early)}"
+    assert all(f == 0 for f in early) and m["FLY1"] <= m["SHOW"][0] < m["SHOW"][1] < m["FLY1"] + 3, f"{name}: the photo is shown before arrival, or not at it: reveal {m['SHOW']}, arrival {m['FLY1']}, shown {max(early)}"
     band = lambda p: grid(p["photoEdges"], (.82, .86, .9), (-.6, -.3, 0, .3, .6))
-    t0, t1 = m["SHOW"][0] - .05, m["SHOW"][1] + .2; p0, end = await probe(t0), await probe(t1)
-    dark, bright = [sum(g[0] for g in await look(u, band(p), 2)) / 15 for u, p in ((t0, p0), (t1, end))]
-    assert dark < 6 and bright > dark + 25, f"{name}: the photo's own picture should be black before the reveal and lit after: {dark:.1f}, then {bright:.1f}"
+    # the whole approach, every tenth of a second from the last light's landing to arrival: the band stays black (the median of its 15 places, so a speed line crossing one of them does not count). While the galaxy
+    # itself, which is flown past just then, is still ahead of the camera it can be in front of the band: those moments are checked by the photo's own "shown" value above, not by pixels
+    darks, gone = [], next(u for u, bs, _ in flight if not bs[4]["front"])
+    for i in range(int((m["FLY1"] - lands[4]) * 10) + 1):
+        u = min(lands[4] + i / 10, m["FLY1"]); got = sorted(g[0] for g in await look(u, band(await probe(u)), 2))
+        if u >= gone: darks.append(got[7])
+    assert len(darks) >= 3 and m["FLY1"] - gone > .3, f"{name}: too little of the approach is clear of the galaxy to check: from {gone:.1f} to {m['FLY1']:.1f}s"
+    t1 = m["SHOW"][1] + .2; end = await probe(t1); dark, bright = max(darks), sum(g[0] for g in await look(t1, band(end), 2)) / 15
+    assert dark < 6 and bright > dark + 25, f"{name}: the photo's own picture should be black all through the approach and lit after the reveal: at most {dark:.1f}, then {bright:.1f}"
+    # the sky behind does not change at the reveal: the same starry backdrop from the approach through the reveal and the colors (its strength, and the lit places counted in the window's four corner regions outside the photo)
+    async def sky(u):
+        p = await probe(u); xs, ys = [q[0] for q in p["photoEdges"]], [q[1] for q in p["photoEdges"]]; vw, vh = await pg.evaluate("[innerWidth, innerHeight]")
+        pts = [[x, y] for x in range(8, vw - 8, max(6, vw // 60)) for y in range(8, int(vh * .6), max(6, vh // 60)) if not (min(xs) - 12 < x < max(xs) + 12 and min(ys) - 12 < y < max(ys) + 12)]
+        got = await look(u, pts, 1); return p["sky"], sum(g[1] > 40 for g in got) / len(got)
+    skies = [await sky(u) for u in (m["FLY1"] - .4, m["FLY1"] + .1, m["SHOW"][1], m["WASH"][0] + 1, m["WASH"][1] - .5)]
+    assert len({a for a, _ in skies}) == 1 and skies[0][0] > .2 and all(n > .5 * skies[0][1] and n > .02 for _, n in skies), f"{name}: the sky behind the photo changes at the reveal or in the colors: {skies}"
     assert end["fill"] > .999 and all(b["landed"] > .99 for b in end["flight"]), f"{name}: after the reveal the photo is not whole with its five lights: {end['fill']}, {[b['landed'] for b in end['flight']]}"
     shown = await pg.evaluate(f"(window.__intro.render({m['SHOW'][1] + .6}), [...document.querySelectorAll('#intro-labels .lbl.land')].filter(el => +el.style.opacity > .9).map(el => el.textContent))")
     assert len(shown) == 5, f"{name}: the finished photo should carry its five labels: {shown}"
@@ -284,18 +312,13 @@ async def run(b, name, opts):
         for key in ["+", "ArrowLeft", "ArrowLeft", "ArrowLeft"]: await pg.keyboard.press(key); await pg.wait_for_timeout(700)   # each glides
         assert (await pg.evaluate(RECT))[2] > 1500, "the map did not zoom in"
     view = await pg.evaluate(RECT)
-    about = await pg.evaluate("""(() => { const a = document.querySelector('a.how-about'), h = document.getElementById('how').getBoundingClientRect(), b = a.getBoundingClientRect(), top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-      return [a.getAttribute('href'), a.innerText.trim(), b.left >= h.right + 8 || b.bottom <= h.top, b.left >= 0 && b.right <= innerWidth - 8, Math.min(Math.abs(b.left - h.right), Math.abs(b.bottom - h.top)) <= 20, b.height >= 44, top === a]; })()""")
-    assert about[:2] == ["film.html", "About this film"] and all(about[2:]), f"{name}: no 'About this film' link next to the button (beside it, or above it on a phone), clear of it, on screen and on top: {about}"
-    await pg.focus("#how"); await pg.keyboard.press("Tab")
-    assert await pg.evaluate("document.activeElement?.className") == "how-about", f"{name}: Tab from the button does not reach the About link"
     await pg.click("#how"); await film_up(pg)
     land = await landing(pg, f"{name} replay")
     await pg.wait_for_timeout(1500); await pg.click("#intro-skip"); await gone(pg, f"{name} Skip")
     after = await pg.evaluate(RECT)
     assert all(abs(p - q) < .5 for p, q in zip(view, after)) and await pg.evaluate(DAY) == 300, f"{name}: the view changed under the film: {view} to {after}, day {await pg.evaluate(DAY)}"
     assert await pg.evaluate("document.activeElement?.id") == "how", "focus did not go back to the button"
-    print(f"{name}: the button replays it over a moved map and lands on the same view ({land}); Skip ends it; the About link is next to the button and Tab reaches it")
+    print(f"{name}: the button replays it over a moved map and lands on the same view ({land}); Skip ends it")
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(1200); await pg.keyboard.press("Escape"); await gone(pg, f"{name} Escape")
     await pg.evaluate("document.getElementById('how').click(); new Promise(done => { const t = setInterval(() => { const s = document.getElementById('intro-skip'); if (s) { clearInterval(t); s.click(); done(); } }, 5); })")
     await gone(pg, f"{name} Skip while loading", 1500); await pg.wait_for_timeout(1500)   # the film, loaded late, must stay away
@@ -397,6 +420,7 @@ async def run(b, name, opts):
     lines, still = await streaks(next(u for u, _, rush in flight if rush > .8)), await streaks(rest[0])
     assert lines > 2 * still + 20, f"{name}: no speed lines are drawn in the rush: {lines} places against {still} at rest"
     # The photo is not shown until the flight arrives; then the colors wash over it
+    scale = await true_scale(pg, name, m, vw, vh)
     lands, lit, shown = await assembly(pg, name, m, flight)
     star = await colors(pg, name, m)
     # one camera move, flight to ring
@@ -406,7 +430,7 @@ async def run(b, name, opts):
     missing = [k for k in ("Sloan Digital Sky Survey", "CC BY", "Gaia", "shapes are imagined", "compressed scale", "Blue Marble", "SkyBoT", "Horizons", "102 colors", "wash of color over the whole photo is drawn") if k not in page_text]
     assert not missing, f"film.html does not name {missing}"
     await pg.context.close()
-    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), the shutter flashes over an empty frame and the photo is not shown until arrival (lights land at {[round(t, 1) for t in lands]} s, in order, each a new dot of brightness {lit}; the photo's bright band reads {shown[0]} before the reveal and {shown[1]} after, with five labels), the colors wash over it violet to red while the measured star goes from {star[0]} to {star[1]} and nothing of the step beat is left, and flight to ring is one camera move (most in one frame: {worst[0]:.3f} of its distance, {worst[1]:.2f} degrees, lens {worst[2]:.3f}); {ncap} captions in Ed's words, at most {most} line{'s' if most > 1 else ''} each at full size with nothing under them, none over the whole sky, no credits during the film, then the credit line and its link on the finished map; film.html names every source")
+    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), Earth is one size throughout with SPHEREx 650 km up (the camera starts {scale[0]} Earth radii above the ground and draws back to {scale[1]}), the shutter flashes over an empty frame and the photo is not shown until arrival (lights land at {[round(t, 1) for t in lands]} s, in order, each a new dot of brightness {lit}; the photo's bright band reads at most {shown[0]} through the whole approach and {shown[1]} after, with five labels), the colors wash over it violet to red while the measured star goes from {star[0]} to {star[1]} and nothing of the step beat is left, and flight to ring is one camera move (most in one frame: {worst[0]:.3f} of its distance, {worst[1]:.2f} degrees, lens {worst[2]:.3f}); {ncap} captions in Ed's words, at most {most} line{'s' if most > 1 else ''} each at full size with nothing under them, none over the whole sky, no credits during the film, then the credit line and its link on the finished map; film.html names every source")
 
     # ---- leaving the page while the film loads: it is taken off at once and does not come back ----
     pg = await page(b, opts, errs, seen_tour=True)
@@ -467,7 +491,7 @@ async def main():
             await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
             m = await pg.evaluate("window.__intro.marks")
             flight = await flight_samples(pg, name, m); wide = await arrival(pg, name, m, 320, height); await one_move(pg, name, m)
-            await assembly(pg, name, m, flight); await colors(pg, name, m); await words(pg, name, m, 320)
+            await true_scale(pg, name, m, 320, height); await assembly(pg, name, m, flight); await colors(pg, name, m); await words(pg, name, m, 320)
             assert not errs, f"{name}: page errors {errs}"
             await pg.context.close()
             print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, the photo is not shown until arrival, the colors wash over it, flight to ring is one camera move, and the captions are Ed's, on one or two lines at full size")

@@ -52,8 +52,8 @@ async def size(b, name, opts):
     h1, cta, watch = await pg.evaluate(BOX, ".qa h1"), await pg.evaluate(BOX, ".qa .cta"), await pg.evaluate(BOX, ".qa .watch")
     said = " ".join((await pg.inner_text(".qa .watch")).split()); secs = re.fullmatch(WATCH + r" \((\d+) s\)", said)
     check(f"{name}: the second line reads Watch the intro, with a length", bool(secs), said)
-    look = await pg.evaluate("""(() => { const s = sel => getComputedStyle(document.querySelector(sel)), a = c => { const m = c.match(/[\\d.]+/g).map(Number); return m.length > 3 ? m[3] : 1; }, w = s('.qa .watch'), c = s('.qa .cta');
-      return [w.fontFamily, parseFloat(w.fontSize), parseFloat(c.fontSize), a(w.color), a(c.color), parseFloat(w.borderBottomWidth), parseFloat(c.borderBottomWidth), w.textDecorationLine, !!document.querySelector('.qa .watch svg.play')]; })()""")
+    look = await pg.evaluate("""(() => { const s = sel => getComputedStyle(document.querySelector(sel)), a = c => { const m = c.match(/[\\d.]+/g).map(Number); return m.length > 3 ? m[3] : 1; }, w = s('.qa .watch'), c = s('.qa .cta'), d = s('.qa .watch .dur');
+      return [w.fontFamily, parseFloat(w.fontSize), parseFloat(c.fontSize), a(w.color), a(c.color), parseFloat(w.borderBottomWidth), parseFloat(c.borderBottomWidth), w.textDecorationLine, !!document.querySelector('.qa .watch svg.play'), a(d.color)]; })()""")
     check(f"{name}: the second line is in Sansation with a play glyph", look[0].strip('"').startswith('Sansation') and look[8], str(look[0]))
     check(f"{name}: the second line is less prominent than the link (smaller, dimmer, no rule)", look[1] < look[2] and look[3] < look[4] - .2 and look[5] == 0 and look[6] > 0 and look[7] == "none", str(look[1:8]))
     check(f"{name}: the second line is under the link, inside the window, at least 44 px tall", watch[1] >= cta[3] and watch[0] >= 0 and watch[2] <= w and watch[3] <= h and watch[3] - watch[1] >= 43.5 and abs(watch[0] - cta[0]) < 1, f"{[round(v) for v in watch]}")
@@ -76,6 +76,9 @@ async def size(b, name, opts):
     png = await pg.screenshot(clip=dict(x=watch[0], y=watch[1] + 15, width=watch[2] - watch[0], height=watch[3] - watch[1] - 30))   # the line of text itself, without its padding
     L = await pg.evaluate(LUMA, "data:image/png;base64," + base64.b64encode(png).decode()); ink = look[3] ** 2.2 + (1 - look[3]) * L   # white at its own opacity over the art, near enough
     check(f"{name}: the dimmer second line on the art behind it has contrast >= 4.5", (ink + .05) / (L + .05) >= 4.5, f"{(ink + .05) / (L + .05):.1f}:1 on its brightest 5%")
+    dur = await pg.evaluate(BOX, ".qa .watch .dur"); png = await pg.screenshot(clip=dict(x=dur[0], y=dur[1], width=dur[2] - dur[0], height=dur[3] - dur[1]))   # the length, in its own computed color
+    L = await pg.evaluate(LUMA, "data:image/png;base64," + base64.b64encode(png).decode()); ink = look[9] ** 2.2 + (1 - look[9]) * L
+    check(f"{name}: the length, no brighter than its line and dimmer than the link, has contrast >= 4.5 in its own color", look[9] <= look[3] < look[4] - .2 and (ink + .05) / (L + .05) >= 4.5, f"{(ink + .05) / (L + .05):.1f}:1 at {look[9]} white")
     await pg.close()
     # the link opens Barnard's Star's time-lapse
     pg = await ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e)[:200]))

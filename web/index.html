@@ -69,13 +69,12 @@
   .qa .cta:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
   .qa .arr { width: 18px; height: 18px; flex: none; fill: none; stroke: #ff9a4d; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   /* a second, quieter line under the link: the intro film, which plays on Explore and ends on the map. Smaller, dimmer, no rule under it; 44 px tall to press */
-  .qa .watch { display: inline-flex; align-items: center; gap: 9px; margin-top: 5px; padding: 15px 0; font: 400 14px/1 var(--head-font); color: rgba(255, 255, 255, .64);
+  .qa .watch { display: inline-flex; align-items: center; gap: 9px; margin-top: 5px; padding: 15px 0; font: 400 14px/1 var(--head-font); color: rgba(255, 255, 255, .72);
     text-decoration: none; text-shadow: 0 1px 10px #000; white-space: nowrap; }
   .qa .watch:hover { color: #fff; }
   .qa .watch:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   .qa .watch .play { width: 11px; height: 11px; flex: none; fill: currentColor; }
-  .qa .watch .dur { color: rgba(255, 255, 255, .42); }
-  .qa .watch:hover .dur { color: inherit; }
+  /* the length is the same color as its line: at 1280 px wide it sits over a brighter patch of the art, and anything dimmer falls under 4.5 to 1 there */
   .leaving .qa { opacity: 0; }
   /* phones: low on the screen, where the Earth turns to night; a soft fade under it keeps it readable */
   @media (max-width: 500px) {
