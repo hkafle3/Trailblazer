@@ -687,7 +687,10 @@ function verdict(m, f) {
   // what is the dot in the middle in this visit (live/identity.js, the one rule): the catalog star only when Gaia's (or a
   // published) place for it this visit is on the dot; a passer only when SkyBoT puts it on the dot at an exposure's time
   const id = identityAt(m, f), onDot = !!id.star.match;
-  const mo = m.motion, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
+  // the motion is fit from the source measured each visit: when this visit's lies off the dot (id.srcOff), the motion
+  // is not the dot's, so nothing here says the dot moved
+  const mo = id.srcOff == null ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
+  const offTxt = id.srcOff != null && m.motion ? `The source measured near the middle this visit sits ${Math.round(id.srcOff)} arcseconds off the dot, so the motion measured here may belong to something else.` : null;
   const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : pub ? { total: pub.total, label: pub.source, tol: 35 } : null;
   const starName = name ? `${ref?.label === 'Gaia' || g ? "Gaia's " : ''}${name}` : 'a star in Gaia';
   // match: what the dot was matched to, for every other place that names "the target" (Depth, Discuss): the Gaia star
@@ -701,10 +704,12 @@ function verdict(m, f) {
     if (Math.abs(pct - 100) <= ref.tol) out.parts.push(`Moved ${arc(mo.total)} arcseconds a year. `, { ok: `Matches ${ref.label === 'Gaia' ? starName : `the published motion of ${name ?? 'this star'}`}, already known.` });
     else out.parts.push(`Moved about ${arc(mo.total)} arcseconds a year, but ${ref.label} says ${arc(ref.total)}, so this measurement is likely off. `, { ok: `${name ?? 'The star'} is already known.` });
   } else if (g && g.total <= 1) { out.star = name ?? 'a Gaia star'; out.known = true; out.parts.push(`Stays put: Gaia says it moves ${g.total.toFixed(2)} arcseconds a year, too little to see here. `, { ok: `${name ? starName : 'A Gaia star'}, already known.` }); }
-  else if (g) { out.star = name ?? 'a Gaia star'; out.known = true; out.parts.push(`Gaia says it moves ${arc(g.total)} arcseconds a year, but too few clean positions here to measure it. `, { ok: 'Already known.' }); }
+  else if (g) { out.star = name ?? 'a Gaia star'; out.known = true; out.parts.push(`Gaia says it moves ${arc(g.total)} arcseconds a year${offTxt ? '' : ', but too few clean positions here to measure it'}. `, { ok: 'Already known.' }); }
   else if (mo) out.parts.push(`Seems to move ${arc(mo.total)} arcseconds a year${mo.err != null && Number.isFinite(mo.err) ? `, give or take ${arc(mo.err)}` : ''}. ${id.star.nearby ? '' : live || m.gaia ? 'No Gaia star is on the dot to match it.' : 'It is not in Gaia (too faint in visible light).'}`);
+  else if (offTxt) out.parts.push(offTxt);
   else if (m.frames.some(x => x.blob)) out.parts.push('Too bright to measure: this star saturates the detector, so no motion can be read.');
   else out.parts.push(`No motion measured: the middle shows a source in ${seen} of ${m.frames.length} visits, and a motion needs 3 over 6 months.`);
+  if (offTxt && g) out.parts.push(' ', offTxt);
   if (id.star.nearby) out.parts.push(` Nearby: the catalog's place for ${name ?? 'the Gaia star here'} is ${Math.round(id.star.nearby.d)} arcseconds from the dot this visit, too far to be it.`);
   // known comets and asteroids SkyBoT put in this visit: on the dot, nearby, or just passing through
   const k = f.known, hit = id.pass.match, near = id.pass.nearby;
@@ -718,15 +723,17 @@ function verdict(m, f) {
 }
 // the identity rule (live/identity.js) on this patch and visit: the dot, the catalog star's place this visit (Gaia's, or
 // a published motion's: pred_east/north, its own proper motion applied; not in &t= views, where the place is a comet's),
-// and each passer at each exposure's own time. { mid, star: { match, nearby }, pass: { match, nearby } }; a passer match
+// and each passer at each exposure's own time. { mid, srcOff, star: { match, nearby }, pass: { match, nearby } }, srcOff the
+// arcsec from the centre of a source measured this visit too far off to be the dot (else null); a passer match
 // carries the exposure time it matched at (t) and its magnitude, for the Discuss sheet.
 function identityAt(m, f) {
-  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, mid = middle(f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null, a);
+  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, src = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null, mid = middle(src, a);
+  const srcOff = src && mid !== src ? Math.hypot(...src) : null;
   const stars = (m.gaia || m.ref) && m.t == null && f.pred_east != null ? [{ kind: 'star', name: m.name, pos: [[f.pred_east, f.pred_north]] }] : [];
   const passers = [...(f.known?.bodies ?? [])].map(([name, b]) => ({ kind: b.kind, name, mag: b.mag, pts: b.pts, pos: b.pts.map(([, ra, dec]) => offset(m, ra, dec)) }));
   const star = identify(mid, stars, a), pass = identify(mid, passers, a);
   if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.pts[k][0]; }
-  return { mid, a, star, pass };
+  return { mid, srcOff, a, star, pass };
 }
 let saidKey = '';
 function sayVerdict(m, f) {

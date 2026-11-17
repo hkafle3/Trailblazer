@@ -62,14 +62,19 @@ async def main():
         check(r[0] > r[1], "default: the name and verdict sit beside the photo (right column)")
         check(label == "Report a new find" and note == "Barnard's Star is already known, so there is nothing to report here.", f"report: '{label}' / '{note}'")
         # honest when nothing is known: made-up patches through the page's own verdict
-        V = """(([motion, gaia, ref, n, seen]) => { const f = { known: null, x: null }; const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, motion, gaia, ref,
-              frames: Array.from({ length: n }, (_, i) => ({ ...f, x: i < seen ? 1 : null })) }; const v = window.__lapse.verdict(m, m.frames[0]);
+        # dx: how many pixels east of the centre the source was measured this visit (101 x 101 patch of 6.15 arcsec pixels)
+        V = """(([motion, gaia, ref, n, seen, dx = 0]) => { const f = { known: null, x: null, y: 50 }; const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, motion, gaia, ref,
+              grid: 101, arcsec_per_pixel: 6.15, frames: Array.from({ length: n }, (_, i) => ({ ...f, x: i < seen ? 50 - dx : null })) }; const v = window.__lapse.verdict(m, m.frames[0]);
               return [v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), v.known]; })"""
         one = await pg.evaluate(V + "([null, null, null, 1, 1])")
         none = await pg.evaluate(V + "([null, null, null, 4, 2])")
         mover = await pg.evaluate(V + "([{ total: 29, err: 8.3, years: 1 }, null, null, 4, 4])")
         check(one == ["Only one visit here so far, so nothing can be seen moving yet.", False], f"verdict, one visit: {one}")
         check(none[0].startswith("No motion measured: the middle shows a source in 2 of 4 visits") and not none[1], f"verdict, nothing measured: {none}")
+        # a source measured 3 px (18 arcsec) off the dot this visit: its motion is not said to be the dot's
+        offc = await pg.evaluate(V + "([{ total: 29, err: 8.3, years: 1 }, null, null, 4, 4, 3])")
+        check(offc == ["The source measured near the middle this visit sits 18 arcseconds off the dot, so the motion measured here may belong to something else.", False]
+              and "Seems to move" not in offc[0] and "Moved" not in offc[0], f"verdict, the measured source off the dot: {offc}")
         check(mover == ["Seems to move 29 arcseconds a year, give or take 8.3. No Gaia star is on the dot to match it.", False], f"verdict, a mover with no Gaia star: {mover}")
         # the merged mark: one "already known" key; Split draws the predicted ring and known passing apart again
         legend = lambda: pg.evaluate("[...document.querySelectorAll('#legend .lg-row')].filter(r => getComputedStyle(r).display !== 'none').map(r => r.textContent)")
