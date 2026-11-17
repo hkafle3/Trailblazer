@@ -1,22 +1,23 @@
-"""Explore's dive: zooming in past the map's deepest level opens the time-lapse of the middle of the view (explore-dive.js).
+"""Explore's dive: zooming in past the map's deepest level opens the time-lapse under the pointer (explore-dive.js).
 Chrome, three setups: a desktop (1440 x 900, mouse and wheel), the same with reduced motion, and a phone (390 x 844, touch).
 Checks, desktop: one long scroll from the whole sky stops at the deepest zoom and does not dive; nor do panning there, a
 double click, the + button or a scroll that stops short (the aim's outline fills, then empties); a new scroll past the
-threshold dives; the address is the time-lapse's, at the middle of the view within 0.1 degree; the time-lapse fills the
+threshold dives; the address is the time-lapse's, under the pointer within 0.1 degree; the time-lapse fills the
 window; back shows the map exactly where it was, forward dives again; "Dive in" does the same; scrolling out past the
 widest view in the time-lapse comes back to the map; a time-lapse loaded ahead of a dive counts no heat-map check
 until it is on screen; the sky tiles the flying frame shows line up with the first real frame; a time-lapse opened by a link stops at its widest view
 and stays; a reload of the time-lapse's address is the page on its own, and back from it opens Explore
 on the same view with no replay.
 Reduced motion: no flight (the dive is never part-way), the time-lapse takes the map's place, back swaps it back.
-Phone: a one-finger pan and a pinch that only arrives at the deepest zoom do not dive; a pinch that starts there does;
-back restores the view.
+Phone: a one-finger pan and a pinch that only arrives at the deepest zoom do not dive; a pinch that starts there does,
+to the sky between the fingers; back restores the view.
 Run: uv run -q --with playwright python web/tests/zoom_into_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, re, sys
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 VIEW = "(async () => { const v = await import('/explore-view.js'); return v.A ? { W: v.W, X: v.X, Y: v.Y, max: v.atMax(), mid: [v.A.w / 2, (v.A.t + v.A.b) / 2], sky: v.skyAt(v.A.w / 2, (v.A.t + v.A.b) / 2) } : null; })()"
+SKY_AT = "(async ([x, y]) => (await import('/explore-view.js')).skyAt(x, y))"
 DIVE = "window.__diveState()"
 AIM = "(() => { const a = document.getElementById('dive-aim'); return { on: !a.hidden && getComputedStyle(a).visibility !== 'hidden', fill: 1 - parseFloat(document.getElementById('aim-ring').style.strokeDashoffset || 1) }; })()"
 # The sky the flying frame shows (its copy of the deep layer's tiles) against the first real frame, both on the frame's 12 arcmin grid (5 arcsec a pixel):
@@ -125,13 +126,14 @@ async def desktop(browser):
     await asyncio.sleep(0.9)
     check("a short scroll fills the aim part-way and springs back", 0.2 < part < 1 and (await pg.evaluate(AIM))["fill"] == 0 and "/explore" in pg.url, f"{part:.2f}")
 
-    # a new scroll past the threshold dives, to the middle of the view
+    # a new scroll past the threshold dives, to the sky under the pointer
     before = await pg.evaluate(VIEW)
+    under = await pg.evaluate(SKY_AT, list(pg.pos))
     await scroll(pg, 7)
     check("a new scroll past the threshold dives", await until(pg, f"{DIVE}?.phase === 'open'"), str(await pg.evaluate(DIVE)))
     at = spot(pg.url)
-    off = sep(at[0], at[1], *before["sky"]) if at else 99
-    check("the address is the time-lapse of the middle of the view, within 0.1 degree", off < 0.1, f"{pg.url.split('/')[-1]}  {off:.5f} deg off")
+    off = sep(at[0], at[1], *under) if at else 99
+    check("the address is the time-lapse under the pointer, within 0.1 degree", off < 0.1, f"{pg.url.split('/')[-1]}  {off:.5f} deg off")
     fr = pg.frame_locator("iframe.dive-frame")
     check("the time-lapse is that spot's", at and (await fr.locator("#coords").input_value()).split() == [f"{at[0]:.4f}", f"{at[1]:.4f}"])
     r = await pg.locator("iframe.dive-frame").bounding_box()
@@ -258,11 +260,12 @@ async def phone(browser):
     await touch(near, [(165, 400), (225, 400)])   # a small pinch there: not enough
     check("phone: a small pinch there springs back", "/explore" in pg.url and (await pg.evaluate(AIM))["fill"] == 0)
     before = await pg.evaluate(VIEW)
+    under = await pg.evaluate(SKY_AT, [(near[0][0] + near[1][0]) / 2, (near[0][1] + near[1][1]) / 2])
     await touch(near, far)
     check("phone: a pinch that starts at the deepest zoom dives", await until(pg, f"{DIVE}?.phase === 'open'"), str(await pg.evaluate(DIVE)))
     at = spot(pg.url)
-    off = sep(at[0], at[1], *before["sky"]) if at else 99
-    check("phone: to the middle of the view, within 0.1 degree", off < 0.1, f"{off:.5f} deg off")
+    off = sep(at[0], at[1], *under) if at else 99
+    check("phone: to the sky between the fingers, within 0.1 degree", off < 0.1, f"{off:.5f} deg off")
     check("phone: the time-lapse in the frame can scroll", await pg.evaluate("getComputedStyle(document.body).touchAction") == "auto")
     await pg.go_back()
     check("phone: back closes it", await until(pg, f"{DIVE} === null") and "/explore" in pg.url)

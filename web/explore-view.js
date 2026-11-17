@@ -15,6 +15,7 @@
 //   glideZoom(f, px, py)   glide version of zoomAt
 //   flyTo(ra, dec, w, ms)  glide so sky position (ra, dec), in degrees, sits in the middle of the area at width w
 //   skyAt(px, py)          [ra, dec] under a window point, or null off the oval;  toScreen(ra, dec) the reverse
+//   overMap(e)             whether a wheel or gesture event is over the map (the phone and desktop files, explore-dive.js)
 //   uvAt(px, py), win(u, v) the same two for map fractions (0..1 across and down the oval's box), which is how markers are placed
 //   place(u, v, px, py, w) the view corner [x, y] that puts map fraction (u, v) at window point (px, py) at width w
 //   move(f, x0, y0, x1, y1) the sky under (x0, y0) goes to (x1, y1), zoomed by f: a drag (f = 1) or a pinch
@@ -141,4 +142,7 @@ export function flyTo(ra, dec, w = W, ms = 400) {
   glide(w, A.w / 2 - u * w, (A.t + A.b) / 2 - v * w / 2, ms);   // the middle of the area is the pivot, where the layout needs no correction
 }
 export const skyAt = (px, py) => inv(...uvAt(px, py));
+// a wheel or a Safari pinch gesture over the map: the stage, or the aim and its "Dive in" button over it (outside the
+// stage, explore-dive.js), but not the timeline
+export const overMap = e => !!e.target.closest?.('.xstage, .aim') && !e.target.closest('.tl');
 export const toScreen = (ra, dec) => win(...fwd(ra, dec));

@@ -1,7 +1,8 @@
 // Explore: zoom straight into a time-lapse, the way a street map drops into street view.
 //
 // At the map's deepest zoom a small frame (the aim) marks the middle of the view, with a "Dive in" button under it.
-// Pressing the button, or zooming in further, opens the time-lapse of that spot: the frame grows into the photo while
+// Pressing the button opens the time-lapse of that spot; zooming in further opens the one under the pointer (or between
+// the fingers), and the aim moves there while the zoom adds up. The frame grows into the photo while
 // the sky inside it keeps zooming in, from the map's own sharp SPHEREx sky tiles (a copy of what explore-deep.js shows)
 // to the first real frame. Back, or zooming out past the widest view in the time-lapse, plays it in reverse.
 //
@@ -19,6 +20,8 @@
 //   counts as a new one after 180 ms without wheel events, so a long scroll, or a trackpad's coasting, that merely
 //   arrives at the deepest zoom stops there. The aim's outline fills as the scroll adds up and empties if it stops
 //   short. Panning, double clicks and the zoom buttons never start one.
+//   In flight a cover takes every pointer (body.flying::after), so a wheel or pinch still going lands on the page's body:
+//   it is stopped there, or the browser would zoom the page.
 //
 // Reduced motion: no flight. The time-lapse simply takes the map's place, and back swaps the map in again.
 import { fwd, RAD } from './skymap.js';
@@ -45,6 +48,9 @@ const clamp01 = x => Math.min(1, Math.max(0, x));
 const smooth = x => { x = clamp01(x); return x * x * x * (x * (6 * x - 15) + 10); };
 const mid = () => [view.A.w / 2, (view.A.t + view.A.b) / 2];
 const here = () => (view.A && view.W ? view.skyAt(...mid()) : null);   // [ra, dec] at the middle of the view
+let at = null;   // the window point a scroll or a pinch is diving toward, while it adds up; otherwise the aim is the middle
+const aimPt = () => at ?? mid();
+const there = () => (view.A && view.W ? view.skyAt(...aimPt()) : null);   // [ra, dec] a dive would open
 const round4 = v => +v.toFixed(4);   // the address carries four decimals: the dive uses the same numbers
 
 // ---------- the map view, kept in this history entry ----------
@@ -98,9 +104,10 @@ let push = 0, pushT = 0;
 function setPush(p) {
   push = clamp01(p);
   ring.style.strokeDashoffset = 1 - push;
+  if (!push && at) { at = null; aimAt(); }   // the zoom stopped short, or the dive is over: the aim goes back to the middle
   if (dive && dive.phase !== 'ready') return;   // in flight the map's size is the flight's
-  if (push && !calm.matches) {   // the map leans in a little
-    const [x, y] = mid();
+  if (push && !calm.matches) {   // the map leans in a little, toward the aim
+    const [x, y] = aimPt();
     wrapEl.style.transformOrigin = `${x - view.X}px ${y - view.Y}px`;
     wrapEl.style.scale = 1 + .05 * push;   // `scale`, not `transform`: that one holds the map's straightening (explore-view.js)
   } else wrapEl.style.scale = '';
@@ -112,13 +119,13 @@ function pushBy(d) {
   if (push >= 1) start(); else pushT = setTimeout(() => setPush(0), 600);
 }
 function aimAt() {
-  const c = here();
+  const c = there();
   if (dive?.phase === 'ready' && dive.ra != null && (!c || round4(c[0]) !== dive.ra || round4(c[1]) !== dive.dec)) drop();   // the view moved: that spot is off
   if (dive && dive.phase !== 'ready') return;
   const on = !!c && view.atMax();
   if (aim.hidden === on) { aim.hidden = !on; if (!on) { clearTimeout(pushT); setPush(0); } }
   if (!on) { if (dive) drop(); return; }   // away from the deepest zoom a loaded page is let go
-  const [x, y] = mid();
+  const [x, y] = aimPt();
   aim.style.left = x + 'px'; aim.style.top = y + 'px';
 }
 view.onView(() => { aimAt(); clearTimeout(saveQ); saveQ = setTimeout(save, 300); });
@@ -129,14 +136,17 @@ addEventListener('resize', () => setTimeout(aimAt));   // after the map files ha
 // Chrome holds wheel events back and delivers them before any timer, so a stall in the middle of one scroll cannot
 // pass for a pause.
 let resting = true, restT = 0, wheelOk = false;
-stageEl.addEventListener('wheel', e => {
-  if (!view.A || e.target.closest('.tl') || (dive && dive.phase !== 'ready')) return;
-  if (resting) wheelOk = view.atMax() && !!here();
+addEventListener('wheel', e => {
+  if (!view.A || !view.overMap(e) || (dive && dive.phase !== 'ready')) return;
+  if (resting) wheelOk = view.atMax() && !!view.skyAt(e.clientX, e.clientY);
   resting = false; clearTimeout(restT); restT = setTimeout(() => { resting = true; }, GAP);
   const dy = Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1)));
   if (dy >= 0 || !wheelOk || !view.atMax()) { if (dy > 0) wheelOk = false; if (push) { clearTimeout(pushT); setPush(0); } return; }
+  if (!push) { at = [e.clientX, e.clientY]; aimAt(); }   // the dive goes to the sky under the pointer as this zoom began
   pushBy(-dy * (e.ctrlKey ? .01 : .002) / PUSH);
 }, { capture: true, passive: true });
+// in flight: the wheel and Safari's pinch land on the cover over everything (see the top of this file)
+for (const type of ['wheel', 'gesturestart', 'gesturechange']) addEventListener(type, e => { if (dive && (dive.phase === 'in' || dive.phase === 'out')) e.preventDefault(); }, { passive: false });
 
 // a pinch: only one that starts at the deepest zoom, by how far the fingers spread from where they began
 const fingers = new Map();
@@ -145,7 +155,9 @@ const spread = () => { const [a, b] = [...fingers.values()]; return Math.hypot(a
 stageEl.addEventListener('pointerdown', e => {
   if (e.pointerType !== 'touch' || e.target.closest('.tl')) return;
   fingers.set(e.pointerId, [e.clientX, e.clientY]);
-  pinch = fingers.size === 2 && view.A && view.atMax() && here() && !(dive && dive.phase !== 'ready') ? { d0: spread() } : null;
+  const [a, b] = [...fingers.values()], c = fingers.size === 2 ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : null;   // between the fingers
+  pinch = c && view.A && view.atMax() && view.skyAt(...c) && !(dive && dive.phase !== 'ready') ? { d0: spread() } : null;
+  if (pinch) { at = c; aimAt(); }
 }, true);
 addEventListener('pointermove', e => {
   if (!fingers.has(e.pointerId)) return;
@@ -167,7 +179,7 @@ go.addEventListener('pointerenter', () => { hoverQ = setTimeout(target, 150); })
 go.addEventListener('pointerleave', () => clearTimeout(hoverQ));
 go.addEventListener('pointerdown', () => target());
 let byKey = false;   // started from the keyboard: focus comes back to the button afterwards
-go.addEventListener('click', e => { byKey = e.detail === 0; setPush(1); start(); });
+go.addEventListener('click', e => { byKey = e.detail === 0; at = null; setPush(1); start(); });   // the button dives at the middle
 
 // ---------- a dive ----------
 // phase: 'ready' (the time-lapse page is loaded in its hidden frame, the map is still in use), 'in' (flying in),
@@ -187,7 +199,7 @@ function prepare() {
   dive = { ra: null, dec: null, f, ready, ok, phase: 'ready', t: 0, raf: 0, snap: null, shot: null, fov: 6 / 60 };
   return dive;
 }
-function target(spot = here()) {
+function target(spot = there()) {
   const d = prepare();
   if (!spot || d.ra != null) return d;
   const ra = d.ra = round4(spot[0]), dec = d.dec = round4(spot[1]), day = +$('time').value;
@@ -212,7 +224,7 @@ function mapScale(ra, dec) {
   return [ws * (w[0] - o[0]) / h, s * (n[0] - o[0]) / h, ws * (w[1] - o[1]) / h, s * (n[1] - o[1]) / h];
 }
 
-async function start(pushEntry = true, spot = here()) {
+async function start(pushEntry = true, spot = there()) {
   const d = target(spot);
   if (d.ra == null || d.phase !== 'ready') return;
   d.phase = 'in';
@@ -374,8 +386,11 @@ addEventListener('popstate', e => {
   if (!to) return close();
   if (dive?.phase === 'out') { dive.phase = 'in'; return fly(1); }
   if ((dive && dive.phase !== 'ready') || !view.A) return;
-  const [u, v] = fwd(to.ra, to.dec), [mx, my] = mid();
-  view.set(view.MAXW, mx - u * view.MAXW, my - v * view.MAXW / 2);
+  const [px, py] = view.toScreen(to.ra, to.dec);   // a dive under the pointer: the spot may be off the middle, and stays put
+  if (!view.atMax() || px < 0 || px > view.A.w || py < view.A.t || py > view.A.b) {
+    const [u, v] = fwd(to.ra, to.dec), [mx, my] = mid();
+    view.set(view.MAXW, mx - u * view.MAXW, my - v * view.MAXW / 2);
+  }
   if (dive) drop();
   start(false, [to.ra, to.dec]);
 });

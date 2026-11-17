@@ -3,7 +3,7 @@
 // is a drag that pans, and its release clicks nothing. The wheel and trackpad zoom around the pointer, a double click
 // zooms in 2x, and the +, - and whole-sky buttons (bottom right) or the + - 0 and arrow keys do the same.
 // The whole sky is the oval where the page's CSS puts it; nothing here writes to the page until the first pan or zoom.
-import { W, X, Y, A, measure, set, zoomAt, move, place, uvAt, glide, glideZoom, cancel, onView, atMin, atMax } from './explore-view.js';
+import { W, X, Y, A, measure, set, zoomAt, move, place, uvAt, glide, glideZoom, cancel, onView, atMin, atMax, overMap } from './explore-view.js';
 import { restore } from './explore-dive.js';   // back from a time-lapse, or a reload: the map where it was
 import * as view from './explore-view.js';
 
@@ -87,13 +87,23 @@ addEventListener('click', e => { if (performance.now() < swallowUntil) { swallow
 stage.addEventListener('dragstart', e => { if (desk()) e.preventDefault(); });
 
 // ---- wheel and trackpad: zoom around the pointer. Lines and pages are turned into pixels; a trackpad pinch arrives as
-// a wheel with ctrlKey and small deltas, so it zooms faster per pixel. The page itself never scrolls on desktop. ----
-stage.addEventListener('wheel', e => {
-  if (!desk() || e.target.closest('.tl')) return;
+// a wheel with ctrlKey and small deltas, so it zooms faster per pixel. Over the map the page itself never scrolls or
+// zooms (in a dive's flight explore-dive.js stops the wheel instead). ----
+addEventListener('wheel', e => {
+  if (!desk() || !overMap(e)) return;
   e.preventDefault(); begin();
   const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
   zoomAt(Math.exp(-Math.max(-300, Math.min(300, dy)) * (e.ctrlKey ? .01 : .002)), e.clientX, e.clientY);
 }, { passive: false });
+// Safari: a trackpad pinch is a gesture (e.scale since it began), not a ctrl wheel; live/recenter.js does the same on the photo
+let pinchScale = 1;
+addEventListener('gesturestart', e => { if (desk() && overMap(e)) { e.preventDefault(); begin(); pinchScale = 1; } });
+addEventListener('gesturechange', e => {
+  if (!desk() || !overMap(e)) return;
+  e.preventDefault();
+  if (e.scale > 0) { zoomAt(e.scale / pinchScale, e.clientX, e.clientY); pinchScale = e.scale; }
+});
+addEventListener('gestureend', e => { if (desk() && overMap(e)) e.preventDefault(); });
 
 // a double click zooms in 2x there. Its first click dropped a pin; explore.js puts the pin back as it was.
 stage.addEventListener('dblclick', e => {

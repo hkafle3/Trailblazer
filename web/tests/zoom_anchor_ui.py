@@ -1,0 +1,186 @@
+"""Explore, desktop (1440 x 900, Chrome): zooming anchors at the pointer, and the page itself never zooms over the map.
+A trackpad pinch is sent the way a Mac trackpad sends it (CDP Input.synthesizePinchGesture from a touchpad: wheel events
+with ctrlKey, which zoom the page's visual viewport unless the page prevents them). Every wheel event is logged with
+whether its default was prevented.
+Checks: at a point off the middle, the sky under the pointer stays under it (within 2 px) on every step of a plain
+scroll and of a pinch, from the whole sky to the deepest zoom; every wheel event over the map is prevented and
+visualViewport.scale stays 1; a pinch that starts at the deepest zoom dives to the sky under the pointer (the hover
+readout's coordinates), and the page does not zoom while the dive flies, even as the pinch carries on; a scroll that
+dives does the same at another point; a Safari trackpad pinch (gesture events, dispatched here as plain events, so only
+the page's handling is checked) is prevented and zooms around the pointer too.
+Run: uv run -q --with playwright python web/tests/zoom_anchor_ui.py [base url]   (default http://127.0.0.1:8787)"""
+import asyncio, math, re, sys
+from playwright.async_api import async_playwright
+
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
+LOG = """window.__wheels = []; addEventListener('wheel', e => { const r = { ctrl: e.ctrlKey }; __wheels.push(r); setTimeout(() => { r.prevented = e.defaultPrevented; }); }, { capture: true, passive: true });"""
+SKY = "(async ([x, y]) => { const v = await import('/explore-view.js'); return v.A && v.W ? { sky: v.skyAt(x, y), W: v.W, max: v.atMax() } : null; })"
+OFF = "(async ([x, y, ra, dec]) => { const v = await import('/explore-view.js'); const [px, py] = v.toScreen(ra, dec); return Math.hypot(px - x, py - y); })"
+WHEELS = "(() => { const w = __wheels.splice(0); return { n: w.length, open: w.filter(r => !r.prevented).length }; })()"
+fails = []
+
+
+def check(name, ok, detail=""):
+    print(("PASS " if ok else "FAIL ") + name + (f"  [{detail}]" if detail else ""))
+    if not ok: fails.append(name)
+
+
+def sep(ra1, dec1, ra2, dec2):   # degrees between two sky positions
+    a1, d1, a2, d2 = map(math.radians, (ra1, dec1, ra2, dec2))
+    return math.degrees(math.acos(min(1, math.sin(d1) * math.sin(d2) + math.cos(d1) * math.cos(d2) * math.cos(a1 - a2))))
+
+
+def spot(url):
+    m = re.search(r"timelapse(?:\.html)?\?ra=([\d.]+)&dec=(-?[\d.]+)", url)
+    return (float(m[1]), float(m[2])) if m else None
+
+
+async def until(pg, expr, ms=8000):
+    try: await pg.wait_for_function(expr, timeout=ms); return True
+    except Exception: return False
+
+
+async def page(p):
+    # a browser for each page: a pinch synthesized in a second context of one browser is refused as out of bounds
+    browser = await p.chromium.launch(channel="chrome", headless=True, args=["--window-size=1440,900"])
+    ctx = await browser.new_context(viewport={"width": 1440, "height": 900})
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+    await ctx.add_init_script(LOG)
+    pg = await ctx.new_page()
+    pg.on("pageerror", lambda e: fails.append(f"page error: {e}") or print("FAIL page error", e))
+    await pg.goto(f"{BASE}/explore.html?day=400")
+    await pg.wait_for_function("document.body.dataset.ready === '1'")
+    await pg.bring_to_front()   # a synthesized pinch goes to the page in front
+    pg.cdp = await ctx.new_cdp_session(pg)
+    return browser, pg
+
+
+async def wheel(pg, x, y, dy=-250):
+    await pg.cdp.send("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": x, "y": y, "deltaX": 0, "deltaY": dy})
+
+
+async def pinch(pg, x, y, f=1.7):
+    await pg.cdp.send("Input.synthesizePinchGesture", {"x": x, "y": y, "scaleFactor": f, "relativeSpeed": 800, "gestureSourceType": "mouse"})
+
+
+async def scroll(pg, x, y, n, dy=-100):
+    """n wheel notches as one scroll, 25 ms apart, the way a wheel sends them"""
+    for _ in range(n):
+        asyncio.ensure_future(wheel(pg, x, y, dy))
+        await asyncio.sleep(0.025)
+    await asyncio.sleep(0.4)
+
+
+async def anchored(p, kind, x, y):
+    browser, pg = await page(p)
+    await pg.mouse.move(x, y)
+    worst, steps, levels = 0, 0, []
+    for _ in range(16):
+        a = await pg.evaluate(SKY, [x, y])
+        if a and a["max"]: break   # a new zoom from here would dive (checked below)
+        await (wheel(pg, x, y) if kind == "scroll" else pinch(pg, x, y))
+        await asyncio.sleep(0.3)
+        if a and a["sky"]:
+            worst = max(worst, await pg.evaluate(OFF, [x, y, *a["sky"]])); steps += 1; levels.append(round(a["W"]))
+    w = await pg.evaluate(WHEELS)
+    v = await pg.evaluate(SKY, [x, y])
+    check(f"{kind} at ({x}, {y}): the sky under the pointer stays under it, whole sky to deepest", steps >= 6 and worst < 2 and v["max"], f"{steps} steps, W {levels[0] if levels else '?'} to {levels[-1] if levels else '?'}, worst {worst:.2f} px")
+    check(f"{kind}: every wheel event over the map is prevented and the page does not zoom", w["n"] > 0 and w["open"] == 0 and await pg.evaluate("visualViewport.scale") == 1, f"{w['open']} of {w['n']} not prevented, scale {await pg.evaluate('visualViewport.scale'):.3f}")
+    await browser.close()
+
+
+async def dives(p):
+    browser, pg = await page(p)
+    x, y = 1000, 300   # well off the middle of the view (720, 434)
+    await pg.mouse.move(x, y)
+    await scroll(pg, x, y, 40)   # one long scroll: it stops at the deepest zoom and does not dive
+    check("a long scroll reaches the deepest zoom without diving", (await pg.evaluate(SKY, [x, y]))["max"] and "/explore" in pg.url)
+    await pg.mouse.move(x + 1, y); await pg.mouse.move(x, y); await asyncio.sleep(0.3)
+    readout = await pg.locator("#readout").text_content()
+    here = (await pg.evaluate(SKY, [x, y]))["sky"]
+    await pg.evaluate(WHEELS)
+
+    # a pinch that starts at the deepest zoom, and carries on while the dive flies
+    scales = []
+    async def watch():
+        for _ in range(40):
+            try: scales.append(await pg.evaluate("visualViewport.scale"))
+            except Exception: return
+            await asyncio.sleep(0.05)
+    watcher = asyncio.ensure_future(watch())
+    await pinch(pg, x, y, 3)
+    await pinch(pg, x, y, 1.5)   # still pinching after the dive took off
+    await watcher
+    w = await pg.evaluate(WHEELS)
+    check("a pinch at the deepest zoom dives", await until(pg, "window.__diveState()?.phase === 'open'"))
+    check("the page does not zoom while the pinch starts the dive and the dive flies", max(scales) == 1 and w["open"] == 0, f"largest scale {max(scales):.3f}, {w['open']} of {w['n']} wheel events not prevented")
+    at = spot(pg.url)
+    off = sep(*at, *here) if at else 99
+    check("the pinch dives to the sky under the pointer", off < 0.005, f"pointer {here[0]:.4f} {here[1]:.4f} (readout {readout}), dive {pg.url.split('?')[-1]}, {off:.4f} deg off")
+    rd = [float(s) for s in re.findall(r"-?[\d.]+", (readout or "").replace("+", ""))]
+    check("that is where the hover readout said", at and len(rd) == 2 and abs(rd[0] - at[0]) < 0.06 and abs(rd[1] - at[1]) < 0.06, f"readout {readout}")
+    await pg.go_back()
+    check("back closes the dive", await until(pg, "window.__diveState() === null && location.pathname.includes('explore')"))
+
+    # a plain scroll at another point: while it adds up, the aim is there; one that stops short sends it back to the middle
+    x, y = 420, 560
+    await pg.mouse.move(x, y); await asyncio.sleep(0.4)
+    here = (await pg.evaluate(SKY, [x, y]))["sky"]
+    centre = "(() => { const r = document.querySelector('.aim-box').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()"
+    await scroll(pg, x, y, 2)
+    c1 = await pg.evaluate(centre)
+    await asyncio.sleep(0.9)
+    c2 = await pg.evaluate(centre)
+    check("a scroll that adds up moves the aim to the pointer, and back to the middle when it stops short", math.hypot(c1[0] - x, c1[1] - y) < 1 and math.hypot(c2[0] - 720, c2[1] - 434.3) < 1, f"{[round(v) for v in c1]} then {[round(v) for v in c2]}")
+    await asyncio.sleep(0.3)
+    await scroll(pg, x, y, 7)
+    check("a scroll at the deepest zoom dives", await until(pg, "window.__diveState()?.phase === 'open'"))
+    at = spot(pg.url)
+    off = sep(*at, *here) if at else 99
+    check("the scroll dives to the sky under the pointer", off < 0.005, f"{off:.4f} deg off")
+    check("the page did not zoom", await pg.evaluate("visualViewport.scale") == 1)
+
+    # a pinch over "Dive in" (on the map, outside its stage) zooms the map, not the page
+    await pg.go_back()
+    check("back closes the dive again", await until(pg, "window.__diveState() === null && location.pathname.includes('explore')"))
+    b = await pg.locator("#dive-go").bounding_box()
+    bx, by = b["x"] + b["width"] / 2, b["y"] + b["height"] / 2
+    await pg.mouse.move(bx, by); await pg.evaluate(WHEELS)
+    await pinch(pg, bx, by, 0.7)
+    await asyncio.sleep(0.3)
+    w = await pg.evaluate(WHEELS)
+    check("a pinch over Dive in zooms the map and not the page", w["open"] == 0 and not (await pg.evaluate(SKY, [bx, by]))["max"] and await pg.evaluate("visualViewport.scale") == 1, f"{w['open']} of {w['n']} not prevented")
+    await browser.close()
+
+
+async def safari(p):
+    browser, pg = await page(p)
+    x, y = 1000, 300
+    await pg.mouse.move(x, y)
+    await scroll(pg, x, y, 6)
+    a = await pg.evaluate(SKY, [x, y])
+    r = await pg.evaluate("""([x, y]) => { const el = document.elementFromPoint(x, y), out = [];
+      for (const [type, scale] of [['gesturestart', 1], ['gesturechange', 1.2], ['gesturechange', 1.5], ['gestureend', 1.5]]) {
+        const e = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(e, { scale: { value: scale }, clientX: { value: x }, clientY: { value: y } });
+        el.dispatchEvent(e); out.push(e.defaultPrevented); }
+      return out; }""", [x, y])
+    b = await pg.evaluate(SKY, [x, y])
+    off = await pg.evaluate(OFF, [x, y, *a["sky"]])
+    check("Safari pinch: gesture events over the map are prevented", all(r), str(r))
+    check("Safari pinch: it zooms 1.5x around the pointer", abs(b["W"] / a["W"] - 1.5) < 0.01 and off < 2, f"x{b['W'] / a['W']:.3f}, {off:.2f} px off")
+    await browser.close()
+
+
+async def main():
+    async with async_playwright() as p:
+        for kind in ("scroll", "pinch"):
+            for x, y in ((1000, 300), (420, 560)):
+                await anchored(p, kind, x, y)
+        await dives(p)
+        await safari(p)
+    print(f"\n{len(fails)} failed" if fails else "\nall passed")
+    sys.exit(1 if fails else 0)
+
+
+asyncio.run(main())

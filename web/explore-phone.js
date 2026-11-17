@@ -93,8 +93,8 @@ stage.addEventListener('click', e => {
   if (performance.now() < swallowUntil) { e.preventDefault(); e.stopPropagation(); return; }
   if (!sheet.hidden && !e.target.closest('.mk, .pin, .tl')) { closePeek(); e.stopPropagation(); }
 }, true);
-stage.addEventListener('wheel', e => {   // a trackpad or mouse on a narrow window
-  if (!phone.matches) return;
+addEventListener('wheel', e => {   // a trackpad or mouse on a narrow window, over the map or the aim on it
+  if (!phone.matches || !e.target.closest?.('.xstage, .aim')) return;
   e.preventDefault(); measure(area()); zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .002)), e.clientX, e.clientY); touched = true;
 }, { passive: false });
 document.addEventListener('gesturestart', e => { if (phone.matches) e.preventDefault(); });   // Safari: never zoom the page itself
