@@ -52,7 +52,7 @@ function stage(box) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(20, 1, .05, 400);
-  const S = { W: 1, H: 1, renderer, scene, camera };
+  const S = { W: 1, H: 1, renderer, scene, camera, keep: [] };   // keep: boxes over the view (x0, y0, x1, y1) labels stay clear of
   S.size = () => { const W = box.clientWidth || 1, H = box.clientHeight || 1; if (W === S.W && H === S.H) return false; S.W = W; S.H = H; renderer.setSize(W, H, false); camera.aspect = W / H; camera.updateProjectionMatrix(); return true; };
   S.sprite = (tex, order = 6) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false })); s.renderOrder = order; scene.add(s); return s; };
   S.lines = (max, order = 7) => {
@@ -73,8 +73,11 @@ function stage(box) {
       tmp.copy(p).project(camera); const vis = a > .01 && tmp.z < 1;
       el.style.opacity = vis ? a.toFixed(3) : 0; if (!vis) return;
       // kept inside the view sideways: a name that would run off an edge slides back in
-      const w = el.offsetWidth, x = Math.max(4, Math.min(S.W - w - 4, (tmp.x + 1) / 2 * S.W + dx + ax * w));
-      el.style.transform = `translate(${x.toFixed(1)}px,${((1 - tmp.y) / 2 * S.H + dy).toFixed(1)}px) translate(0,${ay * 100}%)`;
+      const w = el.offsetWidth, h = el.offsetHeight, x = Math.max(4, Math.min(S.W - w - 4, (tmp.x + 1) / 2 * S.W + dx + ax * w));
+      let y = (1 - tmp.y) / 2 * S.H + dy;
+      // under a box it would run beneath (the tabs over the beam): moved down just clear of it
+      for (const [x0, y0, x1, y1] of S.keep) { const top = y + ay * h; if (x < x1 && x + w > x0 && top < y1 + 2 && top + h > y0) y += y1 + 2 - top; }
+      el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(0,${ay * 100}%)`;
     }, remove() { el.remove(); } };
   };
   S.px = p => (tmp.copy(p).project(camera), [(tmp.x + 1) / 2 * S.W, (1 - tmp.y) / 2 * S.H]);
@@ -176,14 +179,16 @@ export function depthView(page) {
   let picked = { target: -1, letters: new Map() }, pickedFor = null;   // pickedFor: the verdict's match the pick was made with
   function choose(all) {   // the target, and up to four more to name in the beam: the nearest, the farthest, one between
     pickedFor = page.matchKey();
-    const t = page.target(data.m, data.f, all), letters = new Map(), rest = all.map((_, i) => i).filter(i => i !== t);
+    const t = page.target(data.m, data.f, all), named = page.named?.(data.m, data.f, all) ?? null;   // named: a known star that is not the target keeps its name
+    const letters = new Map(), rest = all.map((_, i) => i).filter(i => i !== t && i !== named?.i);
     const stars = rest.filter(i => all[i].src === 'stars'), other = rest.filter(i => all[i].src !== 'stars');
     const pick = new Set([stars[0], stars[Math.floor(stars.length / 2)], stars[stars.length - 1], other[other.length - 1], other[0], stars[1]].filter(i => i != null));
     [...pick].slice(0, 4).sort((a, b) => a - b).forEach((i, k) => letters.set(i, LETTERS[k]));   // lettered nearest first
-    return { target: t, letters };
+    return { target: t, letters, named };
   }
   function nameOf(p, i) {
     if (i === picked.target) return p.src === 'sso' ? p.o.name : page.targetName(data.m) ?? 'The star in the middle';
+    if (i === picked.named?.i) return picked.named.name;
     const L = picked.letters.get(i);
     if (p.src === 'sso') return `${p.o.name}${p.o.class ? ` (${p.o.class.split('>')[0].toLowerCase()})` : ''}`;
     if (p.src === 'galaxies') return L ? `Galaxy ${L} · ${p.o.id}` : p.o.id;
@@ -284,11 +289,14 @@ export function depthView(page) {
     const pos = []; scene3.dots = [];
     for (const s of scene3.beads) { s.sp.removeFromParent(); s.lab.remove(); }
     scene3.beads = [];
+    // the target's ring goes where the page places it (targetAt: a matched asteroid at its matched exposure, not where
+    // /api/depth puts it at the visit's middle), so Depth and the Photo mark the same spot
+    const tp = picked.target >= 0 ? page.middle(m, data.f) : null;
     all.forEach((p, i) => {
-      const [u, v] = uv(p), f = scale(p.ly), name = i === picked.target || picked.letters.has(i);
+      const [u, v] = i === picked.target && tp?.u != null ? [tp.u, tp.v] : uv(p), f = scale(p.ly), name = i === picked.target || picked.letters.has(i) || i === picked.named?.i;
       if (!name) { const q = at(u, v, f); pos.push(...q.toArray()); scene3.dots.push({ pos: q, key: p.key, text: `${p.src === 'sso' ? p.o.name : p.src === 'galaxies' ? p.o.id : `star, G ${p.o.g?.toFixed(1) ?? '?'}`} · ${lyText(p.ly, true)}` }); return; }
       const acc = i === picked.target, L0 = picked.letters.get(i), d = lyText(p.ly, S.W < 500);
-      const text = acc ? `${p.src === 'sso' ? p.o.name : page.targetName(m) ?? 'the star in the middle'} · ${d}` : `${p.src === 'sso' ? p.o.name : `${p.src === 'galaxies' ? 'galaxy' : 'star'} ${L0}`} · ${d}`;
+      const text = acc ? `${p.src === 'sso' ? p.o.name : page.targetName(m) ?? 'the star in the middle'} · ${d}` : i === picked.named?.i ? `${picked.named.name} · ${d}` : `${p.src === 'sso' ? p.o.name : `${p.src === 'galaxies' ? 'galaxy' : 'star'} ${L0}`} · ${d}`;
       const err = p.o.d_lo_pc != null ? [scale(p.o.d_lo_pc * LY_PC), scale(p.o.d_hi_pc * LY_PC)] : null;
       scene3.beads.push({ u, v, f, pos: at(u, v, f), err, acc, sp: S.sprite(acc ? scene3.rA : scene3.rW, 9), lab: S.label(text, acc ? 'accent' : ''), size: acc ? 20 : 15 });
     });
@@ -310,7 +318,7 @@ export function depthView(page) {
     scene3.marks = pickD.map(x => ({ f: scale(10 ** x), lab: S.label(lyText(10 ** x, false), 'mark') }));
     box.dataset.objects = String(all.length);
     box.dataset.rings = String(scene3.beads.length); box.dataset.dots = String(scene3.dots.length);
-    shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i)).map(p => p.key), dots: scene3.dots.map(d => d.key), target: picked.target >= 0 ? all[picked.target].key : 'unknown',
+    shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i) || i === picked.named?.i).map(p => p.key), dots: scene3.dots.map(d => d.key), target: picked.target >= 0 ? all[picked.target].key : 'unknown',
       mark: (b => b ? { uv: [b.u, b.v], label: b.lab.el.textContent } : null)(scene3.beads.find(b => b.acc)) };   // the target's ring and its label, for tests
     photo();
     render();
@@ -327,6 +335,9 @@ export function depthView(page) {
   function render() {
     if (!S || !open) return;
     S.size();
+    const br = box.getBoundingClientRect();
+    S.keep = (page.cover?.() ?? []).filter(Boolean).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
+      .map(r => [r.left - br.left, r.top - br.top, r.right - br.left, r.bottom - br.top]);
     const { W, H } = S, small = W < 500, T = yaw.t0 ? (performance.now() - yaw.t0) / 1000 : 9;
     const s = sm(T / 1.8);   // the swing: from through the telescope (the photo fills the view, as in Photo) out to the side
     const frame = small ? [14, 64, W - 20, H - 40] : [36, 110, W - 46, H - 70];

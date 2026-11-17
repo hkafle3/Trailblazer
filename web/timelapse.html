@@ -573,16 +573,18 @@ function draw() {
   // a time-lapse opened at a comet's place on a date (&t=, from its page) rings that place: the comet is the subject, not the star
   const say = verdict(m, f), merged = !state.split, starMark = merged && !!say.star && m.t == null && !candTrack.on();
   // the target and its place this visit (targetAt, the one source every view reads): its check goes there
-  const tg = targetAt(m, f), tgPx = tg.pos && toPx((G - 1) / 2 - tg.pos[0] / m.arcsec_per_pixel, (G - 1) / 2 + tg.pos[1] / m.arcsec_per_pixel);
+  const tg = targetAt(m, f), tgPx = tg.pos && canvasOf(m, tg.pos), hit = tg.id?.pass.match;
   let tLab = null;   // the target's "Already known" name, kept clear of by the passers' names below
-  if (starMark) {
-    const cur = tgPx;
+  if (starMark) {   // the star's check on the dot (a passer matched there too has its own check where it matched)
+    const cur = canvasOf(m, tg.id.mid);
     const bx = cur[0] + 12, by = cur[1] - 12;
     knownBadge(bx, by);
     ctx.font = `400 ${Math.round(H / 34)}px "Space Mono", ui-monospace, monospace`; ctx.textBaseline = 'middle';
     const text = `Already known · ${say.star}`, tw = ctx.measureText(text).width, th = Math.round(H / 34) + 4;
-    const x0 = bx + 16 + tw <= W - 8 ? bx + 16 : bx - 16 - tw - 24;
+    // right of the check, else left of it, and always whole inside the frame (a long name on a phone)
+    const pad = Math.round(W * .02), x0 = Math.max(pad, Math.min(W - pad - tw, bx + 16 + tw <= W - pad ? bx + 16 : bx - 16 - tw - 24));
     tLab = [[bx - 11, by - 11, bx + 11, by + 11], [x0, by - th / 2, x0 + tw, by + th / 2]];
+    window.__starLabel = [...tLab[1], W];   // for tests: the name's box and the frame's width, in canvas pixels
     ctx.textAlign = 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(text, x0, by);
     ctx.fillStyle = '#7fb8ff'; ctx.fillText(text, x0, by);
   }
@@ -612,8 +614,8 @@ function draw() {
     // merged: each known passer's check is a mark like the rings, placed before any name
     const nearest = b => b.pts.reduce((best, p, n) => (Math.abs(p[0] - f.mjd) < Math.abs(b.pts[best][0] - f.mjd) ? n : best), 0);
     const badgeAt = new Map();
-    if (merged) for (const [name, b] of f.known.bodies) {
-      const [, ra, dec] = b.pts[nearest(b)], [e, n] = offset(m, ra, dec), [x, y] = toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel);
+    if (merged) for (const [name, b] of f.known.bodies) {   // the one on the dot where it matched (the target's place)
+      const [, ra, dec] = b.pts[nearest(b)], [e, n] = offset(m, ra, dec), [x, y] = name === hit?.name ? tgPx : toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel);
       if (x < 0 || y < 0 || x > W || y > H) continue;
       knownBadge(x, y); badgeAt.set(name, [x, y]); taken.push([x - 11, y - 11, x + 11, y + 11]);
     }
@@ -659,7 +661,7 @@ function draw() {
   candTrack.draw(ctx, m, f, toPx, offset);
   // for tests: the target's mark as drawn, in canvas pixels: the candidate's ring, the known star's check, or this
   // visit's orange dot when it is the dot (a source measured off it is something else); null when nothing marks it
-  window.__mark = { name: tg.name, px: candTrack.on() ? window.__cand.ring : starMark ? tgPx : f.x != null && tg.id.srcOff == null ? toPx(f.x, f.y) : null };
+  window.__mark = { name: tg.name, px: candTrack.on() ? window.__cand.ring : (hit && merged) || starMark ? tgPx : f.x != null && tg.id.srcOff == null ? toPx(f.x, f.y) : null };
   sayVerdict(m, f);
   if (pvView === 'depth') depth.frame();
   knownList(f);
@@ -692,10 +694,12 @@ function verdict(m, f) {
   // what is the dot in the middle in this visit (live/identity.js, the one rule): the catalog star only when Gaia's (or a
   // published) place for it this visit is on the dot; a passer only when SkyBoT puts it on the dot at an exposure's time
   const live = m.key.startsWith('live'), id = tg.id, onDot = !!id.star.match;
-  // the motion is fit from the source measured each visit: when this visit's lies off the dot (id.srcOff), the motion
-  // is not the dot's, so nothing here says the dot moved
-  const mo = id.srcOff == null ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
-  const offTxt = id.srcOff != null && m.motion ? `The source measured near the middle this visit sits ${Math.round(id.srcOff)} arcseconds off the dot, so the motion measured here may belong to something else.` : null;
+  // the motion is fit from the sources measured visit by visit: it is the dot's only when this visit's source is on the
+  // dot. Off it (id.srcOff), or with none measured this visit, nothing here says the dot moved
+  const srcOn = f.x != null && id.srcOff == null, mo = srcOn ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
+  const offTxt = !m.motion || srcOn ? null : id.srcOff != null
+    ? `The source measured near the middle this visit sits ${Math.round(id.srcOff)} arcseconds off the dot, so the motion measured here may belong to something else.`
+    : 'No source was measured on the dot this visit, so the motion measured in other visits may belong to something else.';
   const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : pub ? { total: pub.total, label: pub.source, tol: 35 } : null;
   const starName = name ? `${ref?.label === 'Gaia' || g ? "Gaia's " : ''}${name}` : 'a star in Gaia';
   // match: what the dot was matched to, for every other place that names "the target" (Depth, Discuss): the Gaia star
@@ -717,8 +721,9 @@ function verdict(m, f) {
   if (offTxt && g) out.parts.push(' ', offTxt);
   if (id.star.nearby) out.parts.push(` Nearby: the catalog's place for ${name ?? 'the Gaia star here'} is ${Math.round(id.star.nearby.d)} arcseconds from the dot this visit, too far to be it.`);
   // known comets and asteroids SkyBoT put in this visit: on the dot, nearby, or just passing through
-  const k = f.known, hit = id.pass.match, near = id.pass.nearby;
+  const k = f.known, hit = id.pass.match, near = id.pass.nearby, a = m.arcsec_per_pixel;
   if (hit) { out.known = true; out.who = hit.name; out.match = { kind: 'sso', name: hit.name }; out.parts.push(' ', { ok: `The dot in the middle matches the known ${hit.kind} ${hit.name}.` }); }
+  else if (near && near.d <= 2 * a) out.parts.push(` Nearby: the known ${near.kind} ${near.name} was ${Math.round(near.d)} arcseconds from the dot at the middle of this visit, not at an exposure's own time, so it is not called the dot.`);
   else if (near) out.parts.push(` Nearby: the known ${near.kind} ${near.name} passed ${Math.round(near.d)} arcseconds from the dot in the middle, too far to be it.`);
   else if (k?.bodies.size) {
     const n = k.bodies.size, kinds = new Set([...k.bodies.values()].map(b => b.kind)), what = kinds.size > 1 ? 'known object' : `known ${[...kinds][0]}`;
@@ -735,9 +740,16 @@ function identityAt(m, f) {
   const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, src = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null, mid = middle(src, a);
   const srcOff = src && mid !== src ? Math.hypot(...src) : null;
   const stars = (m.gaia || m.ref) && m.t == null && f.pred_east != null ? [{ kind: 'star', name: m.name, pos: [[f.pred_east, f.pred_north]] }] : [];
-  const passers = [...(f.known?.bodies ?? [])].map(([name, b]) => ({ kind: b.kind, name, mag: b.mag, pts: b.pts, pos: b.pts.map(([, ra, dec]) => offset(m, ra, dec)) }));
+  // a passer can be the dot only where SkyBoT put it at one of this visit's exposure times (f.epochs, the live pipeline's
+  // own timestamps); a baked visit has none, so its one time (the visit's middle) can make a passer nearby at most
+  const exp = new Set(f.epochs ?? []), place = ([, ra, dec]) => offset(m, ra, dec);
+  const passers = [...(f.known?.bodies ?? [])].map(([name, b]) => {
+    const at = b.pts.filter(p => exp.has(p[0]));
+    return { kind: b.kind, name, mag: b.mag, at, pos: at.map(place), near: b.pts.filter(p => !exp.has(p[0])).map(place) };
+  });
   const star = identify(mid, stars, a), pass = identify(mid, passers, a);
-  if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.pts[k][0]; }
+  // a passer on the dot: the exposure it matched at (t, for the Discuss sheet) and its place then (the target's place)
+  if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.at[k][0]; p.place = p.pos[k]; }
   return { mid, srcOff, a, star, pass };
 }
 // ---------- the target: what the page is about and where it is this visit, the one source for every view ----------
@@ -745,19 +757,26 @@ function identityAt(m, f) {
 // aria-labels all read these, so no view names one thing and places another. A detector candidate (&cand=) is the
 // target while it is open: its detection in this visit, never the patch's middle, and no catalog identity (the verdict
 // claims none). Otherwise the dot by the identity rule (identityAt). name: null for a live patch's dot (each place says
-// "the dot in the middle" its own way); pos: [east, north] arcsec from the patch centre, null when the candidate has no
-// detection in this visit (then nothing places it); id: identityAt, null for a candidate.
+// "the dot in the middle" its own way); pos: [east, north] arcsec from the patch centre (a passer on the dot: where it
+// matched), null when the candidate has no detection in this visit (then nothing places or reports it); sky: [ra, dec]
+// reported for it (a candidate's detection; otherwise the patch centre, which the dot is within 2 px of, so a report
+// and the check for earlier ones keep one spot per patch); id: identityAt, null for a candidate.
 const targetName = m => candTrack.title() ?? (m.key.startsWith('live') ? null : m.name);
 function targetAt(m, f) {
-  if (candTrack.on()) return { name: targetName(m), pos: candTrack.at(m, f, offset), id: null };
+  if (candTrack.on()) { const d = candTrack.at(m, f, offset); return { name: targetName(m), pos: d?.pos ?? null, sky: d?.sky ?? null, id: null }; }
   const id = identityAt(m, f);
-  return { name: targetName(m), pos: id.mid, id };
+  return { name: targetName(m), pos: id.pass.match?.place ?? id.mid, sky: [m.ra, m.dec], id };
+}
+// a place on the patch (arcsec east and north of its centre) in the big frame's canvas pixels, as draw() places it
+function canvasOf(m, [e, n]) {
+  const G = m.grid, { cw, ch, ox, oy } = view(m), x = (G - 1) / 2 - e / m.arcsec_per_pixel, y = (G - 1) / 2 + n / m.arcsec_per_pixel;
+  return [(x - ox + 0.5) * patch.width / cw, (G - 1 - y - oy + 0.5) * patch.height / ch];
 }
 let saidKey = '';
 function sayVerdict(m, f) {
   const v = verdict(m, f), key = JSON.stringify([v.parts, m.key, m.ra, m.dec, m.frames.length, m.detector, m.lam0, m.channel ?? null]);   // the facts line too
   state.verdict = v;
-  if (key === saidKey) return;
+  if (key === saidKey) return reportNote();   // the note follows the visit even when the verdict's words do not (a candidate's)
   saidKey = key;
   const el = document.getElementById('pv-say');
   el.replaceChildren(...v.parts.map(p => {
@@ -769,11 +788,16 @@ function sayVerdict(m, f) {
   reportNote();
 }
 // the line under Report a new find: what the button does, or why there is nothing to report
+// (about the target, targetAt: a candidate's detection in this visit, or the dot)
 reportNote = () => {
-  const el = document.getElementById('state-note'), v = state.verdict;
-  el.textContent = found ? `Already reported here as ${found}. The arrow opens its page.`
+  const el = document.getElementById('state-note'), v = state.verdict, tg = state.m && targetAt(state.m, state.m.frames[state.i]);
+  el.textContent = !tg ? ''
+    : candTrack.isSample() ? 'Sample data, so there is nothing here to report.'
+    : found ? `Already reported here as ${found}. The arrow opens its page.`
     : v?.known ? `${v.who} is already known, so there is nothing to report here.`
-    : state.m ? 'Tells other hunters about the dot in the middle, so they can tag what it is.' : '';
+    : !tg.sky ? `${tg.name} has no detection in this visit, so there is nothing to report here.`
+    : tg.id ? `Tells other hunters about ${tg.name ?? 'the dot in the middle'}, so they can tag what it is.`
+    : `Tells other hunters about ${tg.name}, ringed in this visit, so they can tag what it is.`;
 };
 
 // ---------- mini-map: the whole region, the big frame's part outlined, the target ringed ----------
@@ -1174,8 +1198,9 @@ const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
 talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => targetAt(state.m, f).id?.pass.match ?? null,
+  place: f => { const t = targetAt(state.m, f); return { ...t, px: t.pos && canvasOf(state.m, t.pos) }; },
   opening: () => { if (spec.at || spec.mode) closeSpec(false); } });   // one card in the right column: the sheet closes the Spectrum card
-window.__lapse = { state, recenter, verdict, targetAt, view: () => view(state.m), get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
+window.__lapse = { state, recenter, verdict, targetAt, view: () => view(state.m), get talk() { return talk; }, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 // ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
 // The main channel is the lowest active layer, or with none the dial's channel once the dial is turned (before that, and
@@ -1473,13 +1498,24 @@ const depth = depthView({
   target(m, f, all) {
     const mt = state.verdict?.match; if (!mt) return -1;
     if (mt.kind === 'sso') return all.findIndex(p => p.src === 'sso' && p.o.name === mt.name);
-    // the Gaia star the verdict matched: the same proper motion (within 1 mas/yr both ways), on the dot by the same rule
-    const { pos } = targetAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
-    if (!pos) return -1;
-    const near = all.map((p, i) => [p, i]).filter(([p]) => p.src === 'stars' && Math.abs(p.o.pmra - mt.pmra) <= 1 && Math.abs(p.o.pmdec - mt.pmdec) <= 1)
+    const { pos } = targetAt(m, f);
+    return pos ? this.starAt(m, f, all, mt, pos) : -1;
+  },
+  // the Gaia star with this proper motion (within 1 mas/yr both ways) on the place by the identity rule, or -1
+  starAt(m, f, all, pm, pos) {
+    const half = m.grid * m.arcsec_per_pixel / 2;
+    const near = all.map((p, i) => [p, i]).filter(([p]) => p.src === 'stars' && Math.abs(p.o.pmra - pm.pmra) <= 1 && Math.abs(p.o.pmdec - pm.pmdec) <= 1)
       .map(([p, i]) => { const [u, v] = this.onScreen(m, p.ra, p.dec, { year: f.year, pmra: p.o.pmra, pmdec: p.o.pmdec }); return { i, pos: [[-u * half, v * half]] }; });   // u runs west
     return identify(pos, near, m.arcsec_per_pixel).match?.i ?? -1;
   },
+  // a candidate open: the patch's own catalog star (on the dot by the identity rule, the candidate aside) is not the
+  // target, but it is still a known star with a name. { i, name } or null
+  named(m, f, all) {
+    if (!candTrack.on() || !m.gaia || m.key.startsWith('live')) return null;
+    const id = identityAt(m, f), i = id.star.match ? this.starAt(m, f, all, m.gaia, id.mid) : -1;
+    return i >= 0 ? { i, name: m.name } : null;
+  },
+  cover: () => [document.querySelector('.pv-views')],   // what sits over the beam: its labels keep clear of it
   // where the target is on the region (-1 to 1, north up; u null when it has no place this visit) and what to call it,
   // for its "distance unknown" mark (targetAt)
   middle(m, f) {

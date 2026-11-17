@@ -17,6 +17,8 @@ const CASES = [
   ['asteroid 25 arcsec off: nearby', [0, 0], [rock([25, 0])], null, 'R'],
   ['no catalog object: nothing (Depth says distance unknown)', [0, 0], [], null, null],
   ['the source measured 15 arcsec off is something else: the centre is the dot', [15, 0], [star(14, 0)], null, 'S'],
+  ['asteroid on the dot only at a baked visit\'s middle (not an exposure time): nearby, never the dot', [0, 0], [{ kind: 'asteroid', name: 'R', pos: [], near: [[3, 0]] }], null, 'R'],
+  ['asteroid on the dot at an exposure, also near at the middle: the dot', [0, 0], [{ kind: 'asteroid', name: 'R', pos: [[4, 0]], near: [[40, 0]] }], 'R', null],
 ];
 for (const [what, src, cands, want, near] of CASES) {
   const { match, nearby } = identify(middle(src, a), cands, a);

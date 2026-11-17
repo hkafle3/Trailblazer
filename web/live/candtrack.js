@@ -45,11 +45,13 @@ function inVisit(f) {
   const t0 = dayOf(f.start), t1 = dayOf(f.end ?? f.start) + 1;
   return cand.detections.filter(d => d.t >= t0 && d.t < t1).sort((p, q) => Math.abs(p.t - f.mjd) - Math.abs(q.t - f.mjd))[0] ?? null;
 }
-// that place as [east, north] arcsec from the patch centre (offset: the frames' TAN plane), or null
+// that detection: { pos: [east, north] arcsec from the patch centre (offset: the frames' TAN plane), sky: [ra, dec] },
+// or null with none in this visit
 export function at(m, f, offset) {
   const d = cand && inVisit(f);
-  return d ? offset(m, d.ra, d.dec) : null;
+  return d ? { pos: offset(m, d.ra, d.dec), sky: [d.ra, d.dec] } : null;
 }
+export const isSample = () => !!cand && sample;
 
 export function draw(ctx, m, f, toPx, offset) {
   if (!cand) return;

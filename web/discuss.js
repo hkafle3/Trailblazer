@@ -1,4 +1,6 @@
-// "Discuss this" on the time-lapse (timelapse.html). The dot on screen is the patch's centre (a click re-centres on it).
+// "Discuss this" on the time-lapse (timelapse.html), about the page's target in the visit on screen (page.place:
+// timelapse.html targetAt): the dot in the middle, or a detector candidate's detection. Its place is what the sheet
+// shows, centres its thumbnail on, checks for earlier reports and submits; with no place this visit it does not open.
 // - Undiscovered: Ming's state box opens the sheet in place of the right column (his Descriptions card, discuss.css).
 //   If SkyBoT puts a known object within 1 arcmin in this visit, the sheet leads with "It's <name>" / "Something else".
 //   Post creates a candidate (POST /api/candidates) and opens its page.
@@ -34,20 +36,23 @@ export function knownMatch(f, ra, dec) {
   return best;
 }
 
-// page: { state, api, setFound(id, at), found() -> id, spot(ra, dec) -> key, status(text) }
+// page: { state, api, setFound(id, at), found() -> id, spot(ra, dec) -> key, status(text),
+//   place(f) -> { name, sky: [ra, dec] or null, px: [x, y] on the photo's canvas or null } }
 export function discuss(page) {
   const { state } = page, $ = id => document.getElementById(id);
   const stateBox = $('state'), stage = $('stage');
-  let near = { m: null, list: [] }, mine = null, sheet = null, openOn = null, ts = null;
+  let near = { key: null, list: [] }, mine = null, sheet = null, openOn = null, ts = null;
+  const skyOf = (m, f) => page.place(f).sky;
 
-  // ---------- Discovered: a candidate already reported within 1 arcmin in the visit on screen ----------
-  async function loadNear(m) {
-    near = { m, list: [] };
+  // ---------- Discovered: a candidate already reported within 1 arcmin of the target in the visit on screen ----------
+  async function loadNear(m, sky) {
+    const key = `${m.key}|${page.spot(...sky)}`;
+    near = { key, list: [] };
     try {
-      const r = await fetch(`${page.api}/api/candidates/near?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}`);
-      if (r.ok && near.m === m) near.list = (await r.json()).candidates;
+      const r = await fetch(`${page.api}/api/candidates/near?ra=${sky[0].toFixed(4)}&dec=${sky[1].toFixed(4)}`);
+      if (r.ok && near.key === key) near.list = (await r.json()).candidates;
     } catch {}
-    if (near.m === m) frame(true);
+    if (near.key === key) frame(true);
   }
   function showFound(m, f) {
     // a found= link to a candidate (the address keeps the Discovered state) is that candidate's, so it follows the visit
@@ -55,7 +60,7 @@ export function discuss(page) {
     // the same visit: one that shares a day with this one (its first day can differ by channel and detector)
     const c = near.list.find(x => x.visit <= (f.end ?? f.start) && (x.visit_end ?? x.visit) >= f.start);
     if (c && (!page.found() || page.found() === mine)) {
-      if (page.found() !== c.id) page.setFound(c.id, page.spot(m.ra, m.dec));
+      if (page.found() !== c.id) page.setFound(c.id, page.spot(...skyOf(m, f)));
       mine = c.id;
       stateBox.href = `candidate.html?id=${encodeURIComponent(c.id)}`;
       const n = $('vName'), t = c.tags, votes = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0);
@@ -68,13 +73,14 @@ export function discuss(page) {
   let last = [null, null];
   function frame(force = false) {
     const m = state.m; if (!m) return;
-    const f = m.frames[state.i];
-    if (near.m !== m) loadNear(m);
+    const f = m.frames[state.i], sky = skyOf(m, f);
+    if (sky && near.key !== `${m.key}|${page.spot(...sky)}`) loadNear(m, sky);
     if (sheet && openOn && !offered && openOn[0] === m && openOn[1] === f && !started()) offer(m, f);   // a late SkyBoT answer
     if (!force && last[0] === m && last[1] === f) return;
     last = [m, f];
     if (sheet && openOn && (openOn[0] !== m || openOn[1] !== f)) close();   // the sheet describes one spot in one visit
-    showFound(m, f);
+    if (sky) showFound(m, f);
+    else if (mine && page.found() === mine) { page.setFound(null); mine = null; }   // no target this visit: nothing found here
   }
 
   // ---------- the sheet ----------
@@ -132,19 +138,22 @@ export function discuss(page) {
   const say = (text, err) => { const n = q('[data-f=note]'); n.textContent = text; n.classList.toggle('err', !!err); };
 
   async function open() {
-    const m = state.m, f = m.frames[state.i];
+    const m = state.m, f = m.frames[state.i], tg = page.place(f);
+    if (!tg.sky) return page.status(`${tg.name} has no detection in this visit, so there is nothing to report here.`);
     sheet ??= build();
     page.opening?.();   // the page closes any other card that takes the same place
     page.stop();   // the sheet is about this visit: playback would move on and close it
-    openOn = [m, f]; offered = false;
+    openOn = [m, f, tg.sky]; offered = false;
     document.body.classList.add('talking');
-    // the thumbnail: the middle of the photo on screen, the dot ringed
+    // the thumbnail: the photo on screen around the target, ringed at the thumbnail's middle
     const c = q('.thumb canvas'), g = c.getContext('2d'), p = $('patch'), w = p.width * .49, h = w * c.height / c.width;
+    const [cx, cy] = tg.px ?? [p.width / 2, p.height / 2];
     g.imageSmoothingEnabled = false; g.clearRect(0, 0, c.width, c.height);
-    g.drawImage(p, (p.width - w) / 2, (p.height - h) / 2, w, h, 0, 0, c.width, c.height);
-    const where = q('[data-f=where]');
+    g.drawImage(p, cx - w / 2, cy - h / 2, w, h, 0, 0, c.width, c.height);
+    q('.thumb').dataset.at = `${cx.toFixed(1)},${cy.toFixed(1)}`;   // the crop's middle on the photo (for tests)
+    const where = q('[data-f=where]'), [ra, dec] = tg.sky;
     where.replaceChildren(el('b', null, visitDate(f.start)), ` · ${m.detector} ${f.lam.toFixed(3)} µm`, el('br'),
-      'RA ', el('b', null, m.ra.toFixed(4)), ' Dec ', el('b', null, `${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(4)}`));
+      'RA ', el('b', null, (ra % 360).toFixed(4)), ' Dec ', el('b', null, `${dec >= 0 ? '+' : ''}${dec.toFixed(4)}`));
     say('');
     q('.match').hidden = true; q('.talk-form').hidden = false; sync();
     q('.close').focus();
@@ -175,8 +184,8 @@ export function discuss(page) {
   }
 
   const spotBody = () => {
-    const [m, f] = openOn;
-    return { ra: +(m.ra % 360).toFixed(4), dec: +m.dec.toFixed(4), det: m.detector, ...(m.channel != null ? { channel: m.channel + 1 } : {}),
+    const [m, f, [ra, dec]] = openOn;
+    return { ra: +(ra % 360).toFixed(4), dec: +dec.toFixed(4), det: m.detector, ...(m.channel != null ? { channel: m.channel + 1 } : {}),
       visit: { start: f.start, end: f.end ?? f.start, mjd: f.mjd, exposures: f.exposures, lam: f.lam, ...(f.epochs ? { epochs: f.epochs } : {}) } };
   };
   async function send(path, body) {
@@ -209,5 +218,5 @@ export function discuss(page) {
       window.turnstile?.reset?.();   // a token works once
     }
   }
-  return { frame, close };
+  return { frame, close, body: () => openOn && spotBody() };   // body: what Post would submit (for tests)
 }

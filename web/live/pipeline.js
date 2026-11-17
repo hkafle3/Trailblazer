@@ -186,13 +186,10 @@ function centroid(a, guess, r = 3) {
 
 const year = mjd => 2000 + (mjd - 51544.5) / 365.25;
 const date = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
-// the distinct moments in a visit: exposures less than 0.05 day (1.2 h) apart count as one, for the catalog check
-// (a visit spans days, and a known asteroid crosses the patch in hours, so one time per visit would miss it)
-const epochs = ts => {
-  const g = [];
-  for (const t of [...ts].sort((a, b) => a - b)) (g.length && t - g.at(-1).at(-1) < 0.05) ? g.at(-1).push(t) : g.push([t]);
-  return g.map(x => +(x.reduce((a, b) => a + b, 0) / x.length).toFixed(4));
-};
+// the visit's exposure times, each its own timestamp, for the catalog check: SkyBoT is asked at each, and a known
+// object can be the dot only where SkyBoT puts it at one of them (live/identity.js), never at an average of several
+// (a visit spans days and a known asteroid crosses the patch in hours). At most PER_VISIT a visit, so a few asks.
+const epochs = ts => [...new Set(ts)].sort((a, b) => a - b);
 
 // kept between builds: the latest request, the last image list of each detector (visits of images with their headers;
 // the Spectral card's layers can mix detectors), the wavelength maps, and the Gaia stars around the last spot asked
