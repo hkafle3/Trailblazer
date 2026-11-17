@@ -1,0 +1,367 @@
+{
+ "seed": "detector-v4-blind-2026-11-17",
+ "plant_seed": "detector-v4-blind-plants-2026-11-17",
+ "strata": [
+  [
+   "S1",
+   0,
+   30
+  ],
+  [
+   "S2",
+   30,
+   90
+  ],
+  [
+   "S3",
+   90,
+   150
+  ],
+  [
+   "S4",
+   150,
+   180
+  ]
+ ],
+ "fields": [
+  {
+   "field": "b01",
+   "stratum": "S1",
+   "l": 333.428,
+   "b": -9.579,
+   "ra": 257.2983,
+   "dec": -56.3109,
+   "role": "field"
+  },
+  {
+   "field": "b02",
+   "stratum": "S1",
+   "l": 9.816,
+   "b": 6.756,
+   "ra": 265.6736,
+   "dec": -17.0574,
+   "role": "field"
+  },
+  {
+   "field": "b03",
+   "stratum": "S1",
+   "l": 2.191,
+   "b": 3.75,
+   "ra": 264.13,
+   "dec": -25.095,
+   "role": "field"
+  },
+  {
+   "field": "b04",
+   "stratum": "S1",
+   "l": 350.104,
+   "b": -8.365,
+   "ra": 269.1359,
+   "dec": -41.6756,
+   "role": "field"
+  },
+  {
+   "field": "b05",
+   "stratum": "S1",
+   "l": 4.478,
+   "b": -4.16,
+   "ra": 273.0185,
+   "dec": -27.129,
+   "role": "field"
+  },
+  {
+   "field": "b06",
+   "stratum": "S1",
+   "l": 337.018,
+   "b": 7.534,
+   "ra": 241.3863,
+   "dec": -42.1393,
+   "role": "field"
+  },
+  {
+   "field": "b07",
+   "stratum": "S1",
+   "l": 357.998,
+   "b": -3.733,
+   "ra": 268.9495,
+   "dec": -32.564,
+   "role": "field"
+  },
+  {
+   "field": "b08",
+   "stratum": "S1",
+   "l": 16.969,
+   "b": -4.684,
+   "ra": 279.7348,
+   "dec": -16.331,
+   "role": "replacement"
+  },
+  {
+   "field": "b09",
+   "stratum": "S1",
+   "l": 16.149,
+   "b": -1.867,
+   "ra": 276.7399,
+   "dec": -15.7652,
+   "role": "replacement"
+  },
+  {
+   "field": "b10",
+   "stratum": "S2",
+   "l": 54.09,
+   "b": -8.777,
+   "ra": 300.8022,
+   "dec": 14.3527,
+   "role": "field"
+  },
+  {
+   "field": "b11",
+   "stratum": "S2",
+   "l": 66.341,
+   "b": 3.685,
+   "ra": 295.9266,
+   "dec": 31.2201,
+   "role": "field"
+  },
+  {
+   "field": "b12",
+   "stratum": "S2",
+   "l": 59.614,
+   "b": 1.195,
+   "ra": 294.6306,
+   "dec": 24.1457,
+   "role": "field"
+  },
+  {
+   "field": "b13",
+   "stratum": "S2",
+   "l": 298.159,
+   "b": -9.345,
+   "ra": 177.7377,
+   "dec": -71.6541,
+   "role": "field"
+  },
+  {
+   "field": "b14",
+   "stratum": "S2",
+   "l": 312.307,
+   "b": 5.614,
+   "ra": 209.7238,
+   "dec": -56.0245,
+   "role": "field"
+  },
+  {
+   "field": "b15",
+   "stratum": "S2",
+   "l": 71.873,
+   "b": 4.712,
+   "ra": 298.1914,
+   "dec": 36.5088,
+   "role": "field"
+  },
+  {
+   "field": "b16",
+   "stratum": "S2",
+   "l": 53.515,
+   "b": 3.276,
+   "ra": 289.5229,
+   "dec": 19.7813,
+   "role": "field"
+  },
+  {
+   "field": "b17",
+   "stratum": "S2",
+   "l": 319.296,
+   "b": -7.606,
+   "ra": 234.3397,
+   "dec": -65.0642,
+   "role": "replacement"
+  },
+  {
+   "field": "b18",
+   "stratum": "S2",
+   "l": 75.607,
+   "b": -4.936,
+   "ra": 310.5568,
+   "dec": 34.1805,
+   "role": "replacement"
+  },
+  {
+   "field": "b19",
+   "stratum": "S3",
+   "l": 231.763,
+   "b": -9.406,
+   "ra": 102.8449,
+   "dec": -20.9732,
+   "role": "field"
+  },
+  {
+   "field": "b20",
+   "stratum": "S3",
+   "l": 122.57,
+   "b": -3.86,
+   "ra": 12.1574,
+   "dec": 59.0093,
+   "role": "field"
+  },
+  {
+   "field": "b21",
+   "stratum": "S3",
+   "l": 244.591,
+   "b": 0.791,
+   "ra": 119.3277,
+   "dec": -27.4379,
+   "role": "field"
+  },
+  {
+   "field": "b22",
+   "stratum": "S3",
+   "l": 119.674,
+   "b": 5.295,
+   "ra": 4.1923,
+   "dec": 67.9471,
+   "role": "field"
+  },
+  {
+   "field": "b23",
+   "stratum": "S3",
+   "l": 256.255,
+   "b": -4.949,
+   "ra": 120.8173,
+   "dec": -40.3681,
+   "role": "field"
+  },
+  {
+   "field": "b24",
+   "stratum": "S3",
+   "l": 215.553,
+   "b": 5.258,
+   "ra": 108.7328,
+   "dec": 0.0725,
+   "role": "field"
+  },
+  {
+   "field": "b25",
+   "stratum": "S3",
+   "l": 253.985,
+   "b": -8.79,
+   "ra": 114.9735,
+   "dec": -40.3402,
+   "role": "field"
+  },
+  {
+   "field": "b26",
+   "stratum": "S3",
+   "l": 100.723,
+   "b": 0.318,
+   "ra": 330.6837,
+   "dec": 55.7386,
+   "role": "replacement"
+  },
+  {
+   "field": "b27",
+   "stratum": "S3",
+   "l": 247.63,
+   "b": 1.25,
+   "ra": 121.6035,
+   "dec": -29.7726,
+   "role": "replacement"
+  },
+  {
+   "field": "b28",
+   "stratum": "S4",
+   "l": 164.983,
+   "b": -1.565,
+   "ra": 74.4099,
+   "dec": 40.4035,
+   "role": "field"
+  },
+  {
+   "field": "b29",
+   "stratum": "S4",
+   "l": 159.448,
+   "b": 6.105,
+   "ra": 78.3514,
+   "dec": 49.439,
+   "role": "field"
+  },
+  {
+   "field": "b30",
+   "stratum": "S4",
+   "l": 159.012,
+   "b": -1.814,
+   "ra": 68.8932,
+   "dec": 44.7883,
+   "role": "field"
+  },
+  {
+   "field": "b31",
+   "stratum": "S4",
+   "l": 207.382,
+   "b": -4.533,
+   "ra": 96.2882,
+   "dec": 2.8527,
+   "role": "field"
+  },
+  {
+   "field": "b32",
+   "stratum": "S4",
+   "l": 169.578,
+   "b": 1.557,
+   "ra": 81.1944,
+   "dec": 38.5459,
+   "role": "field"
+  },
+  {
+   "field": "b33",
+   "stratum": "S4",
+   "l": 191.24,
+   "b": 7.326,
+   "ra": 99.5265,
+   "dec": 22.6073,
+   "role": "field"
+  },
+  {
+   "field": "b34",
+   "stratum": "S4",
+   "l": 160.753,
+   "b": 3.776,
+   "ra": 76.6802,
+   "dec": 47.0146,
+   "role": "field"
+  },
+  {
+   "field": "b35",
+   "stratum": "S4",
+   "l": 179.899,
+   "b": -0.554,
+   "ra": 85.8058,
+   "dec": 28.7319,
+   "role": "replacement"
+  },
+  {
+   "field": "b36",
+   "stratum": "S4",
+   "l": 157.55,
+   "b": -7.897,
+   "ra": 61.5813,
+   "dec": 41.5156,
+   "role": "replacement"
+  }
+ ],
+ "rejected": [
+  {
+   "stratum": "S3",
+   "l": 231.469,
+   "b": -9.68,
+   "excluded": "within 1.5 deg of a kept field"
+  },
+  {
+   "stratum": "S4",
+   "l": 179.071,
+   "b": -0.426,
+   "excluded": "within 1.5 deg of a kept field"
+  }
+ ],
+ "detector_commit": "734dc40"
+}
