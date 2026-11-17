@@ -9,7 +9,7 @@ The "How this map was made" button replays it over a panned and zoomed map on an
 (edges within 2 px, the view and the day unchanged, focus back on the button). Skip and Escape end it within 4 s, and
 Skip works before the film has loaded. Reduced motion: sixteen stills with sixteen captions and a Next button, no animation.
 The film's own scenes are checked from the pixels it really draws (frame by frame through ?intro=rec): the flight down the
-beam is under way, asteroid Sheba's pixel is one lit square among dark ones, the deck of colors shows its sheets and the
+beam passes two rocks, two stars and a galaxy as solid bodies in order of distance, asteroid Sheba's pixel is one lit square among dark ones, the deck of colors shows its sheets and the
 comet's blaze, and the cut back from the deck lands on the first photo. Leaving the page while it loads (pagehide, and a
 real navigation away and back) takes the film off at once and it does not come back.
 Run: uv run -q --with playwright python web/tests/intro_ui.py [base url]   (default http://127.0.0.1:8787)"""
@@ -175,26 +175,56 @@ async def run(b, name, opts):
     e0, e1 = (await probe(u0))["photoEdges"], (await probe(u1))["photoEdges"]
     w0, w1 = abs(e0[0][0] - e0[1][0]), abs(e1[0][0] - e1[1][0])
     assert 10 < w0 < .5 * w1 and w1 > .5 * vw * (1 if name == "phone" else .4), f"{name}: the flight does not close in on the photo: {w0:.0f} px wide half way, {w1:.0f} px at the end"
-    # Sample the drawn rings as the two asteroids and two stars approach, then disappear in distance order.
+    # The bodies. Each of the five (two rocks, two stars, a galaxy) is flown past as a solid body, held in view for a
+    # while as it grows, and left behind, in order of distance. Checked on the pixels drawn: a rock is lit across its
+    # face (a ring would be empty in the middle) and stands out from the sky; a star is bright and warmer than white, the
+    # cooler star the warmer of the two (their real Gaia colors); the galaxy's photo is bright at its heart and fades
+    # to nothing at its edge. Between bodies the speed lines come on, and they are off while a body is held.
     flight = []
-    for i in range(85):
-        u = m["FLY0"] + (m["FLY1"] - m["FLY0"]) * i / 84
-        flight.append((u, sorted((await probe(u))["flight"], key=lambda b: b["au"])))
-    passed = []
-    for j in range(4):
-        obj = flight[0][1][j]["name"]
-        samples = [(u, bs[j]) for u, bs in flight if bs[j]["visible"] and 8 <= bs[j]["px"] <= 100
-                   and all(bs[j]["px"] / 2 + 3 < p < lim - bs[j]["px"] / 2 - 3 for p, lim in zip(bs[j]["at"], (vw, vh)))]
-        assert len(samples) >= 3, f"{name}: {obj} never visibly approaches during the flight"
-        assert samples[-1][1]["px"] > 1.5 * samples[0][1]["px"], f"{name}: {obj} does not grow as it approaches"
-        for u, bead in (samples[0], samples[len(samples) // 2], samples[-1]):
-            x, y = bead["at"]; r = .375 * bead["px"]
-            ring = await look(u, [[x + r, y], [x - r, y], [x, y + r], [x, y - r]], 1)
-            assert sum(g[1] > 100 for g in ring) >= 3, f"{name}: {obj}'s approaching ring is not drawn at {u:.2f}s: {ring}"
-        after = [u for u, bs in flight if u > samples[-1][0] and not bs[j]["visible"]]
-        assert after, f"{name}: {obj} never passes the camera"
-        passed.append(after[0])
-    assert all(a < b for a, b in zip(passed, passed[1:])), f"{name}: flight objects pass out of distance order: {passed}"
+    for i in range(221):
+        u = m["FLY0"] + (m["FLY1"] - m["FLY0"]) * i / 220; p = await probe(u)
+        flight.append((u, sorted(p["flight"], key=lambda b: b["au"]), p["rush"]))
+    assert [b["kind"] for b in flight[0][1]] == ["asteroid", "asteroid", "star", "star", "galaxy"], f"{name}: the flight's bodies: {flight[0][1]}"
+    assert not any(b["ring"] for _, bs, _ in flight for b in bs), f"{name}: a ring is drawn during the flight"
+    mean = lambda gs: sum(g[0] for g in gs) / len(gs)
+    passed, warmth, held = [], [], []
+    for j in range(5):
+        obj, kind = flight[0][1][j]["name"], flight[0][1][j]["kind"]
+        size = lambda b: b["r"] * (.4 if kind == "galaxy" else 1)   # the galaxy's own light fills the middle of its photo
+        seen = [(u, bs[j], rush) for u, bs, rush in flight if bs[j]["drawn"] and bs[j]["front"] and size(bs[j]) >= (18 if name == "phone" else 28)
+                and all(size(bs[j]) + 3 < q < lim - size(bs[j]) - 3 for q, lim in zip(bs[j]["at"], (vw, vh)))]
+        assert seen and seen[-1][0] - seen[0][0] >= .5, f"{name}: {obj} is not held in view as a body for half a second: {[round(u, 2) for u, *_ in seen]}"
+        assert size(seen[-1][1]) > 1.5 * size(seen[0][1]), f"{name}: {obj} does not grow as it is approached"
+        u, bead, rush = seen[len(seen) // 2]; (x, y), r = bead["at"], bead["r"]
+        assert rush < .05, f"{name}: the speed lines are on while {obj} is held ({rush:.2f} at {u:.2f}s)"
+        ring = lambda k: [[x + k * r, y], [x - k * r, y], [x, y + k * r], [x, y - k * r]]
+        if kind == "asteroid":
+            face, sky = await look(u, [[x, y]] + ring(.45), 2), await look(u, ring(1.9), 2)
+            assert sum(g[0] > 22 for g in face) >= 4 and mean(face) > 2 * mean(sky), f"{name}: {obj} is not a lit, solid body at {u:.2f}s: face {face}, sky round it {sky}"
+        elif kind == "star":
+            (core,), near, out = await look(u, [[x, y]], max(1, r / 4)), await look(u, ring(1.5), 2), await look(u, ring(7), 2)
+            red, green, blue = core[2]
+            assert core[0] > 170 and red > green > blue, f"{name}: {obj} is not a bright disc warmer than white at {u:.2f}s: {core}"
+            assert mean(near) > 1.5 * mean(out), f"{name}: {obj} has no glow round it at {u:.2f}s: {near} against {out}"
+            warmth.append(blue / red)
+        else:
+            (heart,), edge = await look(u, [[x, y]], 3), await look(u, ring(.92), 2)
+            assert heart[1] > 150 and mean(edge) < .35 * heart[0], f"{name}: {obj}'s photo is not bright at its heart and dark at its edge at {u:.2f}s: {heart}, {edge}"
+        after = [v for v, bs, _ in flight if v > seen[-1][0] and not bs[j]["front"]]
+        assert after, f"{name}: {obj} is never left behind"
+        passed.append(after[0]); held.append(seen[-1][0] - seen[0][0])
+    assert all(a < b for a, b in zip(passed, passed[1:])), f"{name}: the bodies are passed out of distance order: {passed}"
+    assert warmth[0] < warmth[1] - .02, f"{name}: the 4,850 K star should be drawn warmer than the 5,960 K one (blue over red {warmth})"
+    assert max(rush for *_, rush in flight) > .8, f"{name}: the speed lines never come on"
+    # the speed lines run out from the point the camera flies towards. Round a circle about it, count the places lit at
+    # three steps outwards at once (a line along the radius, not a speck of the sky): many in the rush, few before the camera has moved off
+    async def streaks(u):
+        ed = (await probe(u))["photoEdges"]; cx, cy, rad = sum(q[0] for q in ed) / 4, sum(q[1] for q in ed) / 4, .3 * min(vw, vh); n = int(6.283 * rad)
+        g = await look(u, [[cx + (rad + d) * math.cos(6.283 * i / n), cy + (rad + d) * math.sin(6.283 * i / n)] for i in range(n) for d in (0, 6, 12)], 1)
+        return sum(all(g[3 * i + k][1] > 35 for k in range(3)) for i in range(n))
+    rest = flight[10]; assert rest[2] < .01 and all(b["r"] < 20 for b in rest[1]), f"{name}: the flight should not have moved off by {rest[0]:.2f}s: {rest}"
+    lines, still = await streaks(next(u for u, _, rush in flight if rush > .8)), await streaks(rest[0])
+    assert lines > 2 * still + 20, f"{name}: no speed lines are drawn in the rush: {lines} places against {still} at rest"
     # Sheba: pushed in, its pixel is a lit square and the pixels two away on every side are dark
     u = m["SH_U"] + 3; p = await probe(u); (sx, sy), px = p["sheba"], p["pixel"]
     assert 12 < px < 40, f"{name}: a detector pixel is {px:.1f} window px wide at the push-in"
@@ -218,7 +248,7 @@ async def run(b, name, opts):
     got = await look(u, ed, 3)
     assert all(g[1] > 110 for g in got), f"{name}: back from the deck the photo's edge is not drawn: {got}"
     await pg.context.close()
-    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px), Sheba is one lit pixel ({px:.0f} px wide), the deck shows {peaks} sheet edges, {d['dashed']} empty sheets and the comet's blaze, and the cut back lands on the photo")
+    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px) past five bodies in order (each held {min(held):.1f} to {max(held):.1f} s; blue over red {warmth[0]:.2f} for the cooler star, {warmth[1]:.2f} for the hotter; {lines} speed lines crossed in the rush, {still} at rest), Sheba is one lit pixel ({px:.0f} px wide), the deck shows {peaks} sheet edges, {d['dashed']} empty sheets and the comet's blaze, and the cut back lands on the photo")
 
     # ---- leaving the page while the film loads: it is taken off at once and does not come back ----
     pg = await page(b, opts, errs, seen_tour=True)

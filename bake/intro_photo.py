@@ -4,10 +4,13 @@
                direction c + u e + v f with u, v = -1..1 across and down, f = c x e. 2048 px, about the photo's own pixels.
   sheba.png    the photo's own pixels around asteroid Sheba (192 x 192 detector pixels, the stretch of photo.jpg), for the
                film's push-in; photo.json "zoom" says where its four corners sit in the square.
+  galaxy.jpg   the galaxy in the photo as the Sloan Digital Sky Survey saw it (SkyServer DR18 colour cutout, 72 arcseconds
+               wide, north up, east left; CC-BY, credit Sloan Digital Sky Survey), for the film's flight past it.
   photo.json   the wavelength of every point of that square (a fit to web/data/wavemaps.json D1), where known things
                sit in it and how far away they are, the star the film follows and its measured spectrum.
 Real distances: asteroids from IMCCE SkyBoT at the photo's time (geocentric), stars from Gaia DR3 parallaxes (IRSA),
 the galaxy from its redshift in the 2MASS Redshift Survey (Huchra et al. 2012, VizieR J/ApJS/199/26) with H0 = 70 km/s/Mpc.
+Real star colours: each star's Gaia DR3 temperature (teff_gspphot), turned into the colour of a black body that hot.
 The star's spectrum comes from bake/intro_spectrum.py (the app's own measurement code). Inputs are kept in
 bake/cache/intro/ and fetched when missing (the photo is 65 MB).
 Run: uv run -q --with astropy --with numpy --with pillow --with certifi python bake/intro_photo.py"""
@@ -38,6 +41,17 @@ def cached(name, url, data=None):
         print("fetching", name, flush=True); CACHE.mkdir(parents=True, exist_ok=True)
         with urllib.request.urlopen(urllib.request.Request(url, data=data, headers={"User-Agent": "intro-bake/1"}), timeout=600, context=ssl.create_default_context(cafile=certifi.where())) as r: p.write_bytes(r.read())
     return p
+
+
+def blackbody_rgb(teff):
+    """sRGB colour (0..1, brightest channel 1) of a black body: Planck's law through the CIE 1931 observer
+    (the analytic fit of Wyman, Sloan and Shirley 2013), then the sRGB matrix and curve."""
+    lam = np.arange(380.0, 781.0, 1.0); g = lambda mu, s1, s2: np.exp(-.5 * ((lam - mu) / np.where(lam < mu, s1, s2)) ** 2)
+    x = 1.056 * g(599.8, 37.9, 31.0) + .362 * g(442.0, 16.0, 26.7) - .065 * g(501.1, 20.4, 26.2)
+    y = .821 * g(568.8, 46.9, 40.5) + .286 * g(530.9, 16.3, 31.1); z = 1.217 * g(437.0, 11.8, 36.0) + .681 * g(459.0, 26.0, 13.8)
+    B = (lam * 1e-9) ** -5 / np.expm1(1.438777e-2 / (lam * 1e-9 * teff)); X, Y, Z = (float((B * c).sum()) for c in (x, y, z))
+    rgb = np.clip(np.array([[3.2406, -1.5372, -.4986], [-.9689, 1.8758, .0415], [.0557, -.2040, 1.0570]]) @ [X, Y, Z], 0, None); rgb /= rgb.max()
+    return [round(float(v), 3) for v in np.where(rgb <= .0031308, 12.92 * rgb, 1.055 * rgb ** (1 / 2.4) - .055)]
 
 
 def ecl(ra, dec):
@@ -116,22 +130,30 @@ tbl = cached("gaia.tbl", "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?
 for l in tbl.splitlines():
     if l.strip() and l[0] not in "\\|":
         p = l.split(); gaia[p[0]] = dict(ra=float(p[1]), dec=float(p[2]), plx=float(p[5]), plx_err=float(p[6]), g=float(p[7]))
+for l in cached("gaia_color.tbl", "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?" + urllib.parse.urlencode(
+    {"catalog": "gaia_dr3_source", "spatial": "NONE", "outfmt": "1", "selcols": "source_id,bp_rp,teff_gspphot", "constraints": f"source_id in ({','.join(SHOW['star'])})"})).read_text().splitlines():
+    if l.strip() and l[0] not in "\\|": p = l.split(); gaia[p[0]].update(bp_rp=float(p[-2]), teff=float(p[-1]))
 gal = next(l.split("\t") for l in cached("2mrs.tsv", f"https://vizier.cfa.harvard.edu/viz-bin/asu-tsv?-source=J/ApJS/199/26/table3&-c={ra0:.3f}+{dec0:.3f}&-c.rd=2.6&-out.all&-out.max=200").read_text().splitlines() if GALAXY in l)
 # 2MRS table3 columns: _r recno ID A RAJ2000 DEJ2000 ... cz is the 28th, its source the 31st
 gra, gdec, cz = float(gal[4]), float(gal[5]), float(gal[27])
 
+GAL_ARCSEC, GAL_PX = 72, 400
+(OUT / "galaxy.jpg").write_bytes(cached("galaxy_sdss.jpg", f"https://skyserver.sdss.org/dr18/SkyServerWS/ImgCutout/getjpeg?ra={gra}&dec={gdec}&scale={GAL_ARCSEC / GAL_PX}&width={GAL_PX}&height={GAL_PX}").read_bytes())
+
 objects = []
-def add(kind, name, ra_dec_or_uv, au, dist, src):
-    u, v = ra_dec_or_uv; objects.append(dict(kind=kind, name=name, u=round(float(u), 4), v=round(float(v), 4), au=au, dist=dist, snr=snr(u, v), src=src))
+def add(kind, name, ra_dec_or_uv, au, dist, src, **more):
+    u, v = ra_dec_or_uv; objects.append(dict(kind=kind, name=name, u=round(float(u), 4), v=round(float(v), 4), au=au, dist=dist, snr=snr(u, v), src=src, **more))
 for nm in SHOW["asteroid"]:
     b = next(b for b in bodies if b["name"] == nm)
     add("asteroid", f"asteroid {b['name']}", (b["u"], b["v"]), round(b["au"], 3), f"{b['au']:.1f} AU", f"IMCCE SkyBoT ({b['cls']}, number {b['num']})")
 for sid in SHOW["star"]:
     s = gaia[sid]; ly = 3261.56 / s["plx"]; rel = s["plx_err"] / s["plx"]
     txt = f"{round(ly, -2 if ly > 3000 else (-1 if ly > 1000 else 0)):,.0f} light-years"
-    add("star", "the star we follow" if sid == STAR else "star", uv(s["ra"], s["dec"]), round(ly * AU_PER_LY), txt, f"Gaia DR3 {sid}, parallax {s['plx']} +- {s['plx_err']} mas ({rel:.0%})")
+    add("star", "the star we follow" if sid == STAR else "star", uv(s["ra"], s["dec"]), round(ly * AU_PER_LY), txt, f"Gaia DR3 {sid}, parallax {s['plx']} +- {s['plx_err']} mas ({rel:.0%})",
+        teff=round(s["teff"]), bp_rp=round(s["bp_rp"], 3), rgb=blackbody_rgb(s["teff"]))
 mly = cz / H0 * LY_PER_MPC / 1e6
-add("galaxy", "galaxy", uv(gra, gdec), round(mly * 1e6 * AU_PER_LY), f"{round(mly, -1):.0f} million light-years", f"2MASX J{GALAXY}, cz {cz:.0f} km/s (2MRS, {gal[30].strip()}), H0 {H0:.0f}")
+add("galaxy", "galaxy", uv(gra, gdec), round(mly * 1e6 * AU_PER_LY), f"{round(mly, -1):.0f} million light-years", f"2MASX J{GALAXY}, cz {cz:.0f} km/s (2MRS, {gal[30].strip()}), H0 {H0:.0f}",
+    ra=gra, dec=gdec, image=dict(file="galaxy.jpg", arcsec=GAL_ARCSEC, credit="Sloan Digital Sky Survey", src="SDSS DR18 SkyServer ImgCutout, CC-BY"))
 objects.sort(key=lambda o: o["au"])
 
 # ---- the photo's own pixels around one asteroid: no resampling, the same stretch as photo.jpg ----
