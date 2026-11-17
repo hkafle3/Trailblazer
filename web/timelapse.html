@@ -750,10 +750,18 @@ function identityAt(m, f) {
   // a passer can be the dot only where SkyBoT put it at one of this visit's exposure times (f.epochs, the live pipeline's
   // own timestamps); a baked visit has none, so its one time (the visit's middle) can make a passer nearby at most
   const exp = new Set(f.epochs ?? []), place = ([, ra, dec]) => offset(m, ra, dec);
-  const passers = [...(f.known?.bodies ?? [])].map(([name, b]) => {
+  let passers = [...(f.known?.bodies ?? [])].map(([name, b]) => {
     const at = b.pts.filter(p => exp.has(p[0]));
     return { kind: b.kind, name, mag: b.mag, at, pos: at.map(place), near: b.pts.filter(p => !exp.has(p[0])).map(place) };
   });
+  // opened from a comet's page (&comet= with &t=): in the visit with that exposure the comet is at the patch centre, the
+  // place its page gave (JPL Horizons as SPHEREx saw it). SkyBoT's own orbit can put it a minute of arc away (C/2026 A2:
+  // 60 arcsec), so under SkyBoT's name for it (C/2026 A2 for "C/2026 A2 (Bok)") this place stands in for SkyBoT's
+  if (m.comet && f.at_t) {
+    const sb = passers.find(p => p.kind === 'comet' && (m.comet === p.name || m.comet.startsWith(p.name + ' ') || m.comet.startsWith(p.name + '/')));
+    passers = passers.filter(p => p !== sb);
+    passers.push({ kind: 'comet', name: sb?.name ?? m.comet, mag: sb?.mag ?? null, at: [[m.t, m.ra, m.dec]], pos: [[0, 0]], near: [] });
+  }
   const star = identify(mid, stars, a), pass = identify(mid, passers, a);
   // a passer on the dot: the exposure it matched at (t, for the Discuss sheet) and its place then (the target's place)
   if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.at[k][0]; p.place = p.pos[k]; }
@@ -1132,7 +1140,7 @@ function search(ra, dec, det, opts = {}) {
   const ch = spMain(), c = CHANNELS[ch];   // the Spectral dial's channel picks the detector; null: the best-covered wavelength
   if (c) document.getElementById('det').value = det = c.detector;
   // opts.t (a known comet's page): open on the visit with the exposure taken then (MJD), its centre ringed (pipeline.js)
-  const tq = opts.t != null ? `&t=${opts.t}` : '';
+  const tq = opts.t != null ? `&t=${opts.t}${opts.comet ? `&comet=${encodeURIComponent(opts.comet)}` : ''}` : '';   // &comet=: whose page
   const key = `${ra.toFixed(4)},${dec.toFixed(4)},${det}${c ? `@${ch}` : ''}${tq}`, query = `?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}${spQuery()}${tq}`;
   if (live.has(key)) { cancel(); setStatus(''); return show(remember(key, live.get(key)), query, opts); }
   const t0 = performance.now(), id = job = ++builds;
@@ -1165,7 +1173,7 @@ function search(ra, dec, det, opts = {}) {
     else if (m.type === 'error') fail(`${brief(m.error)}.`, ' The examples on the Explore page always work.', m.error);
     else if (m.type === 'done') {
       job = 0;
-      remember(key, prep(Object.assign(m.manifest, { channel: c ? ch : null, t: opts.t })));
+      remember(key, prep(Object.assign(m.manifest, { channel: c ? ch : null, t: opts.t, comet: opts.comet })));
       const secs = ((performance.now() - t0) / 1000).toFixed(1), n = m.manifest.frames.length;
       setStatus(c ? `${n} of ${m.manifest.visits_all} visits have channel ${ch + 1}, built in ${secs} s` : `${n} visits, built in ${secs} s from NASA's public SPHEREx copy`);
       show(live.get(key), query, opts);
@@ -1224,7 +1232,7 @@ function spSync() {
   // a baked target is one fixed wavelength: a channel asks for that spot live
   // with no channel, the band in the Band box (it follows the dial, and a Band change sets it)
   if (ch !== (m.channel ?? null) || (ch != null && !m.key.startsWith('live'))) return search(m.ra, m.dec, ch == null ? document.getElementById('det').value : m.detector, { keep: true });
-  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}${specQ()}`);
+  if (m.key.startsWith('live')) history.replaceState(null, '', `?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}&det=${m.detector}${spQuery()}${m.t != null ? `&t=${m.t}${m.comet ? `&comet=${encodeURIComponent(m.comet)}` : ''}` : ''}${found ? `&found=${encodeURIComponent(found)}` : ''}${specQ()}`);
   const spot = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, have = [], missing = [], missed = [];
   for (const { n, detector } of state.spectral) {
     const lm = n === ch ? m : live.get(`${spot},${detector}@${n}`);
@@ -1761,7 +1769,7 @@ spRestore();
 if (P.has('ra') && P.has('dec')) {
   const det = /^D[1-6]$/.test(P.get('det')) ? P.get('det') : 'D1';
   document.getElementById('coords').value = `${P.get('ra')} ${P.get('dec')}`; document.getElementById('det').value = det;
-  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
+  search(Number(P.get('ra')), Number(P.get('dec')), det, { diff: P.get('diff') === '1', ...(P.get('t') > 0 ? { t: +P.get('t'), comet: P.get('comet') } : {}), ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 } else if (TARGETS.some(t => t.key === P.get('target'))) select(P.get('target'), { diff: P.get('diff') === '1', ...(P.get('day') >= 0 && P.has('day') ? { day: +P.get('day') } : {}) });
 else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends it when a dive is likely ('dive-go')
   setMode('lapse');

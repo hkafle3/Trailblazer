@@ -5,9 +5,11 @@ On a measured comet (C/2026 A2 (Bok), baked photos) and a catalog-only one (C/20
 and on a phone (390x844):
 - the control sits under the photo player, visible;
 - its link carries the photo on screen: the comet's position then (a measured photo's own ra, dec and the detector in its
-  file name; a catalog visit's middle exposure, on D1), and its time;
+  file name; a catalog visit's middle exposure, on D1), its time and the comet's name;
 - stepping the timeline moves the link to the next photo;
 - following it opens the time-lapse on that exposure, the white ring within 2 px of the comet's position for it;
+- the time-lapse names the dot as that comet (the identity rule, 2 px, from the link's place, not SkyBoT's, which is
+  60 arcsec off for C/2026 A2), says it is already known, and does not invite a report of a new find;
 - the Depth tab draws its beam (a canvas that is not blank);
 - no page or console errors."""
 import asyncio, math, sys, urllib.parse
@@ -51,10 +53,10 @@ def expected(detail):   # what each photo in the player's order should link to: 
 
 def parse(href):
     q = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
-    return float(q["ra"][0]), float(q["dec"][0]), q["det"][0], float(q["t"][0])
+    return float(q["ra"][0]), float(q["dec"][0]), q["det"][0], float(q["t"][0]), q.get("comet", [None])[0]
 
 
-same = lambda h, e: h[2] == e[2] and all(abs(x - y) < 1e-4 for x, y in zip(h[:2] + h[3:], e[:2] + e[3:]))
+same = lambda h, e: h[2] == e[2] and all(abs(x - y) < 1e-4 for x, y in zip(h[:2] + h[3:4], e[:2] + e[3:4]))
 
 
 async def run(b, cid, size, kw):
@@ -86,7 +88,7 @@ async def run(b, cid, size, kw):
     knob = pg.locator(".player .tl-knob"); await knob.focus(); await knob.press("ArrowRight"); await pg.wait_for_timeout(200)
     j = int(await pg.evaluate("document.querySelector('.player').dataset.i"))
     h = parse(await link.get_attribute("href"))
-    check(j != i and same(h, want[j]), f"{tag}: stepping the timeline moves the link to photo {j + 1} {h}")
+    check(j != i and same(h, want[j]) and h[4] == cid, f"{tag}: stepping the timeline moves the link to photo {j + 1} {h}")
     await link.click()
     await pg.wait_for_url("**/timelapse*")
     await pg.wait_for_function(READY, timeout=240000); await pg.wait_for_timeout(800)
@@ -94,6 +96,14 @@ async def run(b, cid, size, kw):
     off = math.dist(r["ring"], r["at"]) if r["ring"] else None
     check(r["at_t"] and r["ringed"] and r["white"] >= 6 and off is not None and off <= 2,
           f"{tag}: the time-lapse opens on that exposure, ring {off if off is None else round(off, 2)} px from the comet ({r})")
+    # what the page says about the dot, once SkyBoT has answered for every exposure (or after 2 minutes)
+    try: await pg.wait_for_function("(t => t && !/checking/i.test(t))(document.getElementById('vKnown')?.textContent)", timeout=120000)
+    except Exception: pass
+    say, note = await pg.evaluate("['pv-say', 'state-note'].map(i => document.getElementById(i).textContent)")
+    names = (cid, cid.split(" (")[0])   # the page's id, or SkyBoT's name for it (C/2026 A2)
+    check(any(f"The dot in the middle matches the known comet {n}." in say for n in names) and "too far to be it" not in say
+          and "already known, so there is nothing to report" in note and "Tells other hunters" not in note,
+          f"{tag}: the time-lapse names the dot as the comet, already known, no report invitation: '{say}' / '{note}'")
     await pg.click("#tab-depth")
     lit = 0
     for _ in range(60):
