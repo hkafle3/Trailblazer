@@ -130,7 +130,8 @@ function aimAt() {
   if (dive?.phase === 'ready' && dive.ra != null && (!c || round4(c[0]) !== dive.ra || round4(c[1]) !== dive.dec)) drop();   // the view moved: that spot is off
   if (dive && dive.phase !== 'ready') return;
   const on = !!c && view.atMax();
-  go.style.visibility = at ? 'hidden' : '';   // the button opens the middle: it shows only while the aim is there
+  // the button opens the middle: it shows only while the aim is there (faded, not hidden, so keyboard focus stays on it)
+  go.style.opacity = at ? '0' : ''; go.style.pointerEvents = at ? 'none' : '';
   if (aim.hidden === on) { aim.hidden = !on; if (!on) { clearTimeout(pushT); setPush(0); } }
   if (!on) { if (dive) drop(); return; }   // away from the deepest zoom a loaded page is let go
   const [x, y] = aimPt();
@@ -139,20 +140,32 @@ function aimAt() {
 view.onView(() => { aimAt(); clearTimeout(saveQ); saveQ = setTimeout(save, 300); });
 addEventListener('resize', () => setTimeout(aimAt));   // after the map files have re-measured
 
-// the wheel: only a scroll that starts at the deepest zoom adds up (capture, so this runs before the map zooms)
-// A scroll ends when a timer set at its last wheel event runs out, not by comparing event times: when the page is busy
-// Chrome holds wheel events back and delivers them before any timer, so a stall in the middle of one scroll cannot
-// pass for a pause.
-let resting = true, restT = 0, wheelOk = false;
-addEventListener('wheel', e => {
-  if (!view.A || !view.overMap(e) || (dive && dive.phase !== 'ready')) return;
-  if (resting) wheelOk = view.atMax() && !!view.skyAt(e.clientX, e.clientY);
+// the wheel and Safari's trackpad pinch: only a zoom that starts at the deepest zoom adds up (capture, so this runs
+// before the map zooms). A scroll ends when a timer set at its last wheel event runs out, not by comparing event times:
+// when the page is busy Chrome holds wheel events back and delivers them before any timer, so a stall in the middle of
+// one scroll cannot pass for a pause. A Safari pinch is one gesture from gesturestart.
+let resting = true, restT = 0, zoomOk = false;
+function zoomIn(k, x, y) {   // k: how much zoom is asked for at window point (x, y), as a log (in > 0)
+  if (resting) zoomOk = view.atMax() && !!view.skyAt(x, y);
   resting = false; clearTimeout(restT); restT = setTimeout(() => { resting = true; }, GAP);
+  if (k <= 0 || !zoomOk || !view.atMax()) { if (k < 0) zoomOk = false; if (push) { clearTimeout(pushT); setPush(0); } return; }
+  if (!push) { at = [x, y]; aimAt(); }   // the dive goes to the sky under the pointer as this zoom began
+  pushBy(k / PUSH);
+}
+const zoomable = e => view.A && view.overMap(e) && !(dive && dive.phase !== 'ready');
+addEventListener('wheel', e => {
+  if (!zoomable(e)) return;
   const dy = Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1)));
-  if (dy >= 0 || !wheelOk || !view.atMax()) { if (dy > 0) wheelOk = false; if (push) { clearTimeout(pushT); setPush(0); } return; }
-  if (!push) { at = [e.clientX, e.clientY]; aimAt(); }   // the dive goes to the sky under the pointer as this zoom began
-  pushBy(-dy * (e.ctrlKey ? .01 : .002) / PUSH);
+  zoomIn(-dy * (e.ctrlKey ? .01 : .002), e.clientX, e.clientY);
 }, { capture: true, passive: true });
+// Safari: e.scale since the gesture began. With fingers on a touch screen the pinch below counts instead
+let gestureScale = 1;
+addEventListener('gesturestart', e => { if (zoomable(e) && !fingers.size) { gestureScale = 1; resting = true; } }, true);
+addEventListener('gesturechange', e => {
+  if (!zoomable(e) || fingers.size || !(e.scale > 0)) return;
+  const k = Math.log(e.scale / gestureScale); gestureScale = e.scale;
+  zoomIn(k, e.clientX, e.clientY);
+}, true);
 // in flight: the wheel and Safari's pinch land on the cover over everything (see the top of this file)
 for (const type of ['wheel', 'gesturestart', 'gesturechange']) addEventListener(type, e => { if (dive && (dive.phase === 'in' || dive.phase === 'out')) e.preventDefault(); }, { passive: false });
 
@@ -164,8 +177,9 @@ stageEl.addEventListener('pointerdown', e => {
   if (e.pointerType !== 'touch' || e.target.closest('.tl')) return;
   fingers.set(e.pointerId, [e.clientX, e.clientY]);
   const [a, b] = [...fingers.values()], c = fingers.size === 2 ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : null;   // between the fingers
+  const was = pinch;
   pinch = c && view.A && view.atMax() && view.skyAt(...c) && !(dive && dive.phase !== 'ready') ? { d0: spread() } : null;
-  if (pinch) { at = c; aimAt(); }
+  if (pinch) { at = c; aimAt(); } else if (was) setPush(0);   // a third finger ends the pinch: the aim goes back
 }, true);
 addEventListener('pointermove', e => {
   if (!fingers.has(e.pointerId)) return;

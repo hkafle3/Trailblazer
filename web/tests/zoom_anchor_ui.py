@@ -8,8 +8,10 @@ visualViewport.scale stays 1; a pinch that starts at the deepest zoom dives to t
 readout's coordinates), and the page does not zoom while the dive flies, even as the pinch carries on; a scroll that
 dives does the same at another point; after an off-centre dive, or an off-centre zoom that stops short, the map is drawn
 where the engine's numbers put it; "Dive in" after a partial off-centre scroll opens the middle; with the middle of the
-view off the sky oval (near the north pole), a pinch over sky dives there, and a second one does too; a Safari trackpad pinch (gesture events, dispatched here as plain events, so only
-the page's handling is checked) is prevented and zooms around the pointer too.
+view off the sky oval (near the north pole), a pinch over sky dives there, and a second one does too; a Safari trackpad
+pinch (gesture events, dispatched here as plain events, so only the page's handling is checked) is prevented, zooms
+around the pointer, and at the deepest zoom dives to the sky under it; on a phone, a pinch at the deepest zoom that a
+third finger ends puts the aim and "Dive in" back in the middle.
 Run: uv run -q --with playwright python web/tests/zoom_anchor_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, re, sys
 from playwright.async_api import async_playwright
@@ -238,6 +240,56 @@ async def safari(p):
     off = await pg.evaluate(OFF, [x, y, *a["sky"]])
     check("Safari pinch: gesture events over the map are prevented", all(r), str(r))
     check("Safari pinch: it zooms 1.5x around the pointer", abs(b["W"] / a["W"] - 1.5) < 0.01 and off < 2, f"x{b['W'] / a['W']:.3f}, {off:.2f} px off")
+
+    # at the deepest zoom a new Safari pinch dives, to the sky under the pointer
+    await scroll(pg, x, y, 40)
+    await asyncio.sleep(0.4)
+    here = (await pg.evaluate(SKY, [x, y]))["sky"]
+    await pg.evaluate("""([x, y]) => { const el = document.elementFromPoint(x, y);
+      for (const [type, scale] of [['gesturestart', 1], ['gesturechange', 1.3], ['gesturechange', 1.8], ['gesturechange', 2.5], ['gesturechange', 3.2]]) {
+        const e = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(e, { scale: { value: scale }, clientX: { value: x }, clientY: { value: y } });
+        el.dispatchEvent(e); } }""", [x, y])
+    ok = await until(pg, "window.__diveState()?.phase === 'open'")
+    at = spot(pg.url)
+    off = sep(*at, *here) if at else 99
+    check("Safari pinch at the deepest zoom dives to the sky under the pointer", ok and off < 0.005, f"{off:.4f} deg off, {pg.url.split('/')[-1]}")
+    await browser.close()
+
+
+async def third_finger(p):
+    browser = await p.chromium.launch(channel="chrome", headless=True)
+    ctx = await browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True)
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.maphint', '1') } catch {}")
+    pg = await ctx.new_page()
+    pg.on("pageerror", lambda e: fails.append(f"page error: {e}") or print("FAIL page error", e))
+    await pg.goto(f"{BASE}/explore.html?day=400")
+    await pg.wait_for_function("document.body.dataset.ready === '1'")
+    cdp = await ctx.new_cdp_session(pg)
+    send = lambda kind, pts: cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"x": x, "y": y, "id": i} for i, (x, y) in enumerate(pts)]})
+    async def spread(a, b, steps=12, end=True):
+        await send("touchStart", a)
+        for k in range(1, steps + 1):
+            await send("touchMove", [(p0[0] + (p1[0] - p0[0]) * k / steps, p0[1] + (p1[1] - p0[1]) * k / steps) for p0, p1 in zip(a, b)])
+            await asyncio.sleep(0.016)
+        if end: await send("touchEnd", []); await asyncio.sleep(0.3)
+    for _ in range(4):   # to the deepest zoom
+        await spread([(175, 400), (215, 400)], [(40, 400), (350, 400)])
+        if (await pg.evaluate(SKY, [195, 400]))["max"]: break
+    await asyncio.sleep(0.4)
+    state = """(async () => { const v = await import('/explore-view.js'), r = document.querySelector('.aim-box').getBoundingClientRect(), go = document.getElementById('dive-go');
+      return { max: v.atMax(), aim: [r.x + r.width / 2, r.y + r.height / 2], mid: [v.A.w / 2, (v.A.t + v.A.b) / 2], button: getComputedStyle(go).opacity === '1' && getComputedStyle(go).pointerEvents !== 'none',
+        fill: 1 - parseFloat(document.getElementById('aim-ring').style.strokeDashoffset || 1), dive: window.__diveState() }; })()"""
+    a, b = [(150, 300), (190, 300)], [(140, 300), (200, 300)]   # off the middle, spread 1.5x: part of the way to a dive
+    await spread(a, b, end=False)
+    during = await pg.evaluate(state)
+    await send("touchStart", b + [(300, 600)])   # a third finger
+    await asyncio.sleep(0.1)
+    await send("touchEnd", []); await asyncio.sleep(0.4)
+    after = await pg.evaluate(state)
+    check("phone: a pinch at the deepest zoom moves the aim between the fingers and fades Dive in", during["max"] and math.hypot(during["aim"][0] - 170, during["aim"][1] - 300) < 2 and not during["button"] and 0 < during["fill"] < 1, str(during))
+    check("phone: a third finger ends it, and with all fingers up the aim and Dive in are back in the middle",
+          after["dive"] is None and after["fill"] == 0 and after["button"] and math.hypot(after["aim"][0] - after["mid"][0], after["aim"][1] - after["mid"][1]) < 2, str(after))
     await browser.close()
 
 
@@ -249,6 +301,7 @@ async def main():
         await dives(p)
         await edge(p)
         await safari(p)
+        await third_finger(p)
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)
 
