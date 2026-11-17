@@ -73,7 +73,7 @@ READ = """() => { const $ = s => document.querySelector(s), $$ = s => [...docume
     visits: $$('.vstrip .v:not(.next)').length, links: $$('.vstrip .v a.lapse').map(a => a.getAttribute('href')),
     tags: $$('input[name=tag], [data-t]').length, discussOpen: $('.discuss')?.open ?? null,
     imgs: $$('main img').filter(i => i.complete && i.naturalWidth === 0 && i.getAttribute('src')).map(i => i.getAttribute('src')) }; }"""
-DEPTH = """() => { const s = document.querySelector('.shot .depth svg'); if (!s || !s.getClientRects().length) return null;
+DEPTH = """() => { const s = document.querySelector('.shot .depth .scene svg'); if (!s || !s.getClientRects().length) return null;
   const p = s.querySelector('.cpath'); return { pts: p ? p.getAttribute('points').trim().split(/\\s+/).length : 0,
     sun: !!s.querySelector('.sun'), earth: !!s.querySelector('.earth'), now: !!s.querySelector('.now') }; }"""
 CLIPPED = """() => { const W = innerWidth, out = [];
@@ -217,23 +217,23 @@ async def depth_solution(ctx):
 
 
 # ---------------- Depth zoom (the time-lapse Depth view's, web/live/depth.js, mirrored on the path scene) ----------------
-SCENE = """() => { const v = window.__scene?.view?.() ?? null, f = document.querySelector('.shot .depth svg text');
+SCENE = """() => { const v = window.__scene?.view?.() ?? null, f = document.querySelector('.shot .depth .scene svg text');
   return { v, font: f ? getComputedStyle(f).fontSize : null, scale: visualViewport.scale, sy: scrollY + document.body.scrollTop }; }"""
 # names shown in the scene that run past its edges or under the tabs or the zoom buttons
 UNDER = """(() => { const sc = document.querySelector('.shot .depth .scene').getBoundingClientRect(), out = [];
   const covers = ['.shot .tabs', '.shot .dzoom'].map(s => document.querySelector(s)).filter(e => e && e.offsetWidth).map(e => e.getBoundingClientRect());
-  for (const t of document.querySelectorAll('.shot .depth svg text')) { const r = t.getBoundingClientRect(); if (!r.width) continue;
+  for (const t of document.querySelectorAll('.shot .depth .scene svg text')) { const r = t.getBoundingClientRect(); if (!r.width) continue;
     if (r.left < sc.left - 1 || r.right > sc.right + 1 || r.top < sc.top - 1 || r.bottom > sc.bottom + 1) out.push(t.textContent + ' past the edge');
     for (const c of covers) if (r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top) out.push(t.textContent + ' under a control'); }
   return out; })()"""
 # names that do not sit at what they name: each text's data-at lists its point (or a ring's points), and the text's box
 # must come within 22 px of one of them
 AWAY = """(() => { const sc = document.querySelector('.shot .depth .scene').getBoundingClientRect(), out = [];
-  for (const t of document.querySelectorAll('.shot .depth svg text[data-at]')) { const r = t.getBoundingClientRect();
+  for (const t of document.querySelectorAll('.shot .depth .scene svg text[data-at]')) { const r = t.getBoundingClientRect();
     const d = Math.min(...t.dataset.at.split(' ').map(s => s.split(',').map(Number)).map(([x, y]) => { x += sc.left; y += sc.top;
       return Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)); }));
     if (d > 22) out.push(`${t.textContent} ${Math.round(d)} px from it`); }
-  const names = [...document.querySelectorAll('.shot .depth svg text')].map(t => t.textContent);
+  const names = [...document.querySelectorAll('.shot .depth .scene svg text')].map(t => t.textContent);
   for (const n of ['Earth today', 'Sun']) if (!names.includes(n)) out.push(n + ' missing');
   return out; })()"""
 about = lambda p, a, f: [a[0] + (p[0] - a[0]) * f, a[1] + (p[1] - a[1]) * f]
