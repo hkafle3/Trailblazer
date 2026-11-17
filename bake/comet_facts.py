@@ -106,10 +106,28 @@ _check_designation()
 
 
 # ---------- JPL Horizons ----------
+SOLN = {}   # each comet's JPL solution in this bake: the first reply's (its elements); every later reply must match
+
+
+class SolutionChanged(Exception):
+    """JPL published a new orbit for a comet in the middle of its bake: bake it again from the new solution."""
+
+
+def check_solution(cid, text, name):
+    """A reply's solution must be the one this comet's bake started with (the first reply sets it)."""
+    src = (re.search(r"Target body name: .+?\{source: (JPL#[^}\s]+)\}", text) or [None, None])[1]
+    if src is None: return
+    want = SOLN.setdefault(cid, src)
+    if src != want:
+        raise SolutionChanged(f"{cid} {name}: JPL answered from {src}, the bake started from {want} (delete bake/cache/facts/{slug(cid)}/ and bake again)")
+
+
 def horizons(cid, kind, params, name):
-    """One Horizons reply (text), cached per comet; the target it answered for must be this comet (a fragment as itself)."""
+    """One Horizons reply (text), cached per comet; the target it answered for must be this comet (a fragment as itself),
+    and its orbit solution the one the comet's bake started with, cached or fetched (a refused reply is never cached)."""
     f = CACHE / slug(cid) / f"{name}.txt"
-    if f.exists(): return f.read_text()
+    if f.exists():
+        text = f.read_text(); check_solution(cid, text, name); return text
     des, frag = designation(cid)
     p = {"format": "json", "COMMAND": f"'DES={des};" + ("'" if frag else " CAP; NOFRAG;'"), "MAKE_EPHEM": "YES",
          "EPHEM_TYPE": kind, "CSV_FORMAT": "YES", **params}
@@ -119,6 +137,7 @@ def horizons(cid, kind, params, name):
     assert "$$SOE" in text, f"{cid} {name}: Horizons answered without a table: {text[-400:]}"
     target = re.search(r"Target body name: (.+?)\s+\{", text).group(1)
     assert des in target and (frag or f"{des}-" not in target), f"{cid}: Horizons answered for {target}"
+    check_solution(cid, text, name)
     f.parent.mkdir(parents=True, exist_ok=True); f.write_text(text)
     time.sleep(0.3)
     return text

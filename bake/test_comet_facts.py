@@ -31,4 +31,24 @@ s = show(got)
 assert (s["pic"]["obs"], s["pic"]["det"], s["snr"], s["img"]) == ("b", "D5", 30.2, "data/comets/visits/x/b_D5.png"), s
 assert show([M("seen", 30.2, "b", "D5", png=False), M("seen", 8.6, "a", "D3")])["snr"] == 8.6, "the clearest detection with a picture to show"
 assert show([M("faint", 2.0, "c")])["snr"] is None and show([M("faint", 2.0, "c")])["img"].endswith("c_D1.png")
-print("PASS bake/comet_facts.py visit verdicts and pictures")
+# a JPL solution change in the middle of a bake: a reply fetched after the comet's elements (a cache miss, a later
+# position request) from another solution is refused at the point it is used, and never cached
+import json as _json, tempfile
+import comet_facts as cf
+def reply(source):
+    return _json.dumps({"result": f"Target body name: Bok (C/2026 A2)                 {{source: {source}}}\n soln ref.= {source}, data arc: 2026-01-15 to 2026-11-07\n"
+                        " Date__(UT)__HR:MN, , , R.A.___(ICRF), DEC____(ICRF),\n****\n$$SOE\n 2461361.5, , , 315.7, 43.5,\n$$EOE\n"}).encode()
+with tempfile.TemporaryDirectory() as d:
+    cf.CACHE = Path(d)
+    answers = iter([reply("JPL#35"), reply("JPL#999")])
+    cf.get = lambda url: next(answers)
+    getattr(cf, "SOLN", {}).pop("C/2026 A2 (Bok)", None)
+    cf.horizons("C/2026 A2 (Bok)", "OBSERVER", {}, "first")          # the comet's first reply sets its solution
+    try:
+        cf.horizons("C/2026 A2 (Bok)", "OBSERVER", {}, "later")      # a later reply from another solution
+        raise AssertionError("a reply from JPL#999 was accepted under JPL#35")
+    except getattr(cf, "SolutionChanged", ()):
+        pass
+    assert not (Path(d) / "c-2026-a2-bok" / "later.txt").exists(), "the refused reply was cached"
+    getattr(cf, "SOLN", {}).pop("C/2026 A2 (Bok)", None)
+print("PASS bake/comet_facts.py visit verdicts and pictures, and a mid-bake JPL solution change")
