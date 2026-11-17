@@ -7,7 +7,11 @@ it and does not fetch intro.js, intro.css, three.js or data/intro/. Links with ?
 browser that has seen the tour (ch.tour, which the other suites set), do not play it either.
 The "How this map was made" button replays it over a panned and zoomed map on another day and lands on that same view
 (edges within 2 px, the view and the day unchanged, focus back on the button). Skip and Escape end it within 4 s, and
-Skip works before the film has loaded. Reduced motion: seventeen stills with seventeen captions and a Next button, no animation.
+Skip works before the film has loaded. Reduced motion: sixteen stills with sixteen captions and a Next button, no animation.
+The film's own scenes are checked from the pixels it really draws (frame by frame through ?intro=rec): the flight down the
+beam is under way, asteroid Sheba's pixel is one lit square among dark ones, the deck of colors shows its sheets and the
+comet's blaze, and the cut back from the deck lands on the first photo. Leaving the page while it loads (pagehide, and a
+real navigation away and back) takes the film off at once and it does not come back.
 Run: uv run -q --with playwright python web/tests/intro_ui.py [base url]   (default http://127.0.0.1:8787)"""
 import asyncio, math, sys
 from playwright.async_api import async_playwright
@@ -15,7 +19,7 @@ from playwright.async_api import async_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 SIZES = [("desktop", dict(viewport={"width": 1440, "height": 900})),
          ("phone", dict(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True))]
-LAZY = ("intro.js", "intro.css", "three", "data/intro/")   # what a visit that does not play the film must not fetch
+LAZY = ("intro.js", "intro.css", "three", "data/intro/", "data/comets/3i-atlas/")   # what a visit that does not play the film must not fetch
 ON = "document.documentElement.dataset.intro"
 RECT = "(() => { const b = document.getElementById('map').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()"
 DAY = "+document.getElementById('time').value"
@@ -158,21 +162,75 @@ async def run(b, name, opts):
         await pg.keyboard.press("Escape"); await gone(pg, f"{name} reopened intro")
         await pg.context.close()
 
+    # ---- the film's own scenes, from the pixels drawn ----
+    pg = await page(b, opts, errs, seen_tour=True)
+    await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
+    m = await pg.evaluate("window.__intro.marks")
+    probe = lambda u: pg.evaluate(f"window.__intro.probe({u})")
+    look = lambda u, pts, r=2: pg.evaluate(f"window.__intro.look({u}, {pts}, {r})")
+    vw, vh = opts["viewport"]["width"], opts["viewport"]["height"]
+    # the flight: half way down the beam the photo is ahead in the middle, far smaller than it will be at the end
+    u0, u1 = (m["FLY0"] + m["FLY1"]) / 2, m["FLY1"]
+    e0, e1 = (await probe(u0))["photoEdges"], (await probe(u1))["photoEdges"]
+    w0, w1 = abs(e0[0][0] - e0[1][0]), abs(e1[0][0] - e1[1][0])
+    assert 10 < w0 < .5 * w1 and w1 > .5 * vw * (1 if name == "phone" else .4), f"{name}: the flight does not close in on the photo: {w0:.0f} px wide half way, {w1:.0f} px at the end"
+    # Sheba: pushed in, its pixel is a lit square and the pixels two away on every side are dark
+    u = m["SH_U"] + 3; p = await probe(u); (sx, sy), px = p["sheba"], p["pixel"]
+    assert 12 < px < 40, f"{name}: a detector pixel is {px:.1f} window px wide at the push-in"
+    got = await look(u, [[sx, sy], [sx + 2 * px, sy], [sx - 2 * px, sy], [sx, sy + 2 * px], [sx, sy - 2 * px]], px / 4)
+    assert got[0][0] > 150 and all(g[0] < 70 for g in got[1:]), f"{name}: Sheba's pixel is not one lit square among dark ones: {got}"
+    before = await look(m["SH_U"] - .3, [[vw / 2, vh / 3]], 1)   # and before the push the same test finds no such thing
+    # the deck: its sheets are drawn (lines crossed along its near edge), some are empty, and the comet blazes in the CO2 band
+    u = m["DK_U"] + m["D_LIT"] + 3; d = (await probe(u))["deck"]; (ax, ay), (bx, by) = d["scan"]; n = int(max(abs(bx - ax), abs(by - ay)))
+    line = [g[1] for g in await look(u, [[ax + (bx - ax) * i / n, ay + (by - ay) * i / n] for i in range(n + 1)], 0)]
+    peaks = sum(1 for i in range(1, n) if line[i] > 28 and line[i] >= line[i - 1] and line[i] > line[i + 1])
+    assert d["fanned"] == 1 and peaks >= (45 if name == "phone" else 70), f"{name}: the deck shows {peaks} sheets along its edge"
+    assert 0 < d["dashed"] == 102 - d["measured"] and d["co2n"] >= 2, f"{name}: the deck's readings: {d}"
+    blaze = (await look(u, [d["co2"]], 3))[0]
+    assert blaze[0] > 200, f"{name}: the comet does not blaze in its CO2 sheet: {blaze}"
+    # the cut back: the first photo is on screen again, its white edge on all four sides
+    u = m["DK_END"] - m["DIP"] + .35; ed = (await probe(u))["photoEdges"]
+    assert all(0 < x < vw and 0 < y < vh for x, y in ed), f"{name}: back from the deck the photo is not in view: {ed}"
+    got = await look(u, ed, 3)
+    assert all(g[1] > 110 for g in got), f"{name}: back from the deck the photo's edge is not drawn: {got}"
+    await pg.context.close()
+    print(f"{name}: the flight closes in on the photo ({w0:.0f} to {w1:.0f} px), Sheba is one lit pixel ({px:.0f} px wide), the deck shows {peaks} sheet edges, {d['dashed']} empty sheets and the comet's blaze, and the cut back lands on the photo")
+
+    # ---- leaving the page while the film loads: it is taken off at once and does not come back ----
+    pg = await page(b, opts, errs, seen_tour=True)
+    held, release = asyncio.Event(), asyncio.Event()
+    async def hold(route):
+        held.set(); await release.wait(); await route.continue_()
+    await pg.route("**/data/intro/scene.json", hold, times=1)
+    await pg.goto(BASE + "/explore"); await pg.wait_for_selector("body[data-ready='1']")
+    await pg.click("#how"); await asyncio.wait_for(held.wait(), timeout=10)
+    left = await pg.evaluate(f"(() => {{ dispatchEvent(new PageTransitionEvent('pagehide', {{ persisted: true }})); return [!!document.getElementById('intro'), !!{ON}, [...document.body.children].some(e => e.inert)]; }})()")
+    assert left == [False, False, False], f"{name}: after pagehide the film, its mark on the page or the inert page is still there: {left}"
+    release.set(); await pg.wait_for_timeout(1500)
+    assert not await pg.evaluate("window.__intro || document.getElementById('intro')"), f"{name}: a film left while loading came back"
+    async def stall2(route): await asyncio.sleep(6); await route.abort()
+    await pg.route("**/data/intro/tiles.bin", stall2)
+    await pg.click("#how"); await pg.wait_for_selector("#intro")
+    await pg.goto(BASE + "/"); await pg.go_back(); await pg.wait_for_selector("body[data-ready='1']"); await pg.wait_for_timeout(800)
+    assert not await pg.evaluate(f"document.getElementById('intro') || {ON} || [...document.body.children].some(e => e.inert)"), f"{name}: back on the page, the film is still up"
+    await pg.context.close()
+    print(f"{name}: leaving the page while it loads takes it off at once; back on the page it is not there")
+
     # ---- reduced motion: stills with Next ----
     pg = await page(b, opts, errs, reduced_motion="reduce")
     await pg.goto(BASE + "/explore"); await film_up(pg)
     assert await pg.evaluate("window.__intro.reduced") and await pg.is_visible("#intro-next")
     seen = []
-    for i in range(17):
+    for i in range(16):
         await pg.wait_for_timeout(600); seen.append(await pg.inner_text("#intro-cap-text"))
         assert await pg.evaluate("window.__perf.frames.length") == 0, "reduced motion ran the animation"
         await pg.click("#intro-next")
-    assert len(set(seen)) == 17, f"reduced motion: {len(set(seen))} captions, not 17"
+    assert len(set(seen)) == 16, f"reduced motion: {len(set(seen))} captions, not 16"
     await gone(pg, f"{name} reduced motion"); await pg.wait_for_function(f"{TOUR} === 'Welcome to Trailblazer'", timeout=4000)
     await pg.keyboard.press("Escape"); await pg.wait_for_function(f"!{TOUR}")   # close the tour
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.click("#intro-skip"); await gone(pg, f"{name} reduced motion Skip", 1500)
     await pg.click("#how"); await film_up(pg); await pg.wait_for_timeout(500); await pg.keyboard.press("Escape"); await gone(pg, f"{name} reduced motion Escape", 1500)
-    print(f"{name}: reduced motion shows 17 stills with Next and no animation, then the tour; Skip and Escape end it")
+    print(f"{name}: reduced motion shows 16 stills with Next and no animation, then the tour; Skip and Escape end it")
     await pg.context.close()
     assert not errs, f"{name}: page errors {errs}"
 

@@ -15,9 +15,14 @@
 #intro .lbl.big { font-size: 14px; color: var(--ink); }
 #intro .lbl.co2 { font-size: 14px; }
 #intro .lbl.ask { font-size: 20px; color: var(--ink); }
+#intro .lbl.big.accent { color: var(--accent); }
 #intro .lbl.lead::after { content: ""; position: absolute; left: 50%; top: 100%; margin-top: 3px; width: 1px; height: 21px; background: rgba(255, 255, 255, .45); }
 #intro-spec { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; }
 
+/* the flight down the beam: how far from Earth, ticking over */
+#intro-odo { position: absolute; left: 50%; bottom: 236px; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; opacity: 0; pointer-events: none; white-space: nowrap; text-shadow: 0 0 8px #000, 0 0 3px #000; }
+#intro-odo b { font: 400 26px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+#intro-odo span { font-size: 11px; color: var(--ink3); letter-spacing: .04em; }
 #intro-hud { position: absolute; left: 28px; top: 26px; display: grid; gap: 4px; font: 400 12px/1.2 var(--mono); color: var(--ink2); }
 #intro-h-count { color: var(--ink3); }
 
@@ -44,6 +49,8 @@
 @media (max-width: 760px) {
   #intro-hud { left: 16px; top: max(18px, env(safe-area-inset-top)); font-size: 11px; }
   #intro-skip { right: 14px; top: max(12px, env(safe-area-inset-top)); min-height: 44px; }
+  #intro-odo { bottom: 268px; }
+  #intro-odo b { font-size: 20px; }
   #intro #intro-next { min-height: 44px; }
   #intro-cap { bottom: max(22px, env(safe-area-inset-bottom)); }
   #intro-cap-text { font-size: 14px; min-height: 4.5em; }
