@@ -47,7 +47,8 @@
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
     <canvas id="hold" aria-hidden="true"></canvas>   <!-- Explore's dive: the sky it showed last, until the first frame is drawn -->
     <!-- Depth: SPHEREx, the beam, the region's photo at its far end, each object at its distance (live/depth.js) -->
-    <div class="xp-d3" id="depth3d" role="tabpanel" aria-labelledby="tab-depth" hidden><canvas tabindex="0" aria-label="3D view of the distances. Drag, or use the arrow keys, to turn it. The Distances list says the same in words."></canvas><div class="xp-d3-lbl" aria-hidden="true"></div>
+    <div class="xp-d3" id="depth3d" role="tabpanel" aria-labelledby="tab-depth" hidden><canvas tabindex="0" aria-label="3D view of the distances. Drag, or use the arrow keys, to turn it. Scroll, pinch, or press + and - to zoom. The Distances list says the same in words."></canvas><div class="xp-d3-lbl" aria-hidden="true"></div>
+      <div class="xp-d3-zoom" role="group" aria-label="Zoom"><button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button><button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" data-zoom="reset" aria-label="Reset view" title="Reset view: no zoom, no turn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Reset view</span></button></div>
       <p class="xp-d3-note"><span class="w">Distances are real. Spacing is squeezed so near and far both fit.</span><span class="n">Real distances, squeezed to fit</span></p>
       <p class="xp-d3-hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 0 1 13-5.1M19.5 12a7.5 7.5 0 0 1-13 5.1"/><path d="M17.8 3.4v3.8H14M6.2 20.6v-3.8H10"/></svg>Drag to turn</p>
       <p class="xp-d3-nogl">This browser cannot draw the 3D view. The Distances list has every distance.</p>
@@ -1516,7 +1517,7 @@ const depth = depthView({
     const id = identityAt(m, f), i = id.star.match ? this.gaiaRow(all, id.star.match.gaiaId) : -1;
     return i >= 0 ? { i, name: m.name } : null;
   },
-  cover: () => [document.querySelector('.pv-views')],   // what sits over the beam: its labels keep clear of it
+  cover: () => [document.querySelector('.pv-views'), document.querySelector('.xp-d3-zoom')],   // what sits over the beam: its labels keep clear of it
   // where the target is on the region (-1 to 1, north up; u null when it has no place this visit) and what to call it,
   // for its "distance unknown" mark (targetAt)
   middle(m, f) {
