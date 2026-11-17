@@ -1,4 +1,4 @@
-// "How this map was made": an 81 second 3D film that ends on the flat Explore map. It plays over Explore on a first
+// "How this map was made": an 83 second 3D film that ends on the flat Explore map. It plays over Explore on a first
 // visit (explore.html decides, before the tour) and from the "How this map was made" button (explore.js).
 // Nothing here is loaded until it plays: explore.js imports this file, which then fetches intro.css, three.js and
 // data/intro/ (bake/intro_assets.py). When it ends the WebGL context is given back and the page is as it was.
