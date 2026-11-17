@@ -150,7 +150,7 @@ export function discuss(page) {
     // SkyBoT's answers for this visit come in after the frames (timelapse.html knownFor): wait for them, a little
     for (let t = 0; t < 40 && f.known?.left > 0 && openOn?.[1] === f; t++) await new Promise(r => setTimeout(r, 250));
     if (openOn?.[1] !== f) return;
-    const k = knownMatch(f, m.ra, m.dec);
+    const k = page.middle ? page.middle(f) : knownMatch(f, m.ra, m.dec);   // the passer the page's verdict put on the dot (timelapse.html knownAtMiddle)
     if (!k) return;
     q('[data-f=kname]').textContent = k.name;
     q('[data-f=kwhat]').textContent = `${k.kind === 'comet' ? 'Comet' : 'Asteroid'}${k.mag != null ? ` · mag ${k.mag}` : ''} · predicted here ${dayMonth(k.t)}`;

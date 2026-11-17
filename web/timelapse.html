@@ -685,7 +685,9 @@ function verdict(m, f) {
   const mo = m.motion, g = m.gaia, live = m.key.startsWith('live'), name = candTrack.title() ?? (live ? null : m.name);
   const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : m.ref ? { total: m.ref.total, label: m.ref.source, tol: 35 } : null;
   const starName = name ? `${ref?.label === 'Gaia' || g ? "Gaia's " : ''}${name}` : 'a star in Gaia';
-  const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle' };
+  // match: what the middle was matched to, for every other place that names "the target" (Depth, Discuss): the Gaia
+  // star the pipeline matched by position and proper motion ({ gaia: pmra, pmdec }), or a passer on the dot ({ sso })
+  const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g && !m.t ? { kind: 'gaia', pmra: g.pmra, pmdec: g.pmdec } : null };
   const seen = m.frames.filter(x => x.x != null).length;
   if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
   else if (mo && ref) {
@@ -705,7 +707,7 @@ function verdict(m, f) {
   // in the Gaia match the pipeline makes, widens a match). Closer than 60″ but not on the dot is "nearby", said as
   // such; it does not make the dot known.
   const k = f.known, { hit, near } = k ? knownAtMiddle(m, f) : {};
-  if (hit) { out.known = true; out.who = hit.name; out.parts.push(' ', { ok: `The dot in the middle matches the known ${hit.kind} ${hit.name}.` }); }
+  if (hit) { out.known = true; out.who = hit.name; out.match = { kind: 'sso', name: hit.name }; out.parts.push(' ', { ok: `The dot in the middle matches the known ${hit.kind} ${hit.name}.` }); }
   else if (near) out.parts.push(` Nearby: the known ${near.kind} ${near.name} passed ${Math.round(near.d)} arcseconds from the dot in the middle, too far to be it.`);
   else if (k?.bodies.size) {
     const n = k.bodies.size, kinds = new Set([...k.bodies.values()].map(b => b.kind)), what = kinds.size > 1 ? 'known object' : `known ${[...kinds][0]}`;
@@ -721,12 +723,15 @@ function bodyAt(pts, t) {
   return [e0 + u * (e1 - e0), n0 + u * (n1 - n0)];
 }
 function knownAtMiddle(m, f) {
-  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, tgt = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : [0, 0];   // east, north of the middle's source
+  // the dot in the middle: the patch's centre (the spot asked for, or clicked), at the source measured there when one
+  // was measured within two pixels of it (a better position); a source measured farther off is something else
+  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, ms = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null;
+  const tgt = ms && Math.hypot(...ms) <= 2 * a ? ms : [0, 0];   // east, north of the patch centre, arcsec
   let hit = null, near = null;
   for (const [name, b] of f.known?.bodies ?? []) {
     const pts = b.pts.map(([t, ra, dec]) => [t, ...offset(m, ra, dec)]), [e, n] = bodyAt(pts, f.mjd);
     const d = Math.hypot(e - tgt[0], n - tgt[1]), r = 2 * a;
-    if (d <= r && (!hit || d < hit.d)) hit = { name, kind: b.kind, d };
+    if (d <= r && (!hit || d < hit.d)) hit = { name, kind: b.kind, mag: b.mag, t: b.pts.reduce((x, p) => (Math.abs(p[0] - f.mjd) < Math.abs(x - f.mjd) ? p[0] : x), b.pts[0][0]), d };
     else if (d > r && d <= 60 && (!near || d < near.d)) near = { name, kind: b.kind, d };
   }
   return { hit, near };
@@ -1148,7 +1153,7 @@ function back() {
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
-talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text),
+talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => knownAtMiddle(state.m, f).hit,
   opening: () => { if (spec.at || spec.mode) closeSpec(false); } });   // one card in the right column: the sheet closes the Spectrum card
 window.__lapse = { state, recenter, verdict, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
@@ -1441,16 +1446,24 @@ const depth = depthView({
   },
   // the patch's own star: the Gaia star nearest where the target was measured (or the middle) within 10″, when the
   // verdict found a star there
+  // the patch's own object in Depth: only what the verdict matched (the same rule, never the nearest star by distance
+  // alone). The pipeline's Gaia star is found by its proper motion (within 1 mas/yr both ways) near the measured source;
+  // a passer by its SkyBoT name. No match, or a match without a catalog distance: -1, and Depth marks the middle
+  // "distance unknown" (middle())
   target(m, f, all) {
-    if (!state.verdict?.star) return -1;
+    const mt = state.verdict?.match; if (!mt) return -1;
+    if (mt.kind === 'sso') return all.findIndex(p => p.src === 'sso' && p.o.name === mt.name);
     const G = m.grid, half = G * m.arcsec_per_pixel / 2, tx = f.x != null ? (f.x - (G - 1) / 2) * m.arcsec_per_pixel : 0, ty = f.y != null ? (f.y - (G - 1) / 2) * m.arcsec_per_pixel : 0;
-    let best = -1, bd = 10;
-    all.forEach((p, i) => {
-      if (p.src !== 'stars') return;
-      const [u, v] = this.onScreen(m, p.ra, p.dec, { year: f.year, pmra: p.o.pmra, pmdec: p.o.pmdec }), d = Math.hypot(u * half - tx, v * half - ty);   // u runs west, as FITS x does
-      if (d < bd) { bd = d; best = i; }
+    return all.findIndex(p => {
+      if (p.src !== 'stars' || Math.abs(p.o.pmra - mt.pmra) > 1 || Math.abs(p.o.pmdec - mt.pmdec) > 1) return false;
+      const [u, v] = this.onScreen(m, p.ra, p.dec, { year: f.year, pmra: p.o.pmra, pmdec: p.o.pmdec });
+      return Math.hypot(u * half - tx, v * half - ty) <= 10;   // u runs west, as FITS x does
     });
-    return best;
+  },
+  // where the middle's source is on the region (-1 to 1, north up) and what to call it, for its "distance unknown" mark
+  middle(m, f) {
+    const c = (m.grid - 1) / 2, half = m.grid / 2;
+    return { u: f.x != null ? (f.x - c) / half : 0, v: f.y != null ? (f.y - c) / half : 0, name: candTrack.title() ?? (m.key.startsWith('live') ? 'the dot in the middle' : m.name) };
   },
   targetName: m => candTrack.title() ?? (m.key.startsWith('live') ? null : m.name),
 });

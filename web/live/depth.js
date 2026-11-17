@@ -198,6 +198,10 @@ export function depthView(page) {
     // no distance: named rows with their reasons, then the count of stars Gaia measured too roughly
     for (const src of ['sso', 'galaxies']) for (const o of S0[src]?.unknown ?? [])
       frag.append(row('u', o.name ?? o.id, `${how[src]}: ${o.reason}`, 'unknown', `${src}?:${o.id ?? o.name}`));
+    if (picked.target < 0) {   // the patch's own object has no catalog distance: said first among the unknowns, never borrowed
+      const mid = page.middle(data.m, data.f), cap = mid.name[0].toUpperCase() + mid.name.slice(1);
+      frag.append(row('u a', cap, 'no catalog distance for it here', 'unknown', 'middle?:unknown'));
+    }
     const su = S0.stars?.unknown_count;
     if (su) frag.append(row('u', `${su.toLocaleString('en-US')} more star${su === 1 ? '' : 's'}`, 'Gaia parallax too rough, or the star not clean enough to trust it', 'unknown'));
     const gu = S0.galaxies?.unknown_count, gl = (S0.galaxies?.unknown ?? []).length;
@@ -230,13 +234,13 @@ export function depthView(page) {
     beam.frustumCulled = false; beam.renderOrder = 5; scene.add(beam);
     const craft = spherex(); craft.scale.setScalar(CR); craft.rotation.z = -Math.PI / 2; craft.position.set(-CR, 0, 0); scene.add(craft);
     const sun = new THREE.DirectionalLight(0xfff4e2, 3); sun.position.set(-2, 5, 8); scene.add(sun, new THREE.HemisphereLight(0x8fb4ff, 0x0a1020, .6));
-    const rW = ringTex('#fff'), rA = ringTex('#ff9a4d'), rU = ringTex('rgba(255,255,255,.6)', true);
+    const rW = ringTex('#fff'), rA = ringTex('#ff9a4d'), rU = ringTex('rgba(255,255,255,.6)', true), rAu = ringTex('#ff9a4d', true);
     // every other placed object: faint small dots, no ring and no name (one draw call); hover or tap one for its name
     const cloud = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: dotTex(), size: 4, sizeAttenuation: false, transparent: true, opacity: .3, depthTest: false, depthWrite: false }));
     cloud.renderOrder = 8; cloud.frustumCulled = false; scene.add(cloud);
     const unk = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: rU, size: 11, sizeAttenuation: false, transparent: true, depthTest: false, depthWrite: false }));
     unk.renderOrder = 8; unk.frustumCulled = false; scene.add(unk);
-    scene3 = { photo, beam, craft, cloud, unk, rW, rA, rU, guides: S.lines(400), beads: [], marks: [], dots: [], fixed: [S.label('the photo'), S.label('SPHEREx')] };
+    scene3 = { photo, beam, craft, cloud, unk, rW, rA, rU, rAu, guides: S.lines(400), beads: [], marks: [], dots: [], fixed: [S.label('the photo'), S.label('SPHEREx')] };
     const tip = S.label('', 'tip'); tip.el.style.opacity = 0;
     // the dot nearest the pointer (within 10 px): its name and distance beside it; a tap does the same on a phone
     const peek = e => {
@@ -280,6 +284,10 @@ export function depthView(page) {
       const err = p.o.d_lo_pc != null ? [scale(p.o.d_lo_pc * LY_PC), scale(p.o.d_hi_pc * LY_PC)] : null;
       scene3.beads.push({ u, v, f, pos: at(u, v, f), err, acc, sp: S.sprite(acc ? scene3.rA : scene3.rW, 9), lab: S.label(text, acc ? 'accent' : ''), size: acc ? 20 : 15 });
     });
+    if (picked.target < 0) {   // the middle, at the photo's end of its line of sight: a dashed orange ring, "distance unknown"
+      const mid = page.middle(m, data.f);
+      scene3.beads.push({ u: mid.u, v: mid.v, f: .95, pos: at(mid.u, mid.v, .95), err: null, acc: true, sp: S.sprite(scene3.rAu, 9), lab: S.label(`${mid.name} · distance unknown`, 'accent'), size: 20, unknown: true });
+    }
     scene3.beads.sort((a, b) => a.f - b.f).forEach((b, k) => { b.tier = k; });
     scene3.cloud.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); scene3.cloud.geometry.computeBoundingSphere();
     // what has a position and no distance: dashed rings by the photo
@@ -294,7 +302,7 @@ export function depthView(page) {
     scene3.marks = pickD.map(x => ({ f: scale(10 ** x), lab: S.label(lyText(10 ** x, false), 'mark') }));
     box.dataset.objects = String(all.length);
     box.dataset.rings = String(scene3.beads.length); box.dataset.dots = String(scene3.dots.length);
-    shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i)).map(p => p.key), dots: scene3.dots.map(d => d.key) };
+    shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i)).map(p => p.key), dots: scene3.dots.map(d => d.key), target: picked.target >= 0 ? all[picked.target].key : 'unknown' };
     photo();
     render();
   }

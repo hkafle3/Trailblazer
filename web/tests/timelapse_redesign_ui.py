@@ -211,6 +211,26 @@ async def main():
         await pg.set_viewport_size({"width": 1440, "height": 900})
         check(all(w <= n + 1 for w, n, _, _ in flows), f"long name and verdict: the cards below start after them at 1440 and 1280 wide {flows}")
         await pg.unroute("**/data/candidates.json")
+        # Depth's target is only what the verdict matched: Barnard's Star without a usable Gaia distance, a Gaia star 3 arcsec
+        # away with its own motion: the middle is "distance unknown", the neighbour keeps its own name and distance
+        async def no_barnard(route):
+            await route.fulfill(json={"ra": 269.4463, "dec": 4.7671, "rules": "depth-v1", "sources": {
+                "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 0, "truncated": False, "placed": [], "unknown": []},
+                "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 2, "truncated": False, "limit": 1000, "unknown_count": 1, "placed": [
+                    {"id": "11", "ra": 269.44614, "dec": 4.77076, "g": 13.1, "pmra": 1.2, "pmdec": -3.4, "raw": {}, "d_pc": 700, "d_lo_pc": 680, "d_hi_pc": 720},
+                    {"id": "12", "ra": 269.43, "dec": 4.75, "g": 15.0, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 2000, "d_lo_pc": 1800, "d_hi_pc": 2200}]},
+                "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}})
+        await pg.route("**/api/depth**", no_barnard)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999&view=depth"); await pg.wait_for_function(READY)
+        await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects === 2", timeout=30000); await pg.wait_for_timeout(2200)
+        rows = await pg.evaluate("[...document.querySelectorAll('#dist-list li')].map(l => [l.querySelector('.nm').textContent, l.querySelector('.dd').textContent, l.dataset.key || ''])")
+        labels = await pg.evaluate("[...document.querySelectorAll('#depth3d .lbl')].map(l => l.textContent)")
+        tgt = await pg.evaluate("__depth.shown.target")
+        mine = [r for r in rows if r[0] == "Barnard's Star"]
+        check(tgt == "unknown" and mine == [["Barnard's Star", "unknown", "middle?:unknown"]] and any(r[2] == "stars:11" and r[0] != "Barnard's Star" and r[1] == "2,300" for r in rows)
+              and "Barnard's Star · distance unknown" in labels and not any(l.startswith("Barnard's Star · ") and "unknown" not in l for l in labels),
+              f"Depth target: no usable distance for the middle is said, never borrowed from the star beside it ({mine}, {[r for r in rows if r[2] == 'stars:11']}, {[l for l in labels if 'Barnard' in l]})")
+        await pg.unroute("**/api/depth**", no_barnard)
         # the arrows a tab or the 3D view use do not step the visit
         await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
         i0 = await pg.evaluate("__lapse.state.i")

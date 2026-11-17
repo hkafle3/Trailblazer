@@ -339,6 +339,7 @@ body:not(.depth) .pstage > .pv-dist, body.depth .pstage > .pv-report, body.depth
 .drow .dmk { display: inline-block; width: calc(10 * var(--m)); height: calc(10 * var(--m)); min-width: 7px; min-height: 7px; margin-right: calc(8 * var(--m)); border-radius: 50%; border: 1.5px solid #fff; box-sizing: border-box; vertical-align: 0; }
 .drow .dmk.a { border-color: var(--comet); }
 .drow .dmk.u { border-style: dashed; border-color: rgba(255, 255, 255, .6); }
+.drow .dmk.u.a { border-color: var(--comet); }   /* the patch's own object, no catalog distance */
 .drow:has(.dmk.a) .nm { color: var(--comet); }
 .dist-what { margin: calc(10 * var(--m)) 0 0; color: rgba(255, 255, 255, .62); font-size: calc(11.5 * var(--m)); line-height: 1.5; }
 

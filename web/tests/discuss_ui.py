@@ -10,7 +10,7 @@ Run: uv run -q --with playwright python web/tests/discuss_ui.py [base url] [WIDT
    the tally and the frames, rebuilt at the Spectral channel and detector the dot was reported at (channel 6 here).
 3. Explore shows it as a hollow comet marker, labelled candidate.
 4. Back on the same dot and visit: Discovered, "Found as <id>", and the arrow opens the same page.
-5. Another visit of that dot, with SkyBoT putting 2001 FM127 30 arcsec away: the sheet leads with "It's 2001 FM127",
+5. Another visit of that dot, with SkyBoT putting 2001 FM127 on the dot: the sheet leads with "It's 2001 FM127",
    and that logs a sighting (POST /api/sightings) and closes the sheet with "Logged as 2001 FM127"."""
 import asyncio, json, os, random, re, sys
 from playwright.async_api import async_playwright
@@ -26,10 +26,12 @@ RECORD = """(() => { const W = window.Worker; window.__built = [];
   window.Worker = class extends W { postMessage(m, ...r) { if (m && m.ra != null) window.__built.push(JSON.parse(JSON.stringify(m))); return super.postMessage(m, ...r); } }; })()"""
 
 
-async def stub_known(route):   # /api/known?ra=&dec=&t=: nothing, or one asteroid 30 arcsec north of the asked spot
+async def stub_known(route):   # /api/known?ra=&dec=&t=: nothing, or one asteroid on the asked spot (the dot in the middle)
     q = dict(re.findall(r"[?&](\w+)=([^&]*)", route.request.url))
     ra, dec, t = float(q["ra"]), float(q["dec"]), float(q["t"])
-    rocks = [{"name": "2001 FM127", "ra": ra, "dec": round(dec + 30 / 3600, 5), "mag": 20.9, "err": 0}] if known["near"] else []
+    # on the dot: since the redesign the sheet offers a known object only where the verdict matches it (within two
+    # SPHEREx pixels of the measured source at the visit's time); one 30 arcsec off is only "nearby"
+    rocks = [{"name": "2001 FM127", "ra": ra, "dec": dec, "mag": 20.9, "err": 0}] if known["near"] else []
     await route.fulfill(status=200, content_type="application/json", body=json.dumps({"ra": ra, "dec": dec, "t": t, "comets": [], "asteroids": rocks, "omitted": 0}))
 
 
