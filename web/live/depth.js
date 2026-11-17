@@ -70,17 +70,19 @@ function stage(box) {
   const tmp = V();
   S.label = (text, cls = '') => {
     const el = document.createElement('div'); el.className = 'lbl ' + cls; el.textContent = text; layer.append(el);
-    return { el, at(p, [dx, dy, ax, ay] = [10, -5, 0, 0], a = 1) {
-      tmp.copy(p).project(camera); const vis = a > .01 && tmp.z < 1 && (S.z === 1 || Math.abs(tmp.x) <= 1 && Math.abs(tmp.y) <= 1);   // zoomed: none for what is out of view
+    // own: what the name belongs to (a ring, whose name sits above it at p); zoomed, it shows while that is in view
+    return { el, at(p, [dx, dy, ax, ay] = [10, -5, 0, 0], a = 1, own = p) {
+      tmp.copy(own).project(camera); const vis = a > .01 && tmp.z < 1 && (S.z === 1 || Math.abs(tmp.x) <= 1 && Math.abs(tmp.y) <= 1);   // zoomed: none for what is out of view
       el.style.opacity = vis ? a.toFixed(3) : 0; if (!vis) return;
+      tmp.copy(p).project(camera);
       // kept inside the view sideways: a name that would run off an edge slides back in
       const w = el.offsetWidth, h = el.offsetHeight, x = Math.max(4, Math.min(S.W - w - 4, (tmp.x + 1) / 2 * S.W + dx + ax * w));
       let y = (1 - tmp.y) / 2 * S.H + dy; const slid = y + ay * h < 2; if (slid) y = 2 - ay * h;   // one that would run off the top slides down into it
       // under a box it would run beneath (the tabs over the beam): moved down just clear of it, and of the names placed
       // before it (zoomed in, several can land under the tabs)
-      const clear = boxes => { let moved = false; for (const [x0, y0, x1, y1] of boxes) { const top = y + ay * h; if (x < x1 && x + w > x0 && top < y1 + 2 && top + h > y0) { y += y1 + 2 - top; moved = true; } } return moved; };
+      const clear = (boxes, gap = 0) => { let moved = false; for (const [x0, y0, x1, y1] of boxes) { const top = y + ay * h; if (x < x1 + gap && x + w + gap > x0 && top < y1 + 2 && top + h > y0) { y += y1 + 2 - top; moved = true; } } return moved; };
       // zoomed, the rows over the beam's (steeper) edge can cross too: then every name clears the ones placed before it
-      const moved = clear(S.keep) || slid; if (moved || S.z > 1) for (let i = 0; i < 8 && clear(S.placed); i++);   // again while it moves (a later box can cover it)
+      const moved = clear(S.keep) || slid; if (moved || S.z > 1) for (let i = 0; i < 8 && clear(S.placed, 8); i++);   // again while it moves (a later box can cover it); never end to end
       // moved off the bottom, or zoomed and down among the note and hint: hidden, not squeezed in at the edge
       if ((moved || S.z > 1) && y + ay * h + h > S.floor) { el.style.opacity = 0; return; }
       S.placed.push([x, y + ay * h, x + w, y + ay * h + h]);
@@ -426,7 +428,7 @@ export function depthView(page) {
       }
       // its name over the beam's upper edge, each on its own row, joined to the ring by a thin line
       const lift = q.set(b.pos.x, b.f * hh, b.pos.z).clone().addScaledVector(Y, ((small ? 6 : 9) + b.tier * (small ? 14 : 18)) * w);
-      guides.seg(b.pos.clone().addScaledVector(Y, b.size / 2 * S.z * w), lift, col, .45 * la); b.lab.at(lift, [-3, -4, -1, -1], la);
+      guides.seg(b.pos.clone().addScaledVector(Y, b.size / 2 * S.z * w), lift, col, .45 * la); b.lab.at(lift, [-3, -4, -1, -1], la, b.pos);
     }
     guides.end();
     scene3.fixed[0].at(P(1, -1), [0, small ? 6 : 9, -1, 0], la); scene3.fixed[1].at(V(-CR * .6, -CR, 0), [0, small ? 6 : 10, -.5, 0], la);
@@ -461,6 +463,10 @@ export function depthView(page) {
       const b = scene3?.beads.find(x => x.acc); if (!b) return null;
       const r = box.querySelector('canvas').getBoundingClientRect(), [x, y] = S.px(b.pos), [x2, y2] = S.px(V().setFromMatrixColumn(S.camera.matrixWorld, 0).multiplyScalar(b.sp.scale.x / 2).add(b.pos));
       return [r.left + x, r.top + y, 2 * Math.hypot(x2 - x, y2 - y)];
+    },
+    ringsOn() {   // every ring on screen (client px), its name, and whether the name shows
+      const r = box.querySelector('canvas').getBoundingClientRect();
+      return (scene3?.beads ?? []).map(b => { const [x, y] = S.px(b.pos); return { xy: [r.left + x, r.top + y], name: b.lab.el.textContent, shown: +b.lab.el.style.opacity > .5 }; });
     },
     screenOf(key) { const d = scene3?.dots.find(x => x.key === key); if (!d) return null; const [x, y] = S.px(d.pos), r = box.querySelector('canvas').getBoundingClientRect(); return [r.left + x, r.top + y]; },
   };

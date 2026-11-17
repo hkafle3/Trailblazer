@@ -35,9 +35,12 @@ UNDER = """(() => { const box = s => { const e = document.querySelector(s); if (
   for (const l of document.querySelectorAll('#depth3d .lbl:not(.tip)')) { if (+l.style.opacity < .5) continue; const r = l.getBoundingClientRect();
     for (const [s, c] of covers) if (r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top) out.push(l.textContent + ' under ' + s); }
   return out; })()"""
-# pairs of visible names that overlap
+# pairs of visible names that overlap, or sit side by side with less than 4 px between them
 CLASH = """(() => { const r = [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5).map(l => [l.textContent, l.getBoundingClientRect()]), out = [];
-  for (const [i, [a, p]] of r.entries()) for (const [b, q] of r.slice(i + 1)) if (p.left < q.right && p.right > q.left && p.top < q.bottom && p.bottom > q.top) out.push(a + ' / ' + b); return out; })()"""
+  for (const [i, [a, p]] of r.entries()) for (const [b, q] of r.slice(i + 1)) if (p.left < q.right + 4 && p.right + 4 > q.left && p.top < q.bottom && p.bottom > q.top) out.push(a + ' / ' + b); return out; })()"""
+# rings in the view whose names are not shown
+NAMELESS = """(() => { const c = document.querySelector('#depth3d canvas').getBoundingClientRect();
+  return __depth.ringsOn().filter(({ xy: [x, y], shown }) => x > c.left && x < c.right && y > c.top && y < c.bottom && !shown).map(b => b.name + ' (ring in view, name hidden)'); })()"""
 fails = []
 
 
@@ -169,6 +172,7 @@ async def main():
             await zreset.click(); await pg.mouse.move(cv["x"] + 590, cv["y"] + 315.5)   # about 5x toward a dashed ring on the photo (as in the video)
             for _ in range(40):   # at every step
                 await pg.mouse.wheel(0, -20); await pg.wait_for_timeout(20)
+                unders += await pg.evaluate(NAMELESS)
                 unders += await pg.evaluate(UNDER) + await pg.evaluate("""(() => { const n = document.querySelector('#depth3d .xp-d3-note').getBoundingClientRect().top;   // nor squeezed in below them
                   return [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5 && l.getBoundingClientRect().bottom > n).map(l => l.textContent + ' below the note'); })()""")
             unders = sorted(set(unders))
@@ -220,18 +224,21 @@ async def main():
             d = 50 + 130 * i / 10
             await touch("touchMove", [(0, N[0] - d / 2, N[1] - d / 6), (1, N[0] + d / 2, N[1] + d / 6)])
             during.update(await pg.evaluate(CLASH))
+            during.update(await pg.evaluate(NAMELESS))
         await touch("touchEnd"); await pg.wait_for_timeout(200); f1 = k_of(await st())
-        check(not during, f"phone: no two names overlap at any step of a pinch ({sorted(during)})")
+        check(not during, f"phone: at every step of a pinch no two names overlap, and every ring in view keeps its name ({sorted(during)})")
         sliver = await pg.evaluate("""(() => { const b = document.getElementById('depth3d').getBoundingClientRect();
           return [...document.querySelectorAll('#depth3d .lbl:not(.tip)')].filter(l => +l.style.opacity > .5).filter(l => { const r = l.getBoundingClientRect(); return r.bottom > b.bottom || r.top < b.top; }).map(l => l.textContent); })()""")
         check(not sliver, f"phone zoomed: no name is cut off at the frame's edge ({sliver})")
         if SHOTS: await pg.screenshot(path=os.path.join(SHOTS, "phone-zoomed.png"))
         # one finger still turns, and keeps the zoom
         h0 = await pg.evaluate(BEAM)
-        await touch("touchStart", [(0, M[0], M[1])])
-        for i in range(1, 7): await touch("touchMove", [(0, M[0] - 14 * i, M[1])])
+        await touch("touchStart", [(0, N[0], N[1])])   # as in the video: 90 px left, from where the pinch was
+        for i in range(1, 31): await touch("touchMove", [(0, N[0] - 3 * i, N[1])])
         await touch("touchEnd"); await pg.wait_for_timeout(150); s2 = await st()
         check(await pg.evaluate(BEAM) != h0 and s2["v"] and s2["v"]["a"] != 0 and abs(k_of(s2) - f1) < 1e-9, f"phone: one finger still turns ({s2['v']}) and keeps the zoom")
+        clash = await pg.evaluate(CLASH) + await pg.evaluate(NAMELESS)
+        check(not clash, f"phone zoomed and turned: no two names overlap or touch, and every ring in view keeps its name ({clash})")
         # the zoom buttons are 44 px taps
         sizes = await pg.evaluate("[...document.querySelectorAll('#depth3d .xp-d3-zoom button')].map(b => [b.getBoundingClientRect().width, b.getBoundingClientRect().height])")
         check(len(sizes) == 3 and all(w >= 44 and h >= 44 for w, h in sizes), f"phone: the zoom buttons are 44 px taps ({sizes})")
