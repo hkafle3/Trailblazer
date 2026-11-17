@@ -677,9 +677,9 @@ const shiftEl = $('shift'), shift = (() => {
 // down its right side (in photo.jpg the band starts at about u = .7), touching neither. Else just above the photo, else
 // beside it (left, then right), its lead line then running to the near end of its colored strip. Each place must be wholly
 // in the window, clear of Skip and of the caption. On or above the photo is tried at up to 0.8 of the drawing's size
-// before beside it, and then every place down to 0.6. The place, once found, is kept while
-// it still fits (the photo drifts a little while the drawing is up), and while the drawing fades out as the camera pulls
-// back it stays put in its place, held inside the window.
+// before beside it, and then every place down to 0.6. The place is chosen once for the window's size, where the drawing
+// first shows; from then on the drawing follows that place's own rule as the photo drifts and as it fades out with the
+// camera pulling back, moved only as far as it must be to stay inside the window, so it never jumps to another place.
 const BAND_U = .68, CLEAR = 12, EDGE = 8;   // CLEAR: px kept free between the drawing and the frame or the band; EDGE: from the window's sides
 let spot = null;   // { key, mode, z }: the place chosen for this window size, and the scale
 function placeShift(T, gal) {   // gal: the galaxy's place in the window
@@ -689,24 +689,26 @@ function placeShift(T, gal) {   // gal: the galaxy's place in the window
   const inL = Math.max(c[0][0], c[3][0]), inT = Math.max(c[0][1], c[1][1]), outL = Math.min(c[0][0], c[3][0]), outR = Math.max(c[1][0], c[2][0]), outT = Math.min(c[0][1], c[1][1]);
   const band = Math.min(at(BAND_U, -1)[0], at(BAND_U, 1)[0]), floor = root.querySelector('.cap-top').getBoundingClientRect().top - 24, sk = $('skip').getBoundingClientRect();
   const free = (x, y, w, h) => x >= EDGE && y >= EDGE && x + w <= W - EDGE && y + h <= floor && !(sk.width && x < sk.right + 6 && x + w > sk.left - 6 && y < sk.bottom + 6);
-  const place = (mode, z) => {   // [left, top] of the drawing at scale z in this place, or null where it does not fit
-    const w = pw0 * z, h = SH.h * w / SH.w, mid = q => Math.min(W - EDGE - w, Math.max(EDGE, q)), side = Math.min(floor - h, Math.max(EDGE, gal[1] - h / 2));
-    const [x, y] = mode === 'in' ? [Math.min(band - CLEAR - w, Math.max(inL + CLEAR, gal[0] - w / 2)), Math.max(inT + CLEAR, gal[1] - h - 30)]
-      : mode === 'above' ? [mid(gal[0] - w / 2), outT - CLEAR - h] : mode === 'left' ? [outL - CLEAR - w, side] : [outR + CLEAR, side];
+  const at0 = (mode, z) => {   // [left, top] of the drawing at scale z in this place, by the place's own rule
+    const w = pw0 * z, h = SH.h * w / SH.w, side = Math.min(floor - h, Math.max(EDGE, gal[1] - h / 2));
+    return mode === 'in' ? [Math.min(band - CLEAR - w, Math.max(inL + CLEAR, gal[0] - w / 2)), Math.max(inT + CLEAR, gal[1] - h - 30)]
+      : mode === 'above' ? [Math.min(W - EDGE - w, Math.max(EDGE, gal[0] - w / 2)), outT - CLEAR - h] : mode === 'left' ? [outL - CLEAR - w, side] : [outR + CLEAR, side];
+  };
+  const place = (mode, z) => {   // the same, or null where it does not fit
+    const w = pw0 * z, h = SH.h * w / SH.w, [x, y] = at0(mode, z);
     const ok = mode !== 'in' || (x >= inL + CLEAR - .5 && x + w <= band - CLEAR + .5 && y + h <= gal[1] - 14);
     return ok && free(x, y, w, h) ? [x, y] : null;
   };
   const key = W + 'x' + H, MODES = ['in', 'above', 'left', 'right'];
-  if (spot?.key !== key || (T <= SHIFT[1] && !place(spot.mode, spot.z))) {
+  if (spot?.key !== key) {   // chosen once per window size: after that it only follows its place's own rule (no jumps)
     spot = null;
     const tries = [...[1, .9, .8].flatMap(z => ['in', 'above'].map(m => [m, z])), ...[1, .9, .8, .7, .6].flatMap(z => MODES.map(m => [m, z]))];   // on or above the photo, a little smaller if need be, before beside it
     const got = tries.find(([m, z]) => place(m, z)); if (got) spot = { key, mode: got[0], z: got[1] };
     spot ??= { key, mode: 'in', z: .6 };   // nowhere fits: the smallest, held inside the window below
   }
   const z = spot.z, pw = pw0 * z, k = pw / SH.w, ph = SH.h * k;
-  let [left, topY] = place(spot.mode, z) ?? (() => { const w = pw, h = ph;   // fading out, or nowhere fits: the same place, moved only as far as needed to stay in the window
-    const x = spot.mode === 'in' ? gal[0] - w / 2 : spot.mode === 'above' ? gal[0] - w / 2 : spot.mode === 'left' ? outL - CLEAR - w : outR + CLEAR, y = spot.mode === 'in' ? gal[1] - h - 30 : spot.mode === 'above' ? outT - CLEAR - h : gal[1] - h / 2;
-    return [Math.min(W - EDGE - w, Math.max(EDGE, x)), Math.min(floor - h, Math.max(EDGE, y))]; })();
+  // fading out, or nowhere fits: the same place by its own rule, moved only as far as needed to stay in the window
+  const [x0, y0] = at0(spot.mode, z), left = Math.min(W - EDGE - pw, Math.max(EDGE, x0)), topY = Math.min(floor - ph, Math.max(EDGE, y0));
   set(shiftEl, 'transform', `translate(${left.toFixed(1)}px,${topY.toFixed(1)}px) scale(${z})`);
   set(shift.lead, 'x1', ((gal[0] - left) / k).toFixed(1), 1); set(shift.lead, 'y1', ((gal[1] - topY) / k - 5).toFixed(1), 1);
   const [lx, ly] = spot.mode === 'left' ? [SH.x1 + 4, SH.y0 + 7.5] : spot.mode === 'right' ? [SH.x0 - 4, SH.y0 + 7.5] : [shift.xt, SH.y0 + 9];   // where the lead line meets the drawing
@@ -1176,7 +1178,7 @@ function look(U, pts, r = 2) {   // the brightness really drawn round each point
 }
 window.__intro = debug = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED, finish: { float: FLOAT, phone: PHONE, samples: hdr.samples, ms: MS, listed: { color: listed(FLOAT ? gl.RGBA16F : gl.RGBA8), depth: listed(gl.DEPTH_COMPONENT24) }, tiers: TIERS, blooms: blooms.length, get quality() { return quality; }, get ratio() { return renderer.getPixelRatio(); }, get size() { return [canvas.width, canvas.height, hdr.width, hdr.height, blooms[0].width]; } } };
 if (REC) Object.assign(debug, { probe, look, flightPath, marks: { CLICK, FLY0, FLY1: UA, SHOW: SHOW_U, WASH: WASH.map(fu), SHIFT: SHIFT.map(fu), FOUND: fu(FOUND), OUT: fu(X), RING: fu(X + 3.6), CAPS: CAPTIONS.map(c => [c[0], c[1]]), CREDIT: fw(36.5) } });
-if (REC) { $('skip').hidden = true; return { dispose }; }   // a clean picture for the recorder; Escape still leaves
+if (REC) { $('skip').hidden = Q.get('skip') !== '1'; return { dispose }; }   // a clean picture for the recorder (?skip=1 keeps Skip, so the checks can see the drawing clear it); Escape still leaves
 if (REDUCED) { root.classList.add('still'); $('next').hidden = false; showStill(0); } else { playing = true; requestAnimationFrame(() => requestAnimationFrame(tick)); }   // the frame after next: the next one was timed before all of the above ran, and the film would start that much late
 return { skip, dispose };
 } catch (err) { dispose(); throw err; }

@@ -42,6 +42,7 @@ DAY = "+document.getElementById('time').value"
 TOUR = "document.querySelector('.tour-card h2')?.textContent"
 MOVE, TURN, ZOOM = .16, 2.5, .2   # the most the camera may do in one frame at 60 fps: move (as a share of its distance to its subject), turn (degrees, anywhere in the film), change its lens (log of the ratio)
 AIR = 1.03   # Earth's air ends this many radii out (intro.js AIR): wherever Earth is drawn the camera stays outside it, with room for the near plane
+EDGE, CAP_GAP, SLIDE = 8, 24, 3   # the galaxy's drawing: px from the window's sides and above the caption (intro.js EDGE and its 24), and the most it may move in a frame at 30 fps beyond the galaxy's or the photo's own move
 FADE = .12   # the most of its own light the galaxy may lose in one frame at 60 fps (a fade over half a second loses at most about .06)
 FILM_S = "window.__perf.frames.reduce((a, b) => a + b, 0) / 1000"   # seconds of film played so far
 CAPS = ["This is SPHEREx, a NASA telescope circling Earth.", "It takes a picture of the sky.", "Let's follow the light into that picture.", "Some of it is close. Some is very far away.",
@@ -244,7 +245,7 @@ async def colors(pg, name, m, vw, vh):
     labels = lambda u: pg.evaluate(f"(window.__intro.render({u}), [...document.querySelectorAll('#intro-labels .lbl')].filter(el => +el.style.opacity > .5).map(el => el.textContent + '|' + el.className))")
     said = await labels(t_mid)
     assert len(said) == 1 and said[0].startswith("star"), f"{name}: in the bands only the star keeps its label: {said}"
-    top = await graph(pg, name, m, vw, vh)
+    top, _ = await graph(pg, name, m, vw, vh)
     return [round(b0[0]), round(b1[0]), sum(a), sum(c), top]
 
 
@@ -270,7 +271,7 @@ async def graph(pg, name, m, vw, vh):
     assert start["op"] > .9 and start["clip"] < .5 and start["rest"] == 0 and start["move"] == 0, f"{name}: the galaxy's light should be drawn on, line first: {start}"
     assert done["vis"] == "visible" and done["op"] > .99 and done["clip"] == 1 and done["rest"] == 1 and done["move"] == 1, f"{name}: the galaxy's light is not fully drawn when its distance is lit: {done}"
     assert done["arrow"][1] > done["arrow"][0] + 20, f"{name}: the arrow does not run towards red (to the right): {done['arrow']}"
-    assert done["box"][0] >= 0 and done["box"][2] <= vw and done["box"][1] >= 0 and done["box"][3] < done["cap"] - 20, f"{name}: the drawing is not inside the window, clear of the caption: {done['box']}, caption at {done['cap']}"
+    assert done["box"][0] >= EDGE - .5 and done["box"][2] <= vw - EDGE + .5 and done["box"][1] >= EDGE - .5 and done["box"][3] <= done["cap"] - CAP_GAP + .5, f"{name}: the drawing is not {EDGE} px inside the window and {CAP_GAP} px clear of the caption: {done['box']}, caption at {done['cap']}"
     assert all(0 <= t[0] and t[1] <= vw for t in done["texts"]) and done["texts"][0][1] <= done["texts"][1][0], f"{name}: the drawing's words are cut off or run into each other: {done['texts']}"
     assert done["mark"] == "where it glows up close", f"{name}: the dashed mark is labelled {done['mark']!r}"
     # clear of the photo's frame and of the band of light down its right side
@@ -287,10 +288,20 @@ async def graph(pg, name, m, vw, vh):
     gx, gy = gal["land"]
     assert 0 < gx < vw and 0 < gy < done["cap"] and not (x0 - 6 < gx < x1 + 6 and y0 - 6 < gy < y1 + 6), f"{name}: the galaxy at {gal['land']} is out of view or under its drawing {done['box']}"
     # the whole time it is up, from drawing on to fading out as the camera pulls back: every frame at 30 fps inside the window and clear of the caption
-    seq = await pg.evaluate(f"""(() => {{ const out = []; for (let u = {s0}; u < {s1} + .5; u += 1 / 30) {{ window.__intro.render(u); const el = document.getElementById('intro-shift'), cs = getComputedStyle(el);
-      if (cs.visibility === 'visible' && +cs.opacity > 0) {{ const b = el.getBoundingClientRect(); out.push([u, b.left, b.top, b.right, b.bottom, document.querySelector('#intro .cap-top').getBoundingClientRect().top]); }} }} return out; }})()""")
-    out = [[round(q, 1) for q in g] for g in seq if g[1] < 0 or g[2] < 0 or g[3] > vw or g[4] > g[5] - 20]
-    assert len(seq) > 60 and not out, f"{name}: the drawing leaves the window or meets the caption in {len(out)} of {len(seq)} frames: {out[:4]}"
+    # the whole time it is up, from drawing on to fading out as the camera pulls back, every frame at 30 fps: EDGE px inside
+    # the window, CAP_GAP px clear of the caption, clear of Skip where it is shown, and it moves with the galaxy (it stays by
+    # it and the photo, so it may move as far as they do on screen, and no more than SLIDE px a frame beyond that: no jumps)
+    seq = await pg.evaluate(f"""(() => {{ const out = [], sk = document.getElementById('intro-skip').getBoundingClientRect(); for (let u = {s0}; u < {s1} + .5; u += 1 / 30) {{
+      const p = window.__intro.probe(u), g = p.flight.find(f => f.kind === 'galaxy').land, e = p.photoEdges, el = document.getElementById('intro-shift'), cs = getComputedStyle(el);
+      if (cs.visibility === 'visible' && +cs.opacity > 0) {{ const b = el.getBoundingClientRect(); out.push([u, b.left, b.top, b.right, b.bottom, document.querySelector('#intro .cap-top').getBoundingClientRect().top, g[0], g[1], +cs.opacity, sk.left, sk.top, sk.right, sk.bottom, sk.width, e]); }} }} return out; }})()""")
+    out = [[round(q, 1) for q in g[:6]] for g in seq if g[1] < EDGE - .5 or g[2] < EDGE - .5 or g[3] > vw - EDGE + .5 or g[4] > g[5] - CAP_GAP + .5]
+    assert len(seq) > 60 and not out, f"{name}: the drawing is not {EDGE} px inside the window and {CAP_GAP} px clear of the caption in {len(out)} of {len(seq)} frames: {out[:4]}"
+    hit = [round(g[0], 2) for g in seq if g[13] and g[1] < g[11] + 6 and g[3] > g[9] - 6 and g[2] < g[12] + 6]
+    assert not hit, f"{name}: the drawing runs into Skip at {hit[:4]}"
+    moved = lambda p, q, j: max([abs(q[6 + j] - p[6 + j])] + [abs(b[j] - a[j]) for a, b in zip(p[14], q[14])])   # the most the galaxy or the photo's edges moved this frame, across (j 0) or down (j 1)
+    jumps = [(round(q[0], 2), round(q[1] - p[1], 1), round(q[2] - p[2], 1), round(moved(p, q, 0), 1), round(moved(p, q, 1), 1), round(q[8], 2)) for p, q in zip(seq, seq[1:]) if abs(q[1] - p[1]) > moved(p, q, 0) + SLIDE or abs(q[2] - p[2]) > moved(p, q, 1) + SLIDE]
+    assert not jumps, f"{name}: the drawing jumps (more than the galaxy or the photo moved), [time, x, y, photo or galaxy x, y, opacity]: {jumps[:4]}"
+    skip = "Skip shown" if seq[0][13] else "no Skip"
     assert p["wash"]["dim"] < .6 and (await probe(w0 + 1))["wash"]["dim"] == 1 and p["wash"]["a"] == 0, f"{name}: the photo should step back, untinted, while the galaxy's light is read: {p['wash']}"
     light = await pg.evaluate("fetch('data/intro/photo.json').then(r => r.json()).then(p => p.light)")
     clean = [q for q in light["fine"] if not q[2]]; top = max(clean, key=lambda q: q[1])[0]
@@ -300,20 +311,21 @@ async def graph(pg, name, m, vw, vh):
     assert len(before) == 1 and before[0].startswith("galaxy") and "found" not in before[0] and len(after) == 1 and after[0].startswith("galaxy · 480 million light-years") and "found" in after[0], f"{name}: the galaxy's label should be the only one, and lit once the arrow has arrived: {before}, {after}"
     every = await pg.evaluate("[...document.querySelectorAll('#intro-labels .lbl')].map(el => el.textContent + ' ' + el.className).join(' | ') + document.getElementById('intro-shift').textContent")
     assert "STEPS" not in m and not any(k in every for k in ("micron", "stripe", "accent", "helium")), f"{name}: the step beat is still in the film: {every}"
-    return top
+    return top, skip
 
 
 async def short_screens(b):
     """The galaxy's drawing on short and small windows, where there is little room above the photo: two laptop screens,
     a square window and two small phones (graph())."""
-    for w, h in ((1280, 720), (1366, 768), (768, 768), (375, 667), (360, 640)):
+    for w, h, skip in ((1280, 720, 0), (1366, 768, 0), (768, 768, 0), (375, 667, 0), (360, 640, 0), (1440, 900, 1), (390, 844, 1), (1366, 768, 1), (375, 667, 1)):
         errs = []; name = f"{w}x{h}"
         pg = await page(b, dict(viewport={"width": w, "height": h}, **(dict(device_scale_factor=2, has_touch=True, is_mobile=True) if w < 600 else {})), errs, seen_tour=True)
-        await pg.goto(BASE + "/explore?intro=rec"); await film_up(pg)
-        m = await pg.evaluate("window.__intro.marks"); await graph(pg, name, m, w, h)
+        await pg.goto(BASE + "/explore?intro=rec" + ("&skip=1" if skip else "")); await film_up(pg)
+        if skip: assert await pg.is_visible("#intro-skip"), f"{name}: ?skip=1 should keep Skip on screen in the recorder"
+        m = await pg.evaluate("window.__intro.marks"); _, said = await graph(pg, name, m, w, h)
         place = await pg.evaluate(f"(window.__intro.render({m['FOUND'] + .3}), document.getElementById('intro-shift').style.transform)")
         assert not errs, f"{name}: page errors {errs}"
-        await pg.context.close(); print(f"{name}: the galaxy's drawing stays in the window and clear of the photo's frame and band ({place})")
+        await pg.context.close(); print(f"{name}, {said}: the galaxy's drawing stays in the window and clear of the photo's frame and band, with no jumps ({place})")
 
 
 async def words(pg, name, m, vw):
