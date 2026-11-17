@@ -9,6 +9,7 @@
 // The film itself is film(): everything on screen is a pure function of the film time T (seconds), so it can be
 // played, skipped, stepped and recorded frame by frame.
 import { win, straight } from './explore-view.js';
+import { adaptive } from './intro-quality.js';
 
 const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';   // the version timelapse.html uses
 // the bare minimum to see the cover and Skip before intro.css arrives (zero specificity, so intro.css wins once it does)
@@ -162,11 +163,37 @@ const STILLS = [1.2, CLICK + .12, FLY0 + 3.2, UA - 1.5, UA + 2.3, fu(SHIFT[0] + 
 const canvas = $('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: REC, powerPreference: 'high-performance' });
 const PHONE = matchMedia('(pointer: coarse)').matches || Math.min(innerWidth, innerHeight) < 600;   // phones: fewer pixels, a shorter bloom chain
-// Quality steps, best first: [share of the pixels' side, multisampling]. A phone gives up multisampling first (its thin lines step a little), then pixels; a desktop keeps it.
-const TIERS = PHONE ? [[1, 4], [1, 0], [.8, 0], [.64, 0]] : [[1, 4], [.8, 4], [.64, 4]];
-const FLOAT = renderer.extensions.has('EXT_color_buffer_half_float') || renderer.extensions.has('EXT_color_buffer_float');   // without it: 8 bits, and nothing above 1 to bloom
-const hdr = new THREE.WebGLRenderTarget(1, 1, { type: FLOAT ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: 4 });
-const blooms = Array.from({ length: PHONE ? 5 : 6 }, () => new THREE.WebGLRenderTarget(1, 1, { type: FLOAT ? THREE.HalfFloatType : THREE.UnsignedByteType, depthBuffer: false }));
+// The picture's own target. Multisampling into a half-float target is optional in WebGL 2 (EXT_color_buffer_float makes the
+// format drawable, not drawable with any number of samples), so the sample counts the card lists for that format and for
+// the depth buffer are asked first, and every target is checked complete before it is used: 4 samples, else 2, else none;
+// half float, else 8 bits (then nothing is above 1 and nothing blooms). The recorder can force each fallback, so the checks
+// see every path draw a picture: ?intro=rec&gpu= no-float, samples-N (the card lists no count above N), incomplete-N (a
+// target with N samples does not complete), incomplete-half (no half-float target completes), comma-separated.
+const gl = renderer.getContext(), FORCE = REC ? (Q.get('gpu') ?? '').split(',') : [], forced = k => FORCE.includes(k);
+const most = FORCE.find(k => k.startsWith('samples-'))?.slice(8);
+const listed = fmt => [...(gl.getInternalformatParameter(gl.RENDERBUFFER, fmt, gl.SAMPLES) ?? [])].filter(n => most === undefined || n <= +most);
+function complete(t) {   // both of its framebuffers: the multisampled one drawn into, and the texture it is resolved into
+  renderer.initRenderTarget(t); const p = renderer.properties.get(t);
+  const ok = [p.__webglMultisampledFramebuffer, p.__webglFramebuffer].filter(Boolean).every(fb => { renderer.state.bindFramebuffer(gl.FRAMEBUFFER, fb); return gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE; });
+  renderer.state.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return ok && !forced('incomplete-' + t.samples) && !(forced('incomplete-half') && t.texture.type === THREE.HalfFloatType);
+}
+const HALF_OK = !forced('no-float') && (renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'));
+let hdr = null, MS = 0;   // MS: the most samples this card draws the picture with
+for (const type of HALF_OK ? [THREE.HalfFloatType, THREE.UnsignedByteType] : [THREE.UnsignedByteType]) {
+  const counts = [gl.DEPTH_COMPONENT24, type === THREE.HalfFloatType ? gl.RGBA16F : gl.RGBA8].map(listed);   // three.js gives a multisampled target a 24-bit depth buffer
+  for (const n of [4, 2, 0].filter(n => !n || counts.every(c => c.includes(n)))) {
+    const t = new THREE.WebGLRenderTarget(1, 1, { type, samples: n });
+    if (complete(t)) { hdr = t; MS = n; break; }
+    t.dispose();
+  }
+  if (hdr) break;
+}
+if (!hdr) { renderer.dispose(); renderer.forceContextLoss(); throw new Error('this browser cannot draw into any target the film needs'); }
+const FLOAT = hdr.texture.type === THREE.HalfFloatType;   // without it: 8 bits, and nothing above 1 to bloom
+// Quality steps, best first: [share of the pixels' side, multisampling]. A phone gives up multisampling first (its thin lines step a little), then pixels; a desktop keeps it. No step asks for more samples than the card draws with, and two steps that came out the same are one.
+const TIERS = (PHONE ? [[1, 4], [1, 0], [.8, 0], [.64, 0]] : [[1, 4], [.8, 4], [.64, 4]]).map(([r, n]) => [r, Math.min(n, MS)]).filter((q, i, a) => !i || q + '' !== a[i - 1] + '');
+const blooms = Array.from({ length: PHONE ? 5 : 6 }, () => new THREE.WebGLRenderTarget(1, 1, { type: hdr.texture.type, depthBuffer: false }));
 // Every shader of the film was written in the window's own (display) colors, and every opacity as a share of display
 // brightness. SM turns a shader's result into linear light as its last step, opacity included, so a glow at a tenth is
 // still a tenth as bright on screen (max: with multisampling a value can be read just outside its shape, and a negative one would poison the glow). A shader that works in linear light itself says hdr: true. DM does the same for
@@ -180,11 +207,11 @@ try {
 renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, .01, 100);
-let W = 1, H = 1, VFOV = 40;
+let W = 1, H = 1, VFOV = 40, DPR = 1;
 function resize() {
-  W = innerWidth; H = innerHeight; VFOV = W < H ? 50 : 40;
-  renderer.setPixelRatio(Math.min(PHONE ? 1.5 : 2, devicePixelRatio) * TIERS[quality][0]); renderer.setSize(W, H, false);
-  if (hdr.samples !== TIERS[quality][1]) { hdr.samples = TIERS[quality][1]; hdr.dispose(); }   // made again, without multisampling, when next drawn
+  W = innerWidth; H = innerHeight; VFOV = W < H ? 50 : 40; DPR = devicePixelRatio;
+  renderer.setPixelRatio(Math.min(PHONE ? 1.5 : 2, DPR) * TIERS[quality][0]); renderer.setSize(W, H, false);
+  if (hdr.samples !== TIERS[quality][1]) { hdr.samples = TIERS[quality][1]; hdr.dispose(); }   // made again, with the step's multisampling, when next drawn
   let w = canvas.width, h = canvas.height; hdr.setSize(w, h);
   for (const b of blooms) { w = Math.max(1, w >> 1); h = Math.max(1, h >> 1); b.setSize(w, h); }
 }
@@ -460,8 +487,8 @@ const CRAFT_FS = `uniform vec3 uSun, uEarth, uAt, uAx, uBase; uniform float uS, 
     vec3 matt = base * (1. - metal) * (vec3(1., .96, .9) * nl * 1.05 + vec3(.2, .36, .7) * (.12 + .5 * max(dot(n, uEarth), 0.)) + .015);
     vec3 col = matt + around(reflect(-v, n), min(1., rough + .5 * uFoil), sunny) * F + vec3(.3, .5, .9) * pow(1. - nv, 3.) * .22 * (.5 + .5 * dot(n, uEarth));   // and a thin rim of light from Earth's day side
     if (uIn > .5) { float h = clamp(dot(vP - uAt, uAx) / uS, 0., 1.); col = col * mix(.22, 1., smoothstep(.05, .95, h)) + base * (vec3(.05, .07, .11) + vec3(.16, .2, .28) * pow(h, 6.)) * (1. - sunny); }   // deep inside the shields it is dark; near the rims, the light that bounces about
-    col = col / (1. + .45 * col); gl_FragColor = vec4(pow(col * 1.25, vec3(.4545)), 1.); }`;
-const craftMat = (base, metal, rough, more = {}) => SM({ vertexShader: `varying vec3 vP, vO, vNo; varying vec2 vUv; void main(){ vO = position; vNo = normal; vUv = uv; vec4 w = modelMatrix * vec4(position, 1.); vP = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`, fragmentShader: CRAFT_FS, side: more.side ?? THREE.FrontSide,
+    gl_FragColor = vec4(max(col, 0.) * 1.25, 1.); }`;   // linear light, highlights kept: the last pass's AgX is the one tone curve (and its glow takes the brightest)
+const craftMat = (base, metal, rough, more = {}) => SM({ hdr: true, vertexShader: `varying vec3 vP, vO, vNo; varying vec2 vUv; void main(){ vO = position; vNo = normal; vUv = uv; vec4 w = modelMatrix * vec4(position, 1.); vP = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`, fragmentShader: CRAFT_FS, side: more.side ?? THREE.FrontSide,
   uniforms: { ...craftU, uBase: { value: new THREE.Color(base) }, uMetal: { value: metal }, uRough: { value: rough }, uFoil: { value: more.foil ?? 0 }, uIn: { value: more.inside ? 1 : 0 }, uCells: { value: more.cells ? 1 : 0 } } });
 function makeCraft() {
   const craft = new THREE.Group(), add = (geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); craft.add(m); return m; };
@@ -625,7 +652,7 @@ const starSpot = V(), bandAt = T => 5 * clamp01((T - WASH[0] - .35) / (WASH[1] -
 // molecules, which sits at 3.29 microns in the laboratory and in galaxies nearby. A dashed copy of the bump marks that
 // place, and an arrow runs from it to where the bump really is in this galaxy: 3.5 percent towards red, which is its
 // 480 million light-years. The vertical scale starts just under the faintest measurement, not at zero (film.html says so).
-const LT = PH.light, SH = { w: 300, h: 118, x0: 10, x1: 290, y0: 86, y1: 30, lo: 2.9, hi: 3.84 };
+const LT = PH.light, SH = { w: 300, h: 132, x0: 10, x1: 290, y0: 86, y1: 30, lo: 2.9, hi: 3.84 };
 const shiftEl = $('shift'), shift = (() => {
   const pts = []; for (const [um, f, doubt] of LT.fine) { if (doubt) continue; const q = pts.at(-1);   // measurements with a flagged pixel nearby are left out
     if (q && um - q[0] < .004) { q[1] = (q[1] * q[2] + f) / ++q[2]; } else pts.push([um, f, 1]); }   // two exposures at one wavelength: their mean
@@ -641,22 +668,29 @@ const shiftEl = $('shift'), shift = (() => {
       <polyline class="curve" points="${pts.map(xy).join(' ')}" stroke="url(#intro-sg)"/>${pts.map(q => `<circle cx="${sx(q[0]).toFixed(1)}" cy="${sy(q[1]).toFixed(1)}" r="1.9" fill="${css(q[0])}"/>`).join('')}</g>
     <g class="rest"><polyline class="ghost" points="${ghost}"/><line class="ghost" x1="${xr.toFixed(1)}" y1="${SH.y1 + 4}" x2="${xr.toFixed(1)}" y2="${SH.y0 + 9}"/></g>
     <g class="move"><line x1="${xr.toFixed(1)}" y1="${SH.y1 - 9}" x2="${xr.toFixed(1)}" y2="${SH.y1 - 9}"/><path d="M0 -3.5 L6 0 L0 3.5 Z"/></g></svg>
-    <span class="s-rest" style="right:${((SH.w - xr + 5) / SH.w * 100).toFixed(2)}%">this glow, nearby</span><span class="s-here" style="left:${((xt + 5) / SH.w * 100).toFixed(2)}%">in this galaxy</span>
+    <span class="s-rest" style="right:${((SH.w - xr + 5) / SH.w * 100).toFixed(2)}%">where it glows<br>up close</span><span class="s-here" style="left:${((xt + 10) / SH.w * 100).toFixed(2)}%">in this galaxy</span>
     <span class="s-move" style="left:${((xr + xt) / 2 / SH.w * 100).toFixed(2)}%">${(LT.z * 100).toFixed(1)}% redder</span>`;
   const q = k => shiftEl.querySelector(k), was = new Map(), set = (el, k, v, attr) => { const id = el.dataset.k ??= String(was.size) + k; if (was.get(id + k) === v) return; was.set(id + k, v); attr ? el.setAttribute(k, v) : (el.style[k] = v); };
   return { xr, xt, set, clip: q('#intro-sc rect'), lead: q('.lead'), rest: q('.rest'), sRest: q('.s-rest'), sHere: q('.s-here'), sMove: q('.s-move'), arrow: q('.move line'), head: q('.move path'), move: q('.move'), top };
 })();
+// The drawing sits on the photo, above the galaxy, between the photo's left edge and the curved band of light down its right
+// side (in photo.jpg the band starts at about u = .7), touching neither. Where that is too narrow for it (a 320 px phone) it
+// sits just above the photo instead.
+const BAND_U = .68, CLEAR = 12;   // CLEAR: px kept free between the drawing and the frame or the band
 function placeShift(T, gal) {   // gal: the galaxy's place in the window. Everything here is a function of T, as the rest of the film is
   const s = T - SHIFT[0], a = K(T, [[SHIFT[0], 0], [SHIFT[0] + .4, 1], [SHIFT[1], 1], [SHIFT[1] + .45, 0]]), { set } = shift;
   set(shiftEl, 'opacity', +a.toFixed(3)); set(shiftEl, 'visibility', a > 0 ? 'visible' : 'hidden'); if (!(a > 0)) return { a: 0 };
-  const pw = shiftEl.offsetWidth, k = pw / SH.w, left = wide() ? gal[0] + 30 : Math.min(W - pw - 8, Math.max(8, gal[0] - pw * .45)), topY = gal[1] - SH.h * k - 30;   // up and to the right of the galaxy; on a phone, above it
+  const pw = shiftEl.offsetWidth, k = pw / SH.w, ph = SH.h * k, at = (u, v) => css(photoPoint(u, v, tmp2));
+  const frameL = Math.max(at(-1, -1)[0], at(-1, 1)[0]), frameT = Math.max(at(-1, -1)[1], at(1, -1)[1]), band = Math.min(at(BAND_U, -1)[0], at(BAND_U, 1)[0]);
+  const lo = frameL + CLEAR, hi = band - CLEAR, inside = hi - lo >= pw;
+  const left = inside ? Math.min(hi - pw, Math.max(lo, gal[0] - pw / 2)) : Math.min(W - pw - 8, Math.max(8, gal[0] - pw / 2)), topY = inside ? Math.max(frameT + CLEAR, gal[1] - ph - 30) : frameT - CLEAR - ph;
   set(shiftEl, 'transform', `translate(${left.toFixed(1)}px,${topY.toFixed(1)}px)`);
   set(shift.lead, 'x1', ((gal[0] - left) / k).toFixed(1), 1); set(shift.lead, 'y1', ((gal[1] - topY) / k - 5).toFixed(1), 1);
   const curve = clamp01((s - .25) / .8), rest = sm((s - 1.05) / .35), arrow = sm((s - 1.45) / .55), said = sm((s - 1.7) / .3), x2 = shift.xr + (shift.xt - 7 - shift.xr) * arrow;
   set(shift.clip, 'width', (SH.w * curve).toFixed(1), 1); set(shift.rest, 'opacity', +rest.toFixed(3)); set(shift.sRest, 'opacity', +rest.toFixed(3));
   set(shift.move, 'opacity', +Math.min(1, arrow * 6).toFixed(3)); set(shift.arrow, 'x2', x2.toFixed(1), 1); set(shift.head, 'transform', `translate(${x2.toFixed(1)} ${SH.y1 - 9})`, 1);
   set(shift.sMove, 'opacity', +said.toFixed(3)); set(shift.sHere, 'opacity', +said.toFixed(3));
-  return { a, curve, rest, arrow, said };
+  return { a, curve, rest, arrow, said, inside, band };
 }
 // ---------- the flight down the beam ----------
 // The camera leaves the telescope's mouth and passes close by each body in turn, on a path bent a little to do so. Its
@@ -884,6 +918,7 @@ let capShown = -1, odoShown = -1;
 const odoEl = $('odo'), odoNum = odoEl.firstChild.appendChild(new Text(''));
 const fmtDate = d => new Date((S.mjd0 + d - 40587) * 864e5).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' });
 function render(U) {
+  if (devicePixelRatio !== DPR) resize();   // the window went to a display of another pixel density (see the query by the resize listener)
   const T = v2(U);
   const t = w(T), day = st.day = dayAt(T), speed = (dayAt(T + .05) - dayAt(T - .05)) / .1, R = st.R = shellR(T), close = T < X;   // t: the first cut's seconds
   const { E, s, u, v, p, r, top } = st;
@@ -1062,18 +1097,9 @@ function render(U) {
 const perf = { frames: [] };
 let T0 = null, Tnow = 0, still = 0;
 function finish() { playing = false; done(); }
-// Adaptive quality: after each second of playing, if its frames came over 20 ms apart on average, the picture is drawn one
-// step cheaper (TIERS). If that step did not bring the frames at least a tenth closer together, the picture was not what
-// was slow (a display held to 30 frames a second, as a laptop saving power does, or a busy machine): the step is taken
-// back and quality is left alone from then on. It goes back up a step only after five good seconds in a row, so it never
-// flips back and forth.
-const load = { ms: 0, n: 0, good: 0, was: 0, off: false };
-function adapt(dt) {
-  if (load.off) return; load.ms += dt; load.n++; if (load.ms < 1000) return;
-  const mean = load.ms / load.n; load.ms = load.n = 0;
-  if (load.was) { const helped = mean < .9 * load.was; load.was = 0; if (!helped) { quality--; load.off = true; return resize(); } }
-  if (mean > 20 && quality < TIERS.length - 1) { quality++; load.good = 0; load.was = mean; resize(); } else if (mean < 17.5 && quality > 0 && ++load.good >= 5) { quality--; load.good = 0; resize(); } else if (mean >= 17.5) load.good = 0;
-}
+// Adaptive quality (intro-quality.js): after each second of playing it may draw one step cheaper (TIERS) or, with room to
+// spare, one step better; a step up that fails is remembered, so a steady load does not make it flip back and forth.
+const step = adaptive(TIERS.length), adapt = dt => { const q = step(dt); if (q !== quality) { quality = q; resize(); } };
 function tick(ts) {
   if (!playing) return;
   if (T0 === null) T0 = ts; else { perf.frames.push(ts - perf.last); adapt(ts - perf.last); }
@@ -1090,7 +1116,12 @@ function skip() {
   if (Tnow < T_HANDOVER) T0 -= (T_HANDOVER - Tnow) * 1000;   // cut to the flat map, then the usual dissolve
 }
 $('next').onclick = () => (still < STILLS.length - 1 ? showStill(still + 1) : finish());
-addEventListener('resize', () => { resize(); if (!playing) render(REDUCED ? STILLS[still] : Tnow); }, { signal });
+const resized = () => { resize(); if (!playing) render(REDUCED ? STILLS[still] : Tnow); };
+addEventListener('resize', resized, { signal });
+// A window moved to a display of another pixel density changes devicePixelRatio and not always its size, so no resize
+// comes. Every frame compares the density with the one drawn at (render), and a still waiting for Next hears it from a
+// query for this density, which says when it stops matching and is made again for the new one (kept, so it is not collected).
+let dprQ; (function dpr() { dprQ = matchMedia(`(resolution: ${devicePixelRatio}dppx)`); dprQ.addEventListener('change', () => { dpr(); if (devicePixelRatio !== DPR) resized(); }, { once: true, signal }); })();
 for (const t of [.2, 2, CLICK + .1, 8, fu(11), UA - .2, UA + .4, fu(WASH[0] + 1.2), fu(WASH[0] + 2.2), fu(SHIFT[0] + 2.4), fw(9), fw(18.8), fw(27), fw(33)]) render(t);   // warm up: compile every shader and upload the pictures before the first real frame
 render(0);
 renderer.getContext().readPixels(0, 0, 1, 1, 6408, 5121, new Uint8Array(4));   // wait here for the graphics card to finish all of that, not in the film's first frame
@@ -1118,7 +1149,7 @@ function look(U, pts, r = 2) {   // the brightness really drawn round each point
   return pts.map(([x, y]) => { px.fill(0); gl.readPixels(Math.round(x * k - n / 2), Math.round(canvas.height - y * k - n / 2), n, n, gl.RGBA, gl.UNSIGNED_BYTE, px);
     let sum = 0, max = 0; const c = [0, 0, 0]; for (let i = 0; i < px.length; i += 4) { const v = (px[i] + px[i + 1] + px[i + 2]) / 3; sum += v; if (v > max) max = v; for (let j = 0; j < 3; j++) c[j] += px[i + j] / (n * n); } return [sum / (n * n), max, c]; });
 }
-window.__intro = debug = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED, finish: { float: FLOAT, phone: PHONE, samples: hdr.samples, blooms: blooms.length, get quality() { return quality; }, get ratio() { return renderer.getPixelRatio(); } } };
+window.__intro = debug = { perf, render, edges, T_END, T_HANDOVER, reduced: REDUCED, finish: { float: FLOAT, phone: PHONE, samples: hdr.samples, ms: MS, listed: { color: listed(FLOAT ? gl.RGBA16F : gl.RGBA8), depth: listed(gl.DEPTH_COMPONENT24) }, tiers: TIERS, blooms: blooms.length, get quality() { return quality; }, get ratio() { return renderer.getPixelRatio(); }, get size() { return [canvas.width, canvas.height, hdr.width, hdr.height, blooms[0].width]; } } };
 if (REC) Object.assign(debug, { probe, look, flightPath, marks: { CLICK, FLY0, FLY1: UA, SHOW: SHOW_U, WASH: WASH.map(fu), SHIFT: SHIFT.map(fu), FOUND: fu(FOUND), OUT: fu(X), RING: fu(X + 3.6), CAPS: CAPTIONS.map(c => [c[0], c[1]]), CREDIT: fw(36.5) } });
 if (REC) { $('skip').hidden = true; return { dispose }; }   // a clean picture for the recorder; Escape still leaves
 if (REDUCED) { root.classList.add('still'); $('next').hidden = false; showStill(0); } else { playing = true; requestAnimationFrame(() => requestAnimationFrame(tick)); }   // the frame after next: the next one was timed before all of the above ran, and the film would start that much late

@@ -11,7 +11,7 @@
 #intro .lbl.land { color: var(--ink); font-size: 12px; }   /* what each dot on the finished photo is */
 #intro .lbl.gal.found { color: var(--accent); }   /* the galaxy's distance, once its light has given it */
 /* color tells distance: the galaxy's own measured light, drawn beside it (intro.js places it and draws it on). No frame: a dark ground, a line, a strip of color */
-#intro-shift { position: absolute; left: 0; top: 0; width: 372px; aspect-ratio: 300 / 118; opacity: 0; visibility: hidden; pointer-events: none; background: rgba(1, 2, 6, .8); box-shadow: 0 0 16px 14px rgba(1, 2, 6, .8); font: 400 12px/1 var(--mono); letter-spacing: .02em; color: var(--ink2); will-change: transform, opacity; }
+#intro-shift { position: absolute; left: 0; top: 0; width: 372px; aspect-ratio: 300 / 132; opacity: 0; visibility: hidden; pointer-events: none; background: rgba(1, 2, 6, .8); box-shadow: 0 0 8px 4px rgba(1, 2, 6, .8); font: 400 12px/1 var(--mono); letter-spacing: .02em; color: var(--ink2); will-change: transform, opacity; }
 #intro-shift svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 #intro-shift .curve { fill: none; stroke-width: 1.6; stroke-linejoin: round; }
 #intro-shift .lead { stroke: rgba(255, 255, 255, .4); stroke-width: 1; }
@@ -20,6 +20,7 @@
 #intro-shift .move path { fill: var(--accent); }
 #intro-shift span { position: absolute; white-space: nowrap; opacity: 0; }
 #intro-shift .s-rest, #intro-shift .s-here { bottom: 0; }
+#intro-shift .s-rest { text-align: right; line-height: 1.25; }
 #intro-shift .s-here { color: var(--ink); }
 #intro-shift .s-move { top: 0; transform: translateX(-50%); color: var(--accent); font-size: 14px; }
 /* the flight down the beam: how far from Earth, ticking over */
@@ -63,6 +64,6 @@
   #intro-cap { bottom: max(22px, env(safe-area-inset-bottom)); }
   #intro-cap-text { font-size: 14px; min-height: 3em; text-wrap: balance; }   /* two lines of about the same length, not one word left over */
   #intro .lbl, #intro .lbl.land { font-size: 10px; }
-  #intro-shift { width: 264px; font-size: 10px; }
+  #intro-shift { width: 228px; font-size: 10px; }
   #intro-shift .s-move { font-size: 11px; }
 }

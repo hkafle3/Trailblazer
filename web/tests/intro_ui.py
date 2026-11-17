@@ -35,7 +35,7 @@ from playwright.async_api import async_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 SIZES = [("desktop", dict(viewport={"width": 1440, "height": 900})),
          ("phone", dict(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True))]
-LAZY = ("intro.js", "intro.css", "three", "data/intro/")   # what a visit that does not play the film must not fetch
+LAZY = ("intro.js", "intro-quality.js", "intro.css", "three", "data/intro/")   # what a visit that does not play the film must not fetch
 ON = "document.documentElement.dataset.intro"
 RECT = "(() => { const b = document.getElementById('map').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()"
 DAY = "+document.getElementById('time').value"
@@ -206,7 +206,10 @@ async def colors(pg, name, m, vw, vh):
     drawn as a line; a dashed copy of its bump marks where that glow sits nearby, an arrow runs from it towards red to
     where the bump is, and the label says how much redder, which is the galaxy's redshift in photo.json; then the
     galaxy's label, the only one, is lit. The drawing is inside the window, clear of the caption, and gone before and
-    after. The data behind it is checked too: the top of the bump is where the redshift puts it. No wavelengths, no stripes."""
+    after. It covers neither the photo's frame nor the curved band of light down the photo's right side (found from the
+    pixels drawn under it): it sits on the photo between the two, or, where that is too narrow, above the photo. The
+    dashed mark says, in plain words, "where it glows up close". The data behind it is checked too: the top of the bump is
+    where the redshift puts it. No wavelengths, no stripes."""
     look = lambda u, pts, r=2: pg.evaluate(f"window.__intro.look({u}, {pts}, {r})")
     probe = lambda u: pg.evaluate(f"window.__intro.probe({u})")
     w0, w1 = m["WASH"]; s0, s1 = m["SHIFT"]
@@ -243,7 +246,7 @@ async def colors(pg, name, m, vw, vh):
     assert len(said) == 1 and said[0].startswith("star"), f"{name}: in the bands only the star keeps its label: {said}"
     # color tells distance
     box = "(() => { const el = document.getElementById('intro-shift'), cs = getComputedStyle(el), b = el.getBoundingClientRect(), q = k => el.querySelector(k), n = (k, a) => +q(k).getAttribute(a), o = k => +getComputedStyle(q(k)).opacity, r = k => { const c = q(k).getBoundingClientRect(); return [c.left, c.right, c.top, c.bottom]; };" \
-          " return { vis: cs.visibility, op: +cs.opacity, box: [b.left, b.top, b.right, b.bottom], cap: document.querySelector('#intro .cap-top').getBoundingClientRect().top, clip: n('#intro-sc rect', 'width') / 300, arrow: [n('.move line', 'x1'), n('.move line', 'x2')], rest: o('.rest'), move: o('.s-move'), said: q('.s-move').textContent, texts: ['.s-rest', '.s-here', '.s-move'].map(r), ghost: q('line.ghost').getBoundingClientRect().left }; })()"
+          " return { vis: cs.visibility, op: +cs.opacity, box: [b.left, b.top, b.right, b.bottom], cap: document.querySelector('#intro .cap-top').getBoundingClientRect().top, clip: n('#intro-sc rect', 'width') / 300, arrow: [n('.move line', 'x1'), n('.move line', 'x2')], rest: o('.rest'), move: o('.s-move'), said: q('.s-move').textContent, mark: q('.s-rest').innerText.replace(/\\s+/g, ' '), texts: ['.s-rest', '.s-here', '.s-move'].map(r), ghost: q('line.ghost').getBoundingClientRect().left }; })()"
     see = lambda u: pg.evaluate(f"(window.__intro.render({u}), {box})")
     for u in (w0 + .5, s0 - .05, s1 + .6):
         g = await see(u); assert g["vis"] == "hidden" and g["op"] == 0, f"{name}: the galaxy's light is drawn outside its moment, at {u:.1f}s: {g}"
@@ -253,6 +256,17 @@ async def colors(pg, name, m, vw, vh):
     assert done["arrow"][1] > done["arrow"][0] + 20, f"{name}: the arrow does not run towards red (to the right): {done['arrow']}"
     assert done["box"][0] >= 0 and done["box"][2] <= vw and done["box"][1] >= 0 and done["box"][3] < done["cap"] - 20, f"{name}: the drawing is not inside the window, clear of the caption: {done['box']}, caption at {done['cap']}"
     assert all(0 <= t[0] and t[1] <= vw for t in done["texts"]) and done["texts"][0][1] <= done["texts"][1][0], f"{name}: the drawing's words are cut off or run into each other: {done['texts']}"
+    assert done["mark"] == "where it glows up close", f"{name}: the dashed mark is labelled {done['mark']!r}"
+    # clear of the photo's frame and of the band of light down its right side
+    (rx, _), (lx, _), (_, by), (_, ty) = p["photoEdges"]; x0, y0, x1, y1 = done["box"]
+    inside = x0 > lx + 8 and y0 > ty + 8 and y1 < by - 8
+    assert inside or y1 < ty - 8, f"{name}: the drawing {done['box']} covers the photo's frame (left {lx:.0f}, top {ty:.0f}, bottom {by:.0f})"
+    if inside:   # the band: the first column, going right from the drawing's left edge, whose middle brightness over the drawing's rows is well above the photo's black
+        xs = [x0 + 3 * i for i in range(int((rx - 6 - x0) / 3))]; rows = [y0 + (y1 - y0) * k / 6 for k in range(1, 6)]
+        lit = await look(m["FOUND"] + .3, [[x, y] for x in xs for y in rows], 1)
+        col = [sorted(g[0] for g in lit[i * len(rows):(i + 1) * len(rows)])[len(rows) // 2] for i in range(len(xs))]
+        floor = sorted(col)[len(col) // 4]; band_x = next((x for x, c in zip(xs, col) if c > floor + 12), None)
+        assert band_x is not None and band_x - x1 > 8, f"{name}: the drawing {done['box']} reaches the band of light at x {band_x} (column brightness {[round(c) for c in col[-40:]]})"
     gal = next(b for b in p["flight"] if b["kind"] == "galaxy")
     assert 0 < gal["land"][0] < vw and done["box"][3] < gal["land"][1] < done["cap"], f"{name}: the galaxy is not in view under its drawing: {gal['land']}"
     assert p["wash"]["dim"] < .6 and (await probe(w0 + 1))["wash"]["dim"] == 1 and p["wash"]["a"] == 0, f"{name}: the photo should step back, untinted, while the galaxy's light is read: {p['wash']}"
@@ -557,9 +571,64 @@ async def run(b, name, opts):
     assert not errs, f"{name}: page errors {errs}"
 
 
+async def fallbacks(b):
+    """The picture's own target, where a graphics card cannot draw what the film asks for (forced through ?intro=rec&gpu=):
+    multisampling falls back from 4 samples to 2 to none, half float falls back to 8 bits, and a target that does not
+    complete is never used. On this machine the film gets 4 samples and half float. Every path draws the film: the opening,
+    the photo and the colors are not black."""
+    out = []
+    for force in ["", "samples-2", "samples-0", "incomplete-4", "incomplete-4,incomplete-2", "no-float", "incomplete-half", "no-float,incomplete-4,incomplete-2"]:
+        errs = []; pg = await page(b, SIZES[0][1], errs, seen_tour=True)
+        await pg.goto(BASE + "/explore?intro=rec&gpu=" + force); await film_up(pg)
+        f = await pg.evaluate("(({ float, ms, samples, listed, tiers }) => ({ float, ms, samples, listed, tiers }))(window.__intro.finish)")
+        both = lambda n: n in f["listed"]["color"] and n in f["listed"]["depth"]
+        half = "no-float" not in force and "incomplete-half" not in force
+        want = 4 if both(4) and "incomplete-4" not in force else 2 if both(2) and "incomplete-2" not in force else 0
+        if force == "": assert f["float"] and f["ms"] == 4, f"this machine should draw the film in half float with 4 samples: {f}"
+        assert f["float"] == half and f["ms"] == want and f["samples"] == want and all(t[1] <= want for t in f["tiers"]), f"gpu={force}: the film picked {f}, not half float {half} with {want} samples"
+        lit = []
+        for u in (1.5, 21, 27.5):
+            got = await pg.evaluate(f"window.__intro.look({u}, {[[1440 * (i + .5) / 9, 900 * (j + .5) / 7] for i in range(9) for j in range(7)]}, 3)")
+            lit.append(sum(g[0] > 12 for g in got)); assert max(g[1] for g in got) > 120 and lit[-1] >= 4, f"gpu={force}: the frame at {u}s is black: {[round(g[0]) for g in got]}"
+        assert not errs, f"gpu={force}: page errors {errs}"
+        await pg.context.close(); out.append(f"{force or 'none'}: {'half float' if f['float'] else '8 bits'}, {f['ms']} samples, lit {lit}")
+    print("fallbacks: " + "; ".join(out))
+
+
+async def dpr_change(b):
+    """Moving the window to a display of another pixel density mid-film (emulated: the density changes, the window's size
+    does not, so no resize event comes) redraws at the new density: the canvas, the picture's target and its glow follow,
+    both in the recorder and while the film plays."""
+    for name, opts, cap, to in (("desktop", dict(viewport={"width": 1440, "height": 900}, device_scale_factor=1), 2, 2), ("phone", SIZES[1][1], 1.5, 1)):
+        for playing in (False, True):
+            errs = []; pg = await page(b, opts, errs, seen_tour=True)
+            await pg.goto(BASE + ("/explore" if playing else "/explore?intro=rec")); await pg.wait_for_selector("body[data-ready='1']")
+            if playing: await pg.click("#how")
+            await film_up(pg)
+            if playing: await pg.wait_for_function(f"{FILM_S} > 3", timeout=60000)
+            else: await pg.evaluate("window.__intro.render(20)")
+            vw, vh = await pg.evaluate("[innerWidth, innerHeight]"); before = await pg.evaluate("window.__intro.finish.size")
+            cdp = await pg.context.new_cdp_session(pg)
+            await cdp.send("Emulation.setDeviceMetricsOverride", {"width": vw, "height": vh, "deviceScaleFactor": to, "mobile": name == "phone"})
+            await pg.wait_for_function(f"devicePixelRatio === {to}")
+            if playing: await pg.wait_for_timeout(600)
+            else: await pg.evaluate("window.__intro.render(20.5)")
+            size, ratio, tier = await pg.evaluate("(f => [f.size, f.ratio, f.tiers[f.quality][0]])(window.__intro.finish)")
+            want = round(vw * min(cap, to) * tier)
+            assert [vw, vh] == await pg.evaluate("[innerWidth, innerHeight]"), f"{name}: the window's size changed with the density"
+            assert abs(size[0] - want) <= 1 and size[2] == size[0] and size[3] == size[1] and size[4] == size[0] >> 1, f"{name}{' playing' if playing else ''}: after the density went to {to}, canvas, target and glow are {size} (before {before}), not {want} wide"
+            if not playing:
+                got = await pg.evaluate(f"window.__intro.look(20.5, {[[vw * (i + .5) / 7, vh * (j + .5) / 7] for i in range(7) for j in range(7)]}, 3)")
+                assert max(g[1] for g in got) > 120, f"{name}: the frame after the density change is black"
+            assert not errs, f"{name}: page errors {errs}"
+            await pg.context.close()
+            print(f"{name}{' playing' if playing else ' (recorder)'}: density {round(before[0] / vw, 2)} to {to}: canvas {before[0]} to {size[0]} px wide, target and glow with it")
+
+
 async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(channel="chrome", args=["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"])
+        await fallbacks(b); await dpr_change(b)
         for name, opts in SIZES: await run(b, name, opts)
         for height in (1000, 1280):
             name = f"tall phone 320x{height}"
