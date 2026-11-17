@@ -571,7 +571,7 @@ async def main():
             await true_scale(pg, name, m, 320, height); await assembly(pg, name, m, flight); await colors(pg, name, m, 320, height); await words(pg, name, m, 320)
             assert not errs, f"{name}: page errors {errs}"
             await pg.context.close()
-            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, the photo is not shown until arrival, the colors wash over it, the film is one camera move (at most {worst[1]:.2f} degrees in a frame, at least {worst[3]:.3f} Earth radii clear of the air), the galaxy loses at most {gal:.0%} of its light in a frame, and the captions are Ed's, on one or two lines at full size")
+            print(f"{name}: flight passes every body in order with increasing waypoints and timestamps, ends with the photo {wide:.0f} px wide inside the window, the photo is not shown until arrival, the six bands and the galaxy's light follow, the film is one camera move (at most {worst[1]:.2f} degrees in a frame, at least {worst[3]:.3f} Earth radii clear of the air), the galaxy loses at most {gal:.0%} of its light in a frame, and the captions are Ed's, on one or two lines at full size")
         await b.close()
     print("intro_ui: all checks passed")
 
