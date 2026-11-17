@@ -60,6 +60,7 @@ Downloaded photo cutouts (`bake/cache/`) and the raw coverage list (`bake/covera
 - Star positions and motions: ESA Gaia DR3.
 - Known comets and asteroids per image: IMCCE SkyBoT.
 - Comet paths and predicted brightness: NASA JPL Horizons and the Small-Body Database.
+- Galaxy redshifts for the depth data: SIMBAD, operated at CDS, Strasbourg, France (Harvard mirror). Star distances: ESA/Gaia/DPAC. Small-body distances: IMCCE SkyBoT (Berthier et al. 2006).
 
 ## Deploying
 
