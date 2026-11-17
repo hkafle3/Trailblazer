@@ -19,7 +19,7 @@ async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
         ctx = await b.new_context(viewport={"width": 1440, "height": 900})
-        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
         pg = await ctx.new_page()
         errors = []; pg.on("pageerror", lambda e: errors.append(str(e)))
         ready = "+document.getElementById('play')?.getAttribute('aria-valuemax') > 0"
@@ -63,21 +63,21 @@ async def main():
         assert not await pg.evaluate(playing), "a drag on the handle started playing"
         print("PASS play handle: plain clicks and mouse clicks toggle once each, a drag does not")
 
-        # the cards fit: Descriptions shows everything without scrolling, and no card sits on the photo or the timeline
+        # the cards fit (the redesign's columns): nothing in Advanced, the name and verdict or Report sits on the photo or the
+        # timeline; Advanced ends on screen, and when its controls run past its foot it is marked as having more below
         FIT = """() => { const r = s => document.querySelector(s).getBoundingClientRect(), hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-            const d = document.querySelector('.pv-desc .pv-scroll'), bad = [];
-            if (r('#det').bottom > d.getBoundingClientRect().bottom + 1) bad.push('the Band box is cut off in Descriptions');
-            for (const c of ['.pv-options', '.pv-spectral', '.pv-layers', '.pv-others', '.pv-desc', '.pv-state', '.pv-mini'])
+            const d = document.getElementById('adv-body'), bad = [];
+            for (const c of ['.pv-adv', '.pv-who', '.pv-report', '#adv-body', '.pv-mini'])
               for (const o of ['.pv-frame', '.tl-line', '.tl-date']) if (hit(r(c), r(o))) bad.push(c + ' over ' + o);
-            if (d.scrollHeight > d.clientHeight + 2 && d.scrollTop + d.clientHeight < d.scrollHeight - 2 && !d.classList.contains('more')) bad.push('Descriptions has more below, unmarked');
-            const cards = ['.pv-options', '.pv-spectral', '.pv-layers', '.pv-others'];
-            for (let i = 1; i < cards.length; i++) if (r(cards[i]).top < r(cards[i - 1]).bottom) bad.push(cards[i] + ' over ' + cards[i - 1]);
+            if (r('.pv-adv').bottom > innerHeight + 1) bad.push('Advanced runs off the screen');
+            if (r('.pv-who').bottom > r('.pv-report').top + 1) bad.push('the verdict runs into Report');
+            if (d.scrollHeight > d.clientHeight + 2 && d.scrollTop + d.clientHeight < d.scrollHeight - 2 && !d.classList.contains('more')) bad.push('Advanced has more below, unmarked');
             return bad; }"""
         for w, h in [(1440, 900), (1280, 720)]:
             await pg.set_viewport_size({"width": w, "height": h}); await pg.wait_for_timeout(300)
             bad = await pg.evaluate(FIT); assert not bad, f"{w}x{h}: {bad}"
         await pg.set_viewport_size({"width": 1440, "height": 900})
-        print("PASS cards: the search fits in Descriptions, the left cards do not overlap, and no card covers the photo or the timeline at 1440x900 and 1280x720")
+        print("PASS cards: Advanced, the name and verdict and Report stay off the photo and the timeline, Advanced ends on screen and marks more below, at 1440x900 and 1280x720")
 
         # sky mode (no spot yet): a bad position is said beside the search, in the live region
         await pg.goto(f"{BASE}/timelapse.html"); await pg.wait_for_function("document.body.classList.contains('sky')")
@@ -95,7 +95,7 @@ async def main():
         await pg.select_option("#det", "D2"); await pg.wait_for_timeout(300)   # another band at the same spot keeps it
         assert (await pg.text_content("#state-label")) == "Discovered", "a band change dropped the discovery"
         await pg.fill("#coords", "269.4463 4.7671"); await pg.press("#coords", "Enter"); await pg.wait_for_timeout(300)
-        assert (await pg.text_content("#state-label")) == "Undiscovered" and await pg.get_attribute("#state", "href") == "forums.html", "new coordinates still say Discovered"
+        assert (await pg.text_content("#state-label")) == "Report a new find" and await pg.get_attribute("#state", "href") == "forums.html", "new coordinates still say Discovered"
         assert "found=" not in pg.url and await pg.is_hidden("#vName"), f"new coordinates keep the discovery: {pg.url}"
         print("PASS discovery: kept for a band change, dropped from the label, link, Found as line and address at new coordinates")
 
@@ -130,28 +130,30 @@ async def main():
         await pg.click("label[for=diff]")
         print("PASS colour key, spoken: Color Difference is described as orange brighter, blue dimmer, and so is the photo while it is on")
 
-        # phones (T1, tool tabs): Tab goes timeline, the five tabs, Discovered, then the open card's controls; another tab's
-        # card takes its place in the order (hidden cards are skipped)
+        # phones (the redesign's one column): Tab goes the timeline, Advanced and its controls (open), then Report and Copy link;
+        # shut, Advanced's controls are skipped
         await pg.set_viewport_size({"width": 390, "height": 844})
         await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready)
-        async def tab_order(n=10):
+        async def tab_order(n=14):
             await pg.focus("#play"); order = ["play"]
             for _ in range(n):
-                await pg.keyboard.press("Tab"); order.append(await pg.evaluate("document.activeElement.id || document.activeElement.dataset.t || document.activeElement.className"))
+                await pg.keyboard.press("Tab"); order.append(await pg.evaluate("document.activeElement.id || document.activeElement.className"))
             return order
-        for tab, card in (("options", ["fov"]), ("spectral", ["sp-dial", "sp-on"]), ("others", ["still", "diff"]), ("info", ["coords", "det"])):
-            await pg.click(f".pv-tabs [data-t={tab}]")
-            # a card that scrolls is itself a Tab stop by design (timelapse.html moreBelow); whether it scrolls depends on the
-            # spot's data (a reported dot adds a "Found as" line), so that stop is not part of the order checked here
-            order = [x for x in await tab_order(11) if not x.startswith("pv-scroll")]
-            want = ["play", "options", "spectral", "layers", "others", "info", "state", *card]
-            assert order[:len(want)] == want, f"Tab order on a phone, {tab} open: {order}"
-        print("PASS phone tab order: timeline, the five tabs, Discovered, then the open card (Zoom; the dial and its box; the toggles; Coordinates and Band)")
+        # a region that scrolls is itself a Tab stop by design (timelapse.html moreBelow); whether it scrolls depends on the
+        # spot's data, so that stop is not part of the order checked here
+        order = [x for x in await tab_order() if "pv-scroll" not in x]
+        want = ["play", "adv-btn", "sp-dial", "sp-on", "still", "diff", "ly-heat", "split", "fov", "coords", "det", "state", "share"]
+        assert order[:len(want)] == want, f"Tab order on a phone, Advanced open: {order}"
+        await pg.click("#adv-btn")
+        order = [x for x in await tab_order(4) if "pv-scroll" not in x]
+        assert order[:4] == ["play", "adv-btn", "state", "share"], f"Tab order on a phone, Advanced shut: {order}"
+        await pg.click("#adv-btn")
+        print("PASS phone tab order: timeline, Advanced and its controls (the dial and its box; the filters; Zoom; Coordinates and Band), Report, Copy link; shut, the controls are skipped")
 
         # the left cards shrink with the screen: every control inside them stays on screen, down to 320 px
         for w in (320, 390):
             await pg.set_viewport_size({"width": w, "height": 844}); await pg.wait_for_timeout(300)
-            out = await pg.evaluate("[...document.querySelectorAll('.pv-options .at, .pv-spectral .at, .pv-layers .at, .pv-others .at')].filter(e => { const r = e.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth; }).map(e => e.id || e.textContent)")
+            out = await pg.evaluate("[...document.querySelectorAll('#adv-body input, #adv-body select, #adv-body label, #adv-body svg, #adv-body canvas')].filter(e => { const r = e.getBoundingClientRect(); return r.width && (r.left < 0 || r.right > innerWidth); }).map(e => e.id || e.textContent)")
             assert not out, f"{w} px: off screen {out}"
         # removing a Spectral layer keeps keyboard focus: on the next chip, then the box when none are left
         await pg.set_viewport_size({"width": 1440, "height": 900}); await pg.wait_for_timeout(200)
@@ -161,7 +163,7 @@ async def main():
         await pg.keyboard.press("Enter"); await pg.wait_for_timeout(100)
         assert await pg.evaluate("document.activeElement.id") == "sp-on", "focus lost after removing the last chip"
         print("PASS spectral chips: removing one keeps focus on the next chip, then the box")
-        print("PASS phone cards: every left-card control stays on screen at 320 and 390 px")
+        print("PASS phone cards: every control in Advanced stays on screen at 320 and 390 px")
         # Forums (same shared stylesheet): no sideways scroll at tablet and phone widths (styles.css asks 1100 px of body)
         for w in (390, 700, 768, 900, 1024):
             await pg.set_viewport_size({"width": w, "height": 844}); await pg.goto(f"{BASE}/forums.html"); await pg.wait_for_timeout(500)
@@ -181,17 +183,17 @@ async def main():
 
         # the photo's legend, Color Difference's key row included, sits wholly inside the frame
         await pg.click("label[for=diff]")
-        INSIDE = """() => { const f = document.querySelector('.pv-frame').getBoundingClientRect(), bad = [];
-            for (const s of document.querySelectorAll('#legend span')) { const r = s.getBoundingClientRect();
+        INSIDE = """() => { const f = document.querySelector('.pv-frame').getBoundingClientRect(), bad = [], shown = [...document.querySelectorAll('#legend span')].filter(s => s.getClientRects().length);
+            for (const s of shown) { const r = s.getBoundingClientRect();
               if (r.left < f.left || r.right > f.right || r.top < f.top || r.bottom > f.bottom) bad.push(s.textContent);
               if (s.getClientRects().length > 1 || r.height > 1.6 * parseFloat(getComputedStyle(s).fontSize)) bad.push(s.textContent + ' wraps'); }
-            return [document.querySelectorAll('#legend span').length, bad]; }"""
+            return [shown.length, bad]; }"""
         for w, h in [(320, 700), (390, 844), (1440, 900)]:
             await pg.set_viewport_size({"width": w, "height": h}); await pg.wait_for_timeout(300)
             n, bad = await pg.evaluate(INSIDE)
-            assert n == 6 and not bad, f"{w} px legend: {bad}"
+            assert n == 5 and not bad, f"{w} px legend: {n} items, {bad}"
         await pg.click("label[for=diff]")
-        print("PASS legend: all six items, the colour key too, sit whole inside the photo frame at 320, 390 and 1440 px")
+        print("PASS legend: all five items (this visit, earlier visits, already known, and the colour key) sit whole inside the photo frame at 320, 390 and 1440 px")
 
         # while a live time-lapse builds, the frame says what is happening, shows each frame as it is made while nothing
         # else is on screen, and clears when the build lands; a re-centre out of the listed images shows it over the

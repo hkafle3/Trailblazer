@@ -1,7 +1,8 @@
 /* Patch viewer (timelapse.html), laid out from design/frontend-refactor/Explore.png (2462 x 1420 design pixels below the
    header, the same frame as explore.css). .pstage is the design scaled to fit the window: --e is one design pixel.
-   Left: Options, Layers, Others. Middle: the patch. Right: the whole-region mini-map, Discovered/Undiscovered, Descriptions.
-   Bottom: the month timeline from Explore, with a dot for each SPHEREx visit to this patch.
+   The time-lapse redesign (UX mockups 1a, 1c, 2; 2026-11-16) sits on the same grid: the mockups are 1440 x 900, one
+   mockup pixel (--m) is 1 / 0.585 design pixels. Left: Advanced. Middle: the patch with Photo and Depth tabs. Right: the
+   name and verdict, then Report a new find (Depth: Distances). Bottom: the month timeline, a dot per SPHEREx visit.
    The 3D star field (canvas#gl) is the backdrop. Sky mode (no patch chosen yet) keeps its own map and hint. */
 @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap");
 
@@ -14,7 +15,7 @@ body.lapse:not(.sky) canvas#gl { opacity: .2; }
 canvas#gl.drag { cursor: grabbing; }
 
 .pstage {
-  --e: min(calc(100vw / 2462), calc(100vh / 1420));
+  --e: min(calc(100vw / 2462), calc(100vh / 1420)); --m: calc(var(--e) / .585);
   position: fixed; z-index: 1; left: 50%; top: 0; width: calc(2462 * var(--e)); height: calc(1420 * var(--e)); transform: translateX(-50%);
   pointer-events: none; font-family: var(--panel-font); color: #fff;
 }
@@ -23,31 +24,11 @@ canvas#gl.drag { cursor: grabbing; }
 /* ---------- cards: a straight white top rule, on black ---------- */
 .pv-card { margin: 0; padding: calc(27 * var(--e)) 0 calc(22 * var(--e)) calc(46 * var(--e)); background: #000; border: 0; border-top: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 0; }
 .pv-card h2 { margin: 0 0 calc(26 * var(--e)); font: 400 calc(36 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; white-space: nowrap; }
-/* the left cards are laid out in their own design pixels (Explore.png, 2026-11-15 revision): .at children sit at
-   left --x, and either top --y or vertical centre --cy, measured from the card's top-left corner */
-.pv-options, .pv-spectral, .pv-layers, .pv-others { padding: 0; box-sizing: border-box; color: #f2f2f2; }
-.pv-card .at { position: absolute; margin: 0; left: calc(var(--x) * var(--e)); top: calc(var(--y, 0) * var(--e)); }
-.pv-card .at[style*="--cy"] { top: calc(var(--cy) * var(--e)); transform: translateY(-50%); }
-.t24 { font-size: calc(24 * var(--e)); line-height: 1; white-space: nowrap; }
-.t32 { font-size: calc(32 * var(--e)); line-height: 1; white-space: nowrap; }
-label.at { cursor: pointer; }
-.pv-options { left: calc(89 * var(--e)); top: calc(228 * var(--e)); width: calc(452 * var(--e)); height: calc(150 * var(--e)); }
-.pv-spectral { left: calc(89 * var(--e)); top: calc(428 * var(--e)); width: calc(452 * var(--e)); height: calc(462 * var(--e)); }
-.pv-layers { left: calc(89 * var(--e)); top: calc(910 * var(--e)); width: calc(452 * var(--e)); height: calc(160 * var(--e)); }
-.pv-others { left: calc(89 * var(--e)); top: calc(1095 * var(--e)); width: calc(452 * var(--e)); height: calc(212 * var(--e)); }
-
 /* the checkbox from Explore's Layers, at design size */
 .cbx { -webkit-appearance: none; appearance: none; flex: none; width: calc(32 * var(--e)); height: calc(32 * var(--e)); min-width: 14px; min-height: 14px; margin: 0; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(4 * var(--e)); background: transparent; cursor: pointer; display: grid; place-items: center; }
 .cbx::after { content: ""; width: 55%; height: 55%; border-radius: 1px; background: var(--c, #fff); transform: scale(0); transition: transform .15s var(--ease); }
 .cbx:checked::after { transform: none; }
 .cbx:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-/* Zoom: an outlined bar that fills as you zoom in; it runs to the card's right edge */
-#fov { -webkit-appearance: none; appearance: none; width: calc(315 * var(--e)); height: calc(31 * var(--e)); min-height: 12px; box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(5 * var(--e)); cursor: pointer;
-  background: linear-gradient(rgba(255, 255, 255, .5), rgba(255, 255, 255, .5)) 0 0 / var(--p, 50%) 100% no-repeat; }
-#fov::-webkit-slider-thumb { -webkit-appearance: none; width: calc(8 * var(--e)); min-width: 4px; height: calc(31 * var(--e)); min-height: 12px; background: #fff; border: 0; border-radius: 0; }
-#fov::-moz-range-thumb { width: calc(8 * var(--e)); min-width: 4px; height: calc(25 * var(--e)); background: #fff; border: 0; border-radius: 0; }
-#fov:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 
 /* ---------- Spectral: the active layers, and a dial through SPHEREx's 102 spectral channels ---------- */
 .sp-active { width: calc(372 * var(--e)); height: calc(55 * var(--e)); min-height: 26px; box-sizing: border-box; display: flex; align-items: center; gap: calc(10 * var(--e)); padding: 0 calc(10 * var(--e));
@@ -68,8 +49,6 @@ label.at { cursor: pointer; }
 .sp-dial .needle path { fill: #fff; }
 .sp-dial:focus-visible .band { fill: #e8eefc; }
 .sp-dial:focus-visible { filter: drop-shadow(0 0 calc(10 * var(--e)) rgba(255, 255, 255, .45)); }
-.sp-end { font-size: calc(14 * var(--e)); line-height: 1; color: #aeb6c6; white-space: nowrap; transform: translate(-50%, -50%) !important; }
-.sp-read { text-align: center; font-size: calc(20 * var(--e)); line-height: 1; white-space: nowrap; transform: translate(-50%, -50%) !important; }
 
 /* ---------- the patch ---------- */
 .pv-frame { left: calc(675 * var(--e)); top: calc(229 * var(--e)); width: calc(1146 * var(--e)); height: calc(902 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(10 * var(--e)); background: #000; overflow: hidden; }
@@ -107,7 +86,6 @@ body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4
 
 /* ---------- right column ---------- */
 .pv-mini { left: calc(1936 * var(--e)); top: calc(332 * var(--e)); width: calc(434 * var(--e)); height: calc(297 * var(--e)); box-sizing: border-box; border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(14 * var(--e)); overflow: hidden; }
-#mini { display: block; width: 100%; height: 100%; }
 
 .pv-state { left: calc(1927 * var(--e)); top: calc(680 * var(--e)); width: calc(451 * var(--e)); height: calc(102 * var(--e)); box-sizing: border-box; display: flex; align-items: center;
   padding: 0 calc(21 * var(--e)) 0 calc(21 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: calc(16 * var(--e)); background: #000; color: #fff; text-decoration: none;
@@ -119,10 +97,13 @@ body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4
 .pv-state .go svg { width: 62%; height: 62%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .pv-state:hover .go { transform: translateX(calc(4 * var(--e))); }
 
-.pv-desc { left: calc(1927 * var(--e)); top: calc(825 * var(--e)); width: calc(451 * var(--e)); box-sizing: border-box; }
-.pv-desc .pv-scroll { max-height: calc(240 * var(--e)); }   /* the card ends above the timeline's date label */
-.pv-desc { padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }   /* title 21 in from the rule, the rest a further 28 in */
-.pv-desc .pv-scroll { padding-left: calc(28 * var(--e)); }
+/* Ming's Descriptions card, as the Discuss sheet and the comet and candidate pages use it (the time-lapse's own position
+   part sits in Advanced: .adv-body .pv-desc below) */
+.pv-desc:not(.adv-grp) { left: calc(1927 * var(--e)); top: calc(825 * var(--e)); width: calc(451 * var(--e)); box-sizing: border-box; }
+.pv-desc:not(.adv-grp) .pv-scroll { max-height: calc(240 * var(--e)); }
+.pv-desc:not(.adv-grp) { padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }   /* title 21 in from the rule, the rest a further 28 in */
+.pv-desc:not(.adv-grp) .pv-scroll { padding-left: calc(28 * var(--e)); }
+
 /* a card's content scrolls under its heading. When there is more below, a white bar on the right shows how much
    (Zoom's square white thumb, as a line) and the last line fades out */
 .pv-scroll { overflow-y: auto; padding-right: calc(30 * var(--e)); }
@@ -180,8 +161,9 @@ body.busy #loading { opacity: 1; visibility: visible; transition: opacity .3s .4
 .tl-knob .i-pause, .tl-knob.on .i-play { display: none; }
 .tl-knob.on .i-pause { display: block; }
 
-/* ---------- sky mode: only the coordinates box stays, next to the whole-sky map and hint ---------- */
-body.sky .pstage > :not(.pv-desc) { display: none; }
+/* ---------- sky mode: only the coordinates box stays (Advanced's position part), next to the whole-sky map and hint ---------- */
+body.sky .pstage > :not(.pv-adv), body.sky .pv-adv > :not(.adv-body), body.sky .adv-body > :not(.pv-desc) { display: none !important; }
+body.sky .pv-adv .adv-body { display: block !important; }
 body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* the sky loop sets .tmark display inline */
 #skyui { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
 #hint { position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); padding: 12px 22px; border-radius: 999px; font-size: 14px; color: var(--ink-2); white-space: nowrap; }
@@ -206,7 +188,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 .pv-specbtn[aria-pressed=true] { background: #fff; color: #000; }
 .pv-specbtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 #patch.picking { cursor: crosshair; }
-@media (min-width: 641px) { body.speccing:not(.talking) .pstage > :is(.pv-mini, .pv-state, .pv-desc) { display: none; } }
+@media (min-width: 901px) { body:is(.speccing, .talking) .pstage > :is(.pv-who, .pv-report, .pv-dist) { display: none; } }
 body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { display: none; }
 .pv-spec { left: calc(1880 * var(--e)); top: calc(229 * var(--e)); width: calc(500 * var(--e)); box-sizing: border-box; padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }
 .pv-spec h2 { display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(18 * var(--e)); }
@@ -250,12 +232,10 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   .pv-state { height: 56px; font-size: 20px; padding: 0 12px 0 22px; }
   .pv-mini { width: min(100%, 434px); height: auto; aspect-ratio: 434 / 297; }
   .pv-scroll { max-height: none !important; padding-right: 0; }
-  .pv-desc { padding: 14px 0 0 18px; border-top-width: 1.5px; }
+  .pv-desc:not(.adv-grp) { padding: 14px 0 0 18px; border-top-width: 1.5px; }
   .pv-desc h2 { font-size: 20px; margin-bottom: 12px; }
-  .pv-desc .pv-scroll { padding-left: 0; }
+  .pv-desc:not(.adv-grp) .pv-scroll { padding-left: 0; }
   .pv-desc label { font-size: 15px; }
-  /* the left cards keep their own layout, at three quarters of a pixel per design pixel (339 px wide) */
-  .pv-options, .pv-spectral, .pv-layers, .pv-others { --e: min(.75px, calc((100vw - 32px) / 452)); width: calc(452 * var(--e)); max-width: 100%; }
   .pv-desc .box { width: min(100%, 320px); height: 34px; font-size: 14px; margin-top: 10px; }
   .pv-desc .sub, .pv-info { font-size: 13px; }
   #status { font-size: 12px; }
@@ -275,11 +255,199 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
 #patch.drag { cursor: grabbing; }
 .pv-frame:has(#patch:focus-visible) { outline: 2px solid #fff; outline-offset: 3px; }
 
-/* ---------- phones, T1 "tool tabs" (Ed, 2026-11-15; mockups timelapse-T1-1 to 3): no page scroll ----------
-   From the top: Back with the name and position, the photo, the timeline, a strip of five tabs, one tool card at a time
-   (data-tab on the stage, set by the strip), and Undiscovered/Discovered pinned at the bottom. The cards are Ming's own,
-   laid out in rows instead of his design pixels. Wider screens never see the title row, the strip or "Add layer". */
-.pv-title, .pv-tabs, .sp-add { display: none; }
+
+/* ---------- the time-lapse redesign, phase 1 (UX mockups 1a, 1c, 2; mock.css): sizes in mockup pixels, --m ----------
+   Card tops are the straight white rule of .pv-card; nothing here rounds a top rule. */
+.pv-who { left: calc(1928 * var(--e)); top: calc(229 * var(--e)); width: calc(451 * var(--e)); box-sizing: border-box; padding: calc(16 * var(--m)) 0 calc(14 * var(--m)) calc(27 * var(--m)); }
+.pv-title { display: flex; align-items: center; gap: calc(12 * var(--m)); }
+.pv-back { display: none; }
+.pv-who h1 { margin: 0 0 calc(12 * var(--m)); font: 400 calc(23 * var(--m)) / 1.15 var(--panel-font); }
+.pv-say { margin: 0 0 calc(12 * var(--m)); font-size: calc(14 * var(--m)); line-height: 1.55; color: #fff; }
+.pv-say:empty { display: none; }
+.pv-facts { margin: 0; color: rgba(255, 255, 255, .62); font-size: calc(12 * var(--m)); line-height: 1.6; }
+/* "already known": a blue disc with a black check (the photo's mark, timelapse.html knownBadge) */
+i.kn-check { display: inline-block; width: calc(16 * var(--m)); height: calc(16 * var(--m)); min-width: 9px; min-height: 9px; margin-right: calc(6 * var(--m)); border-radius: 50%; vertical-align: -2px;
+  background: var(--known) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4L18 8' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 72% no-repeat; }
+#legend i.kn-check { margin: 0; vertical-align: 0; }
+
+/* Report a new find: Ming's state box, the line saying what it does (or why there is nothing to report), the share link */
+.pv-report { left: calc(1928 * var(--e)); top: calc(229 * var(--e) + max(var(--who-h, 0px), 252 * var(--m)) + 14 * var(--m)); width: calc(451 * var(--e)); }   /* under the name and verdict, however long (timelapse.html --who-h) */
+.pv-report .pv-state { width: 100%; height: calc(58 * var(--m)); padding: 0 calc(9 * var(--m)) 0 calc(22 * var(--m)); border-width: max(1.5px, calc(1.75 * var(--m))); border-radius: calc(10 * var(--m)); font-size: calc(17 * var(--m)); justify-content: space-between; }
+.pv-report .pv-state > span:first-child { flex: 1; text-align: left; }
+.pv-report .pv-state .go { width: calc(40 * var(--m)); height: calc(40 * var(--m)); }
+.pv-note { margin: calc(10 * var(--m)) calc(2 * var(--m)) 0; color: rgba(255, 255, 255, .62); font-size: calc(12 * var(--m)); line-height: 1.5; }
+.pv-note:empty { display: none; }
+.pv-share { display: inline-flex; align-items: center; gap: calc(8 * var(--m)); margin: calc(14 * var(--m)) 0 0; padding: calc(4 * var(--m)) calc(2 * var(--m)); border: 0; background: none; color: #fff; font: 400 calc(12.5 * var(--m)) / 1.3 var(--panel-font); cursor: pointer; }
+.pv-share svg { width: calc(16 * var(--m)); height: calc(16 * var(--m)); min-width: 12px; min-height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.pv-share:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.pv-share:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Photo and Depth: tabs on the photo's top-left corner (room for Colors as a third) */
+.pv-views { position: absolute; z-index: 3; left: calc(14 * var(--m)); top: calc(14 * var(--m)); display: flex; border: max(1.5px, calc(1.5 * var(--m))) solid #fff; border-radius: calc(8 * var(--m)); overflow: hidden; background: #000; }
+.pv-views button { display: flex; align-items: center; gap: calc(8 * var(--m)); height: calc(32 * var(--m)); min-height: 24px; padding: 0 calc(14 * var(--m)); border: 0; background: none; color: #fff; font: 400 calc(13 * var(--m)) / 1 var(--panel-font); cursor: pointer; }
+.pv-views button + button { border-left: max(1px, calc(1.5 * var(--m))) solid rgba(255, 255, 255, .45); }
+.pv-views button[aria-selected=true] { background: #fff; color: #000; }
+.pv-views button:focus-visible { outline: 2px solid #ff9a4d; outline-offset: -3px; }
+.pv-views svg { width: calc(16 * var(--m)); height: calc(16 * var(--m)); min-width: 12px; min-height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+/* the Spectrum toggle leaves the corner to the tabs: bottom-left, across from the legend */
+.pv-specbtn { top: auto !important; bottom: calc(16 * var(--e)); }
+/* the legend: one "already known" mark, or Advanced's split into predicted and known passing */
+#legend .lg-split { display: none; }
+body:has(#split:checked) #legend .lg-merged { display: none; }
+body:is(:has(#split:checked), .ringed) #legend .lg-split { display: flex; }
+body.ringed #legend .lg-merged { display: none; }
+
+/* Depth: the beam fills the frame; the photo's own marks, legend and Spectrum toggle step aside */
+.xp-d3 { position: absolute; inset: 0; z-index: 2; overflow: hidden; background: #010206; }
+.xp-d3[hidden] { display: none; }
+.xp-d3 canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: 0; }
+.xp-d3 canvas.drag { cursor: grabbing; }
+.xp-d3 canvas:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+.xp-d3-lbl { position: absolute; inset: 0; pointer-events: none; }
+.xp-d3 .lbl { position: absolute; left: 0; top: 0; font: 400 calc(12 * var(--m)) / 1.3 var(--panel-font); letter-spacing: .02em; color: rgba(255, 255, 255, .82); white-space: pre; text-shadow: 0 0 6px #000, 0 0 3px #000, 0 0 2px #000; }
+.xp-d3 .lbl.accent { color: #ff9a4d; }
+.xp-d3 .lbl.mark { color: rgba(255, 255, 255, .55); font-size: calc(11 * var(--m)); }
+.xp-d3 .lbl.tip { padding: 2px 6px; border-radius: 4px; background: rgba(0, 0, 0, .75); color: #fff; transition: opacity .12s; }
+.xp-d3-hint, .xp-d3-note { position: absolute; bottom: calc(14 * var(--m)); margin: 0; font: 400 calc(11 * var(--m)) / 1.3 var(--panel-font); letter-spacing: .03em; color: rgba(255, 255, 255, .5); pointer-events: none; }
+.xp-d3-hint { right: calc(18 * var(--m)); display: flex; align-items: center; gap: calc(7 * var(--m)); }
+.xp-d3-hint svg { width: calc(15 * var(--m)); height: calc(15 * var(--m)); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.xp-d3-note { left: calc(18 * var(--m)); }
+.xp-d3-note .n, .xp-d3-nogl { display: none; }
+.xp-d3-msg { position: absolute; left: 10%; right: 10%; top: 46%; margin: 0; text-align: center; font: 400 calc(13 * var(--m)) / 1.5 var(--panel-font); color: rgba(255, 255, 255, .75); pointer-events: none; }
+.xp-d3-msg:empty { display: none; }
+.xp-d3-msg.err { color: var(--glitch); }
+.pv-err { margin: calc(10 * var(--m)) 0 0; color: var(--glitch); font-size: calc(12.5 * var(--m)); line-height: 1.5; }
+.pv-err:empty { display: none; }
+.xp-d3.nogl .xp-d3-nogl { display: block; position: absolute; left: 10%; right: 10%; top: 45%; margin: 0; text-align: center; font-size: calc(13 * var(--m)); color: #fff; }
+.xp-d3.nogl :is(.xp-d3-hint, .xp-d3-note) { display: none; }
+body.depth :is(#legend, .pv-specbtn, #one-photo, #patch, #hold) { visibility: hidden; }
+body:not(.depth) .pstage > .pv-dist, body.depth .pstage > .pv-report, body.depth #pv-facts { display: none; }
+
+/* Distances (Depth): every object with a distance, nearest first; the list scrolls under its heading */
+.pv-dist { left: calc(1928 * var(--e)); top: calc(229 * var(--e) + var(--who-h, 156 * var(--m))); width: calc(451 * var(--e)); box-sizing: border-box; padding: calc(16 * var(--m)) 0 calc(10 * var(--m)) calc(27 * var(--m)); }
+.pv-dist h2 { margin: 0 0 calc(10 * var(--m)); font-size: calc(21 * var(--m)); }
+.dist-status { margin: 0 calc(14 * var(--m)) calc(10 * var(--m)) 0; color: rgba(255, 255, 255, .62); font-size: calc(11 * var(--m)); line-height: 1.5; }
+.dist-head { display: flex; justify-content: space-between; padding: 0 calc(14 * var(--m)) calc(6 * var(--m)) 0; color: rgba(255, 255, 255, .62); font-size: calc(11 * var(--m)); }
+.pv-dist .pv-scroll { max-height: max(calc(80 * var(--m)), calc(1130 * var(--e) - 229 * var(--e) - var(--who-h, 156 * var(--m)) - 110 * var(--m))); padding-right: calc(14 * var(--m)); }
+.dist-list { margin: 0; padding: 0; list-style: none; font-size: calc(12.5 * var(--m)); }
+.drow { display: flex; justify-content: space-between; gap: calc(10 * var(--m)); padding: calc(7 * var(--m)) 0 calc(4 * var(--m)); line-height: 1.3; }
+.drow + .drow { border-top: 1px solid rgba(255, 255, 255, .1); }
+.drow .dn { min-width: 0; }
+.drow .nm { overflow-wrap: anywhere; }
+.drow small { display: block; color: rgba(255, 255, 255, .62); font-size: calc(11 * var(--m)); line-height: 1.4; overflow-wrap: anywhere; }
+.drow .dd { flex: none; text-align: right; white-space: nowrap; }
+.drow .dmk { display: inline-block; width: calc(10 * var(--m)); height: calc(10 * var(--m)); min-width: 7px; min-height: 7px; margin-right: calc(8 * var(--m)); border-radius: 50%; border: 1.5px solid #fff; box-sizing: border-box; vertical-align: 0; }
+.drow .dmk.a { border-color: var(--comet); }
+.drow .dmk.u { border-style: dashed; border-color: rgba(255, 255, 255, .6); }
+.drow .dmk.u.a { border-color: var(--comet); }   /* the patch's own object, no catalog distance */
+.drow:has(.dmk.a) .nm { color: var(--comet); }
+.dist-what { margin: calc(10 * var(--m)) 0 0; color: rgba(255, 255, 255, .62); font-size: calc(11.5 * var(--m)); line-height: 1.5; }
+
+/* Advanced: the drawer. Shut, its name and what is inside; open, every control, scrolling under its name */
+.pv-adv { left: calc(89 * var(--e)); top: calc(229 * var(--e)); width: calc(452 * var(--e)); box-sizing: border-box; padding: calc(16 * var(--m)) 0 calc(14 * var(--m)) calc(27 * var(--m)); }
+.pv-adv h2 { margin: 0; }
+.adv-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 32px; padding: 0 calc(10 * var(--m)) 0 0; border: 0; background: none; color: #fff; font: 400 calc(21 * var(--m)) / 1 var(--panel-font); cursor: pointer; text-align: left; }
+.adv-row .chev { width: calc(22 * var(--m)); height: calc(22 * var(--m)); min-width: 16px; min-height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; transition: transform .2s var(--ease); }
+.adv-row[aria-expanded=true] .chev { transform: rotate(180deg); }
+.adv-row:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.adv-hint { margin: calc(8 * var(--m)) 0 0; color: rgba(255, 255, 255, .62); font-size: calc(12 * var(--m)); }
+.adv-body { display: none; max-height: calc(1390 * var(--e) - 229 * var(--e) - 90 * var(--m)); margin-top: calc(6 * var(--m)); padding-right: calc(14 * var(--m)); }
+body.adv-open .adv-body { display: block; }
+.adv-grp { margin: calc(16 * var(--m)) 0 0; font-size: calc(13 * var(--m)); color: #f2f2f2; }
+.adv-lab { display: block; margin: 0 0 calc(6 * var(--m)); font-size: calc(13 * var(--m)); }
+/* the dial and its reading (wavelength, band and channel), the ends of its scale, the add-a-layer box and the active layers */
+.sp-row { display: grid; grid-template-columns: calc(132 * var(--m)) 1fr; align-items: center; gap: calc(12 * var(--m)); }
+.sp-dial { width: calc(132 * var(--m)); height: calc(74 * var(--m)); display: block; overflow: visible; cursor: ns-resize; touch-action: none; outline: 0; }
+.sp-readout { font-size: calc(11.5 * var(--m)); white-space: nowrap; line-height: 1.35; color: #f2f2f2; }
+.sp-readout b { display: block; font-weight: 400; font-size: calc(18 * var(--m)); }
+.sp-readout .sp-read { font-size: inherit; }
+.sp-ends { display: flex; justify-content: space-between; width: calc(140 * var(--m)); margin: calc(2 * var(--m)) 0 0 0; }
+.sp-end { font-size: calc(9.5 * var(--m)); color: #aeb6c6; }
+.sp-layers, .adv-cb { display: flex; align-items: flex-start; gap: calc(10 * var(--m)); margin: calc(10 * var(--m)) 0 0; }
+.adv-grp .cbx { width: calc(17 * var(--m)); height: calc(17 * var(--m)); margin-top: 1px; border-width: max(1.5px, calc(1.5 * var(--m))); border-radius: calc(3 * var(--m)); }
+.adv-cb label, .sp-add { flex: 1; line-height: 1.3; cursor: pointer; }
+.adv-cb small { display: block; color: rgba(255, 255, 255, .62); font-size: calc(11.5 * var(--m)); }
+.sp-actrow { display: flex; align-items: center; gap: calc(8 * var(--m)); margin: calc(8 * var(--m)) 0 0; font-size: calc(11.5 * var(--m)); color: rgba(255, 255, 255, .62); }
+#sp-active-label::after { content: ":"; }
+.sp-active { flex: 1; min-width: 0; width: auto; padding: 0; border: 0; height: calc(30 * var(--m)); min-height: 22px; display: flex; align-items: center; gap: calc(6 * var(--m)); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.sp-active::-webkit-scrollbar { display: none; }
+.sp-active:empty::before { content: "none yet"; font-size: calc(11.5 * var(--m)); color: rgba(255, 255, 255, .45); }
+.sp-chip { height: calc(26 * var(--m)); min-height: 20px; padding: 0 calc(10 * var(--m)); gap: calc(6 * var(--m)); border-width: max(1px, calc(1.2 * var(--m))); font-size: calc(11.5 * var(--m)); }
+/* Zoom: Ming's outlined bar that fills as you zoom in, then the whole region */
+#fov { -webkit-appearance: none; appearance: none; display: block; width: calc(100% - 4px); height: calc(18 * var(--m)); min-height: 12px; margin: 0; box-sizing: border-box; border: max(1.5px, calc(1.5 * var(--m))) solid #fff; border-radius: calc(3 * var(--m)); cursor: pointer;
+  background: linear-gradient(rgba(255, 255, 255, .5), rgba(255, 255, 255, .5)) 0 0 / var(--p, 50%) 100% no-repeat; }
+#fov::-webkit-slider-thumb { -webkit-appearance: none; width: calc(5 * var(--m)); min-width: 4px; height: calc(18 * var(--m)); min-height: 12px; background: #fff; border: 0; border-radius: 0; }
+#fov::-moz-range-thumb { width: calc(5 * var(--m)); min-width: 4px; height: calc(15 * var(--m)); background: #fff; border: 0; border-radius: 0; }
+#fov:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.adv-body .pv-mini { width: calc(100% - 4px); height: auto; aspect-ratio: 868 / 594; margin-top: calc(12 * var(--m)); border-width: max(1.5px, calc(1.5 * var(--m))); border-radius: calc(6 * var(--m)); }
+#mini { display: block; width: 100%; height: 100%; }
+/* Position and details (Descriptions before): the search, the status line, what the patch shows */
+.adv-body .pv-desc { position: relative; }
+.adv-body .pv-desc .pv-scroll { max-height: calc(260 * var(--m)); }
+.adv-body .pv-desc label { font-size: calc(13 * var(--m)); }
+.adv-body .pv-desc .box { width: calc(100% - 4px); height: calc(28 * var(--m)); margin: calc(6 * var(--m)) 0 0; border-width: max(1.5px, calc(1.5 * var(--m))); font-size: calc(12 * var(--m)); }
+.adv-body .pv-desc .sub { width: calc(100% - 4px); margin-top: calc(10 * var(--m)); gap: calc(10 * var(--m)); }
+.adv-body .pv-desc .pv-info, #status { margin-top: calc(10 * var(--m)); font-size: calc(12 * var(--m)); }
+.adv-link { display: inline-block; margin: calc(16 * var(--m)) 0 0; color: #fff; font-size: calc(12.5 * var(--m)); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255, 255, 255, .45); }
+.adv-link[hidden] { display: none; }
+/* a candidate (?cand=) leads Advanced with its votes, open */
+body.cand.adv-open .adv-body { display: flex; flex-direction: column; }
+body.cand .adv-body > .pv-desc { order: -1; margin-top: calc(8 * var(--m)); }
+body.cand .pv-desc .pv-scroll { max-height: calc(420 * var(--m)); }
+/* the sky (no spot yet): the position part alone, where the drawer sits */
+body.sky .pv-desc { margin: 0; }
+
+/* ---------- phones and narrow windows: one column (mockups 1a, 1c and 2, phone) ---------- */
+@media (max-width: 900px) {
+  .pstage { --m: 1px; row-gap: 0; padding: 60px 16px 28px; }
+  .pstage > :is(.pv-who, .pv-report, .pv-dist, .pv-adv) { left: auto; top: auto; width: auto; }
+  .pstage > .pv-who { order: 1; padding: 0; border-top: 0; background: none; }
+  .pstage > .pv-frame { order: 2; margin-top: 14px; border-width: 1.5px; border-radius: 6px; }
+  .pstage > .tl { order: 3; }
+  .pstage > .pv-spec { order: 4; }
+  .pstage > .pv-dist { order: 5; margin-top: 0; padding-left: 0; }
+  .pstage > .pv-adv { order: 6; margin-top: 22px; padding-left: 0; }
+  .pstage > .pv-report { order: 7; margin-top: 22px; }
+  .pstage > .pv-talkwrap { order: 8; }
+  .pv-title { margin: 18px -10px 8px; gap: 4px; }
+  .pv-back { flex: none; width: 44px; height: 44px; display: grid; place-items: center; color: #fff; }
+  .pv-back svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .pv-back:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+  .pv-who h1 { margin: 0; font-size: 20px; }
+  .pv-say { margin: 0; font-size: 13.5px; line-height: 1.5; }
+  .pv-facts { display: none; }
+  .pv-views { left: 8px; top: 8px; }
+  .pv-views button { height: 44px; padding: 0 12px; font-size: 12.5px; }
+  body.depth .pv-frame { aspect-ratio: 358 / 330; }
+  .xp-d3 .lbl { font-size: 10px; } .xp-d3 .lbl.mark { font-size: 9.5px; }
+  .xp-d3-hint, .xp-d3-note { bottom: 8px; font-size: 9.5px; } .xp-d3-hint { right: 10px; } .xp-d3-note { left: 10px; }
+  .xp-d3-note .w { display: none; } .xp-d3-note .n { display: inline; }
+  .pstage .pv-dist .pv-scroll { max-height: 62vh !important; overflow-y: auto; }
+  .pv-dist h2 { font-size: 19px; }
+  .pv-adv h2 .adv-row { min-height: 44px; font-size: 19px; }
+  .adv-body { max-height: none; padding-right: 0; }
+  .adv-body .pv-desc .pv-scroll { max-height: none; }
+  /* every control a 44 px tap: the boxes are drawn small inside it */
+  .adv-grp .cbx { width: 44px; height: 44px; margin: -13px -13px -13px -13px; border: 13px solid transparent; border-radius: 16px; box-shadow: inset 0 0 0 1.5px #fff; }
+  .adv-grp .cbx::after { width: 10px; height: 10px; }
+  .adv-cb { min-height: 44px; align-items: center; margin-top: 4px; }
+  .adv-cb label, .sp-add { display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding-left: 10px; }
+  .sp-layers { align-items: center; margin-top: 4px; }
+  .sp-dial { width: 170px; height: 95px; }
+  .sp-row { grid-template-columns: 170px 1fr; }
+  .sp-ends { width: 178px; }
+  .sp-chip { height: 44px; border: 8px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px #fff; }
+  .sp-active { height: 44px; }
+  #fov { height: 44px; border: 12px solid transparent; border-radius: 15px; box-shadow: inset 0 0 0 1.5px #fff; background-origin: content-box; background-clip: content-box; }
+  #fov::-webkit-slider-thumb { width: 5px; height: 20px; }
+  .pv-mini { width: min(100%, 434px); }
+  .adv-body .pv-desc .box { height: 44px; font-size: 14px; }
+  .pv-share { min-height: 44px; margin-top: 8px; font-size: 12.5px; }
+  .pv-report .pv-state { height: 56px; font-size: 16px; }
+  .pv-report .pv-state .go { width: 44px; height: 44px; }
+  .adv-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .adv-lab, .adv-body .pv-desc label { display: flex; align-items: center; min-height: 44px; min-width: 44px; margin: 0; }
+}
 @media (max-width: 640px) {
   /* the header is solid here, so nothing shows through it */
   body.lapse .topbar { background: #000; }
@@ -291,93 +459,13 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   body.lapse .topbar nav a + a::before { content: ""; position: absolute; left: 0; top: 9px; height: 26px; width: 1px; background: #fff; }
   body.lapse .topbar nav a::after { bottom: 1px; }
   body.lapse .topbar .av { width: 44px; height: 44px; border: 4px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .85); }
-
-  body.lapse:not(.sky) { overflow: hidden; }
-  body.lapse:not(.sky) .pstage {
-    --panel: 176px; --pad: max(8px, env(safe-area-inset-bottom));
-    /* everything but the photo: header 60, title 44 + 4, timeline 86, tabs 46, the panel, 8 + 56 for the state box, the bottom pad */
-    --rest: calc(304px + var(--panel) + var(--pad));
-    position: fixed; inset: 0; width: 100%; height: 100vh; height: 100dvh; box-sizing: border-box; padding: 60px 10px var(--pad);
-    display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 44px auto auto 46px minmax(0, 1fr) auto; row-gap: 0;
-    grid-template-areas: "title" "photo" "tl" "tabs" "panel" "state";
-  }
-  body.lapse:not(.sky) .pstage > * { position: relative; margin: 0; }
-  .pv-title { grid-area: title; display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 -6px !important; font-size: 15px; }
-  .pv-back { flex: none; width: 44px; height: 44px; display: grid; place-items: center; color: #fff; }
-  .pv-back svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-  .pv-back:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
-  .pv-title h1 { min-width: 0; margin: 0; font: 400 15px / 1 var(--panel-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #pv-radec { flex: none; margin-left: auto; padding-left: 10px; font-size: 12px; color: #aaa; white-space: nowrap; }
-  /* the photo keeps its shape: as wide as the screen, or as tall as the space the other rows leave, but never under
-     130 px tall (on a very short screen the panel gives way instead and scrolls inside) */
-  body.lapse:not(.sky) .pv-frame { grid-area: photo; justify-self: center; margin-top: 4px; width: min(100%, max(166px, (100vh - var(--rest)) * 1146 / 902)); width: min(100%, max(166px, (100dvh - var(--rest)) * 1146 / 902)); height: auto; border-width: 1.5px; border-radius: 8px; container-type: inline-size; }
-  /* a short screen's smaller photo: a smaller legend, so it covers less of the sky */
-  @container (max-width: 300px) { #legend { font-size: 9px; padding: 4px 6px; bottom: 4px; right: 4px; left: 4px; } #legend .lg-row { gap: 3px 8px; } }
-  body.lapse:not(.sky) .tl { grid-area: tl; margin: 34px 22px 52px; --e: .6px; }
+  body.lapse:not(.sky) .tl { margin: 34px 22px 52px; --e: .6px; }
   .tl-knob { width: 44px; height: 44px; border: 4px solid transparent; background-clip: padding-box; box-shadow: 0 0 0 4px rgba(255, 255, 255, .1); }
-  .pv-tabs { grid-area: tabs; display: flex; margin: 0 -10px !important; border-top: 2px solid #fff; border-radius: 0; background: #000; }
-  .pv-tabs button { flex: 1; min-width: 0; height: 46px; padding: 0; border: 0; background: none; color: #9a9a9a; font: 400 12.5px / 1 var(--panel-font); cursor: pointer; position: relative; }
-  .pv-tabs button[aria-pressed=true] { color: #fff; }
-  .pv-tabs button[aria-pressed=true]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 2px; height: 2px; background: #fff; }
-  .pv-tabs button:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
-  body.lapse:not(.sky) .pv-state { grid-area: state; order: 9; margin-top: 8px; height: 56px; padding: 0 6px 0 22px; border-width: 1.5px; border-radius: 10px; font-size: 19px; }
-  body.lapse:not(.sky) .pv-state > span:first-child { padding-left: 40px; }
-  body.lapse:not(.sky) .pv-state .go { width: 44px; height: 44px; }
+  .pv-frame { container-type: inline-size; }
+  @container (max-width: 300px) { #legend { font-size: 9px; padding: 4px 6px; bottom: 4px; right: 4px; left: 4px; } #legend .lg-row { gap: 3px 8px; } }
 
-  /* the panel: the chosen card fills it, black edge to edge under the strip, and scrolls inside when it runs long */
-  body.lapse:not(.sky) .pstage > .pv-card { grid-area: panel; display: none; width: auto; max-width: none; height: auto; min-height: 0; margin: 0 -10px; padding: 14px 22px 10px; border-top: 0; background: #000; overflow-y: auto; font-size: 15px; --e: .5px; }
-  body.lapse:not(.sky) .pv-card h2 { display: none; }
-  body.lapse:not(.sky) .pv-card .at { position: static; transform: none !important; }
-  body.lapse:not(.sky) :is(.pstage[data-tab=options] > .pv-options, .pstage[data-tab=spectral] > .pv-spectral, .pstage[data-tab=layers] > .pv-layers,
-    .pstage[data-tab=others] > .pv-others, .pstage[data-tab=info] > .pv-desc) { display: grid; }
-  /* checkboxes keep Ming's 22 px outlined box, drawn inside a 44 px tap */
-  body.lapse:not(.sky) .pv-card .cbx { width: 44px; height: 44px; border: 11px solid transparent; border-radius: 14px; box-shadow: inset 0 0 0 1.5px #fff; }
-  body.lapse:not(.sky) .pv-card .cbx::after { width: 12px; height: 12px; }
-  body.lapse:not(.sky) .pv-card label.at { display: flex; align-items: center; min-width: 44px; min-height: 44px; font-size: 15px; }
-
-  /* Options: Zoom and its bar, the width under it, then the whole region with what it shows */
-  body.lapse:not(.sky) .pv-options { grid-template-columns: auto minmax(0, 1fr); column-gap: 16px; align-content: start; }
-  body.lapse:not(.sky) .pv-options label.at { grid-row: 1; }
-  body.lapse:not(.sky) #fov { grid-row: 1; width: 100%; height: 44px; border: 7px solid transparent; border-radius: 11px; box-shadow: inset 0 0 0 1.5px #fff; }
-  body.lapse:not(.sky) #fov::-webkit-slider-thumb { width: 8px; height: 30px; }
-  body.lapse:not(.sky) .pv-options::before { content: attr(data-w); grid-row: 2; grid-column: 2; font-size: 12px; color: #aaa; }
-  body.lapse:not(.sky) .pv-options::after { content: "The whole region. The white box is the part in the photo."; position: absolute; left: 188px; right: 22px; top: 92px; font-size: 12px; line-height: 1.5; color: #ccc; }
-  body.lapse:not(.sky) .pstage > .pv-mini { grid-area: panel; display: none; align-self: start; justify-self: start; width: 150px; height: auto; margin: 88px 0 0 12px; border-width: 1.5px; border-radius: 6px; z-index: 1; }
-  body.lapse:not(.sky):not(.talking) .pstage[data-tab=options] > .pv-mini { display: block; }
-
-  /* Spectral: the dial on the left; its wavelength, "Add layer" and the active layers beside it (mockup T1-2) */
-  body.lapse:not(.sky) .pv-spectral { grid-template-columns: 180px 22px minmax(0, 1fr); grid-template-rows: 34px 22px 44px 44px auto; column-gap: 12px; align-content: start; }
-  body.lapse:not(.sky) .sp-dial { grid-column: 1; grid-row: 1 / 4; align-self: start; width: 180px; height: 100px; margin-top: 2px; }
-  body.lapse:not(.sky) .sp-end { grid-column: 1; grid-row: 4; align-self: start; margin-top: 4px; font-size: 10.5px; }
-  body.lapse:not(.sky) .sp-end:last-of-type { justify-self: end; }
-  body.lapse:not(.sky) #sp-nm { grid-column: 2 / 4; grid-row: 1; justify-self: start; align-self: end; min-height: 0; font-size: 28px; pointer-events: none; }
-  body.lapse:not(.sky) .sp-read:not(#sp-nm) { grid-column: 2 / 4; grid-row: 2; justify-self: start; align-self: start; margin-top: 2px; font-size: 12px; color: #ccc; text-transform: lowercase; min-height: 0; pointer-events: none; }
-  body.lapse:not(.sky) #sp-on { grid-column: 2; grid-row: 3; margin: 0 -11px; }
-  body.lapse:not(.sky) .sp-add { grid-column: 3; grid-row: 3; display: flex; align-items: center; min-height: 44px; font-size: 13px; cursor: pointer; }
-  /* "Active:" and the layers on, as chips that scroll sideways when there are more than fit */
-  body.lapse:not(.sky) #sp-active-label { grid-column: 2 / 4; grid-row: 4; align-self: center; font-size: 11.5px; color: #999; }
-  body.lapse:not(.sky) #sp-active-label::after { content: ":"; }
-  body.lapse:not(.sky) .sp-active { grid-column: 2 / 4; grid-row: 4; width: auto; height: 44px; min-height: 0; margin-left: 58px; padding: 0; gap: 4px; border: 0; }
-  body.lapse:not(.sky) .sp-active:empty::before { font-size: 11.5px; color: #999; text-transform: lowercase; }
-  body.lapse:not(.sky) .sp-chip { height: 44px; min-height: 0; padding: 0 10px; border: 6px solid transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1.5px #fff; font-size: 11.5px; gap: 6px; }
-
-  /* Layers and Others: Ming's checkbox rows */
-  body.lapse:not(.sky) :is(.pv-layers, .pv-others) { grid-template-columns: 44px minmax(0, 1fr); column-gap: 8px; align-content: start; align-items: center; }
-  body.lapse:not(.sky) :is(.pv-layers, .pv-others) .cbx { margin-left: -11px; }
-
-  /* Info (Descriptions): the position and the band side by side, then what the patch shows, scrolling inside the panel */
-  body.lapse:not(.sky) .pv-desc { grid-template-rows: minmax(0, 1fr); padding: 14px 0 0 22px; }
-  body.lapse:not(.sky) .pv-desc .pv-scroll { min-height: 0; max-height: none !important; overflow-y: auto; padding: 0 22px 12px 0; }
-  body.lapse:not(.sky) #search { display: flex; gap: 8px; }
-  body.lapse:not(.sky) #search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  body.lapse:not(.sky) .pv-desc .box { width: auto; height: 44px; margin: 0; padding: 0 12px; border-width: 1.5px; border-radius: 4px; font-size: 14px; }
-  body.lapse:not(.sky) #coords { flex: 1; min-width: 0; }
-  body.lapse:not(.sky) .pv-desc .sub { flex: none; width: auto; margin: 0; }
-  body.lapse:not(.sky) .pv-desc .sub .box { flex: none; }
-  body.lapse:not(.sky) .pv-info, body.lapse:not(.sky) #status { margin-top: 10px; font-size: 12.5px; line-height: 1.5; color: #e8e8e8; }
-
-  /* Discuss: a sheet over the panel and the state box, the photo still above it; it scrolls inside when tall */
-  body.lapse:not(.sky) .pstage > .pv-talkwrap { position: fixed; z-index: 5; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: calc(100% - 104px); overflow-y: auto; box-sizing: border-box; padding: 0 12px var(--pad); background: #000; }
+  /* Discuss: a sheet over the bottom of the page, the photo still above it; it scrolls inside when tall */
+  body.lapse:not(.sky) .pstage > .pv-talkwrap { position: fixed; z-index: 5; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: calc(100% - 104px); overflow-y: auto; box-sizing: border-box; padding: 0 12px max(8px, env(safe-area-inset-bottom)); background: #000; }
   body.lapse:not(.sky) .pv-talkwrap .pv-talk { margin: 0 -12px; width: auto; padding: 14px 22px 4px; border-top: 2px solid #fff; }
   body.lapse:not(.sky) .pv-talk .close { width: 44px; height: 44px; margin-right: -12px; }
   body.lapse:not(.sky) .pv-talk h2 { display: flex; font-size: 19px; margin-bottom: 6px; }
@@ -390,22 +478,16 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
   body.lapse:not(.sky) .pv-talk .example { min-height: 44px; }
   body.lapse:not(.sky) .pv-talkwrap .pv-post { margin-top: 10px; height: 56px; }
 
-  /* Spectrum: the card fills the Info tab while it is open (Descriptions comes back when it closes); its heading row
-     stays, for the close button. The toggle is a 44 px tap in the photo's corner. */
-  body.lapse.speccing:not(.sky) .pstage[data-tab=info] > .pv-desc { display: none; }
-  body.lapse.speccing:not(.sky):not(.talking) .pstage[data-tab=info] > .pv-spec { display: grid; }
-  /* the chart first, so a tap shows it; the close button floats at the top right, the title is for screen readers */
-  body.lapse:not(.sky) .pv-spec { grid-template-rows: minmax(0, 1fr); padding: 0 0 0 22px; }
-  body.lapse:not(.sky) .pv-spec h2 { display: block; position: absolute; z-index: 1; right: 0; top: 0; width: 44px; height: 44px; margin: 0; font-size: 0; }
+  /* Spectrum: the card under the timeline while it is open; the close button floats at its top right */
+  body.lapse:not(.sky) .pv-spec { padding: 14px 0 0; }
   body.lapse:not(.sky) .pv-spec .close { width: 44px; height: 44px; margin-right: 0; }
-  body.lapse:not(.sky) .pv-spec .pv-scroll { display: flex; flex-direction: column; min-height: 0; max-height: none !important; overflow-y: auto; padding: 4px 22px 12px 0; }
-  body.lapse:not(.sky) #spec-chart { order: -3; margin: 0 22px 0 0; width: calc(100% - 22px); }
-  body.lapse:not(.sky) .spec-key { order: -2; }
-  body.lapse:not(.sky) :is(#spec-status, .spec-line) { order: -1; }
+  body.lapse:not(.sky) .pv-spec .pv-scroll { padding: 4px 0 12px 0; }
   body.lapse:not(.sky) .pv-spec .pv-info { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: #e8e8e8; }
   body.lapse:not(.sky) .spec-key { font-size: 11px; }
-  body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; margin-left: -11px; }
+  body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; }
   body.lapse:not(.sky) .spec-csv { height: 44px; padding: 0 16px; border-width: 1.5px; font-size: 12.5px; }
-  body.lapse:not(.sky) #loading { right: 6px; top: 6px; padding: 8px 10px; gap: 7px; font-size: 11px; }
-  body.lapse:not(.sky) .pv-specbtn { left: 6px; top: 6px; height: 44px; padding: 0 14px 0 10px; border-width: 1.5px; font-size: 12.5px; gap: 6px; }
+  /* the tabs take the top-left corner and the legend the foot, so the Spectrum toggle sits top-right, the loading line under it */
+  body.lapse:not(.sky) #loading { right: 6px; top: 58px; padding: 8px 10px; gap: 7px; font-size: 11px; }
+  body.lapse:not(.sky) .pv-specbtn { left: auto; right: 8px; top: 8px !important; bottom: auto !important; height: 44px; padding: 0 14px 0 10px; border-width: 1.5px; font-size: 12.5px; gap: 6px; }
+  body.lapse:not(.sky) .pv-spec .cbx { width: 44px; height: 44px; border: 11px solid transparent; border-radius: 14px; box-shadow: inset 0 0 0 1.5px #fff; }
 }

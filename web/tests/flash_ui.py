@@ -74,7 +74,7 @@ def star_light(m, f):   # (light within 4 grid pixels of where the source was me
 async def build(b, base, q, shot=None):
     """open the time-lapse at q on base; (manifest, seconds to build)"""
     ctx = await b.new_context(viewport={"width": 1440, "height": 900})
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
     pg = await ctx.new_page(); errors = []; pg.on("pageerror", lambda e: errors.append(str(e)))
     await pg.goto(f"{base}/timelapse.html?{q}")
     await pg.wait_for_function("__lapse.state.m?.key?.startsWith('live') && /visits, built/.test(document.getElementById('status')?.textContent || '')", timeout=300000)

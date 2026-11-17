@@ -24,7 +24,7 @@ def visit_picks(shots):   # live/cutout.js visitShots: photos under 5 days apart
 
 async def ctx_for(b, motion="no-preference"):
     ctx = await b.new_context(viewport={"width": 1440, "height": 900}, reduced_motion=motion)
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
     return ctx
 
 

@@ -91,7 +91,7 @@ async def open_explore(ctx):
 
 async def desktop(browser):
     ctx = await browser.new_context(viewport={"width": 1440, "height": 900})
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")   # no first-visit tour over the map
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")   # no first-visit tour over the map
     pg = await open_explore(ctx)
     posts = []
     pg.on("request", lambda r: posts.append(r.url) if r.method == "POST" and "/api/checks" in r.url else None)
@@ -213,7 +213,7 @@ async def desktop(browser):
 
 async def reduced(browser):
     ctx = await browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
     pg = await open_explore(ctx)
     await point(pg, 620, 470)
     await scroll(pg, 40)
@@ -235,7 +235,7 @@ async def reduced(browser):
 async def phone(browser):
     ctx = await browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True,
                                     user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.maphint', '1') } catch {}")
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1'); localStorage.setItem('ch.maphint', '1') } catch {}")
     pg = await open_explore(ctx)
     cdp = pg.cdp
 

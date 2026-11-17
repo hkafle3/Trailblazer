@@ -32,7 +32,7 @@ async def no_fake(pg, path):
 async def run(p, name, ctx_args):
     b = await p.chromium.launch(channel="chrome")
     ctx = await b.new_context(**ctx_args)
-    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'cand tester' })) } catch {}")
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'cand tester' })) } catch {}")
     pg = await ctx.new_page()
     errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
     phone = ctx_args["viewport"]["width"] < 641
@@ -204,7 +204,9 @@ async def run(p, name, ctx_args):
     # the address keeps the candidate, so a reload draws the track again
     q = await pg.evaluate("location.search")
     assert f"cand={c0['id']}" in q and "sample=1" in q, f"the address dropped the candidate: {q}"
-    # the candidate and its votes head Descriptions: every button in view without scrolling Descriptions
+    # the candidate and its votes head Advanced's Descriptions part: every button in view without scrolling Descriptions
+    # (on a phone the page scrolls to them: since the redesign it is one column, Advanced under the timeline)
+    await pg.locator(".cvote").scroll_into_view_if_needed()
     hid = await pg.evaluate("""() => [...document.querySelectorAll('.cvote .cv-b')].filter(b => { const r = b.getBoundingClientRect(), s = b.closest('.pv-scroll')?.getBoundingClientRect();
         return r.top < 0 || r.bottom > innerHeight || !r.height || (s && (r.top < s.top || r.bottom > s.bottom)); }).map(b => b.textContent)""")
     assert not hid, f"vote buttons need scrolling: {hid}"

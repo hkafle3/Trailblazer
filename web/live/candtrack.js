@@ -38,20 +38,32 @@ export function commit(url) {
 export const title = () => (cand ? `${sample ? 'Sample candidate' : 'Candidate'} ${cand.id}` : null);
 export const on = () => !!cand;
 
+// where the candidate is in the visit on screen (its first day to the end of its last): the detection taken during it
+// nearest its mean time, or null with none in it. The ring goes there, and the page's target is there (timelapse.html
+// targetAt: Depth's marker, the mini-map's ring)
+function inVisit(f) {
+  const t0 = dayOf(f.start), t1 = dayOf(f.end ?? f.start) + 1;
+  return cand.detections.filter(d => d.t >= t0 && d.t < t1).sort((p, q) => Math.abs(p.t - f.mjd) - Math.abs(q.t - f.mjd))[0] ?? null;
+}
+// that detection: { pos: [east, north] arcsec from the patch centre (offset: the frames' TAN plane), sky: [ra, dec] },
+// or null with none in this visit
+export function at(m, f, offset) {
+  const d = cand && inVisit(f);
+  return d ? { pos: offset(m, d.ra, d.dec), sky: [d.ra, d.dec] } : null;
+}
+export const isSample = () => !!cand && sample;
+
 export function draw(ctx, m, f, toPx, offset) {
   if (!cand) return;
   const G = m.grid, a = m.arcsec_per_pixel;
   const px = cand.detections.map(d => { const [e, n] = offset(m, d.ra, d.dec); return toPx((G - 1) / 2 - e / a, (G - 1) / 2 + n / a); });
-  // the visit on screen: its first day to the end of its last; the ring goes on that visit's detection nearest its mean time
-  const t0 = dayOf(f.start), t1 = dayOf(f.end ?? f.start) + 1;
-  const inVisit = cand.detections.map((d, k) => [d, k]).filter(([d]) => d.t >= t0 && d.t < t1).sort((p, q) => Math.abs(p[0].t - f.mjd) - Math.abs(q[0].t - f.mjd));
   for (const [c, w] of [['rgba(0,0,0,.85)', 4], ['#ff9a4d', 1.8]]) {
     ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash([2, 5]);
     if (px.length > 1) { ctx.beginPath(); px.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
     ctx.setLineDash([]);
   }
   for (const [x, y] of px) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fillStyle = '#ff9a4d'; ctx.fill(); }
-  const ring = inVisit.length ? px[inVisit[0][1]] : null;
+  const d = inVisit(f), ring = d ? px[cand.detections.indexOf(d)] : null;
   if (ring) for (const [c, w] of [['rgba(0,0,0,.85)', 6], ['#ff9a4d', 2.5]]) { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.arc(ring[0], ring[1], 13, 0, 7); ctx.stroke(); }
   Object.assign(window.__cand, { ring, track: px, visit: f.start });
 }
@@ -74,8 +86,8 @@ if (id) {
     document.body.classList.add('cand', ...(sample ? ['cand-sample'] : []));
     document.title = `${title()} · Trailblazer`;
     for (const a of document.querySelectorAll('.topbar nav a')) a.classList.toggle('on', a.getAttribute('href') === 'candidates.html');
-    // phones show one tool card at a time: open on Info, where this is (after the page has wired its tabs)
-    if (matchMedia('(max-width: 640px)').matches) setTimeout(() => document.querySelector('.pv-tabs [data-t=info]')?.click());
+    // its votes are in Advanced: open it for this page (without changing what the drawer remembers), once the page has wired it
+    setTimeout(() => window.__advOpen?.(true));
     if (!document.querySelector('link[href="candidates.css"]')) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'candidates.css' }));
   }
 }

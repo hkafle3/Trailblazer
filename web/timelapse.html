@@ -25,17 +25,35 @@
   <nav><a href="comet.html">Comets</a><a class="on" href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
 </header>
 
-<!-- Laid out from design/frontend-refactor/Explore.png (patch.css). Left: Options, Spectral, Layers, Others. Middle: the patch.
-     Right: the whole region as a mini-map, Discovered/Undiscovered, Descriptions. Bottom: Explore's month timeline. -->
-<div class="pstage" id="stage" data-tab="options">
-  <!-- phones only (patch.css): Back, the target's name and position over the photo -->
-  <div class="pv-title"><a class="pv-back" href="explore.html" aria-label="Back to Explore"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4M10 6l-6 6 6 6"/></svg></a><h1 id="pv-name"></h1><span id="pv-radec"></span></div>
-  <!-- In reading order, which is the phone's one-column order: the photo, the timeline, Discovered and the mini-map,
-       Descriptions (with what the patch shows), then Options, Spectral, Layers and Others. On wider screens every block is placed absolutely (patch.css). -->
+<!-- The time-lapse redesign, phase 1 (UX mockups 1a, 1c and 2, 2026-11-16; patch.css lays it out on Explore.png's grid).
+     Left: Advanced, a drawer with every control. Middle: the photo, with Photo and Depth tabs on it. Right: the name and a
+     plain verdict, then Report a new find (in Depth: the Distances list). Bottom: Explore's month timeline.
+     In reading order, which is the phone's one-column order: the name and verdict, the photo, the timeline, Distances,
+     Advanced, then Report a new find. -->
+<div class="pstage" id="stage">
+  <!-- the name and a one-line verdict built from what the page measured (verdict() in the script) -->
+  <section class="pv-card pv-who" aria-labelledby="pv-name">
+    <div class="pv-title"><a class="pv-back" href="explore.html" aria-label="Back to Explore"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4M10 6l-6 6 6 6"/></svg></a><h1 id="pv-name"></h1></div>
+    <p class="pv-say" id="pv-say"></p>
+    <p class="pv-facts" id="pv-facts"></p>
+    <p class="pv-err" id="pv-err" role="alert"></p>
+  </section>
+
   <div class="pv-frame">
+    <!-- the views of this patch: Photo (the time-lapse) and Depth (how far each thing is). Colors comes later, as a third tab. -->
+    <div class="pv-views" role="tablist" aria-label="View">
+      <button type="button" role="tab" id="tab-photo" data-view="photo" aria-selected="true" aria-controls="patch"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><circle cx="12" cy="12" r="2.2"/></svg>Photo</button><button type="button" role="tab" id="tab-depth" data-view="depth" aria-selected="false" aria-controls="depth3d" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="4" cy="12" r="1.6"/><path d="M5.5 11.4L21 5.5M5.5 12.6L21 18.5"/></svg>Depth</button>
+    </div>
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
     <canvas id="hold" aria-hidden="true"></canvas>   <!-- Explore's dive: the sky it showed last, until the first frame is drawn -->
-    <!-- while a time-lapse builds: what it is doing and how far along (the status line in Descriptions says it to screen readers) -->
+    <!-- Depth: SPHEREx, the beam, the region's photo at its far end, each object at its distance (live/depth.js) -->
+    <div class="xp-d3" id="depth3d" role="tabpanel" aria-labelledby="tab-depth" hidden><canvas tabindex="0" aria-label="3D view of the distances. Drag, or use the arrow keys, to turn it. The Distances list says the same in words."></canvas><div class="xp-d3-lbl" aria-hidden="true"></div>
+      <p class="xp-d3-note"><span class="w">Distances are real. Spacing is squeezed so near and far both fit.</span><span class="n">Real distances, squeezed to fit</span></p>
+      <p class="xp-d3-hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 0 1 13-5.1M19.5 12a7.5 7.5 0 0 1-13 5.1"/><path d="M17.8 3.4v3.8H14M6.2 20.6v-3.8H10"/></svg>Drag to turn</p>
+      <p class="xp-d3-nogl">This browser cannot draw the 3D view. The Distances list has every distance.</p>
+      <p class="xp-d3-msg" id="depth-msg" role="status"></p>
+    </div>
+    <!-- while a time-lapse builds: what it is doing and how far along (the status line in Advanced says it to screen readers) -->
     <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
     <!-- Spectrum mode: while it is on, a click or tap on the photo picks that star for the Spectrum card instead of
          re-centring (a drag still moves the photo). The button says which mode the photo is in. -->
@@ -43,8 +61,11 @@
     <button class="pv-specbtn" id="spec-mode" type="button" aria-pressed="false" title="Turn on, then click a star to see its spectrum"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span>Spectrum</span></button>
     <!-- a visit of one exposure: nothing to compare with, so a detector flash is not taken out (live/pipeline.js) -->
     <div id="one-photo" hidden>1 photo: a dot may be a glitch</div>
+    <!-- the marks' key: one "already known" mark for newcomers; Advanced's "Split already known" shows predicted and
+         known passing apart (as before the redesign) -->
     <div id="legend" aria-hidden="true">
-      <div class="lg-row"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
+      <div class="lg-row lg-merged"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i class="kn-check"></i>already known</span></div>
+      <div class="lg-row lg-split"><span><i style="background:var(--comet)"></i>this visit</span><span><i style="background:var(--known)"></i>earlier visits</span><span><i style="border:2px solid #fff"></i>predicted</span><span><i style="border:1.5px dashed var(--known)"></i>known passing</span></div>
       <!-- Color Difference's key, only while it is on: square swatches, since it is the photo's pixels that are coloured -->
       <div class="lg-row lg-key" id="diffkey"><span><i class="px" style="background:var(--comet)"></i>brighter</span><span><i class="px" style="background:var(--known)"></i>dimmer than the first visit</span></div>
     </div>
@@ -64,13 +85,88 @@
     </div>
   </div>
 
-  <!-- phones only (patch.css): one tool card at a time under the timeline; a press sets data-tab on the stage -->
-  <div class="pv-tabs" role="group" aria-label="Tools"><button type="button" data-t="options" aria-pressed="true">Options</button><button type="button" data-t="spectral" aria-pressed="false">Spectral</button><button type="button" data-t="layers" aria-pressed="false">Layers</button><button type="button" data-t="others" aria-pressed="false">Others</button><button type="button" data-t="info" aria-pressed="false">Info</button></div>
+  <!-- Depth's words: every object with a distance, nearest first, its source and error; what has none; any source not answering -->
+  <section class="pv-card pv-dist" id="dist" aria-labelledby="dist-h">
+    <h2 id="dist-h">Distances</h2>
+    <p class="dist-status" id="dist-status" role="status" aria-live="polite"></p>
+    <div class="dist-head" aria-hidden="true"><span>In this patch</span><span>light-years</span></div>
+    <div class="pv-scroll" role="region" aria-label="Distances"><ol class="dist-list" id="dist-list"></ol>
+      <p class="dist-what">Parallax: a star's small yearly shift as Earth circles the Sun. Nearer stars shift more. Redshift: how much a galaxy's light is stretched as space expands.</p></div>
+    <button class="pv-share" id="share-depth" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/></svg><span>Copy link to this view</span></button>
+  </section>
 
-  <a class="pv-state" id="state" href="forums.html"><span id="state-label">Undiscovered</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
-  <!-- "View in 3D": the same spot on Explore's 3D sky (explore-3d.js flies to it). Desktop only for now; needs ra/dec in the address -->
-  <a class="pv-state pv-3d" id="view3d" hidden><span>View in 3D</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
-  <style>.pv-3d { left: calc(89 * var(--e)); top: calc(1340 * var(--e)); width: calc(452 * var(--e)); } @media (max-width: 640px) { .pv-3d { display: none !important; } } body.cand .pv-3d { display: none !important; }</style>
+  <!-- Advanced: every control the time-lapse had, in one drawer. It stays open next time (localStorage ch.adv). -->
+  <section class="pv-card pv-adv" aria-labelledby="adv-btn">
+    <h2><button class="adv-row" id="adv-btn" type="button" aria-expanded="false" aria-controls="adv-body">Advanced<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></h2>
+    <p class="adv-hint" id="adv-hint">Wavelength dial, filters, zoom, position</p>
+    <div class="adv-body pv-scroll" id="adv-body" role="region" aria-label="Advanced">
+      <!-- Spectral: SPHEREx splits its light into 102 channels. Scroll over the dial (or drag it, or use the arrow keys) to
+           step through them; tick the box to make that channel an active layer. Active layers sit in the box below; click
+           one to turn it off. The time-lapse is built at the dial's channel; two or more active layers make a colour
+           composite (the "Spectral, wired" block in the script). -->
+      <div class="pv-spectral adv-grp" role="group" aria-label="Spectral">
+        <div class="sp-row">
+          <svg class="sp-dial" id="sp-dial" viewBox="0 0 340 190" tabindex="0" role="slider" aria-label="Spectral channel. Scroll, drag or use the arrow keys" aria-valuemin="1" aria-valuemax="102" aria-valuenow="52">
+            <path class="band" d="M10 170A160 160 0 0 1 330 170H290A120 120 0 0 0 50 170Z"/>
+            <g id="sp-ticks"></g>
+            <g id="sp-marks"></g>
+            <g class="needle" id="sp-needle" style="transform-origin:170px 147px;transform-box:view-box">
+              <line x1="170" y1="120" x2="170" y2="62"/>
+              <path d="M170 113C176 125 187 135 187 147A17 17 0 1 1 153 147C153 135 164 125 170 113Z"/>
+            </g>
+          </svg>
+          <div class="sp-readout"><b id="sp-um">&nbsp;</b>microns<br><span id="sp-band">&nbsp;</span><br><span id="sp-ch">&nbsp;</span> · <span class="sp-read" id="sp-nm">&nbsp;</span> nm</div>
+        </div>
+        <div class="sp-ends" aria-hidden="true"><span class="sp-end">0.75</span><span class="sp-end">5.0</span></div>
+        <div class="sp-layers"><input class="cbx" type="checkbox" id="sp-on"><label class="sp-add" for="sp-on">Add as a color layer</label></div>
+        <div class="sp-actrow"><span id="sp-active-label">Active</span><div class="sp-active" id="sp-active" role="group" aria-labelledby="sp-active-label"></div></div>
+      </div>
+      <!-- the picture's filters, and the marks' split (Others and Layers before the redesign) -->
+      <div class="pv-others pv-layers adv-grp" role="group" aria-label="Filters">
+        <div class="adv-cb"><input class="cbx" type="checkbox" id="still"><label for="still">Hide Stationary<small>Takes away what never changes</small></label></div>
+        <div class="adv-cb"><input class="cbx" type="checkbox" id="diff" aria-describedby="diff-what"><label for="diff">Color Difference<small>Orange brighter, blue dimmer</small></label></div>
+        <span class="sr-only" id="diff-what">Colours the photo by change since the first visit. Orange: brighter. Blue: dimmer.</span>
+        <div class="adv-cb"><input class="cbx" type="checkbox" id="ly-heat"><label for="ly-heat">Heat<small>Glows where it changes most</small></label></div>
+        <div class="adv-cb"><input class="cbx" type="checkbox" id="split"><label for="split">Split already known<small>Predicted place and known passing apart</small></label></div>
+      </div>
+      <!-- Zoom, and the whole region SPHEREx cut out for this spot: the white box is the part in the big frame, the ring is the target -->
+      <div class="pv-options adv-grp" role="group" aria-label="Zoom">
+        <label class="adv-lab" for="fov">Zoom · <span id="fov-w">6 arcmin</span></label>
+        <input id="fov" type="range" min="1" max="12" step="0.5" value="6" aria-valuetext="6 arcmin wide">
+        <div class="pv-mini"><canvas id="mini" width="868" height="594" role="img" aria-label="The whole region, with the part on screen outlined"></canvas></div>
+      </div>
+      <!-- the position and band, and what the patch shows (Descriptions before the redesign); the only part shown in sky mode -->
+      <section class="pv-desc adv-grp" aria-label="Position and details">
+        <div class="pv-scroll" role="region" aria-label="Descriptions">
+        <form id="search" role="search">
+          <label for="coords">Coordinates</label>
+          <input class="box" id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false" enterkeyhint="go">
+          <div class="sub"><label for="det">Band</label>
+            <select class="box" id="det" aria-label="SPHEREx detector">
+              <option value="D1">D1 0.75–1.1 µm</option><option value="D2">D2 1.1–1.6 µm</option><option value="D3">D3 1.6–2.4 µm</option>
+              <option value="D4">D4 2.4–3.8 µm</option><option value="D5">D5 3.8–4.4 µm</option><option value="D6">D6 4.4–5.0 µm</option>
+            </select></div>
+        </form>
+        <!-- beside the search in both modes: a bad position or a failed build is said here even before any patch shows -->
+        <div id="status" role="status" aria-live="polite"></div>
+        <!-- what this patch shows: the visit on screen, the motion measured, and known objects passing -->
+        <p class="pv-info" id="vName" hidden></p>
+        <p class="pv-info" id="vVisit"></p>
+        <p class="pv-info" id="vMotion"></p>
+        <p class="pv-info"><b>Known comets and asteroids</b><span id="vKnown" aria-live="polite"></span></p>
+        </div>
+      </section>
+      <!-- "View in 3D": the same spot on Explore's 3D sky (explore-3d.js flies to it). Desktop only; needs ra/dec in the address -->
+      <a class="adv-link" id="view3d" hidden>View this spot on Explore's 3D sky</a>
+    </div>
+  </section>
+
+  <!-- Report a new find: the Discuss sheet (discuss.js) for the dot in the middle; Discovered when it was already reported -->
+  <section class="pv-report" aria-label="Report">
+    <a class="pv-state" id="state" href="forums.html" aria-describedby="state-note"><span id="state-label">Report a new find</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
+    <p class="pv-note" id="state-note"></p>
+    <button class="pv-share" id="share" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/></svg><span>Copy link to this view</span></button>
+  </section>
   <script>
   (function () {
     var a = document.getElementById('view3d');
@@ -82,32 +178,9 @@
       a.hidden = false;
     }
     aim(); a.addEventListener('pointerenter', aim); a.addEventListener('focus', aim); a.addEventListener('click', aim);
+    window.__aim3d = aim;
   })();
   </script>
-  <!-- the whole region SPHEREx cut out for this spot; the white box is the part in the big frame, the ring is the target -->
-  <div class="pv-mini"><canvas id="mini" width="868" height="594" role="img" aria-label="The whole region, with the part on screen outlined"></canvas></div>
-
-  <section class="pv-card pv-desc">
-    <h2>Descriptions</h2>
-    <div class="pv-scroll" role="region" aria-label="Descriptions">
-    <form id="search" role="search">
-      <label for="coords">Coordinates</label>
-      <input class="box" id="coords" placeholder="RA Dec, e.g. 269.4463 4.7671" autocomplete="off" spellcheck="false" enterkeyhint="go">
-      <div class="sub"><label for="det">Band</label>
-        <select class="box" id="det" aria-label="SPHEREx detector">
-          <option value="D1">D1 0.75–1.1 µm</option><option value="D2">D2 1.1–1.6 µm</option><option value="D3">D3 1.6–2.4 µm</option>
-          <option value="D4">D4 2.4–3.8 µm</option><option value="D5">D5 3.8–4.4 µm</option><option value="D6">D6 4.4–5.0 µm</option>
-        </select></div>
-    </form>
-    <!-- beside the search in both modes: a bad position or a failed build is said here even before any patch shows -->
-    <div id="status" role="status" aria-live="polite"></div>
-    <!-- what this patch shows: the visit on screen, the motion measured, and known objects passing -->
-    <p class="pv-info" id="vName" hidden></p>
-    <p class="pv-info" id="vVisit"></p>
-    <p class="pv-info" id="vMotion"></p>
-    <p class="pv-info"><b>Known comets and asteroids</b><span id="vKnown" aria-live="polite"></span></p>
-    </div>
-  </section>
 
   <!-- the spectrum of the picked star: Ming's Descriptions card, in the right column's place while open (as Discuss is);
        on phones it fills the Info tab. live/spectrum.js measures it, the "Spectrum card" block in the script draws it. -->
@@ -128,50 +201,6 @@
     </div>
   </section>
 
-  <section class="pv-card pv-options" aria-label="Options">
-    <h2 class="at" style="--x:14;--cy:50">Options</h2>
-    <label class="at t24" style="--x:57;--cy:99" for="fov">Zoom</label>
-    <input class="at" style="--x:136;--y:84" id="fov" type="range" min="1" max="12" step="0.5" value="6" aria-valuetext="6 arcmin wide">
-  </section>
-
-  <!-- Spectral: SPHEREx splits its light into 102 channels. Scroll over the dial (or drag it, or use the arrow keys) to step
-       through them; tick the box to make that channel an active layer. Active layers sit in the box above; click one to
-       turn it off. The time-lapse is built at the dial's channel; two or more active layers make a colour composite
-       (the "Spectral, wired" block in the script). -->
-  <section class="pv-card pv-spectral" aria-label="Spectral">
-    <h2 class="at" style="--x:20;--cy:49">Spectral</h2>
-    <span class="at t24" style="--x:22;--cy:102" id="sp-active-label">Active</span>
-    <div class="at sp-active" style="--x:48;--y:117" id="sp-active" role="group" aria-labelledby="sp-active-label"></div>
-    <svg class="at sp-dial" style="--x:64.5;--y:202" id="sp-dial" viewBox="0 0 340 190" tabindex="0" role="slider" aria-label="Spectral channel. Scroll, drag or use the arrow keys" aria-valuemin="1" aria-valuemax="102" aria-valuenow="52">
-      <path class="band" d="M10 170A160 160 0 0 1 330 170H290A120 120 0 0 0 50 170Z"/>
-      <g id="sp-ticks"></g>
-      <g id="sp-marks"></g>
-      <g class="needle" id="sp-needle" style="transform-origin:170px 147px;transform-box:view-box">
-        <line x1="170" y1="120" x2="170" y2="62"/>
-        <path d="M170 113C176 125 187 135 187 147A17 17 0 1 1 153 147C153 135 164 125 170 113Z"/>
-      </g>
-    </svg>
-    <span class="at sp-end" style="--x:95;--cy:383" aria-hidden="true">Lowest λ</span>
-    <span class="at sp-end" style="--x:380;--cy:383" aria-hidden="true">Highest λ</span>
-    <input class="at cbx" style="--x:124;--y:407" type="checkbox" id="sp-on">
-    <label class="at sp-read" style="--x:241;--cy:408" for="sp-on" id="sp-nm">&nbsp;</label>
-    <label class="at sp-read" style="--x:241;--cy:438" for="sp-on">Nanometers</label>
-    <label class="sp-add" for="sp-on">Add layer</label>
-  </section>
-
-  <section class="pv-card pv-layers" aria-label="Layers">
-    <h2 class="at" style="--x:33;--cy:49">Layers</h2>
-    <input class="at cbx" style="--x:53;--y:96" type="checkbox" id="ly-heat">
-    <label class="at t24" style="--x:115;--cy:112" for="ly-heat">Heat</label>
-  </section>
-  <section class="pv-card pv-others" aria-label="Others">
-    <h2 class="at" style="--x:33;--cy:50">Others</h2>
-    <input class="at cbx" style="--x:49;--cy:119" type="checkbox" id="still">
-    <label class="at t32" style="--x:112;--cy:119" for="still">Hide Stationary</label>
-    <input class="at cbx" style="--x:49;--cy:171" type="checkbox" id="diff" aria-describedby="diff-what">
-    <label class="at t32" style="--x:112;--cy:171" for="diff">Color Difference</label>
-    <span class="sr-only" id="diff-what">Colours the photo by change since the first visit. Orange: brighter. Blue: dimmer.</span>
-  </section>
 </div>
 <div id="skyui">
   <div id="hint" class="glass"><b>Click any spot</b> to see how it changes over time. Drag to look around, scroll to zoom.</div>
@@ -186,7 +215,9 @@ import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } fr
 import { recenterable, panToSky, heatCell } from './live/recenter.js';
 import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
 import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
-import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Undiscovered, and Discovered for reported dots
+import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Report a new find, and Discovered for reported dots
+import { depthView } from './live/depth.js';
+import { middle, identify } from './live/identity.js';   // the one rule for what the dot in the middle is   // the Depth tab: the beam and the Distances list, from /api/depth
 import { MJD0 } from './skymap.js';
 import * as candTrack from './live/candtrack.js';   // &cand=: a detector candidate's track and votes
 
@@ -195,6 +226,20 @@ const TARGETS = [
   { key: 'rwaur', name: 'RW Aurigae' }, { key: 'rdra', name: 'R Draconis' }
 ];
 const P = new URLSearchParams(location.search);
+
+// ---------- the view on the photo (Photo or Depth) rides in the address: &view=depth, so a shared link reopens it ----------
+// Every place that writes the address (show, back, recenter, spSync, the Spectrum card) goes through replaceState, so the
+// view is added there once instead of in each of them.
+let pvView = P.get('view') === 'depth' ? 'depth' : 'photo';
+{
+  const replace = history.replaceState.bind(history);
+  history.replaceState = (st, title, url) => {
+    // by hand, not searchParams: re-serialising would encode the rest of the address (layers=9,77 -> 9%2C77)
+    const u = new URL(url ?? location.href, location.href), q = u.search.replace(/([?&])view=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+    u.search = pvView === 'depth' ? `${q}${q ? '&' : '?'}view=depth` : q;
+    replace(st, title, u.href);
+  };
+}
 
 // ---------- opened by Explore's dive (explore-dive.js) ----------
 // Zooming in past the map's deepest level opens this page in a frame over the map (?embed=1). The map page keeps the
@@ -286,14 +331,15 @@ const monthYear = s => `${MONTH[+s.slice(5, 7) - 1]} ${s.slice(0, 4)}`;
 // The discovery belongs to the spot it was opened at (ra/dec in the same link): moving to other coordinates clears it.
 // The label, the link, the "Found as" line and the address (show()) change together.
 const spot = (ra, dec) => `${(+ra).toFixed(4)},${(+dec).toFixed(4)}`;
-let found = null, foundAt = null;
+let found = null, foundAt = null, reportNote = null;   // reportNote: the line under the button (set up with the verdict, below)
 function setFound(id, at = null) {
   found = id; foundAt = at;
   const el = document.getElementById('state'), n = document.getElementById('vName');
-  document.getElementById('state-label').textContent = found ? 'Discovered' : 'Undiscovered';
-  // Discovered: the arrow opens that comet's page. Undiscovered: the forums, to tell people what you see here.
+  document.getElementById('state-label').textContent = found ? 'Discovered' : 'Report a new find';
+  // Discovered: the arrow opens that comet's page. Report a new find: the Discuss sheet (discuss.js), or the forums without it.
   el.href = found ? `comet.html?id=${encodeURIComponent(found)}` : 'forums.html';
-  el.setAttribute('aria-label', found ? `Discovered: ${found}. Open its page` : 'Undiscovered. Talk about it in the forums');
+  el.setAttribute('aria-label', found ? `Discovered: ${found}. Open its page` : 'Report a new find');
+  reportNote?.();
   n.hidden = !found;
   if (found) { n.innerHTML = 'Found as <b></b>'; n.querySelector('b').textContent = found; }
   else if (P.has('found')) { const u = new URL(location.href); u.searchParams.delete('found'); history.replaceState(null, '', u); }   // the address too
@@ -328,6 +374,8 @@ const spectral = (() => {
     const c = CHANNELS[api.i];
     needle.style.transform = `rotate(${90 - angle(api.i)}deg)`;
     read.textContent = nmOf(c).toLocaleString('en-US');
+    document.getElementById('sp-um').textContent = c.um.toFixed(2);
+    document.getElementById('sp-band').textContent = `band ${c.detector}`; document.getElementById('sp-ch').textContent = `ch ${c.n + 1}`;
     on.checked = api.active.has(api.i);
     on.setAttribute('aria-label', `Show the ${nmOf(c)} nanometre layer`);
     dial.setAttribute('aria-valuenow', api.i + 1);
@@ -518,7 +566,32 @@ function draw() {
     else { ctx.shadowBlur = 0; ctx.fillStyle = `rgba(127,184,255,${Math.max(0.35, 0.95 - 0.2 * (age - 1))})`; }
     ctx.fill(); ctx.shadowBlur = 0;
   });
-  if (f.pred_east != null && !candTrack.on()) {   // predicted position for this date (Gaia, or a published motion)
+  // "Already known": one mark for newcomers. The target, when Gaia or a published motion knows it, gets a blue check
+  // beside it and its name; known comets and asteroids passing get the same check where SkyBoT put them. Advanced's
+  // "Split already known" (state.split) draws them apart instead: the predicted place as a white ring, the known
+  // passers as dashed paths in their own colours (comets orange, asteroids blue), as before the redesign.
+  // a time-lapse opened at a comet's place on a date (&t=, from its page) rings that place: the comet is the subject, not the star
+  const say = verdict(m, f), merged = !state.split, starMark = merged && !!say.star && m.t == null && !candTrack.on();
+  // the target and its place this visit (targetAt, the one source every view reads): its check goes there
+  const tg = targetAt(m, f), tgPx = tg.pos && canvasOf(m, tg.pos), hit = tg.id?.pass.match;
+  let tLab = null;   // the target's "Already known" name, kept clear of by the passers' names below
+  if (starMark) {   // the star's check on the dot (a passer matched there too has its own check where it matched)
+    const cur = canvasOf(m, tg.id.mid);
+    const bx = cur[0] + 12, by = cur[1] - 12;
+    knownBadge(bx, by);
+    ctx.font = `400 ${Math.round(H / 34)}px "Space Mono", ui-monospace, monospace`; ctx.textBaseline = 'middle';
+    const text = `Already known · ${say.star}`, tw = ctx.measureText(text).width, th = Math.round(H / 34) + 4;
+    // right of the check, else left of it, and always whole inside the frame (a long name on a phone)
+    const pad = Math.round(W * .02), x0 = Math.max(pad, Math.min(W - pad - tw, bx + 16 + tw <= W - pad ? bx + 16 : bx - 16 - tw - 24));
+    tLab = [[bx - 11, by - 11, bx + 11, by + 11], [x0, by - th / 2, x0 + tw, by + th / 2]];
+    window.__starLabel = [...tLab[1], W];   // for tests: the name's box and the frame's width, in canvas pixels
+    ctx.textAlign = 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(text, x0, by);
+    ctx.fillStyle = '#7fb8ff'; ctx.fillText(text, x0, by);
+  }
+  // merged, a known star's predicted ring gives way to its check; any other prediction (a comet's JPL place, opened
+  // from its page with &t=) keeps its ring
+  document.body.classList.toggle('ringed', !starMark && f.pred_east != null && !candTrack.on());   // the legend names the ring (patch.css)
+  if (!starMark && f.pred_east != null && !candTrack.on()) {   // predicted position for this date (Gaia, a published motion, JPL)
     const [gx, gy] = predPx(f);
     for (const [color, width] of [['rgba(0,0,0,.85)', 5], ['#ffffff', 2]]) {   // dark outline keeps it visible on a white star
       ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.arc(gx, gy, 15, 0, 7); ctx.stroke();
@@ -533,9 +606,18 @@ function draw() {
     // what a name must not cover: the measured positions and the predicted ring (boxes), then each name placed so far
     const taken = shown.map(fr => { const [x, y] = toPx(fr.x, fr.y); return [x - 12, y - 12, x + 12, y + 12]; });
     if (f.pred_east != null && !candTrack.on()) { const [gx, gy] = predPx(f); taken.push([gx - 19, gy - 19, gx + 19, gy + 19]); }
+    if (tLab) taken.push(...tLab);
     if (document.body.classList.contains('busy')) {   // and the loading caption in its corner, while it shows
       const L = document.getElementById('loading'), q = W / patch.clientWidth;
       taken.push([L.offsetLeft * q, L.offsetTop * q, (L.offsetLeft + L.offsetWidth) * q, (L.offsetTop + L.offsetHeight) * q]);
+    }
+    // merged: each known passer's check is a mark like the rings, placed before any name
+    const nearest = b => b.pts.reduce((best, p, n) => (Math.abs(p[0] - f.mjd) < Math.abs(b.pts[best][0] - f.mjd) ? n : best), 0);
+    const badgeAt = new Map();
+    if (merged) for (const [name, b] of f.known.bodies) {   // the one on the dot where it matched (the target's place)
+      const [, ra, dec] = b.pts[nearest(b)], [e, n] = offset(m, ra, dec), [x, y] = name === hit?.name ? tgPx : toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel);
+      if (x < 0 || y < 0 || x > W || y > H) continue;
+      knownBadge(x, y); badgeAt.set(name, [x, y]); taken.push([x - 11, y - 11, x + 11, y + 11]);
     }
     const rings = taken.length;   // for tests/patch checks: window.__labels = { rings, names }
     const hits = r => r[0] < 0 || r[1] < 0 || r[2] > W || r[3] > H || taken.some(t => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
@@ -543,6 +625,16 @@ function draw() {
       const color = b.kind === 'comet' ? '#ff9a4d' : '#7fb8ff';
       const px = b.pts.map(([, ra, dec]) => { const [e, n] = offset(m, ra, dec); return toPx((G - 1) / 2 - e / m.arcsec_per_pixel, (G - 1) / 2 + n / m.arcsec_per_pixel); });
       const inView = px.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= H);   // the path is drawn even when only it crosses the view
+      if (merged) {   // its check (drawn above) where it was at the exposure nearest the middle of the visit, and its name
+        if (!badgeAt.has(name)) continue;
+        const [x, y] = badgeAt.get(name), tw = ctx.measureText(name).width, th = Math.round(H / 34) + 4;
+        const at = [[16, 0], [-16 - tw, 0], [-tw / 2, -16 - th / 2], [-tw / 2, 16 + th / 2]].map(([dx, dy]) => [x + dx, y + dy - th / 2, x + dx + tw, y + dy + th / 2]).find(r => !hits(r));
+        if (!at) continue;
+        taken.push(at);
+        ctx.textAlign = 'left'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, at[0], (at[1] + at[3]) / 2);
+        ctx.fillStyle = '#7fb8ff'; ctx.fillText(name, at[0], (at[1] + at[3]) / 2);
+        continue;
+      }
       for (const [c, w] of [['rgba(0,0,0,.8)', 4], [color, 1.6]]) {
         ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash([5, 5]);
         if (px.length > 1) { ctx.beginPath(); px.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
@@ -567,13 +659,152 @@ function draw() {
   }
   specRing(toPx, f);
   candTrack.draw(ctx, m, f, toPx, offset);
+  // for tests: the target's mark as drawn, in canvas pixels: the candidate's ring, the known star's check, or this
+  // visit's orange dot when it is the dot (a source measured off it is something else); null when nothing marks it
+  window.__mark = { name: tg.name, px: candTrack.on() ? window.__cand.ring : (hit && merged) || starMark ? tgPx : f.x != null && tg.id.srcOff == null ? toPx(f.x, f.y) : null };
+  sayVerdict(m, f);
+  if (pvView === 'depth') depth.frame();
   knownList(f);
   drawMini(m, f, v);
   showVisit(m, f);
   moreBelow();
   talk?.frame();
-  patch.setAttribute('aria-label', `SPHEREx image of ${candTrack.title() ?? m.name}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
+  patch.setAttribute('aria-label', `SPHEREx image of ${tg.name ?? 'a sky spot'}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
 }
+
+// "Already known": a blue disc with a black check, outlined so it reads on a white star (the legend's .kn)
+function knownBadge(x, y, r = 9) {
+  ctx.beginPath(); ctx.arc(x, y, r + 1.5, 0, 7); ctx.fillStyle = 'rgba(0,0,0,.85)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = '#7fb8ff'; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - r * .45, y); ctx.lineTo(x - r * .1, y + r * .36); ctx.lineTo(x + r * .5, y - r * .32);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(); ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+}
+
+// ---------- the verdict: one plain sentence beside the photo, from what the page already measured ----------
+// The motion measured here (m.motion), Gaia's motion for a star at the target (m.gaia, or a published one, m.ref),
+// and the known comets and asteroids SkyBoT put in this visit (f.known). Honest when nothing is known: it says what is
+// missing. Returns { parts: [text | {ok: text}], star: the target's catalog name or null, known: an already-known
+// object is in the middle, who: what to call it }.
+const arc = x => (x >= 10 ? Math.round(x) : +x.toFixed(1)).toLocaleString('en-US');
+function verdict(m, f) {
+  // a detector candidate (&cand=) is a dot on its own track, not the source the patch measures in its middle: the
+  // middle's motion and Gaia match say nothing about it, so the verdict claims neither
+  const tg = targetAt(m, f), name = tg.name;
+  if (!tg.id) return { parts: [`${name} is a detector candidate. Its track is the dotted line; nothing here checks it against Gaia or the asteroid catalogs, so it is not called known.`], star: null, known: false, who: name };
+  // what is the dot in the middle in this visit (live/identity.js, the one rule): the catalog star only when Gaia's (or a
+  // published) place for it this visit is on the dot; a passer only when SkyBoT puts it on the dot at an exposure's time
+  const live = m.key.startsWith('live'), id = tg.id, onDot = !!id.star.match;
+  // the motion is fit from the sources measured visit by visit: it is the dot's only when this visit's source is on the
+  // dot. Off it (id.srcOff), or with none measured this visit, nothing here says the dot moved
+  const srcOn = f.x != null && id.srcOff == null, mo = srcOn ? m.motion : null, g = onDot ? m.gaia : null, pub = onDot ? m.ref : null;
+  const offTxt = !m.motion || srcOn ? null : id.srcOff != null
+    ? `The source measured near the middle this visit sits ${Math.round(id.srcOff)} arcseconds off the dot, so the motion measured here may belong to something else.`
+    : 'No source was measured on the dot this visit, so the motion measured in other visits may belong to something else.';
+  const ref = g && g.total > 1 ? { total: g.total, label: 'Gaia', tol: 20 } : pub ? { total: pub.total, label: pub.source, tol: 35 } : null;
+  const starName = name ? `${ref?.label === 'Gaia' || g ? "Gaia's " : ''}${name}` : 'a star in Gaia';
+  // match: what the dot was matched to, for every other place that names "the target" (Depth, Discuss): the Gaia star
+  // ({ gaia: its proper motion }) or a passer on the dot ({ sso: its name })
+  const out = { parts: [], star: null, known: false, who: name ?? 'The star in the middle', match: g ? { kind: 'gaia', id: id.star.match.gaiaId } : null };
+  const seen = m.frames.filter(x => x.x != null).length;
+  if (m.frames.length < 2) out.parts.push('Only one visit here so far, so nothing can be seen moving yet.');
+  else if (mo && ref) {
+    const pct = 100 * mo.total / ref.total;
+    out.star = name ?? 'a Gaia star'; out.known = true;
+    if (Math.abs(pct - 100) <= ref.tol) out.parts.push(`Moved ${arc(mo.total)} arcseconds a year. `, { ok: `Matches ${ref.label === 'Gaia' ? starName : `the published motion of ${name ?? 'this star'}`}, already known.` });
+    else out.parts.push(`Moved about ${arc(mo.total)} arcseconds a year, but ${ref.label} says ${arc(ref.total)}, so this measurement is likely off. `, { ok: `${name ?? 'The star'} is already known.` });
+  } else if (g && g.total <= 1) { out.star = name ?? 'a Gaia star'; out.known = true; out.parts.push(`Stays put: Gaia says it moves ${g.total.toFixed(2)} arcseconds a year, too little to see here. `, { ok: `${name ? starName : 'A Gaia star'}, already known.` }); }
+  else if (g) { out.star = name ?? 'a Gaia star'; out.known = true; out.parts.push(`Gaia says it moves ${arc(g.total)} arcseconds a year${offTxt ? '' : ', but too few clean positions here to measure it'}. `, { ok: 'Already known.' }); }
+  else if (mo) out.parts.push(`Seems to move ${arc(mo.total)} arcseconds a year${mo.err != null && Number.isFinite(mo.err) ? `, give or take ${arc(mo.err)}` : ''}. ${id.star.nearby ? '' : live || m.gaia ? 'No Gaia star is on the dot to match it.' : 'It is not in Gaia (too faint in visible light).'}`);
+  else if (offTxt) out.parts.push(offTxt);
+  else if (m.frames.some(x => x.blob)) out.parts.push('Too bright to measure: this star saturates the detector, so no motion can be read.');
+  else out.parts.push(`No motion measured: the middle shows a source in ${seen} of ${m.frames.length} visits, and a motion needs 3 over 6 months.`);
+  // the catalog identity is identityAt's alone, whatever the visit count or a motion fit: a star whose place this visit
+  // is on the dot is known even with one visit, or with no motion measured (a published place, no Gaia motion)
+  if (onDot && !out.known) {
+    out.star = name ?? (g ? 'a Gaia star' : 'a known star'); out.known = true;
+    out.parts.push(' ', { ok: g ? `${name ? starName : 'A Gaia star'}, already known.` : `${name ?? 'The star'} is already known.` });
+  }
+  if (offTxt && g) out.parts.push(' ', offTxt);
+  if (id.star.nearby) out.parts.push(` Nearby: the catalog's place for ${name ?? 'the Gaia star here'} is ${Math.round(id.star.nearby.d)} arcseconds from the dot this visit, too far to be it.`);
+  // known comets and asteroids SkyBoT put in this visit: on the dot, nearby, or just passing through
+  const k = f.known, hit = id.pass.match, near = id.pass.nearby, a = m.arcsec_per_pixel;
+  if (hit) { out.known = true; out.who = hit.name; out.match = { kind: 'sso', name: hit.name }; out.parts.push(' ', { ok: `The dot in the middle matches the known ${hit.kind} ${hit.name}.` }); }
+  else if (near && near.d <= 2 * a) out.parts.push(` Nearby: the known ${near.kind} ${near.name} was ${Math.round(near.d)} arcseconds from the dot at the middle of this visit, not at an exposure's own time, so it is not called the dot.`);
+  else if (near) out.parts.push(` Nearby: the known ${near.kind} ${near.name} passed ${Math.round(near.d)} arcseconds from the dot in the middle, too far to be it.`);
+  else if (k?.bodies.size) {
+    const n = k.bodies.size, kinds = new Set([...k.bodies.values()].map(b => b.kind)), what = kinds.size > 1 ? 'known object' : `known ${[...kinds][0]}`;
+    out.parts.push(` ${n === 1 ? `A ${what}, ${[...k.bodies.keys()][0]},` : `${n} ${what}s`} passed through during this visit.`);
+  }
+  return out;
+}
+// the identity rule (live/identity.js) on this patch and visit: the dot, the catalog star's place this visit (Gaia's, or
+// a published motion's: pred_east/north, its own proper motion applied; not in &t= views, where the place is a comet's),
+// and each passer at each exposure's own time. { mid, srcOff, star: { match, nearby }, pass: { match, nearby } }, srcOff the
+// arcsec from the centre of a source measured this visit too far off to be the dot (else null); a passer match
+// carries the exposure time it matched at (t) and its magnitude, for the Discuss sheet.
+function identityAt(m, f) {
+  const c = (m.grid - 1) / 2, a = m.arcsec_per_pixel, src = f.x != null ? [(c - f.x) * a, (f.y - c) * a] : null, mid = middle(src, a);
+  const srcOff = src && mid !== src ? Math.hypot(...src) : null;
+  const stars = (m.gaia || m.ref) && m.t == null && f.pred_east != null ? [{ kind: 'star', name: m.name, gaiaId: m.gaia?.id ?? null, pos: [[f.pred_east, f.pred_north]] }] : [];
+  // a passer can be the dot only where SkyBoT put it at one of this visit's exposure times (f.epochs, the live pipeline's
+  // own timestamps); a baked visit has none, so its one time (the visit's middle) can make a passer nearby at most
+  const exp = new Set(f.epochs ?? []), place = ([, ra, dec]) => offset(m, ra, dec);
+  const passers = [...(f.known?.bodies ?? [])].map(([name, b]) => {
+    const at = b.pts.filter(p => exp.has(p[0]));
+    return { kind: b.kind, name, mag: b.mag, at, pos: at.map(place), near: b.pts.filter(p => !exp.has(p[0])).map(place) };
+  });
+  const star = identify(mid, stars, a), pass = identify(mid, passers, a);
+  // a passer on the dot: the exposure it matched at (t, for the Discuss sheet) and its place then (the target's place)
+  if (pass.match) { const p = pass.match, k = p.pos.reduce((b, q, i) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(p.pos[b][0] - mid[0], p.pos[b][1] - mid[1]) ? i : b), 0); p.t = p.at[k][0]; p.place = p.pos[k]; }
+  return { mid, srcOff, a, star, pass };
+}
+// ---------- the target: what the page is about and where it is this visit, the one source for every view ----------
+// The Photo's mark on it, the verdict, Depth's marker and its label, the Discuss offer, the mini-map's ring and the
+// aria-labels all read these, so no view names one thing and places another. A detector candidate (&cand=) is the
+// target while it is open: its detection in this visit, never the patch's middle, and no catalog identity (the verdict
+// claims none). Otherwise the dot by the identity rule (identityAt). name: null for a live patch's dot (each place says
+// "the dot in the middle" its own way); pos: [east, north] arcsec from the patch centre (a passer on the dot: where it
+// matched), null when the candidate has no detection in this visit (then nothing places or reports it); sky: [ra, dec]
+// reported for it (a candidate's detection; otherwise the patch centre, which the dot is within 2 px of, so a report
+// and the check for earlier ones keep one spot per patch); id: identityAt, null for a candidate.
+const targetName = m => candTrack.title() ?? (m.key.startsWith('live') ? null : m.name);
+function targetAt(m, f) {
+  if (candTrack.on()) { const d = candTrack.at(m, f, offset); return { name: targetName(m), pos: d?.pos ?? null, sky: d?.sky ?? null, id: null }; }
+  const id = identityAt(m, f);
+  return { name: targetName(m), pos: id.pass.match?.place ?? id.mid, sky: [m.ra, m.dec], id };
+}
+// a place on the patch (arcsec east and north of its centre) in the big frame's canvas pixels, as draw() places it
+function canvasOf(m, [e, n]) {
+  const G = m.grid, { cw, ch, ox, oy } = view(m), x = (G - 1) / 2 - e / m.arcsec_per_pixel, y = (G - 1) / 2 + n / m.arcsec_per_pixel;
+  return [(x - ox + 0.5) * patch.width / cw, (G - 1 - y - oy + 0.5) * patch.height / ch];
+}
+let saidKey = '';
+function sayVerdict(m, f) {
+  const v = verdict(m, f), key = JSON.stringify([v.parts, m.key, m.ra, m.dec, m.frames.length, m.detector, m.lam0, m.channel ?? null]);   // the facts line too
+  state.verdict = v;
+  if (key === saidKey) return reportNote();   // the note follows the visit even when the verdict's words do not (a candidate's)
+  saidKey = key;
+  const el = document.getElementById('pv-say');
+  el.replaceChildren(...v.parts.map(p => {
+    if (typeof p === 'string') return document.createTextNode(p);
+    const s = document.createElement('span'); s.className = 'known';
+    s.innerHTML = '<i class="kn-check" aria-hidden="true"></i>'; s.append(p.ok); return s;
+  }));
+  document.getElementById('pv-facts').textContent = `RA ${m.ra.toFixed(3)} · Dec ${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(3)} · ${m.frames.length} visit${m.frames.length === 1 ? '' : 's'}, ${m.detector} ${m.lam0.toFixed(2)} µm`;
+  reportNote();
+}
+// the line under Report a new find: what the button does, or why there is nothing to report
+// (about the target, targetAt: a candidate's detection in this visit, or the dot)
+reportNote = () => {
+  const el = document.getElementById('state-note'), v = state.verdict, tg = state.m && targetAt(state.m, state.m.frames[state.i]);
+  el.textContent = !tg ? ''
+    : candTrack.isSample() ? 'Sample data, so there is nothing here to report.'
+    : found ? `Already reported here as ${found}. The arrow opens its page.`
+    : v?.known ? `${v.who} is already known, so there is nothing to report here.`
+    : !tg.sky ? `${tg.name} has no detection in this visit, so there is nothing to report here.`
+    : tg.id ? `Tells other hunters about ${tg.name ?? 'the dot in the middle'}, so they can tag what it is.`
+    : `Tells other hunters about ${tg.name}, ringed in this visit, so they can tag what it is.`;
+};
 
 // ---------- mini-map: the whole region, the big frame's part outlined, the target ringed ----------
 function drawMini(m, f, v) {
@@ -587,16 +818,19 @@ function drawMini(m, f, v) {
   mini2d.fillStyle = 'rgba(0,0,0,.5)'; mini2d.beginPath(); mini2d.rect(x0, y0, S, S); mini2d.rect(bx, by, bw, bh); mini2d.fill('evenodd');
   mini2d.strokeStyle = 'rgba(255,255,255,.35)'; mini2d.lineWidth = 2; mini2d.strokeRect(x0, y0, S, S);
   mini2d.strokeStyle = '#fff'; mini2d.lineWidth = 3; mini2d.strokeRect(bx, by, bw, bh);
-  // the target: where it was measured this visit, or the middle of the region
-  const tx = f.x != null ? f.x : (G - 1) / 2, ty = f.y != null ? f.y : (G - 1) / 2;
-  const px = x0 + (tx + 0.5) * k, py = y0 + (G - 1 - ty + 0.5) * k;
-  for (const [color, width] of [['rgba(0,0,0,.8)', 7], ['#ff9a4d', 3]]) { mini2d.strokeStyle = color; mini2d.lineWidth = width; mini2d.beginPath(); mini2d.arc(px, py, 11, 0, 7); mini2d.stroke(); }
+  // the target where it is this visit (targetAt); none when it has no place in it
+  const pos = targetAt(m, f).pos;
+  if (pos) {
+    const tx = (G - 1) / 2 - pos[0] / m.arcsec_per_pixel, ty = (G - 1) / 2 + pos[1] / m.arcsec_per_pixel;
+    const px = x0 + (tx + 0.5) * k, py = y0 + (G - 1 - ty + 0.5) * k;
+    for (const [color, width] of [['rgba(0,0,0,.8)', 7], ['#ff9a4d', 3]]) { mini2d.strokeStyle = color; mini2d.lineWidth = width; mini2d.beginPath(); mini2d.arc(px, py, 11, 0, 7); mini2d.stroke(); }
+  }
   // the sizes: the whole region beside it, the frame's part under it
   const arcmin = G * m.arcsec_per_pixel / 60;
   mini2d.fillStyle = 'rgba(255,255,255,.85)'; mini2d.font = '40px "Space Mono", ui-monospace, monospace'; mini2d.textBaseline = 'bottom';
   mini2d.fillText(`${+arcmin.toFixed(1)}′`, x0 + S + 14, y0 + S);
   mini2d.textBaseline = 'top'; mini2d.fillText(`${+(v.cw * m.arcsec_per_pixel / 60).toFixed(1)}′`, x0 + S + 14, y0);
-  mini.setAttribute('aria-label', `The whole ${+arcmin.toFixed(1)} arcmin region; the outlined box is the ${state.fov} arcmin the big frame shows, the ring is the target`);
+  mini.setAttribute('aria-label', `The whole ${+arcmin.toFixed(1)} arcmin region; the outlined box is the ${state.fov} arcmin the big frame shows${pos ? ', the ring is the target' : ''}`);
 }
 
 function showVisit(m, f) {
@@ -738,8 +972,8 @@ function show(m, query, opts = {}) {
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   candTrack.commit(query);
-  document.getElementById('pv-name').textContent = candTrack.title() ?? (m.key.startsWith('live') ? 'Sky spot' : m.name);   // the phone's title row
-  document.getElementById('pv-radec').textContent = `RA ${m.ra.toFixed(2)} Dec ${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(2)}`;
+  document.getElementById('pv-name').textContent = targetName(m) ?? 'Sky spot';
+  window.__aim3d?.();   // Advanced's "View this spot on Explore's 3D sky" follows the address
   panel(m); draw(); photo();
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
   knownFor(m);
@@ -841,6 +1075,7 @@ const statusEl = document.getElementById('status');
 const brief = e => /^S3 range/.test(e) ? `Could not download a SPHEREx photo (${(e.match(/HTTP \d+/) || ['network error'])[0]})` : e.replace(/, try again or pick a baked target$/, '');
 let busyWas = false;
 function setStatus(text, err = false) { statusEl.textContent = text; statusEl.title = ''; statusEl.className = err ? 'err' : '';
+  document.getElementById('pv-err').textContent = err ? text : '';   // under the name and verdict, where it is seen with Advanced shut
   if (document.body.classList.toggle('busy', !!job && !err) !== busyWas) { busyWas = !busyWas; draw(); }   // names move off the caption, and back
   moreBelow(); }
 // a card whose content runs past its height fades out at the bottom until it is scrolled to the end (patch.css .more)
@@ -968,8 +1203,10 @@ function back() {
 const rc = recenterable(patch, {
   scale: () => { if (!state.m) return null; const { cw, ch } = view(state.m), r = patch.getBoundingClientRect(); return [cw / r.width, ch / r.height]; },
   moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
-talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text) });
-window.__lapse = { state, recenter, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
+talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => targetAt(state.m, f).id?.pass.match ?? null,
+  place: f => { const t = targetAt(state.m, f); return { ...t, px: t.pos && canvasOf(state.m, t.pos) }; },
+  opening: () => { if (spec.at || spec.mode) closeSpec(false); } });   // one card in the right column: the sheet closes the Spectrum card
+window.__lapse = { state, recenter, verdict, targetAt, view: () => view(state.m), get talk() { return talk; }, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 // ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
 // The main channel is the lowest active layer, or with none the dial's channel once the dial is turned (before that, and
@@ -1078,7 +1315,7 @@ async function openSpec(ra, dec, year = 2026) {
   if (document.body.classList.contains('talking')) document.querySelector('#talk .close')?.click();   // one card in the right column
   spec.at = { ra, dec }; spec.gaia = null; spec.res = null; spec.bright = false; specEl('spec-warn').hidden = true;
   document.body.classList.add('speccing');
-  if (matchMedia('(max-width: 640px)').matches) tabs.querySelector('[data-t=info]').click();   // phones: the card is the Info tab
+  if (matchMedia('(max-width: 900px)').matches) requestAnimationFrame(() => specEl('spec').scrollIntoView({ block: 'nearest', behavior: 'smooth' }));   // phones: the card sits under the timeline
   specEl('spec-csv').disabled = true;
   specEl('spec-where').textContent = `RA ${ra.toFixed(4)}, Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(4)}`;
   specStatus('Looking the spot up in Gaia...', 0);
@@ -1146,10 +1383,10 @@ function specUrl() {
   if (spec.at) u.searchParams.set('spec', `${spec.at.ra.toFixed(5)},${spec.at.dec.toFixed(5)}`); else u.searchParams.delete('spec');
   history.replaceState(null, '', u);
 }
-function closeSpec() {
+function closeSpec(focus = true) {
   spec.ctl?.abort(); spec.n++; spec.at = spec.gaia = spec.res = null; spec.bright = false;
   document.body.classList.remove('speccing'); specMode(false); specUrl(); draw();
-  specEl('spec-mode').focus();
+  if (focus) specEl('spec-mode').focus();
 }
 specEl('spec-close').onclick = closeSpec;
 specEl('spec').addEventListener('keydown', e => { if (e.key === 'Escape') closeSpec(); });
@@ -1237,22 +1474,117 @@ document.getElementById('det').onchange = () => {
   if (spectral.active.size && state.m) return spectral.clear();
   if (document.getElementById('coords').value.trim()) document.getElementById('search').requestSubmit();
 };
-// phones: the tab strip shows one tool card (patch.css reads data-tab on the stage)
-const tabs = document.querySelector('.pv-tabs');
-tabs.onclick = e => {
-  const t = e.target.closest('[data-t]'); if (!t) return;
-  document.getElementById('stage').dataset.tab = t.dataset.t;
-  for (const b of tabs.children) b.setAttribute('aria-pressed', b === t);
-  moreBelow();   // Info's list may now scroll inside its panel
+// ---------- Photo and Depth: tabs on the photo; the choice rides in the address (the replaceState wrapper at the top) ----------
+// Depth shows the beam in the frame and the Distances card in the right column, for the patch and the visit on screen.
+// The region's photo for the beam's far end: the whole cut-out of the visit on screen, as the mini-map draws it.
+const regionCv = document.createElement('canvas');
+function region() {
+  const m = state.m; if (!m || state.mode === 'sky') return null;
+  const f = m.frames[state.i], G = m.grid;
+  if (regionCv.width !== G) regionCv.width = regionCv.height = G;
+  const img = new ImageData(G, G);
+  for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) shade(m, f, c, r, img.data, 4 * (r * G + c));
+  regionCv.getContext('2d').putImageData(img, 0, 0);
+  return { m, f, canvas: regionCv };
+}
+const depth = depthView({
+  api: API, box: document.getElementById('depth3d'), list: document.getElementById('dist-list'), status: document.getElementById('dist-status'), region,
+  // where (ra, dec) is on the region, -1 to 1 across, north up; a Gaia star moved by its proper motion to the visit's year
+  onScreen(m, ra, dec, pm) {
+    if (pm?.pmra != null) [ra, dec] = gaiaAt({ ra, dec, pmra: pm.pmra, pmdec: pm.pmdec }, pm.year);
+    const [e, n] = offset(m, ra, dec), half = m.grid * m.arcsec_per_pixel / 2;
+    return [-e / half, n / half];
+  },
+  // the patch's own star: the Gaia star nearest where the target was measured (or the middle) within 10″, when the
+  // verdict found a star there
+  // the patch's own object in Depth: only what the verdict matched (the same rule, never the nearest star by distance
+  // alone). The pipeline's Gaia star is found by its proper motion (within 1 mas/yr both ways) near the measured source;
+  // a passer by its SkyBoT name. No match, or a match without a catalog distance: -1, and Depth marks the middle
+  // "distance unknown" (middle())
+  target(m, f, all) {
+    const mt = state.verdict?.match; if (!mt) return -1;
+    if (mt.kind === 'sso') return all.findIndex(p => p.src === 'sso' && p.o.name === mt.name);
+    return this.gaiaRow(all, mt.id);
+  },
+  // the row of the Gaia star the identity rule matched, by its source_id only (a neighbour with a similar motion is
+  // never it); none, or a star without a usable distance: -1, "distance unknown"
+  gaiaRow: (all, id) => (id == null ? -1 : all.findIndex(p => p.src === 'stars' && String(p.o.id) === String(id))),
+  // a candidate open: the patch's own catalog star (on the dot by the identity rule, the candidate aside) is not the
+  // target, but it is still a known star with a name. { i, name } or null
+  named(m, f, all) {
+    if (!candTrack.on() || !m.gaia || m.key.startsWith('live')) return null;
+    const id = identityAt(m, f), i = id.star.match ? this.gaiaRow(all, id.star.match.gaiaId) : -1;
+    return i >= 0 ? { i, name: m.name } : null;
+  },
+  cover: () => [document.querySelector('.pv-views')],   // what sits over the beam: its labels keep clear of it
+  // where the target is on the region (-1 to 1, north up; u null when it has no place this visit) and what to call it,
+  // for its "distance unknown" mark (targetAt)
+  middle(m, f) {
+    const { name, pos } = targetAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
+    return { u: pos ? -pos[0] / half : null, v: pos ? pos[1] / half : null, name: name ?? 'the dot in the middle' };
+  },
+  targetName,
+  // what the target's pick and place depend on, besides the depth answer: its identity, and targetAt's place and exposure
+  // time (a later SkyBoT answer can move a match to a closer exposure without changing who it is)
+  matchKey: () => { const m = state.m, t = m && targetAt(m, m.frames[state.i]); return JSON.stringify([state.verdict?.match ?? null, t?.pos ?? null, t?.id?.pass.match?.t ?? null]); },
+});
+window.__depth = depth;   // for tests/timelapse_redesign_ui.py
+const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]')];
+function setView(v, user = false) {
+  pvView = v;
+  document.body.classList.toggle('depth', v === 'depth');
+  for (const t of viewTabs) { const on = t.dataset.view === v; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; }
+  if (v === 'depth') {   // the Discuss sheet, picking a star and its card, and playing are Photo things: in Depth the right column is Distances
+    talk?.close(); stop();
+    if (spec.mode || spec.at) closeSpec(false);
+  }
+  depth.show(v === 'depth');
+  if (user || P.has('view')) history.replaceState(history.state, '', location.href);   // the wrapper writes &view=
+  if (v === 'photo') draw();
+  moreBelow();
+}
+for (const t of viewTabs) t.addEventListener('click', () => setView(t.dataset.view, true));
+document.querySelector('.pv-views').addEventListener('keydown', e => {   // tabs: arrows move between them
+  const k = { ArrowLeft: -1, ArrowRight: 1, Home: -99, End: 99 }[e.key]; if (!k) return;
+  const i = Math.max(0, Math.min(viewTabs.length - 1, viewTabs.findIndex(t => t.dataset.view === pvView) + k));
+  setView(viewTabs[i].dataset.view, true); viewTabs[i].focus(); e.preventDefault(); e.stopPropagation();
+});
+
+// ---------- Advanced: the drawer with every control. Open or shut, it stays that way next time (localStorage ch.adv) ----------
+const advBtn = document.getElementById('adv-btn');
+function setAdv(on, keep = true) {
+  advBtn.setAttribute('aria-expanded', on);
+  document.body.classList.toggle('adv-open', on);
+  document.getElementById('adv-hint').textContent = on ? 'Stays open next time' : 'Wavelength dial, filters, zoom, position';
+  if (keep) try { localStorage.setItem('ch.adv', on ? '1' : '0'); } catch {}
+  moreBelow();
+}
+advBtn.onclick = () => setAdv(advBtn.getAttribute('aria-expanded') !== 'true');
+window.__advOpen = on => setAdv(on, false);
+{ const who = document.querySelector('.pv-who'), stage = document.getElementById('stage');
+  new ResizeObserver(() => stage.style.setProperty('--who-h', `${who.offsetHeight}px`)).observe(who); }   // live/candtrack.js: a candidate's votes are in here
+{ let on = false; try { on = localStorage.getItem('ch.adv') === '1'; } catch {} setAdv(on, false); }
+// Split already known: predicted place and known passing drawn apart (draw()); the legend follows (patch.css)
+document.getElementById('split').onchange = e => { state.split = e.target.checked; draw(); };
+
+// ---------- Copy link to this view: the address already names the spot, the visit's band, the layers and the view ----------
+for (const b of [document.getElementById('share'), document.getElementById('share-depth')]) b.onclick = async () => {
+  const t = b.querySelector('span');
+  const u = new URL(location.href);
+  if (state.m) u.searchParams.set('day', String(Math.round(state.m.frames[state.i].mjd - MJD0)));   // the visit on screen (nearestVisit opens it)
+  try { await navigator.clipboard.writeText(u.href.replace(/%2C/g, ',')); t.textContent = 'Link copied'; }
+  catch { t.textContent = 'Copy the address bar to share'; }
+  setTimeout(() => { t.textContent = 'Copy link to this view'; }, 2000);
 };
 // the target buttons live in the Explore page's Examples menu now (explore.html links here with ?target=)
 
 const playBtn = document.getElementById('play');
 function stop() { state.playing = false; playBtn.classList.remove('on'); }
-function togglePlay() { if (state.playing) return stop(); state.playing = true; state.last = 0; playBtn.classList.add('on'); }
+// playing is the time-lapse, a Photo thing: Depth asks the catalogs once per visit, so it does not play through them
+function togglePlay() { if (state.playing) return stop(); if (pvView === 'depth') setView('photo', true); state.playing = true; state.last = 0; playBtn.classList.add('on'); }
 // Zoom: drag right to zoom in. The bar fills as you do: 12 arcmin (the whole region) is empty, 1 arcmin is full.
 const fov = document.getElementById('fov');
-const setFov = () => { state.fov = 13 - +fov.value; fov.parentElement.dataset.w = `${state.fov} arcmin wide`; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
+const setFov = () => { state.fov = 13 - +fov.value; document.getElementById('fov-w').textContent = `${state.fov} arcmin`; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
 fov.value = 13 - state.fov; setFov();
 fov.oninput = () => { setFov(); draw(); };
 // the wheel, a pinch and +/- on the photo (live/recenter.js) move the same bar: k times the width, in the bar's 0.5
@@ -1286,6 +1618,7 @@ for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat
   document.getElementById(id).onchange = e => { state[key] = e.target.checked; draw(); };
 addEventListener('keydown', e => {
   if (!state.m || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.target === playBtn) return;   // typing a comment moves the caret, not the visit
+  if (e.defaultPrevented || e.target.closest?.('.pv-views, #depth3d')) return;   // the tabs and the 3D view use the arrows themselves
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); state.i = (state.i + (e.key === 'ArrowRight' ? 1 : -1) + state.m.frames.length) % state.m.frames.length; draw(); }
 });
 
@@ -1444,6 +1777,7 @@ else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends i
 } else setMode('sky');   // the whiteboard flow starts at the whole sky
 // &spec=ra,dec: the Spectrum card opens on that spot (its 2026.0 place) as soon as the page shows a patch
 { const sp = (P.get('spec') || '').split(',').map(Number); if (sp.length === 2 && sp[0] >= 0 && sp[0] < 360 && Math.abs(sp[1]) <= 90) { specMode(true); openSpec(sp[0], sp[1], 2026); } }
+if (pvView === 'depth') setView('depth');
 tellMap({ type: 'dive-ready' });
 </script>
 <script src="ui.js"></script>

@@ -1,0 +1,700 @@
+"""Browser check for the time-lapse redesign, phase 1 (UX mockups 1a, 1c and 2, 2026-11-16), in system Chrome. Needs the
+app up (npm run dev, with DEPTH_FAULTS=1 in worker/.dev.vars for the "unavailable" check) and the network (Gaia and
+SIMBAD through /api/depth).
+1. default: the name and a one-line verdict beside the photo, built from what the page measured; honest when nothing is
+   known (the verdict for made-up patches with no motion, one visit, or no Gaia star);
+2. one merged "already known" mark and its legend; Advanced's "Split already known" draws them apart again;
+3. Depth: the tab shows the beam, and its Distances list matches GET /api/depth for the same patch and visit date,
+   object for object, nearest first; dragging turns the beam;
+4. unknown and unavailable: rows with no distance say why, a pending source is asked again after retry_after, an
+   unavailable one (the server's own fault switch) is said plainly;
+5. Advanced holds every control the page had, each still works, and it stays open next time;
+6. Report a new find: the button's words and the line under it (nothing to report on a known star);
+7. the view rides in the address: a shared link reopens Depth, Photo drops it, Copy link copies it;
+8. phone (390x844): one column in the mockup's order, nothing sideways, the tabs and Advanced are 44 px taps, Depth
+   shows Distances under the timeline.
+Run: uv run -q --with playwright python web/tests/timelapse_redesign_ui.py [base url]   (default http://127.0.0.1:8787)"""
+import asyncio, json, math, sys
+from playwright.async_api import async_playwright
+
+BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
+READY = "+document.getElementById('play')?.getAttribute('aria-valuemax') > 0 && !!window.__lapse?.state.m"
+PIXELS = "(() => { const c = document.getElementById('patch'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let i = 0; i < d.length; i += 7) h = (h * 31 + d[i]) | 0; return h; })()"
+BEAM = "(() => { const c = document.querySelector('#depth3d canvas'), t = document.createElement('canvas'); t.width = 200; t.height = 120; const g = t.getContext('2d'); g.drawImage(c, 0, 0, 200, 120); const d = g.getImageData(0, 0, 200, 120).data; let h = 0, lit = 0; for (let i = 0; i < d.length; i += 4) { h = (h * 31 + d[i] + d[i + 1]) | 0; if (d[i] > 60) lit++; } return [h, lit]; })()"
+SHOWN = "s => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(); return getComputedStyle(e).visibility !== 'hidden' && r.width > 0 && r.height > 0; }"
+OLD = ["sp-dial", "sp-on", "sp-active", "still", "diff", "ly-heat", "fov", "mini", "coords", "det", "status", "vVisit", "vMotion", "vKnown"]
+fails = []
+def check(ok, what):
+    print(("PASS " if ok else "FAIL ") + what)
+    if not ok: fails.append(what)
+
+
+async def page(b, phone=False, adv=None):
+    kw = dict(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True) if phone else dict(viewport={"width": 1440, "height": 900})
+    ctx = await b.new_context(**kw)
+    await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}" + (f"; try {{ localStorage.setItem('ch.adv', '{adv}') }} catch {{}}" if adv else ""))
+    await ctx.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
+    pg = await ctx.new_page(); pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    pg.on("console", lambda m: m.type == "error" and "depth" not in m.text and pg.errors.append(m.text))
+    return ctx, pg
+
+
+async def keys_settled(pg):   # the page's Distances list once no source is pending (or after 60 s)
+    for _ in range(120):
+        st = await pg.evaluate("document.getElementById('dist-list').dataset.state || ''")
+        if st and "pending" not in st: break
+        await pg.wait_for_timeout(500)
+    return await pg.evaluate("[...document.querySelectorAll('#dist-list li[data-key]')].map(l => l.dataset.key).filter(k => !k.includes('?:'))")
+
+
+async def main():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(channel="chrome", headless=True)
+
+        # ---------- 1, 2, 6: the default state on Barnard's Star ----------
+        ctx, pg = await page(b)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
+        name, say, label, note = await pg.evaluate("['pv-name', 'pv-say', 'state-label', 'state-note'].map(i => document.getElementById(i).textContent)")
+        check(name == "Barnard's Star" and await pg.evaluate(SHOWN, "#pv-name"), f"default: the name beside the photo ({name})")
+        check(say.startswith("Moved 10 arcseconds a year.") and "Matches Gaia's Barnard's Star, already known." in say and await pg.evaluate(SHOWN, "#pv-say"), f"default: the verdict in one plain sentence: {say}")
+        r = await pg.evaluate("['.pv-who', '.pv-frame'].map(s => document.querySelector(s).getBoundingClientRect().left)")
+        check(r[0] > r[1], "default: the name and verdict sit beside the photo (right column)")
+        check(label == "Report a new find" and note == "Barnard's Star is already known, so there is nothing to report here.", f"report: '{label}' / '{note}'")
+        # honest when nothing is known: made-up patches through the page's own verdict
+        # dx: how many pixels east of the centre the source was measured this visit (101 x 101 patch of 6.15 arcsec pixels)
+        V = """(([motion, gaia, ref, n, seen, dx = 0]) => { const f = { known: null, x: null, y: 50 }; const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, motion, gaia, ref,
+              grid: 101, arcsec_per_pixel: 6.15, frames: Array.from({ length: n }, (_, i) => ({ ...f, x: i < seen ? 50 - dx : null })) }; const v = window.__lapse.verdict(m, m.frames[0]);
+              return [v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), v.known]; })"""
+        one = await pg.evaluate(V + "([null, null, null, 1, 1])")
+        none = await pg.evaluate(V + "([null, null, null, 4, 2])")
+        mover = await pg.evaluate(V + "([{ total: 29, err: 8.3, years: 1 }, null, null, 4, 4])")
+        check(one == ["Only one visit here so far, so nothing can be seen moving yet.", False], f"verdict, one visit: {one}")
+        check(none[0].startswith("No motion measured: the middle shows a source in 2 of 4 visits") and not none[1], f"verdict, nothing measured: {none}")
+        # a source measured 3 px (18 arcsec) off the dot this visit: its motion is not said to be the dot's
+        offc = await pg.evaluate(V + "([{ total: 29, err: 8.3, years: 1 }, null, null, 4, 4, 3])")
+        check(offc == ["The source measured near the middle this visit sits 18 arcseconds off the dot, so the motion measured here may belong to something else.", False]
+              and "Seems to move" not in offc[0] and "Moved" not in offc[0], f"verdict, the measured source off the dot: {offc}")
+        check(mover == ["Seems to move 29 arcseconds a year, give or take 8.3. No Gaia star is on the dot to match it.", False], f"verdict, a mover with no Gaia star: {mover}")
+        # the merged mark: one "already known" key; Split draws the predicted ring and known passing apart again
+        legend = lambda: pg.evaluate("[...document.querySelectorAll('#legend .lg-row')].filter(r => getComputedStyle(r).display !== 'none').map(r => r.textContent)")
+        merged = await legend()
+        await pg.evaluate("document.getElementById('adv-btn').click()")
+        base = await pg.evaluate(PIXELS)
+        await pg.click("label[for=split]"); await pg.wait_for_timeout(150)
+        split, split_px = await legend(), await pg.evaluate(PIXELS)
+        await pg.click("label[for=split]"); await pg.wait_for_timeout(150)
+        check(merged == ["this visitearlier visitsalready known"] and split == ["this visitearlier visitspredictedknown passing"] and split_px != base and await pg.evaluate(PIXELS) == base,
+              f"already known: one merged mark ({merged}); Split draws them apart ({split}) and back")
+
+        # ---------- 5: Advanced holds every control, each still works, and stays open ----------
+        await pg.reload(); await pg.wait_for_function(READY)
+        check(await pg.get_attribute("#adv-btn", "aria-expanded") == "true", "Advanced: stays open next time (after a reload)")
+        inside = await pg.evaluate(f"{json.dumps(OLD)}.filter(i => !document.getElementById(i)?.closest('#adv-body'))")
+        check(not inside, f"Advanced: every old control is inside the drawer (missing: {inside})")
+        vis = [i for i in OLD if not await pg.evaluate(SHOWN, f"#{i}")]
+        check(not vis or vis == ["status"], f"Advanced open: every control on screen (not shown: {vis})")
+        await pg.focus("#play"); await pg.keyboard.press("End"); await pg.wait_for_timeout(150)
+        base = await pg.evaluate(PIXELS); bad = []
+        for tid in ("still", "diff", "ly-heat"):
+            await pg.click(f"label[for={tid}]"); await pg.wait_for_timeout(120); on = await pg.evaluate(PIXELS)
+            await pg.click(f"label[for={tid}]"); await pg.wait_for_timeout(120); off = await pg.evaluate(PIXELS)
+            if on == base or off != base: bad.append(tid)
+        fov0 = await pg.evaluate("__lapse.state.fov"); await pg.fill("#fov", "9"); await pg.dispatch_event("#fov", "input")
+        fov1 = await pg.evaluate("__lapse.state.fov")
+        await pg.focus("#sp-dial"); n0 = await pg.get_attribute("#sp-dial", "aria-valuenow"); await pg.keyboard.press("ArrowRight")
+        n1 = await pg.get_attribute("#sp-dial", "aria-valuenow"); um = await pg.text_content("#sp-um")
+        check(not bad and fov1 != fov0 and n1 == str(int(n0) + 1) and um.strip(), f"Advanced: Hide Stationary, Color Difference and Heat change the photo and undo ({bad or 'all'}); Zoom {fov0} -> {fov1}; the dial steps {n0} -> {n1} ({um} microns)")
+        await pg.click("#adv-btn"); await pg.wait_for_timeout(100)
+        hidden = [i for i in OLD if await pg.evaluate(SHOWN, f"#{i}")]
+        check(not hidden and await pg.get_attribute("#adv-btn", "aria-expanded") == "false", f"Advanced shut: its controls are hidden ({hidden})")
+        check(not pg.errors, f"default and Advanced: no page errors {pg.errors}")
+        await ctx.close()
+
+        # ---------- 3, 7: Depth matches /api/depth; the view rides in the address ----------
+        ctx, pg = await page(b)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
+        await pg.click("#tab-depth")
+        check("view=depth" in pg.url and await pg.get_attribute("#tab-depth", "aria-selected") == "true" and await pg.evaluate(SHOWN, "#depth3d") and await pg.evaluate(SHOWN, "#dist"),
+              f"Depth: the tab shows the beam and Distances, and the address says view=depth ({pg.url})")
+        got = await keys_settled(pg)
+        url = await pg.evaluate("__depth.url")
+        visit = await pg.evaluate("__lapse.state.m.frames[__lapse.state.i].mjd.toFixed(4)")
+        api = await (await pg.request.get(url if url.startswith('http') else BASE + url)).json()
+        geo = await pg.evaluate("(({ m, i }) => ({ ra: m.ra, dec: m.dec, half: m.grid * m.arcsec_per_pixel / 2, year: m.frames[i].year }))(__lapse.state)")
+        def in_patch(o, star):   # the patch square on the sky (a TAN projection about its centre), a star at its place this visit
+            ra, dec = o["ra"], o["dec"]
+            if star: dt = geo["year"] - 2016; dec2 = dec + o["pmdec"] / 3.6e6 * dt; ra = ra + o["pmra"] / 3.6e6 * dt / math.cos(math.radians(dec)); dec = dec2
+            d0, d, da = math.radians(geo["dec"]), math.radians(dec), math.radians(ra - geo["ra"])
+            cc = math.sin(d0) * math.sin(d) + math.cos(d0) * math.cos(d) * math.cos(da)
+            e = math.cos(d) * math.sin(da) / cc * 206264.806; n = (math.cos(d0) * math.sin(d) - math.sin(d0) * math.cos(d) * math.cos(da)) / cc * 206264.806
+            return abs(e) <= geo["half"] and abs(n) <= geo["half"]
+        cone = [(o["d_pc"], f"{src}:{o.get('id') or o.get('name')}", in_patch(o, src == "stars")) for src in ("sso", "stars", "galaxies") for o in api["sources"][src].get("placed") or []]
+        want = sorted((d, k) for d, k, inside in cone if inside)
+        check(f"t={visit}" in url and "ra=269.4463" in url, f"Depth: asks /api/depth for this patch and the visit on screen ({url})")
+        check(got == [k for _, k in want] and len(got) > 10 and len(want) < len(cone), f"Depth: the list matches /api/depth object for object inside the photographed patch, nearest first ({len(got)} on the page, {len(want)} of the API's {len(cone)} in its cone)")
+        check(await pg.evaluate("+document.getElementById('depth3d').dataset.objects") == len(want), "Depth: the beam places the same number of objects")
+        # the beam: the target and the lettered objects as named rings, every other placed object as a faint dot
+        shown = await pg.evaluate("__depth.shown")
+        ring_rows = await pg.evaluate("[...document.querySelectorAll('#dist-list li[data-key]')].filter(l => /^(Barnard's Star|Star [A-D]|Galaxy [A-D]|The star in the middle)/.test(l.querySelector('.nm').textContent) || l.querySelector('.dmk.a')).map(l => l.dataset.key)")
+        check(1 <= len(shown["rings"]) <= 5 and want[0][1] in shown["rings"] and sorted(shown["rings"]) == sorted(ring_rows),
+              f"Depth: the target and the lettered objects are the beam's rings ({len(shown['rings'])}), the same ones the list names")
+        check(sorted(shown["rings"] + shown["dots"]) == sorted(k for _, k in want) and not set(shown["rings"]) & set(shown["dots"])
+              and await pg.evaluate("+document.getElementById('depth3d').dataset.dots") == len(want) - len(shown["rings"]),
+              f"Depth: every other placed object is a dot ({len(shown['dots'])}), so rings and dots together are /api/depth's list")
+        first = await pg.evaluate("(l => [l.querySelector('.nm').textContent, l.querySelector('small').textContent, l.querySelector('.dd').textContent])(document.querySelector('#dist-list li'))")
+        check(first[0] == "Barnard's Star" and first[1].startswith("Gaia parallax, ±") and first[2] == "6", f"Depth: the nearest is the target, with its source and error: {first}")
+        await pg.wait_for_timeout(2200)   # the swing out from the telescope ends
+        b0 = await pg.evaluate(BEAM)
+        box = await pg.locator("#depth3d canvas").bounding_box(); cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        await pg.mouse.move(cx, cy); await pg.mouse.down(); await pg.mouse.move(cx + 160, cy + 30, steps=8); await pg.mouse.up(); await pg.wait_for_timeout(200)
+        b1 = await pg.evaluate(BEAM)
+        check(b0[1] > 200 and b1[0] != b0[0], f"Depth: the beam is drawn ({b0[1]} lit samples) and a drag turns it")
+        # hovering a dot names it
+        cv = await pg.locator("#depth3d canvas").bounding_box(); spot = None
+        for k in shown["dots"][::7]:
+            xy = await pg.evaluate("k => __depth.screenOf(k)", k)
+            if xy and cv["x"] + 20 < xy[0] < cv["x"] + cv["width"] - 20 and cv["y"] + 60 < xy[1] < cv["y"] + cv["height"] - 40: spot = xy; break
+        await pg.mouse.move(*spot); await pg.wait_for_timeout(200)
+        peek = await pg.evaluate("[document.getElementById('depth3d').dataset.peek, document.querySelector('#depth3d .lbl.tip').textContent, getComputedStyle(document.querySelector('#depth3d .lbl.tip')).opacity]")
+        check(peek[0] in shown["dots"] and " ly" in peek[1] and peek[2] == "1", f"Depth: hovering a dot shows its name and distance: {peek[1]}")
+        await pg.mouse.move(cv["x"] + 5, cv["y"] + 5)
+        # a shared link reopens Depth; Copy link copies the view; Photo drops it
+        await pg.click("#share-depth"); await pg.wait_for_timeout(200)
+        clip = await pg.evaluate("navigator.clipboard.readText()")
+        check("view=depth" in clip and "target=barnard" in clip, f"Copy link copies this view: {clip}")
+        p2 = await ctx.new_page(); p2.errors = []; p2.on('pageerror', lambda e: p2.errors.append(str(e))); await p2.goto(clip); await p2.wait_for_function(READY)
+        check(await p2.get_attribute("#tab-depth", "aria-selected") == "true" and await p2.evaluate(SHOWN, "#depth3d") and await p2.evaluate(SHOWN, "#dist"), "a shared link reopens Depth")
+        await p2.click("#tab-photo"); await p2.wait_for_timeout(100)
+        check("view=" not in p2.url and await p2.evaluate(SHOWN, "#patch") and not await p2.evaluate(SHOWN, "#depth3d"), f"Photo drops view= from the address ({p2.url})")
+        # the next visit asks again for that date
+        await pg.focus("#play"); await pg.keyboard.press("Home"); await pg.wait_for_timeout(300)
+        check(f"t={await pg.evaluate('__lapse.state.m.frames[0].mjd.toFixed(4)')}" in await pg.evaluate("__depth.url"), "Depth: another visit asks for its own date")
+        check(not pg.errors and not p2.errors, f"Depth: no page errors {pg.errors + p2.errors}")
+        await ctx.close()
+
+        # ---------- 4: unknown, pending and unavailable ----------
+        ctx, pg = await page(b)
+        asked = []
+        async def made_up(route):
+            asked.append(route.request.url)
+            await route.fulfill(json={"ra": 269.4463, "dec": 4.7671, "rules": "depth-v1", "sources": {
+                "sso": {"status": "pending", "retry_after": 2},
+                "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 2, "truncated": False, "limit": 1000, "unknown_count": 7, "placed": [
+                    {"id": "1", "ra": 269.45, "dec": 4.77, "g": 12.1, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 100, "d_lo_pc": 95, "d_hi_pc": 105},
+                    {"id": "2", "ra": 269.44, "dec": 4.76, "g": 14.0, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 1000, "d_lo_pc": 900, "d_hi_pc": 1100}]},
+                "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 1, "unknown": [
+                    {"id": "LEDA 1", "otype": "G", "ra": 269.43, "dec": 4.78, "raw": {}, "reason": "no redshift"}]}}})
+        await pg.route("**/api/depth**", made_up)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&view=depth"); await pg.wait_for_function(READY)
+        await pg.wait_for_function("document.querySelectorAll('#dist-list li').length >= 4")
+        rows = await pg.evaluate("[...document.querySelectorAll('#dist-list li')].map(l => [l.querySelector('.nm').textContent, l.querySelector('small').textContent, l.querySelector('.dd').textContent])")
+        status = await pg.text_content("#dist-status")
+        check(["LEDA 1", "SIMBAD redshift: no redshift", "unknown"] in rows and any(r[0] == "7 more stars in and around the patch" and r[2] == "unknown" for r in rows), f"unknown: named rows with their reason, and the stars without a usable parallax counted: {rows[-2:]}")
+        check("still answering, asking again in 2 s" in status, f"pending: said plainly: {status}")
+        await pg.wait_for_timeout(4500)
+        check(len(asked) >= 2, f"pending: asked again after retry_after ({len(asked)} requests)")
+        await pg.unroute("**/api/depth**", made_up)
+        # the server's own fault switch (DEPTH_FAULTS=1 in local dev): galaxies fail at once
+        await pg.route("**/api/depth**", lambda route: route.continue_(url=route.request.url + "&fail=galaxies"))
+        await pg.focus("#play"); await pg.keyboard.press("End")
+        await pg.wait_for_function("/Galaxies \\(SIMBAD\\): not answering right now/.test(document.getElementById('dist-status').textContent)", timeout=60000)
+        check(True, f"unavailable: said plainly: {await pg.text_content('#dist-status')}")
+        await ctx.close()
+
+        # ---------- 9: honest states (Codex review, 2026-11-17) ----------
+        ctx, pg = await page(b)
+        # a detector candidate is not the patch's middle: no motion or catalog match is claimed for it
+        await pg.route("**/data/candidates.json", lambda r: r.fulfill(status=404, body="not found"))
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&cand=K-0001&sample=1"); await pg.wait_for_function(READY + " && !!window.__cand?.ring")
+        say, note = await pg.evaluate("['pv-say', 'state-note'].map(i => document.getElementById(i).textContent)")
+        check("detector candidate" in say and "known" not in say.replace("not called known", "") and "already known" not in note and "Gaia's" not in say,
+              f"candidate: the verdict claims no motion or match for it: {say} / {note}")
+        # its Advanced (opened for its votes) shuts when asked
+        await pg.click("#adv-btn"); await pg.wait_for_timeout(150)
+        check(await pg.get_attribute("#adv-btn", "aria-expanded") == "false" and not await pg.locator("#adv-body").is_visible(), "candidate: Advanced shuts when its button is pressed")
+        # the right column flows: a long name and verdict push Report (and Distances) down instead of running under them
+        LONG = """() => { document.getElementById('pv-name').textContent = 'Sample candidate K-0001 with a much longer name than usual';
+            document.getElementById('pv-say').textContent = 'A long verdict. '.repeat(14); }"""
+        FLOW = """() => { const r = s => document.querySelector(s).getBoundingClientRect(), w = r('.pv-who'), nxt = r(document.body.classList.contains('depth') ? '#dist' : '.pv-report');
+            return [Math.round(w.bottom), Math.round(nxt.top), Math.round(nxt.bottom), Math.round(r('.tl-date').top)]; }"""
+        flows = []
+        for vw, vh in ((1440, 900), (1280, 720)):
+            await pg.set_viewport_size({"width": vw, "height": vh}); await pg.evaluate(LONG); await pg.wait_for_timeout(150)
+            flows.append(await pg.evaluate(FLOW))
+        await pg.set_viewport_size({"width": 1440, "height": 900})
+        check(all(w <= n + 1 for w, n, _, _ in flows), f"long name and verdict: the cards below start after them at 1440 and 1280 wide {flows}")
+        await pg.unroute("**/data/candidates.json")
+        # Depth's target is only what the verdict matched: Barnard's Star without a usable Gaia distance, a Gaia star 3 arcsec
+        # away with its own motion: the middle is "distance unknown", the neighbour keeps its own name and distance
+        async def no_barnard(route):
+            await route.fulfill(json={"ra": 269.4463, "dec": 4.7671, "rules": "depth-v1", "sources": {
+                "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 0, "truncated": False, "placed": [], "unknown": []},
+                "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 2, "truncated": False, "limit": 1000, "unknown_count": 1, "placed": [
+                    {"id": "11", "ra": 269.44614, "dec": 4.77076, "g": 13.1, "pmra": 1.2, "pmdec": -3.4, "raw": {}, "d_pc": 700, "d_lo_pc": 680, "d_hi_pc": 720},
+                    {"id": "12", "ra": 269.43, "dec": 4.75, "g": 15.0, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 2000, "d_lo_pc": 1800, "d_hi_pc": 2200}]},
+                "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}})
+        await pg.route("**/api/depth**", no_barnard)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999&view=depth"); await pg.wait_for_function(READY)
+        await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects === 2", timeout=30000); await pg.wait_for_timeout(2200)
+        rows = await pg.evaluate("[...document.querySelectorAll('#dist-list li')].map(l => [l.querySelector('.nm').textContent, l.querySelector('.dd').textContent, l.dataset.key || ''])")
+        labels = await pg.evaluate("[...document.querySelectorAll('#depth3d .lbl')].map(l => l.textContent)")
+        tgt = await pg.evaluate("__depth.shown.target")
+        mine = [r for r in rows if r[0] == "Barnard's Star"]
+        check(tgt == "unknown" and mine == [["Barnard's Star", "unknown", "middle?:unknown"]] and any(r[2] == "stars:11" and r[0] != "Barnard's Star" and r[1] == "2,300" for r in rows)
+              and "Barnard's Star · distance unknown" in labels and not any(l.startswith("Barnard's Star · ") and "unknown" not in l for l in labels),
+              f"Depth target: no usable distance for the middle is said, never borrowed from the star beside it ({mine}, {[r for r in rows if r[2] == 'stars:11']}, {[l for l in labels if 'Barnard' in l]})")
+        await pg.unroute("**/api/depth**", no_barnard)
+        # the target comes from two answers that can land in either order: /api/depth and SkyBoT's passers (/api/known).
+        # A known asteroid on R Draconis's dot at its exposure times (a live patch: a baked visit has only its middle, never
+        # an exposure's time), in the depth answer with a distance: the final labels are the same either way
+        async def race(depth_first):
+            p2 = await ctx.new_page(); p2.errors = []
+            async def known(route):
+                q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+                if depth_first: await asyncio.sleep(4)
+                await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": float(q["ra"]), "dec": float(q["dec"]), "mag": 19.0}]})
+            async def depth(route):
+                q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+                if not depth_first: await asyncio.sleep(6)
+                await route.fulfill(json={"ra": float(q["ra"]), "dec": float(q["dec"]), "rules": "depth-v1", "sources": {
+                    "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 1, "truncated": False, "unknown": [], "placed": [
+                        {"name": "2001 ZZ", "num": None, "class": "MB>Middle", "ra": float(q["ra"]), "dec": float(q["dec"]), "mag": 19.0, "raw": {}, "d_pc": 1.6e-5, "d_lo_pc": None, "d_hi_pc": None}]},
+                    "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 1, "truncated": False, "limit": 1000, "unknown_count": 0, "placed": [
+                        {"id": "21", "ra": float(q["ra"]) + .02, "dec": float(q["dec"]), "g": 12, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 300, "d_lo_pc": 290, "d_hi_pc": 310}]},
+                    "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}})
+            await p2.route("**/api/known**", known); await p2.route("**/api/depth**", depth)
+            await p2.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2&view=depth"); await p2.wait_for_function(READY, timeout=180000)
+            await p2.wait_for_function("__depth.shown?.target === 'sso:2001 ZZ'", timeout=60000)
+            out = await p2.evaluate("""[__depth.shown.target, [...document.querySelectorAll('#dist-list li')].map(l => l.querySelector('.nm').textContent + ' | ' + l.querySelector('.dd').textContent),
+                [...document.querySelectorAll('#depth3d .lbl.accent')].map(l => l.textContent)]""")
+            await p2.close(); return out
+        a1, a2 = await race(True), await race(False)
+        check(a1 == a2 and a1[0] == "sso:2001 ZZ" and not any("unknown" in r for r in a1[1]) and a1[2] == ["2001 ZZ · 3.3 AU"],
+              f"Depth target with depth first, then SkyBoT, and the reverse: the same labels ({a1} / {a2})")
+        # the Discuss sheet's "It's X" offer too: SkyBoT answering after the sheet's own 10 s wait still offers it
+        p3 = await ctx.new_page()
+        async def late_known(route):
+            q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+            await asyncio.sleep(12)
+            try: await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": float(q["ra"]), "dec": float(q["dec"]), "mag": 19.0}]})
+            except Exception: pass
+        await p3.route("**/api/known**", late_known)
+        await p3.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2"); await p3.wait_for_function(READY, timeout=180000)
+        await p3.click("#state"); await p3.wait_for_selector("#talk", state="visible")
+        await p3.locator("#talk [data-f=its]").wait_for(state="visible", timeout=40000)
+        check(await p3.text_content("#talk [data-f=its]") == "It's 2001 ZZ", "Discuss: a SkyBoT answer landing after the sheet opened still offers It's 2001 ZZ")
+        await p3.close()
+        # the arrows a tab or the 3D view use do not step the visit
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
+        i0 = await pg.evaluate("__lapse.state.i")
+        await pg.focus("#tab-photo"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(200)
+        i1, v1 = await pg.evaluate("[__lapse.state.i, document.getElementById('tab-depth').getAttribute('aria-selected')]")
+        await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects > 0", timeout=60000)
+        await pg.focus("#depth3d canvas"); await pg.keyboard.press("ArrowLeft"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(200)
+        check(i1 == i0 and v1 == "true" and await pg.evaluate("__lapse.state.i") == i0, f"arrows: the tabs and the 3D view keep the visit ({i0} -> {i1}, Depth {v1})")
+        # an open Spectrum card gives way to Distances when Depth is chosen
+        await pg.click("#tab-photo"); await pg.evaluate("__spec.open(269.4463, 4.7671, 2026)"); await pg.wait_for_timeout(300)
+        was = await pg.evaluate("document.body.classList.contains('speccing')")
+        await pg.click("#tab-depth"); await pg.wait_for_timeout(300)
+        sp = await pg.evaluate("[document.body.classList.contains('speccing'), (r => r.width > 0 && r.height > 0)(document.getElementById('dist').getBoundingClientRect()), (r => r.width > 0)(document.getElementById('spec').getBoundingClientRect()), location.search]")
+        check(was and not sp[0] and sp[1] and not sp[2] and "spec=" not in sp[3], f"Spectrum then Depth: the card closes and Distances shows ({sp})")
+        # another visit whose distances cannot be had: the old beam goes at once and the failure is said over it
+        mjd = await pg.evaluate("__lapse.state.m.frames.map(f => f.mjd.toFixed(4))")
+        photo_before = await pg.evaluate("document.getElementById('depth3d').dataset.photo")
+        await pg.route("**/api/depth**", lambda r: r.fulfill(status=503, json={"error": "archive down"}))
+        await pg.focus("#play"); await pg.keyboard.press("Home")
+        await pg.wait_for_function("document.getElementById('depth3d').dataset.state === 'error'", timeout=20000)
+        photo_after = await pg.evaluate("document.getElementById('depth3d').dataset.photo")
+        check(photo_before == mjd[-1] and photo_after == mjd[0], f"Depth failure: the far end shows the new visit's photo anyway ({photo_before} -> {photo_after})")
+        st = await pg.evaluate("(b => [b.dataset.objects, b.dataset.rings, b.dataset.dots, b.querySelectorAll('.lbl:not(.tip):not(.mark)').length, document.getElementById('depth-msg').textContent, document.querySelectorAll('#dist-list li').length])(document.getElementById('depth3d'))")
+        check(st[:3] == ["0", "0", "0"] and "Could not ask the catalogs" in st[4] and st[5] == 0, f"Depth failure: the old beam and list are gone, the failure is said ({st})")
+        await pg.unroute("**/api/depth**")
+        # the server's own fault switch (DEPTH_FAULTS=1): every catalog fails for another visit; the photo still follows it
+        await pg.route("**/api/depth**", lambda route: route.continue_(url=route.request.url + "&fail=sso,stars,galaxies"))
+        await pg.keyboard.press("ArrowRight")
+        await pg.wait_for_function("/No catalog is answering/.test(document.getElementById('depth-msg').textContent)", timeout=30000)
+        fs = await pg.evaluate("[document.getElementById('depth3d').dataset.photo, document.getElementById('depth3d').dataset.state, document.getElementById('depth3d').dataset.objects]")
+        check(fs == [mjd[1], "error", "0"], f"Depth with every catalog failing (fault switch): the photo is visit 2's, the failure is said, no objects ({fs})")
+        await pg.unroute("**/api/depth**")
+        # Copy link keeps the visit on screen: the link reopens that visit, and Depth asks for its date
+        await pg.focus("#play"); await pg.keyboard.press("End"); await pg.wait_for_timeout(300)
+        last = await pg.evaluate("[__lapse.state.i, __lapse.state.m.frames[__lapse.state.i].mjd.toFixed(4)]")
+        await pg.click("#share-depth"); await pg.wait_for_timeout(200)
+        clip = await pg.evaluate("navigator.clipboard.readText()")
+        p2 = await ctx.new_page(); await p2.goto(clip); await p2.wait_for_function(READY)
+        await p2.wait_for_function("!!window.__depth?.url", timeout=20000)
+        got = await p2.evaluate("[__lapse.state.i, __depth.url]")
+        check("day=" in clip and got[0] == last[0] and f"t={last[1]}" in got[1], f"Copy link: the link reopens visit {last[0]} and Depth asks for its date ({clip} -> visit {got[0]}, {got[1]})")
+        await p2.close()
+        # a live spot whose images cannot be found: the failure shows beside the photo with Advanced shut
+        await pg.route("**/api/images**", lambda r: r.fulfill(status=502, json={"error": "IRSA is not answering"}))
+        await pg.goto(f"{BASE}/timelapse.html?ra=10.1234&dec=-20.5678&det=D1")
+        await pg.wait_for_function("document.getElementById('status').className === 'err'", timeout=60000)
+        err = await pg.evaluate("[document.getElementById('adv-btn').getAttribute('aria-expanded'), document.getElementById('pv-err').textContent, (r => r.width > 0 && r.height > 0)(document.getElementById('pv-err').getBoundingClientRect())]")
+        check(err[0] == "false" and err[1] and err[2], f"image failure: said beside the photo with Advanced shut ({err[1]})")
+        await ctx.close()
+
+        # ---------- 10: the dot in the middle, the facts, and one card at a time (Codex review, third pass) ----------
+        ctx, pg = await page(b)
+        await pg.goto(f"{BASE}/timelapse.html?target=rdra"); await pg.wait_for_function(READY)
+        # a known asteroid is the dot only when SkyBoT puts it on the dot; 30 arcsec away it is "nearby", not a match
+        K = """((east, east2) => { const ra = e => 10 + e / 3600 / Math.cos(5 * Math.PI / 180);
+              const pts = east2 == null ? [[61000, ra(east), 5]] : [[60999.5, ra(east), 5], [61000.5, ra(east2), 5]];   // two exposure times either side of the visit's middle
+              const f = { x: 50, y: 50, mjd: 61000, epochs: pts.map(p => p[0]), known: { left: 0, failed: 0, bodies: new Map([['2001 AB', { kind: 'asteroid', mag: 18, pts }]]) } };   // a live visit: its exposure times
+              const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, grid: 101, arcsec_per_pixel: 6.15, motion: null, gaia: null, ref: null, frames: [f, { ...f, known: null }] };
+              const v = __lapse.verdict(m, f); return [v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), v.known]; })"""
+        on, off, passing, crossing = await pg.evaluate(K + "(4)"), await pg.evaluate(K + "(30)"), await pg.evaluate(K + "(-25, 55)"), await pg.evaluate(K + "(-120, 120)")
+        check("matches the known asteroid 2001 AB" in on[0] and on[1] and "Nearby: the known asteroid 2001 AB passed 30 arcseconds" in off[0] and not off[1] and "matches" not in off[0],
+              f"known at the middle: 4 arcsec is the dot ({on[1]}), 30 arcsec is only nearby ({off})")
+        # the same rule as web/tests/identity_check.mjs, through the page: an asteroid 25 arcsec off at its nearest exposure is
+        # nearby; one that crossed the middle between two exposures and was 120 arcsec off in both is neither the dot nor
+        # nearby (no position between exposures is used); Barnard's Star still matches Gaia (checked in 1)
+        check("Nearby: the known asteroid 2001 AB passed 25 arcseconds" in passing[0] and not passing[1] and "matches" not in passing[0], f"a passing asteroid a little off the middle is nearby, not the target: {passing}")
+        check("passed through during this visit" in crossing[0] and not crossing[1] and "Nearby" not in crossing[0] and "matches" not in crossing[0], f"an asteroid that crossed between exposures, far in each, is not the dot: {crossing}")
+        # the facts follow the patch: a different wavelength shows, though the verdict's words are the same
+        await pg.evaluate("__lapse.state.m.lam0 = 1.234; document.getElementById('split').click(); document.getElementById('split').click()")
+        check("1.23 µm" in await pg.text_content("#pv-facts"), f"facts: a new wavelength shows ({await pg.text_content('#pv-facts')})")
+        # one card at a time: Discuss closes the Spectrum card; Depth closes Discuss; Play goes back to Photo
+        # (on a wide screen the Spectrum card covers Report; a narrow one shows both, so the sheet can open over the card)
+        await pg.set_viewport_size({"width": 390, "height": 844}); await pg.wait_for_timeout(200)
+        await pg.evaluate("__spec.open(271.9, 66.7, 2026)"); await pg.wait_for_timeout(200)
+        await pg.click("#state"); await pg.wait_for_selector("#talk", state="visible")
+        a = await pg.evaluate("[document.body.classList.contains('speccing'), document.body.classList.contains('talking'), location.search.includes('spec=')]")
+        await pg.set_viewport_size({"width": 1440, "height": 900}); await pg.wait_for_timeout(200)
+        await pg.click("#tab-depth"); await pg.wait_for_timeout(300)
+        bcls = await pg.evaluate("[document.body.classList.contains('talking'), (r => r.width > 0 && r.height > 0)(document.getElementById('dist').getBoundingClientRect()), (r => r.width > 0)(document.getElementById('talk').getBoundingClientRect())]")
+        await pg.evaluate("document.getElementById('play').click()"); await pg.wait_for_timeout(300)
+        c = await pg.evaluate("[document.getElementById('tab-photo').getAttribute('aria-selected'), document.getElementById('play').classList.contains('on')]")
+        await pg.evaluate("document.getElementById('play').click()")
+        check(a == [False, True, False] and bcls == [False, True, False] and c == ["true", True],
+              f"one card at a time: Discuss closed Spectrum {a}; Depth closed Discuss and shows Distances {bcls}; Play went back to Photo {c}")
+        check(not pg.errors, f"cards: no page errors {pg.errors}")
+        await ctx.close()
+
+        # ---------- 11: one target in every view (Codex review, seventh pass) ----------
+        # For each mode the page has, the target's mark on the Photo, Depth's marker for it (its u, v put back on the sky)
+        # and the names shown agree: within 2 px, the same name. photo False: nothing on the photo marks it (no source
+        # measured this visit), so Depth puts "the dot in the middle" at the patch centre.
+        TGT = """() => { const s = __lapse.state, m = s.m, f = m.frames[s.i], v = __lapse.view(), W = patch.width, H = patch.height, G = m.grid, a = m.arcsec_per_pixel;
+              const sky = p => { if (!p) return null; const x = p[0] / (W / v.cw) + v.ox - 0.5, y = G - 1 - (p[1] / (H / v.ch) + v.oy - 0.5); return [((G - 1) / 2 - x) * a, (y - (G - 1) / 2) * a]; };
+              const dm = __depth.shown?.mark, half = G * a / 2;
+              return { a, i: s.i, n: m.frames.length, name: document.getElementById('pv-name').textContent, aria: patch.getAttribute('aria-label'), mark: window.__mark?.name ?? null,
+                photo: sky(window.__mark?.px), depth: dm ? [-dm.uv[0] * half, dm.uv[1] * half] : null, label: dm?.label ?? null, ring: !!window.__cand?.ring,
+                rows: [...document.querySelectorAll('#dist-list li')].map(l => l.querySelector('.nm').textContent) }; }"""
+        SETTLED = "!!__depth.shown?.target && !!document.getElementById('dist-list').dataset.state && !document.getElementById('dist-list').dataset.state.includes('pending')"
+        MODES = [   # mode, query, the name beside the photo, the name Depth gives its marker, a mark on the photo
+            ("plain target", "target=barnard&day=9999", "Barnard's Star", "barnard's star", True),
+            ("detector candidate, sample=1", "target=barnard&cand=K-0001&sample=1", "Sample candidate K-0001", "sample candidate k-0001", True),
+            ("baked star that stays put", "target=rdra", "R Draconis", "r draconis", True),
+            ("live patch", "ra=248.1674&dec=66.7552&det=D2", "Sky spot", "the star in the middle", True),
+            ("&t= comet view (3I/ATLAS)", "ra=167.1309&dec=5.1732&det=D1&t=61023.3194", "Sky spot", "the dot in the middle", False)]
+        dist = lambda p, q: math.hypot(p[0] - q[0], p[1] - q[1])
+        for mode, q, pv, dn, marked in MODES:
+            ctx, pg = await page(b)
+            await pg.goto(f"{BASE}/timelapse.html?{q}&view=depth"); await pg.wait_for_function(READY, timeout=180000)
+            await pg.wait_for_function(SETTLED, timeout=90000); await pg.wait_for_timeout(500)
+            r = await pg.evaluate(TGT)
+            tol, at = 2 * r["a"], r["photo"] if marked else [0, 0]
+            ok = (r["name"] == pv and r["label"] and r["label"].split(" · ")[0].lower() == dn and (r["mark"] or "Sky spot") == pv
+                  and (pv if pv != "Sky spot" else "a sky spot") in r["aria"] and at is not None and (r["photo"] is None) == (not marked)
+                  and r["depth"] is not None and dist(at, r["depth"]) <= tol)
+            check(ok, f"one target, {mode}: '{r['name']}' / Depth '{r['label']}', photo {r['photo']} vs Depth {r['depth']} (within {tol} arcsec)")
+            if mode.startswith("detector"):   # a visit without a detection: nothing places it, and Depth names it without a marker
+                for _ in range(r["n"]):
+                    if not r["ring"]: break
+                    await pg.focus("#play"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(300)
+                    await pg.wait_for_function(SETTLED, timeout=90000); await pg.wait_for_timeout(300); r = await pg.evaluate(TGT)
+                if r["ring"]: check(True, "one target, candidate: every visit has a detection (no empty visit to check)")
+                else: check(r["photo"] is None and r["depth"] is None and "Sample candidate K-0001" in r["rows"],
+                            f"one target, candidate in a visit without a detection (visit {r['i']}): no mark on the photo or in Depth, the list still names it ({r['rows'][:3]})")
+            check(not pg.errors, f"one target, {mode}: no page errors {pg.errors}")
+            await ctx.close()
+
+        # ---------- 12: one case per row of review/timelapse-identity-table.md (the target, by mode, visit and what is near) ----------
+        # rows 1 to 8 and 11 through the page's own verdict and targetAt on made-up patches (101 px of 5 arcsec; positions
+        # are arcsec east and north of the centre); rows 9 and 10 on the sample candidate below
+        ctx, pg = await page(b)
+        await pg.goto(f"{BASE}/timelapse.html?target=rdra"); await pg.wait_for_function(READY)
+        ROW = """(o => { try {
+              const a = 5, G = 101, c = 50, D = Math.PI / 180, ra = e => 10 + e / 3600 / Math.cos(5 * D), dec = n => 5 + n / 3600;
+              const base = { start: '2025-08-01', end: '2025-08-03', mjd: 61000, year: 2025.6, exposures: 3 }, live = o.mode === 'live' || o.mode === 't';
+              const bodies = new Map((o.rocks ?? []).map(([name, pts]) => [name, { kind: 'asteroid', mag: 18, pts: pts.map(([t, e, n]) => [t, ra(e), dec(n)]) }]));
+              const f = { ...base, x: o.src ? c - o.src[0] / a : null, y: o.src ? c + o.src[1] / a : null, ...(o.blob ? { blob: true } : {}),
+                ...(o.pred ? { pred_east: o.pred[0], pred_north: o.pred[1] } : {}), ...(live ? { epochs: o.epochs ?? [61000] } : {}), known: { left: 0, failed: 0, bodies } };
+              const others = [1, 2, 3].map(k => ({ ...base, mjd: 61000 + 60 * k, start: '2025-10-01', end: '2025-10-03', x: c, y: c, known: null }));
+              const m = { key: live ? 'live-x' : 'test', name: live ? 'x' : 'Test Star', ra: 10, dec: 5, grid: G, arcsec_per_pixel: a, motion: o.motion ?? null,
+                gaia: o.gaia ?? null, ref: o.ref ?? null, frames: [f, ...others].slice(0, o.n ?? 4), ...(o.mode === 't' ? { t: 61000 } : {}) };
+              const v = __lapse.verdict(m, f), t = __lapse.targetAt(m, f);
+              return { say: v.parts.map(p => typeof p === 'string' ? p : p.ok).join(''), known: v.known, star: v.star, who: v.who, pos: t.pos, offer: t.id?.pass.match?.name ?? null };
+            } catch (e) { return { err: String(e) }; } })"""
+        MO, GAIA, REF = {"total": 10.2, "err": 0.5, "years": 1}, {"total": 10, "pmra": 0, "pmdec": 10000}, {"total": 8, "source": "SIMBAD"}
+        near = lambda p, q: p is not None and math.hypot(p[0] - q[0], p[1] - q[1]) < 0.01
+        OFF = "The source measured near the middle this visit sits 15 arcseconds off the dot, so the motion measured here may belong to something else."
+        NONE = "No source was measured on the dot this visit, so the motion measured in other visits may belong to something else."
+        ROWS = [   # row, the made-up patch, what must hold
+            ("1 plain star on the dot", {"mode": "baked", "src": [1, 0], "gaia": GAIA, "pred": [1.5, 0], "motion": MO},
+             lambda r: r["say"] == "Moved 10 arcseconds a year. Matches Gaia's Test Star, already known." and r["known"] and near(r["pos"], [1, 0]) and not r["offer"]),
+            ("1 single visit, a Gaia star on the dot", {"mode": "baked", "src": [1, 0], "gaia": GAIA, "pred": [1.5, 0], "n": 1},
+             lambda r: r["say"] == "Only one visit here so far, so nothing can be seen moving yet. Gaia's Test Star, already known." and r["known"] and r["star"] == "Test Star"),
+            ("1 a published place on the dot, no motion fit", {"mode": "baked", "src": [0.5, 0], "ref": REF, "pred": [0.5, 0]},
+             lambda r: r["say"].endswith(" Test Star is already known.") and r["known"] and r["star"] == "Test Star"),
+            ("3 a published place, the source off the dot", {"mode": "baked", "src": [15, 0], "ref": REF, "pred": [1, 0], "motion": MO},
+             lambda r: r["say"] == OFF + " Test Star is already known." and r["known"] and "Moved" not in r["say"]),
+            ("4 a published place, no detection this visit", {"mode": "baked", "src": None, "ref": REF, "pred": [1, 0], "motion": MO},
+             lambda r: r["say"] == NONE + " Test Star is already known." and r["known"]),
+            ("2 source on the dot, not in Gaia", {"mode": "baked", "src": [0.5, 0], "motion": {"total": 29, "err": 8.3, "years": 1}},
+             lambda r: r["say"] == "Seems to move 29 arcseconds a year, give or take 8.3. It is not in Gaia (too faint in visible light)." and not r["known"] and near(r["pos"], [0.5, 0])),
+            ("3 source off the dot", {"mode": "live", "src": [15, 0], "motion": MO},
+             lambda r: r["say"] == OFF and not r["known"] and near(r["pos"], [0, 0])),
+            ("3 source off the dot, a Gaia star on it", {"mode": "baked", "src": [15, 0], "gaia": GAIA, "pred": [1, 0], "motion": MO},
+             lambda r: r["say"] == "Gaia says it moves 10 arcseconds a year. Already known. " + OFF and r["known"] and near(r["pos"], [0, 0])),
+            ("4 no detection this visit", {"mode": "live", "src": None, "motion": MO},
+             lambda r: r["say"] == NONE and not r["known"] and near(r["pos"], [0, 0])),
+            ("5 saturated core on the dot, no motion", {"mode": "baked", "src": [0.5, 0], "blob": True},
+             lambda r: r["say"].startswith("Too bright to measure") and near(r["pos"], [0.5, 0])),
+            ("6 asteroid on the dot at an exposure time", {"mode": "live", "src": [0, 0], "epochs": [61000, 61000.2], "rocks": [["2001 AB", [[61000, 6, 0], [61000.2, 60, 0]]]]},
+             lambda r: "The dot in the middle matches the known asteroid 2001 AB." in r["say"] and r["known"] and r["offer"] == "2001 AB" and near(r["pos"], [6, 0])),
+            ("7 asteroid 30 arcsec off at an exposure time", {"mode": "live", "src": [0, 0], "rocks": [["2001 AB", [[61000, 30, 0]]]]},
+             lambda r: "Nearby: the known asteroid 2001 AB passed 30 arcseconds from the dot in the middle, too far to be it." in r["say"] and not r["known"] and not r["offer"]),
+            ("8 asteroid crossing between exposures, far at each", {"mode": "live", "src": [0, 0], "epochs": [60999.5, 61000.5], "rocks": [["2001 AB", [[60999.5, -120, 0], [61000.5, 120, 0]]]]},
+             lambda r: "A known asteroid, 2001 AB, passed through during this visit." in r["say"] and "Nearby" not in r["say"] and not r["known"] and not r["offer"]),
+            ("8 asteroid on the dot only at a baked visit's middle", {"mode": "baked", "src": [0, 0], "rocks": [["2001 AB", [[61000, 3, 0]]]]},
+             lambda r: "Nearby: the known asteroid 2001 AB was 3 arcseconds from the dot at the middle of this visit, not at an exposure's own time, so it is not called the dot." in r["say"]
+                       and "matches" not in r["say"] and not r["known"] and not r["offer"] and near(r["pos"], [0, 0])),
+            ("11 &t= comet view: a Gaia star's place is not used", {"mode": "t", "src": [0, 0], "gaia": GAIA, "pred": [0, 0]},
+             lambda r: "Gaia's" not in r["say"] and not r["known"] and not r["offer"])]
+        for row, o, want in ROWS:
+            r = await pg.evaluate(ROW, o)
+            check("err" not in r and want(r), f"table row {row}: {r}")
+        await ctx.close()
+
+        # rows 9 and 10: a detector candidate (sample=1 hides Report: made-up data is never reported, and the note says so).
+        # A real one (data/candidates.json, here the sample file's K-0001 served as real): in a visit with its detection the
+        # report note, the Discuss sheet's place and thumbnail and the spot it would submit are the detection's; in a visit
+        # without one there is nothing to report
+        ctx, pg = await page(b)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&cand=K-0001&sample=1"); await pg.wait_for_function(READY + " && !!window.__cand?.ring")
+        note = await pg.text_content("#state-note")
+        check(note == "Sample data, so there is nothing here to report.", f"table row 9, sample=1: Report is hidden and the note says why ({note})")
+        await ctx.close()
+        ctx, pg = await page(b)
+        try:
+            sample_json = await (await pg.request.get(f"{BASE}/data/candidates.sample.json")).body()
+            await pg.route("**/data/candidates.json", lambda r: r.fulfill(status=200, content_type="application/json", body=sample_json))
+            await pg.goto(f"{BASE}/timelapse.html?target=barnard&cand=K-0001"); await pg.wait_for_function(READY + " && !!window.__cand?.ring")
+            DET = """async () => { const d = (await (await fetch('data/candidates.json')).json()).candidates.find(c => c.id === 'K-0001').detections;
+                  const f = __lapse.state.m.frames[__lapse.state.i], day = s => Date.parse(s) / 864e5 + 40587, t0 = day(f.start), t1 = day(f.end ?? f.start) + 1;
+                  const x = d.filter(e => e.t >= t0 && e.t < t1).sort((p, q) => Math.abs(p.t - f.mjd) - Math.abs(q.t - f.mjd))[0]; return x ? [x.ra, x.dec] : null; }"""
+            det = await pg.evaluate(DET)
+            note = await pg.text_content("#state-note")
+            await pg.click("#state"); await pg.wait_for_selector("#talk", state="visible")
+            sheet = await pg.evaluate("""(() => { try { const v = __lapse.view(), cw = patch.width / v.cw; return { where: document.querySelector('#talk [data-f=where]').textContent,
+                  body: __lapse.talk?.body?.() ?? null, at: document.querySelector('#talk .thumb').dataset.at ?? null, ring: window.__cand.ring, px: cw }; } catch (e) { return { err: String(e) }; } })()""")
+            body, at = sheet.get("body"), sheet.get("at")
+            check(det and "Candidate K-0001" in note and "the dot in the middle" not in note, f"table row 9: the report note names the candidate ({note})")
+            check(det and body and abs(body["ra"] - det[0]) < 2e-4 and abs(body["dec"] - det[1]) < 2e-4 and f"{det[0]:.4f}" in sheet["where"] and f"{det[1]:.4f}" in sheet["where"],
+                  f"table row 9: Discuss shows and would submit the detection's place {det} ({sheet.get('where')}, {body})")
+            check(at and math.dist([float(x) for x in at.split(",")], sheet["ring"]) <= 2 * sheet["px"],
+                  f"table row 9: the Discuss thumbnail is centred on the candidate's ring ({at} vs {sheet.get('ring')})")
+            await pg.click("#talk .close")
+            for _ in range(8):
+                if not await pg.evaluate("!!window.__cand.ring"): break
+                await pg.focus("#play"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(300)
+            if await pg.evaluate("!!window.__cand.ring"): check(False, "table row 10: no visit without a detection to check")
+            else:
+                note = await pg.text_content("#state-note")
+                await pg.click("#state"); await pg.wait_for_timeout(600)
+                talking = await pg.evaluate("document.body.classList.contains('talking')")
+                check("Candidate K-0001 has no detection in this visit" in note and not talking, f"table row 10: no detection, nothing to report: the sheet stays shut ({note}, sheet open {talking})")
+            check(not pg.errors, f"table rows 9 and 10: no page errors {pg.errors}")
+        except Exception as e: check(False, f"table rows 9 and 10: {type(e).__name__} {str(e)[:200]}")
+        finally: await ctx.close()
+
+        # ---------- 13: integration (Codex review, ninth pass): real exposure times, a baked manifest, Depth's asteroid ----------
+        ctx, pg = await page(b)
+        try:
+            # a live build's SkyBoT times are its exposures' own timestamps, never an average of several
+            await pg.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2"); await pg.wait_for_function(READY, timeout=180000)
+            ep = await pg.evaluate("""async () => { const m = __lapse.state.m, ts = (await (await fetch(`/api/images?ra=${m.ra}&dec=${m.dec}&det=${m.detector}`)).json()).images.map(e => e.t);
+                  const bad = m.frames.flatMap(f => (f.epochs ?? ['none']).filter(t => !ts.some(x => Math.abs(x - t) < 1e-6)));
+                  return [m.frames.reduce((n, f) => n + (f.epochs?.length ?? 0), 0), m.frames.reduce((n, f) => n + f.exposures, 0), bad]; }""")
+            check(not ep[2] and ep[0] == ep[1], f"live: every SkyBoT time is an exposure's own ({ep[0]} times for {ep[1]} exposures; not an exposure time: {ep[2][:4]})")
+        except Exception as e: check(False, f"live exposure times: {type(e).__name__} {str(e)[:200]}")
+        finally: await ctx.close()
+        # a baked visit has only its middle: an asteroid SkyBoT puts on the dot then is nearby, never the dot (not known,
+        # no Discuss offer, Report still offered)
+        ctx, pg = await page(b)
+        try:
+            async def on_centre(route):
+                q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+                await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": float(q["ra"]), "dec": float(q["dec"]), "mag": 19.0}]})
+            await pg.route("**/api/known**", on_centre)
+            await pg.goto(f"{BASE}/timelapse.html?target=rdra"); await pg.wait_for_function(READY)
+            await pg.wait_for_function("__lapse.state.m.frames[__lapse.state.i].known?.left === 0", timeout=30000); await pg.wait_for_timeout(300)
+            bk = await pg.evaluate("""[document.getElementById('pv-say').textContent, document.getElementById('state-note').textContent,
+                  (t => t.id?.pass.match?.name ?? null)(__lapse.targetAt(__lapse.state.m, __lapse.state.m.frames[__lapse.state.i]))]""")
+            check("matches the known asteroid" not in bk[0] and "Nearby: the known asteroid 2001 ZZ was" in bk[0] and "2001 ZZ is already known" not in bk[1] and bk[2] is None,
+                  f"baked: an asteroid at the visit's middle is not the dot ({bk})")
+        except Exception as e: check(False, f"baked manifest: {type(e).__name__} {str(e)[:200]}")
+        finally: await ctx.close()
+        # Depth draws a matched asteroid where it matched (its exposure's place, the Photo's mark), not where /api/depth
+        # puts it at the visit's middle (40 arcsec east here)
+        ctx, pg = await page(b)
+        try:
+            async def far_depth(route):
+                q = dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+                ra0, dec0 = float(q["ra"]), float(q["dec"])
+                await route.fulfill(json={"ra": ra0, "dec": dec0, "rules": "depth-v1", "sources": {
+                    "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 1, "truncated": False, "unknown": [], "placed": [
+                        {"name": "2001 ZZ", "num": None, "class": "MB>Middle", "ra": ra0 + 40 / 3600 / math.cos(math.radians(dec0)), "dec": dec0, "mag": 19.0, "raw": {}, "d_pc": 1.6e-5, "d_lo_pc": None, "d_hi_pc": None}]},
+                    "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 0, "truncated": False, "limit": 1000, "unknown_count": 0, "placed": []},
+                    "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}})
+            await pg.route("**/api/known**", on_centre); await pg.route("**/api/depth**", far_depth)
+            await pg.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2&view=depth"); await pg.wait_for_function(READY, timeout=180000)
+            await pg.wait_for_function("__depth.shown?.target === 'sso:2001 ZZ'", timeout=60000); await pg.wait_for_timeout(500)
+            r = await pg.evaluate(TGT)
+            check(r["photo"] and r["depth"] and math.dist(r["photo"], r["depth"]) <= 2 * r["a"],
+                  f"Depth: the matched asteroid sits at the Photo's mark, not its place at the visit's middle (photo {r['photo']} vs Depth {r['depth']}, label {r['label']})")
+            check(not pg.errors, f"integration: no page errors {pg.errors}")
+        except Exception as e: check(False, f"Depth asteroid: {type(e).__name__} {str(e)[:200]}")
+        finally: await ctx.close()
+
+        # row 6, Depth: a later exposure's answer moves an existing match closer to the dot (-7 arcsec east, then +5): Depth
+        # follows targetAt, so its ring ends where the Photo's check is
+        def sso_at(ra0, dec0, east):
+            return {"ra": ra0, "dec": dec0, "rules": "depth-v1", "sources": {
+                "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 1, "truncated": False, "unknown": [], "placed": [
+                    {"name": "2001 ZZ", "num": None, "class": "MB>Middle", "ra": ra0 + east / 3600 / math.cos(math.radians(dec0)), "dec": dec0, "mag": 19.0, "raw": {}, "d_pc": 1.6e-5, "d_lo_pc": None, "d_hi_pc": None}]},
+                "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 0, "truncated": False, "limit": 1000, "unknown_count": 0, "placed": []},
+                "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}}
+        qs = lambda route: dict(x.split("=") for x in route.request.url.split("?")[1].split("&"))
+        for case, east_mid, staggered in (("a later exposure's answer moves the match", 0, True), ("its place at the visit's middle is outside the patch", 400, False)):
+            ctx, pg = await page(b)
+            try:
+                first = []
+                async def known(route):
+                    q = qs(route); ra0, dec0 = float(q["ra"]), float(q["dec"]); e = 0
+                    if staggered:
+                        if not first: first.append(q["t"]); e = -7
+                        else: await asyncio.sleep(5); e = 5
+                    try: await route.fulfill(json={"comets": [], "asteroids": [{"name": "2001 ZZ", "ra": ra0 + e / 3600 / math.cos(math.radians(dec0)), "dec": dec0, "mag": 19.0}]})
+                    except Exception: pass
+                async def depth_answer(route):
+                    q = qs(route); await route.fulfill(json=sso_at(float(q["ra"]), float(q["dec"]), east_mid))
+                await pg.route("**/api/known**", known); await pg.route("**/api/depth**", depth_answer)
+                await pg.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2&view=depth"); await pg.wait_for_function(READY, timeout=180000)
+                await pg.wait_for_function("__depth.shown?.target === 'sso:2001 ZZ' && __lapse.state.m.frames[__lapse.state.i].known?.left === 0", timeout=60000)
+                await pg.wait_for_timeout(1500)
+                r = await pg.evaluate(TGT)
+                check(r["photo"] and r["depth"] and math.dist(r["photo"], r["depth"]) <= 2 * r["a"] and (r["label"] or "").startswith("2001 ZZ · "),
+                      f"table row 6, Depth: {case}: the ring is at the Photo's check (photo {r['photo']} vs Depth {r['depth']}, label {r['label']})")
+            except Exception as e: check(False, f"table row 6, Depth: {case}: {type(e).__name__} {str(e)[:200]}")
+            finally: await ctx.close()
+
+        # row 1c: the matched star has no usable distance and a neighbour 3 arcsec off shares its proper motion: Depth joins
+        # distances by the matched Gaia source only, so the target is "distance unknown", never the neighbour's
+        ctx, pg = await page(b)
+        try:
+            await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY)
+            yr = await pg.evaluate("__lapse.state.m.frames[__lapse.state.i].year")
+            dt = yr - 2016
+            async def twin(route):
+                q = qs(route); ra0, dec0 = float(q["ra"]), float(q["dec"])
+                n_dec = 4.77076 - 10362.4 / 3.6e6 * dt; n_ra = 269.44614 + 801.6 / 3.6e6 * dt / math.cos(math.radians(n_dec))   # 3" off the dot at this visit
+                await route.fulfill(json={"ra": ra0, "dec": dec0, "rules": "depth-v1", "sources": {
+                    "sso": {"status": "ok", "source": "IMCCE SkyBoT", "count": 0, "truncated": False, "placed": [], "unknown": []},
+                    "stars": {"status": "ok", "source": "ESA Gaia DR3", "count": 2, "truncated": False, "limit": 1000, "unknown_count": 1, "placed": [
+                        {"id": "31", "ra": n_ra, "dec": n_dec, "g": 13.1, "pmra": -801.6, "pmdec": 10362.4, "raw": {}, "d_pc": 700, "d_lo_pc": 680, "d_hi_pc": 720},
+                        {"id": "32", "ra": 269.43, "dec": 4.75, "g": 15.0, "pmra": 0, "pmdec": 0, "raw": {}, "d_pc": 2000, "d_lo_pc": 1800, "d_hi_pc": 2200}]},
+                    "galaxies": {"status": "ok", "source": "SIMBAD", "count": 0, "truncated": False, "placed": [], "unknown_count": 0, "unknown": []}}})
+            await pg.route("**/api/depth**", twin)
+            await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999&view=depth"); await pg.wait_for_function(READY)
+            await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects === 2", timeout=30000); await pg.wait_for_timeout(500)
+            tw = await pg.evaluate("[__depth.shown.target, [...document.querySelectorAll('#dist-list li')].map(l => l.querySelector('.nm').textContent + ' | ' + l.querySelector('.dd').textContent)]")
+            check(tw[0] == "unknown" and "Barnard's Star | unknown" in tw[1] and not any(r.startswith("Barnard's Star | ") and "unknown" not in r for r in tw[1]),
+                  f"table row 1c: a same-motion neighbour 3 arcsec off does not lend Barnard's Star its distance ({tw})")
+        except Exception as e: check(False, f"table row 1c: {type(e).__name__} {str(e)[:200]}")
+        finally: await ctx.close()
+
+        # rows 6b and 6d, an open Discuss sheet: a later exposure's answer moves the match (6b) or makes another asteroid
+        # the match (6d). The sheet follows targetAt: its thumbnail and offer refresh, and a stale "It's X" is refused
+        for case, later in (("6b the match moves", ("2001 ZZ", 5)), ("6d another asteroid becomes the match", ("2001 YY", 2))):
+            ctx, pg = await page(b)
+            try:
+                first = []
+                async def known(route):
+                    q = qs(route); ra0, dec0 = float(q["ra"]), float(q["dec"]); c = math.cos(math.radians(dec0))
+                    if not first: first.append(1); rocks = [("2001 ZZ", -7)]
+                    else: await asyncio.sleep(14); rocks = [later]   # after the sheet's own 10 s wait for answers
+                    try: await route.fulfill(json={"comets": [], "asteroids": [{"name": n, "ra": ra0 + e / 3600 / c, "dec": dec0, "mag": 19.0} for n, e in rocks]})
+                    except Exception: pass
+                sightings = []
+                await pg.route("**/api/known**", known)
+                await pg.route("**/api/sightings", lambda r: (sightings.append(r.request.post_data), r.fulfill(status=201, json={"ok": True}))[1])
+                await pg.goto(f"{BASE}/timelapse.html?ra=248.1674&dec=66.7552&det=D2"); await pg.wait_for_function(READY, timeout=180000)
+                await pg.wait_for_function("__lapse.targetAt(__lapse.state.m, __lapse.state.m.frames[__lapse.state.i]).id?.pass.match?.name === '2001 ZZ'", timeout=30000)
+                await pg.click("#state"); await pg.locator("#talk [data-f=its]").wait_for(state="visible", timeout=20000)
+                was = await pg.evaluate("[document.querySelector('#talk [data-f=its]').textContent, document.querySelector('#talk .thumb').dataset.at]")
+                await pg.wait_for_function("__lapse.state.m.frames[__lapse.state.i].known?.left === 0", timeout=60000); await pg.wait_for_timeout(800)
+                now = await pg.evaluate("""[document.querySelector('#talk [data-f=its]').textContent, document.querySelector('#talk .thumb').dataset.at, window.__mark.px,
+                      __lapse.targetAt(__lapse.state.m, __lapse.state.m.frames[__lapse.state.i]).id?.pass.match?.name, patch.width / __lapse.view().cw, document.body.classList.contains('talking')]""")
+                at = [float(x) for x in now[1].split(",")]
+                check(now[5] and now[0] == f"It's {now[3]}" and now[3] == later[0] and math.dist(at, now[2]) <= 2 * now[4],
+                      f"table row {case}: the open sheet follows (offer {was[0]} -> {now[0]}, thumbnail {was[1]} -> {now[1]}, Photo's check {now[2]})")
+                # a stale offer (the button still naming the first match) is refused, nothing is logged
+                if later[0] != "2001 ZZ":
+                    await pg.evaluate("document.querySelector('#talk [data-f=its]').dataset.name = '2001 ZZ'")
+                    await pg.click("#talk [data-f=its]"); await pg.wait_for_timeout(600)
+                    st = await pg.evaluate("[document.querySelector('#talk [data-f=note]')?.textContent ?? '', document.querySelector('#talk [data-f=its]').textContent]")
+                    check(not sightings and st[1] == "It's 2001 YY", f"table row {case}: a stale 'It's 2001 ZZ' is refused, not logged ({sightings}, {st})")
+            except Exception as e: check(False, f"table row {case}: {type(e).__name__} {str(e)[:200]}")
+            finally: await ctx.close()
+
+        # ---------- 8: phone ----------
+        ctx, pg = await page(b, phone=True)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&day=9999"); await pg.wait_for_function(READY); await pg.wait_for_timeout(300)
+        order = await pg.evaluate("['.pv-who', '.pv-frame', '.tl', '.pv-adv', '.pv-report'].map(s => document.querySelector(s).getBoundingClientRect()).map(r => [Math.round(r.top), Math.round(r.bottom)])")
+        check(all(order[i][1] <= order[i + 1][0] + 1 for i in range(len(order) - 1)), f"phone: name and verdict, photo, timeline, Advanced, Report in one column: {order}")
+        check(not await pg.evaluate("document.documentElement.scrollWidth > innerWidth || document.body.scrollWidth > innerWidth"), "phone: nothing sideways")
+        taps = await pg.evaluate("['#tab-photo', '#tab-depth', '#adv-btn', '#state', '#spec-mode', '#play', '.pv-back'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [s, Math.round(r.width), Math.round(r.height)]; }).filter(([, w, h]) => w < 44 || h < 44)")
+        check(not taps, f"phone: the tabs, Advanced, Report, Spectrum, the timeline and Back are 44 px taps ({taps})")
+        await pg.tap("#adv-btn"); await pg.wait_for_timeout(200)
+        small = await pg.evaluate("[...document.querySelectorAll('#adv-body input, #adv-body select, #adv-body button, #adv-body [role=slider]')].map(e => { const r = e.getBoundingClientRect(); return [e.id || e.className, Math.round(r.width), Math.round(r.height)]; }).filter(([, w, h]) => w && (w < 44 || h < 44))")
+        check(not small, f"phone: every control in Advanced is a 44 px tap ({small})")
+        # the "Already known" name on the photo stays whole inside the frame in every visit
+        await pg.tap("#adv-btn"); await pg.wait_for_timeout(200)
+        labs = []
+        for k in range(await pg.evaluate("__lapse.state.m.frames.length")):
+            await pg.focus("#play"); await pg.keyboard.press("Home")
+            for _ in range(k): await pg.keyboard.press("ArrowRight")
+            await pg.wait_for_timeout(250); labs.append(await pg.evaluate("window.__starLabel ?? null"))
+        check(all(l and l[0] >= 0 and l[2] <= l[4] for l in labs), f"phone: 'Already known · Barnard's Star' stays inside the photo in every visit ({labs})")
+        await pg.tap("#tab-depth"); await pg.wait_for_function("document.getElementById('dist-list').children.length > 0", timeout=60000)
+        d = await pg.evaluate("['.tl', '#dist'].map(s => document.querySelector(s).getBoundingClientRect().top)")
+        check(d[1] > d[0] and await pg.evaluate(SHOWN, "#dist"), "phone: Depth shows Distances under the timeline")
+        UNDER = """(() => { const t = document.querySelector('.pv-views').getBoundingClientRect();
+              return [...document.querySelectorAll('#depth3d .lbl')].filter(l => +getComputedStyle(l).opacity > 0).map(l => [l.textContent, l.getBoundingClientRect()])
+                .filter(([, r]) => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top).map(([s]) => s); })()"""
+        await pg.wait_for_timeout(2500)   # the swing out to the side view ends
+        under = await pg.evaluate(UNDER)
+        check(not under, f"phone: no Depth label runs under the Photo/Depth tabs on Barnard's Star ({under})")
+        check(not pg.errors, f"phone: no page errors {pg.errors}")
+        await ctx.close()
+        # a candidate open on a phone: its label clears the tabs too, and Barnard's Star (in the patch, known, not the target)
+        # keeps its name in Depth
+        ctx, pg = await page(b, phone=True)
+        await pg.goto(f"{BASE}/timelapse.html?target=barnard&cand=K-0001&sample=1&view=depth"); await pg.wait_for_function(READY + " && !!window.__cand?.ring")
+        await pg.wait_for_function("+document.getElementById('depth3d').dataset.objects > 0", timeout=60000); await pg.wait_for_timeout(2500)
+        under = await pg.evaluate(UNDER)
+        names = await pg.evaluate("[[...document.querySelectorAll('#dist-list li .nm')].map(e => e.textContent), [...document.querySelectorAll('#depth3d .lbl')].map(e => e.textContent)]")
+        check(not under, f"phone: no Depth label runs under the tabs for the candidate ({under})")
+        check("Barnard's Star" in names[0] and any(l.startswith("Barnard's Star · ") for l in names[1]) and not any(l.lower().startswith("star a · 6") for l in names[1]),
+              f"candidate: Depth still names Barnard's Star ({names[0][:4]}, {[l for l in names[1] if 'ly' in l][:5]})")
+        check(not pg.errors, f"phone, candidate: no page errors {pg.errors}")
+        await ctx.close()
+        await b.close()
+    print(f"{'FAIL' if fails else 'PASS'} timelapse redesign: {len(fails)} failed")
+    sys.exit(1 if fails else 0)
+
+asyncio.run(main())

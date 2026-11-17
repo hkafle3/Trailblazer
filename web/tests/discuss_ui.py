@@ -4,13 +4,13 @@ for the live time-lapse and the candidate page's frames; Cloudflare, for the Tur
 (GET /api/known is answered here), so whether a known object is near the dot is decided by the test.
 Run: uv run -q --with playwright python web/tests/discuss_ui.py [base url] [WIDTHxHEIGHT] [screenshot dir]
      (default http://127.0.0.1:8787, 1440x900, no screenshots)
-1. A live spot near Barnard's Star, then a click on a random dot there (each run a new spot): Undiscovered opens the sheet in place of
+1. A live spot near Barnard's Star, then a click on a random dot there (each run a new spot): Report a new find (Undiscovered before the redesign) opens the sheet in place of
    the right column, with no known object near.
 2. Post (Comet, a comment, Turnstile's test key) lands on the candidate page: the id, Candidate, the byline, the comment,
    the tally and the frames, rebuilt at the Spectral channel and detector the dot was reported at (channel 6 here).
 3. Explore shows it as a hollow comet marker, labelled candidate.
 4. Back on the same dot and visit: Discovered, "Found as <id>", and the arrow opens the same page.
-5. Another visit of that dot, with SkyBoT putting 2001 FM127 30 arcsec away: the sheet leads with "It's 2001 FM127",
+5. Another visit of that dot, with SkyBoT putting 2001 FM127 on the dot: the sheet leads with "It's 2001 FM127",
    and that logs a sighting (POST /api/sightings) and closes the sheet with "Logged as 2001 FM127"."""
 import asyncio, json, os, random, re, sys
 from playwright.async_api import async_playwright
@@ -26,10 +26,12 @@ RECORD = """(() => { const W = window.Worker; window.__built = [];
   window.Worker = class extends W { postMessage(m, ...r) { if (m && m.ra != null) window.__built.push(JSON.parse(JSON.stringify(m))); return super.postMessage(m, ...r); } }; })()"""
 
 
-async def stub_known(route):   # /api/known?ra=&dec=&t=: nothing, or one asteroid 30 arcsec north of the asked spot
+async def stub_known(route):   # /api/known?ra=&dec=&t=: nothing, or one asteroid on the asked spot (the dot in the middle)
     q = dict(re.findall(r"[?&](\w+)=([^&]*)", route.request.url))
     ra, dec, t = float(q["ra"]), float(q["dec"]), float(q["t"])
-    rocks = [{"name": "2001 FM127", "ra": ra, "dec": round(dec + 30 / 3600, 5), "mag": 20.9, "err": 0}] if known["near"] else []
+    # on the dot: since the redesign the sheet offers a known object only where the verdict matches it (within two
+    # SPHEREx pixels of the measured source at the visit's time); one 30 arcsec off is only "nearby"
+    rocks = [{"name": "2001 FM127", "ra": ra, "dec": dec, "mag": 20.9, "err": 0}] if known["near"] else []
     await route.fulfill(status=200, content_type="application/json", body=json.dumps({"ra": ra, "dec": dec, "t": t, "comets": [], "asteroids": rocks, "omitted": 0}))
 
 
@@ -45,7 +47,7 @@ async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
         ctx = await b.new_context(viewport={"width": W, "height": H})
-        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'tester', via: 'demo' })) } catch {}")
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1'); localStorage.setItem('ch.user', JSON.stringify({ name: 'tester', via: 'demo' })) } catch {}")
         await ctx.route("**/api/known?*", stub_known)
         await ctx.add_init_script(RECORD)
         pg = await ctx.new_page()
@@ -72,8 +74,8 @@ async def main():
             await built()
             n = await pg.evaluate("__lapse.state.m.frames.length"); k = random.randrange(n)
             await visit(k)
-            if await label() == "Undiscovered": break
-        assert await label() == "Undiscovered", "no fresh spot found"
+            if await label() == "Report a new find": break
+        assert await label() == "Report a new find", "no fresh spot found"
         spot = await pg.evaluate("(({ m }) => ({ ra: m.ra, dec: m.dec, det: m.detector, n: m.frames.length, channel: m.channel }))(__lapse.state)")
         assert spot["channel"] == CH - 1, f"the time-lapse is not built at channel {CH}: {spot}"
         lapse_band = await pg.evaluate("__built.filter(b => b.band).at(-1)")   # what the time-lapse on screen was built with
@@ -82,7 +84,8 @@ async def main():
         await pg.wait_for_selector("#talk", state="visible")
         await pg.wait_for_timeout(2500)
         assert await pg.locator("#talk").is_visible() and not await pg.evaluate("__lapse.state.playing"), "playback went on and closed the sheet"
-        assert not await pg.locator(".pv-mini").is_visible() and not await pg.locator(".pstage > .pv-desc").is_visible(), "the sheet did not replace the right column"
+        if W > 900:   # a wide screen: the sheet takes the right column's place (a phone keeps one column, the sheet over its foot)
+            assert not await pg.locator(".pv-who").is_visible() and not await pg.locator(".pv-report").is_visible(), "the sheet did not replace the right column"
         assert "RA" in await pg.locator("#talk [data-f=where]").text_content()
         assert await pg.locator("#talk .talk-form").is_visible() and not await pg.locator("#talk .match").is_visible(), "a known object was offered with none near"
         assert "tester" in await pg.locator("#talk [data-f=as]").text_content()
@@ -150,8 +153,8 @@ async def main():
         await built()
         for k2 in [x for x in range(spot["n"]) if x != k]:   # a visit nobody reported this dot in
             await visit(k2)
-            if await label() == "Undiscovered": break
-        assert await label() == "Undiscovered"
+            if await label() == "Report a new find": break
+        assert await label() == "Report a new find"
         await pg.click("#state")
         its = pg.locator("#talk [data-f=its]")
         await its.wait_for(state="visible", timeout=15000)
@@ -164,7 +167,7 @@ async def main():
         assert (await r.value).status == 201 and res["sighting"]["name"] == "2001 FM127", res
         await pg.wait_for_selector("#talk", state="hidden")
         assert await pg.locator("#status").text_content() == "Logged as 2001 FM127"
-        assert await label() == "Undiscovered", "a sighting made a candidate"
+        assert await label() == "Report a new find", "a sighting made a candidate"
         # "Something else" shows the form instead
         await pg.click("#state")
         await its.wait_for(state="visible", timeout=15000)

@@ -2,7 +2,7 @@
    (patch.css), in his 2462 x 1420 design frame (--e is one design pixel). Each rule says which of his parts it reuses. */
 
 /* ---------- time-lapse: the sheet takes the right column's place (mini-map, state box, Descriptions) while open ---------- */
-body.talking .pstage > :is(.pv-mini, .pv-state, .pv-desc) { display: none; }
+/* while the sheet is open on a wide screen it takes the right column's place (patch.css hides the name, Report and Distances) */
 body:not(.talking) .pstage > .pv-talkwrap { display: none; }
 .pstage > .pv-talkwrap { left: calc(1927 * var(--e)); top: calc(229 * var(--e)); width: calc(451 * var(--e)); margin: 0; }
 /* the card = his Descriptions card (.pv-card.pv-desc), static inside the wrapper; Post = his state box under it */

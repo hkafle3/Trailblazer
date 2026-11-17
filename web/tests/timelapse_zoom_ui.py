@@ -42,7 +42,7 @@ async def main():
 
         # ---------------- desktop ----------------
         ctx = await b.new_context(viewport={"width": 1440, "height": 900})
-        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
         pg = await ctx.new_page(); pg.on("pageerror", lambda e: errors.append(str(e)))
         await pg.goto(URL); await pg.wait_for_function(READY, timeout=60000)
         r = await pg.evaluate("(() => { const r = document.getElementById('patch').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()")
@@ -143,7 +143,7 @@ async def main():
 
         # ---------------- phone ----------------
         ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True)
-        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}")
+        await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.adv', '1') } catch {}")
         pg = await ctx.new_page(); pg.on("pageerror", lambda e: errors.append(str(e)))
         await pg.goto(URL); await pg.wait_for_function(READY, timeout=60000)
         zoom = lambda: pg.evaluate(ZOOM)

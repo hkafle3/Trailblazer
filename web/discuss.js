@@ -1,4 +1,6 @@
-// "Discuss this" on the time-lapse (timelapse.html). The dot on screen is the patch's centre (a click re-centres on it).
+// "Discuss this" on the time-lapse (timelapse.html), about the page's target in the visit on screen (page.place:
+// timelapse.html targetAt): the dot in the middle, or a detector candidate's detection. Its place is what the sheet
+// shows, centres its thumbnail on, checks for earlier reports and submits; with no place this visit it does not open.
 // - Undiscovered: Ming's state box opens the sheet in place of the right column (his Descriptions card, discuss.css).
 //   If SkyBoT puts a known object within 1 arcmin in this visit, the sheet leads with "It's <name>" / "Something else".
 //   Post creates a candidate (POST /api/candidates) and opens its page.
@@ -34,20 +36,23 @@ export function knownMatch(f, ra, dec) {
   return best;
 }
 
-// page: { state, api, setFound(id, at), found() -> id, spot(ra, dec) -> key, status(text) }
+// page: { state, api, setFound(id, at), found() -> id, spot(ra, dec) -> key, status(text),
+//   place(f) -> { name, sky: [ra, dec] or null, px: [x, y] on the photo's canvas or null } }
 export function discuss(page) {
   const { state } = page, $ = id => document.getElementById(id);
   const stateBox = $('state'), stage = $('stage');
-  let near = { m: null, list: [] }, mine = null, sheet = null, openOn = null, ts = null;
+  let near = { key: null, list: [] }, mine = null, sheet = null, openOn = null, ts = null;
+  const skyOf = (m, f) => page.place(f).sky;
 
-  // ---------- Discovered: a candidate already reported within 1 arcmin in the visit on screen ----------
-  async function loadNear(m) {
-    near = { m, list: [] };
+  // ---------- Discovered: a candidate already reported within 1 arcmin of the target in the visit on screen ----------
+  async function loadNear(m, sky) {
+    const key = `${m.key}|${page.spot(...sky)}`;
+    near = { key, list: [] };
     try {
-      const r = await fetch(`${page.api}/api/candidates/near?ra=${m.ra.toFixed(4)}&dec=${m.dec.toFixed(4)}`);
-      if (r.ok && near.m === m) near.list = (await r.json()).candidates;
+      const r = await fetch(`${page.api}/api/candidates/near?ra=${sky[0].toFixed(4)}&dec=${sky[1].toFixed(4)}`);
+      if (r.ok && near.key === key) near.list = (await r.json()).candidates;
     } catch {}
-    if (near.m === m) frame(true);
+    if (near.key === key) frame(true);
   }
   function showFound(m, f) {
     // a found= link to a candidate (the address keeps the Discovered state) is that candidate's, so it follows the visit
@@ -55,7 +60,7 @@ export function discuss(page) {
     // the same visit: one that shares a day with this one (its first day can differ by channel and detector)
     const c = near.list.find(x => x.visit <= (f.end ?? f.start) && (x.visit_end ?? x.visit) >= f.start);
     if (c && (!page.found() || page.found() === mine)) {
-      if (page.found() !== c.id) page.setFound(c.id, page.spot(m.ra, m.dec));
+      if (page.found() !== c.id) page.setFound(c.id, page.spot(...skyOf(m, f)));
       mine = c.id;
       stateBox.href = `candidate.html?id=${encodeURIComponent(c.id)}`;
       const n = $('vName'), t = c.tags, votes = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0);
@@ -68,12 +73,16 @@ export function discuss(page) {
   let last = [null, null];
   function frame(force = false) {
     const m = state.m; if (!m) return;
-    const f = m.frames[state.i];
-    if (near.m !== m) loadNear(m);
+    const f = m.frames[state.i], sky = skyOf(m, f);
+    if (sky && near.key !== `${m.key}|${page.spot(...sky)}`) loadNear(m, sky);
+    // the open sheet follows the target: a later SkyBoT answer can move it or make another object the match
+    if (sheet && openOn && openOn[0] === m && openOn[1] === f && keyOf(f) !== openKey) follow(m, f);
+    else if (sheet && openOn && !offered && openOn[0] === m && openOn[1] === f && !started()) offer(m, f);   // a late SkyBoT answer
     if (!force && last[0] === m && last[1] === f) return;
     last = [m, f];
     if (sheet && openOn && (openOn[0] !== m || openOn[1] !== f)) close();   // the sheet describes one spot in one visit
-    showFound(m, f);
+    if (sky) showFound(m, f);
+    else if (mine && page.found() === mine) { page.setFound(null); mine = null; }   // no target this visit: nothing found here
   }
 
   // ---------- the sheet ----------
@@ -104,7 +113,7 @@ export function discuss(page) {
         <p class="pv-info" data-f="note" role="status"></p>
       </section>
       <button class="pv-state pv-post" type="submit" disabled><span>Post</span>${GO}</button>`;
-    stateBox.after(form);
+    (stateBox.closest('.pstage > *') ?? stateBox).after(form);   // a card of the stage's own (the button sits in Report's section)
     const q = s => form.querySelector(s), ts0 = q('.cf-turnstile');
     // Turnstile: the always-pass test key locally, to match worker/.dev.vars; loaded once, the first time the sheet opens
     ts0.dataset.sitekey = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) ? '1x00000000000000000000AA' : '0x4AAAAAAGBTgXAx-fdK_qGx';
@@ -113,7 +122,7 @@ export function discuss(page) {
     q('.close').onclick = close;
     form.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     form.addEventListener('input', sync); form.addEventListener('change', sync);
-    q('[data-f=else]').onclick = () => { q('.match').hidden = true; q('.talk-form').hidden = false; sync(); q('.cbx').focus(); };
+    q('[data-f=else]').onclick = () => { offered = true; q('.match').hidden = true; q('.talk-form').hidden = false; sync(); q('.cbx').focus(); };
     q('[data-f=its]').onclick = logSighting;
     form.onsubmit = e => { e.preventDefault(); post(); };
     window.addEventListener('ch:user', sync);
@@ -131,33 +140,59 @@ export function discuss(page) {
   const say = (text, err) => { const n = q('[data-f=note]'); n.textContent = text; n.classList.toggle('err', !!err); };
 
   async function open() {
-    const m = state.m, f = m.frames[state.i];
+    const m = state.m, f = m.frames[state.i], tg = page.place(f);
+    if (!tg.sky) return page.status(`${tg.name} has no detection in this visit, so there is nothing to report here.`);
     sheet ??= build();
+    page.opening?.();   // the page closes any other card that takes the same place
     page.stop();   // the sheet is about this visit: playback would move on and close it
-    openOn = [m, f];
+    openOn = [m, f, tg.sky]; offered = false;
     document.body.classList.add('talking');
-    // the thumbnail: the middle of the photo on screen, the dot ringed
-    const c = q('.thumb canvas'), g = c.getContext('2d'), p = $('patch'), w = p.width * .49, h = w * c.height / c.width;
-    g.imageSmoothingEnabled = false; g.clearRect(0, 0, c.width, c.height);
-    g.drawImage(p, (p.width - w) / 2, (p.height - h) / 2, w, h, 0, 0, c.width, c.height);
-    const where = q('[data-f=where]');
+    thumb(tg);
+    const where = q('[data-f=where]'), [ra, dec] = tg.sky;
     where.replaceChildren(el('b', null, visitDate(f.start)), ` · ${m.detector} ${f.lam.toFixed(3)} µm`, el('br'),
-      'RA ', el('b', null, m.ra.toFixed(4)), ' Dec ', el('b', null, `${m.dec >= 0 ? '+' : ''}${m.dec.toFixed(4)}`));
+      'RA ', el('b', null, (ra % 360).toFixed(4)), ' Dec ', el('b', null, `${dec >= 0 ? '+' : ''}${dec.toFixed(4)}`));
     say('');
     q('.match').hidden = true; q('.talk-form').hidden = false; sync();
     q('.close').focus();
     // SkyBoT's answers for this visit come in after the frames (timelapse.html knownFor): wait for them, a little
     for (let t = 0; t < 40 && f.known?.left > 0 && openOn?.[1] === f; t++) await new Promise(r => setTimeout(r, 250));
     if (openOn?.[1] !== f) return;
-    const k = knownMatch(f, m.ra, m.dec);
-    if (!k) return;
+    if (offer(m, f)) q('[data-f=its]').focus();
+  }
+  // the thumbnail: the photo on screen around the target, ringed at the thumbnail's middle
+  let openKey = null;   // the target the sheet shows: its place, and the passer matched and when (keyOf)
+  const keyOf = f => { const t = page.place(f), k = t.id?.pass.match; return JSON.stringify([t.pos, k?.name ?? null, k?.t ?? null]); };
+  function thumb(tg) {
+    const c = q('.thumb canvas'), g = c.getContext('2d'), p = $('patch'), w = p.width * .49, h = w * c.height / c.width;
+    const [cx, cy] = tg.px ?? [p.width / 2, p.height / 2];
+    g.imageSmoothingEnabled = false; g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(p, cx - w / 2, cy - h / 2, w, h, 0, 0, c.width, c.height);
+    q('.thumb').dataset.at = `${cx.toFixed(1)},${cy.toFixed(1)}`;   // the crop's middle on the photo (for tests)
+    openKey = keyOf(openOn[1]);
+  }
+  // the target moved or changed while the sheet is open: a new thumbnail, and the offer again unless the person has
+  // started on the form
+  function follow(m, f) {
+    thumb(page.place(f));
+    if (started()) return;
+    q('.match').hidden = true; q('.talk-form').hidden = false; offered = false; sync();
+    offer(m, f);
+  }
+  // "It's X": the passer the page's verdict put on the dot (timelapse.html identityAt, live/identity.js). SkyBoT's answers can land after
+  // the sheet opened, so frame() asks again on every redraw until it is offered or the person has started on the form.
+  let offered = false;
+  function offer(m, f) {
+    const k = page.middle ? page.middle(f) : knownMatch(f, m.ra, m.dec);
+    if (!k) return false;
+    offered = true;
     q('[data-f=kname]').textContent = k.name;
     q('[data-f=kwhat]').textContent = `${k.kind === 'comet' ? 'Comet' : 'Asteroid'}${k.mag != null ? ` · mag ${k.mag}` : ''} · predicted here ${dayMonth(k.t)}`;
     q('[data-f=its] span').textContent = `It's ${k.name}`;
     q('[data-f=its]').dataset.name = k.name;
     q('.match').hidden = false; q('.talk-form').hidden = true; sync();
-    q('[data-f=its]').focus();
+    return true;
   }
+  const started = () => !!sheet.querySelector('[name=tag]:checked') || !!sheet.querySelector('textarea')?.value.trim();
   function close() {
     document.body.classList.remove('talking');
     openOn = null;
@@ -165,8 +200,8 @@ export function discuss(page) {
   }
 
   const spotBody = () => {
-    const [m, f] = openOn;
-    return { ra: +(m.ra % 360).toFixed(4), dec: +m.dec.toFixed(4), det: m.detector, ...(m.channel != null ? { channel: m.channel + 1 } : {}),
+    const [m, f, [ra, dec]] = openOn;
+    return { ra: +(ra % 360).toFixed(4), dec: +dec.toFixed(4), det: m.detector, ...(m.channel != null ? { channel: m.channel + 1 } : {}),
       visit: { start: f.start, end: f.end ?? f.start, mjd: f.mjd, exposures: f.exposures, lam: f.lam, ...(f.epochs ? { epochs: f.epochs } : {}) } };
   };
   async function send(path, body) {
@@ -179,7 +214,9 @@ export function discuss(page) {
     } finally { sheet.dataset.busy = ''; sync(); }
   }
   async function logSighting() {
-    const name = q('[data-f=its]').dataset.name;
+    const name = q('[data-f=its]').dataset.name, [m, f] = openOn;
+    // only the match the page has now: a stale offer is refreshed, not logged
+    if (page.middle(f)?.name !== name || keyOf(f) !== openKey) { follow(m, f); return say('The match changed with a later answer. Check it again.', true); }
     try {
       await send('/api/sightings', { ...spotBody(), name, author: userName() || 'guest' });
       close();
@@ -199,5 +236,5 @@ export function discuss(page) {
       window.turnstile?.reset?.();   // a token works once
     }
   }
-  return { frame };
+  return { frame, close, body: () => openOn && spotBody() };   // body: what Post would submit (for tests)
 }
