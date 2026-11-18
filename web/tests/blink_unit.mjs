@@ -70,3 +70,77 @@ test('an old-survey tile that cannot be downloaded is the old survey\'s failure,
     assert.equal(e.state, 'old-unavailable', `${what}: ${e.state} ${e.message}`);
   }
 });
+
+// C-0175 (live, 2026-11-18): the field is covered in both pictures, but the star itself (W1 6.2, W2 5.2) is saturated in
+// SPHEREx and has under 5 good AllWISE frames. The page said "the older picture does not cover enough of the field".
+test('a star masked at its own position is said so, not blamed on the field', async () => {
+  const { bandMessage } = await import('../live/blinkworker.js');
+  const checks = Object.fromEntries(['finite', 'band_match', 'old_footprint', 'spherex_footprint', 'spectral_coverage_at_lead', 'qualified_stars'].map(k => [k, true]));
+  const rep = (over, old, spx) => ({ checks: { ...checks, ...over }, old: { survey: 'AllWISE Atlas', valid_fraction: 0.9999, coverage_frames_at_lead: 3.7, ...old },
+    spherex: { valid_fraction: 0.9994, covered_weight_at_lead: 0.081, exposures_seeing_lead: 335, exposures_saturated_at_lead: 312, ...spx }, qualified_stars: 72 });
+  const both = bandMessage('W2', rep({ old_footprint: false, spectral_coverage_at_lead: false }));
+  assert.equal(both.state, 'comparison-unavailable');
+  assert.doesNotMatch(both.reason, /of the field/, both.reason);
+  assert.match(both.reason, /too bright/, both.reason);
+  assert.match(both.reason, /saturated .*312 of 335/, both.reason);
+  assert.match(both.reason, /3\.7 good AllWISE frames at the star, 5 needed/, both.reason);
+  // a missing measurement follows from the coverage: not given as a second reason (Ks at C-0175)
+  assert.doesNotMatch(bandMessage('Ks', rep({ spectral_coverage_at_lead: false, finite: false })).reason, /measurement is missing/);
+  // the field itself short: still said as the field
+  assert.match(bandMessage('W2', rep({ old_footprint: false }, { valid_fraction: 0.9 })).reason, /older picture does not cover enough of the field/);
+  // SPHEREx short at the star without saturation: the coverage, as before
+  assert.match(bandMessage('W2', rep({ spectral_coverage_at_lead: false }, {}, { exposures_saturated_at_lead: 0 })).reason, /SPHEREx does not cover enough of this band at the star/);
+  // 2MASS has no coverage map: the star's pixels are unusable
+  assert.match(bandMessage('Ks', rep({ old_footprint: false }, { survey: '2MASS All-Sky Atlas', coverage_frames_at_lead: undefined })).reason, /older picture has no usable pixels at the star/);
+});
+
+test('SPHEREx exposures saturated at the star are counted', async () => {
+  const { readFileSync } = await import('node:fs');
+  const curves = JSON.parse(readFileSync(new URL('../data/bands.json', import.meta.url))), waves = JSON.parse(readFileSync(new URL('../data/wavemaps.json', import.meta.url)));
+  const N = B.N, w = N + 20, px = new Float64Array(N * N), py = new Float64Array(N * N);
+  for (let k = 0; k < N * N; k++) { px[k] = 1000 + (k % N); py[k] = 1000 + Math.floor(k / N); }
+  const exp = sat => { const img = new Float32Array(w * w).fill(1), flg = new Int32Array(w * w), c = 190 * w + 190; if (sat) flg[c] = flg[c + 1] = 1 << 1; return { det: 'D6', t: 61000, key: 'k', sha256: 's', img, flg, w, h: w, x0: 990, y0: 990, map: { px, py } }; };
+  const acc = B.synthStart(curves.W2, ['D6']);
+  B.synthAdd(acc, exp(true), waves.D6); B.synthAdd(acc, exp(false), waves.D6);
+  const { meta } = B.synthEnd(acc, 'W2');
+  assert.equal(meta.exposures_seeing_lead, 2); assert.equal(meta.exposures_saturated_at_lead, 1);
+});
+
+// Codex review 5: bit 2 (SUR_ERROR, an onboard processing error) is not saturation; and saturation in any pixel the
+// grid's bilinear draws on counts, not only the rounded one
+test('SPHEREx saturation at the star: OVERFLOW or NONLINEAR in any contributing pixel; SUR_ERROR is only unusable', async () => {
+  const { readFileSync } = await import('node:fs');
+  const curves = JSON.parse(readFileSync(new URL('../data/bands.json', import.meta.url))), waves = JSON.parse(readFileSync(new URL('../data/wavemaps.json', import.meta.url)));
+  const N = B.N, w = N + 20;
+  const exp = (dx, at, bit) => {
+    const px = new Float64Array(N * N), py = new Float64Array(N * N);
+    for (let k = 0; k < N * N; k++) { px[k] = 1000 + (k % N) + dx; py[k] = 1000 + Math.floor(k / N); }
+    const img = new Float32Array(w * w).fill(1), flg = new Int32Array(w * w); flg[190 * w + at] = 1 << bit;
+    return { det: 'D6', t: 61000, key: 'k', sha256: 's', img, flg, w, h: w, x0: 990, y0: 990, map: { px, py } };
+  };
+  const meta = list => { const acc = B.synthStart(curves.W2, ['D6']); for (const e of list) B.synthAdd(acc, e, waves.D6); return B.synthEnd(acc, 'W2').meta; };
+  const sur = meta([exp(0, 190, 2)]);
+  assert.equal(sur.exposures_masked_at_lead, 1); assert.equal(sur.exposures_saturated_at_lead, 0, 'SUR_ERROR alone is not saturation');
+  const side = meta([exp(0.4, 191, 1)]);   // the star at x 190.4: pixel 191 carries 0.4 of its weight and is OVERFLOW
+  assert.equal(side.exposures_masked_at_lead, 1); assert.equal(side.exposures_saturated_at_lead, 1, 'a saturated contributing neighbour counts');
+  assert.equal(meta([exp(0, 190, 15)]).exposures_saturated_at_lead, 1, 'NONLINEAR counts as saturation');
+  const { bandMessage } = await import('../live/blinkworker.js');
+  const checks = Object.fromEntries(['finite', 'band_match', 'old_footprint', 'spherex_footprint', 'qualified_stars'].map(k => [k, true]));
+  const r = bandMessage('W2', { checks: { ...checks, spectral_coverage_at_lead: false }, old: { valid_fraction: 1 },
+    spherex: { valid_fraction: 1, covered_weight_at_lead: 0, exposures_seeing_lead: 15, exposures_masked_at_lead: 15, exposures_saturated_at_lead: 0 } }).reason;
+  assert.doesNotMatch(r, /too bright|saturated/, r); assert.match(r, /SPHEREx has unusable pixels at the star in 15 of 15 exposures/, r);
+});
+
+// Codex review 6: several saturated contributors each under 0.001 of the weight can mask the star together
+test('saturated contributors too small alone but masking the star together are counted', async () => {
+  const { readFileSync } = await import('node:fs');
+  const curves = JSON.parse(readFileSync(new URL('../data/bands.json', import.meta.url))), waves = JSON.parse(readFileSync(new URL('../data/wavemaps.json', import.meta.url)));
+  const N = B.N, w = N + 20, px = new Float64Array(N * N), py = new Float64Array(N * N);
+  for (let k = 0; k < N * N; k++) { px[k] = 1000.0006 + (k % N); py[k] = 1000.0006 + Math.floor(k / N); }   // the star at (190.0006, 190.0006)
+  const img = new Float32Array(w * w).fill(1), flg = new Int32Array(w * w);
+  for (const k of [190 * w + 191, 191 * w + 190, 191 * w + 191]) flg[k] = 1 << 1;   // weights about 0.0006, 0.0006, 0.0000004
+  const acc = B.synthStart(curves.W2, ['D6']);
+  B.synthAdd(acc, { det: 'D6', t: 61000, key: 'k', sha256: 's', img, flg, w, h: w, x0: 990, y0: 990, map: { px, py } }, waves.D6);
+  const { meta } = B.synthEnd(acc, 'W2');
+  assert.equal(meta.exposures_masked_at_lead, 1); assert.equal(meta.exposures_saturated_at_lead, 1);
+});

@@ -7,6 +7,9 @@
 // Arrays are N x N, row iy (south to north), column ix (east to west), index iy * N + ix; NaN where there is no data.
 import { worldToPix } from './fits.js';
 import { BAD } from './cutout.js';
+// saturation at the star: OVERFLOW (bit 1) and NONLINEAR (bit 15), per the files' own FLAGS mask-plane names. Bit 2 is
+// SUR_ERROR, an onboard processing error: unusable, not saturation (Codex review 5)
+const SAT = (1 << 1) | (1 << 15);
 
 export const N = 361, PIX = 2.0, CROP = 91, C0 = (N - 1) / 2;   // 2" grid: 12.03 arcmin calibration field, 3.03 arcmin crop
 export const SPX_RANGE = [0.75, 5.0];
@@ -95,6 +98,13 @@ function bilin(a, w, h, x, y) {
   const xi = Math.min(Math.floor(x), w - 1), yi = Math.min(Math.floor(y), h - 1), fx = x - xi, fy = y - yi;
   const v = (i, j) => (i < w && j < h ? a[j * w + i] : 0);
   return (v(xi, yi) * (1 - fx) + v(xi + 1, yi) * fx) * (1 - fy) + (v(xi, yi + 1) * (1 - fx) + v(xi + 1, yi + 1) * fx) * fy;
+}
+// would the saturated pixels alone mask the grid pixel at (x, y)? toGrid's own rule (bilin of validity > 0.999), with
+// only saturation counted as invalid, so many tiny saturated weights add up as they do there (Codex review 6)
+function saturatedAt(flg, w, h, x, y) {
+  const xi = Math.min(Math.floor(x), w - 1), yi = Math.min(Math.floor(y), h - 1), fx = x - xi, fy = y - yi;   // bilin's arithmetic
+  const v = (i, j) => (i < w && j < h && flg[j * w + i] & SAT ? 0 : 1);   // past the edge is not saturation
+  return !((v(xi, yi) * (1 - fx) + v(xi + 1, yi) * fx) * (1 - fy) + (v(xi, yi + 1) * (1 - fx) + v(xi + 1, yi + 1) * fx) * fy > 0.999);
 }
 // build_v3 to_grid: bilinear resample of img and its validity mask; a grid pixel is valid only if all its weight is
 export function toGrid(img, valid, w, h, map, x0 = 0, y0 = 0) {
@@ -300,7 +310,7 @@ export function lamAt(map, x, y) {
 // SPHEREx in the survey band: start, add each exposure (its cutout, flags, header and grid map), end
 export function synthStart(curve, dets) {
   const bins = bandBins(curve);
-  return { bins, dets, S: new Float64Array(bins.nb * NN), Cn: new Uint16Array(bins.nb * NN), used: [] };
+  return { bins, dets, S: new Float64Array(bins.nb * NN), Cn: new Uint16Array(bins.nb * NN), used: [], seeLead: 0, maskLead: 0, satLead: 0 };
 }
 const isoDate = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
 // e: { det, t (MJD), key, sha256, img Float32Array, flg Int32Array, w, h, x0, y0, map: {px, py} on the full detector }
@@ -318,6 +328,13 @@ export function synthAdd(acc, e, wavemap) {
   const med = nanmedian(g);   // the exposure's own background (zodiacal light)
   for (let k = 0; k < NN; k++) if (b[k] >= 0) { acc.S[b[k] * NN + k] += g[k] - med; acc.Cn[b[k] * NN + k]++; }
   const c = Math.round(C0) * N + Math.round(C0), lc = m[c] ? searchsorted(edges, lamAt(wavemap, e.map.px[c], e.map.py[c])) - 1 : -1;
+  // the star's own pixel: exposures that see it in band, and those saturated there (a star too bright), for the page's reason
+  // masked there, and saturated if the saturated pixels alone would mask it
+  const lx = e.map.px[c] - e.x0, ly = e.map.py[c] - e.y0, li = searchsorted(edges, lamAt(wavemap, e.map.px[c], e.map.py[c])) - 1;
+  if (lx >= 0 && ly >= 0 && lx <= e.w - 1 && ly <= e.h - 1 && li >= 0 && li < nb) {
+    acc.seeLead++;
+    if (!m[c]) { acc.maskLead++; if (saturatedAt(e.flg, e.w, e.h, lx, ly)) acc.satLead++; }
+  }
   acc.used.push({ key: e.key, det: e.det, mjd: e.t, sha256: e.sha256, digest: CUTOUT_DIGEST, bg_median: med, grid_fraction: cnt / NN, at_lead: !!m[c] && lc >= 0 && lc < nb });
   return true;
 }
@@ -342,6 +359,7 @@ export function synthEnd(acc, band) {
   const meta = { band_label: band, detectors: acc.dets, response: `SVO ${B.svo} (DetectorType ${B.det})`, band_um: [+B.lo.toFixed(3), +B.hi.toFixed(3)],
     synth_range_um: [+B.loS.toFixed(3), +B.hiS.toFixed(3)], response_weight_outside_spherex: +B.outFrac.toFixed(3), bins: nb,
     covered_weight_at_lead: +covered[c].toFixed(3), exposures_used: acc.used.length, exposures_at_lead: lead.length,
+    exposures_seeing_lead: acc.seeLead, exposures_masked_at_lead: acc.maskLead, exposures_saturated_at_lead: acc.satLead,
     dates_at_lead: lead.length ? [isoDate(Math.min(...lead.map(u => u.mjd))), isoDate(Math.max(...lead.map(u => u.mjd)))] : null,
     valid_fraction: +(nv / NN).toFixed(4), inputs: acc.used };
   return { img, m, meta };

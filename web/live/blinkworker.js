@@ -175,10 +175,21 @@ const WHY = { band_match: 'the pictures are not of the same band', spectral_cove
   display_field_ratio: 'the drawn frames do not reproduce the stars', display_background_match: 'the backgrounds could not be matched' };
 const ORDER = Object.keys(WHY);   // the most telling reason first: coverage, then the stars, then the rest
 function reasonOf(failed, rep) {
+  // unavailable: the coverage is the reason, and what fails only because of it (a missing measurement) is not repeated
+  const cover = ['band_match', 'spectral_coverage_at_lead', 'spherex_footprint', 'old_footprint'];
+  if (failed.some(k => cover.includes(k))) failed = failed.filter(k => cover.includes(k));
   failed = [...failed].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
   const w = failed.map(k => WHY[k] ?? k);
   if (failed.includes('qualified_stars')) w[failed.indexOf('qualified_stars')] = `${rep.qualified_stars} clean comparison stars, 20 needed`;
   if (failed.includes('field_scatter_cap')) w[failed.indexOf('field_scatter_cap')] = `nearby stars scatter by ${rep.field_scatter_robust_sigma}, over 0.10`;
+  // the field covered but the star's own pixels unusable (C-0175, W1 6.2: saturated): said of the star, not the field
+  const o = rep.old ?? {}, sp = rep.spherex ?? {};
+  if (failed.includes('spectral_coverage_at_lead') && sp.exposures_saturated_at_lead > 0 && 2 * sp.exposures_saturated_at_lead >= sp.exposures_seeing_lead)
+    w[failed.indexOf('spectral_coverage_at_lead')] = `the star is too bright: SPHEREx is saturated there in ${sp.exposures_saturated_at_lead} of ${sp.exposures_seeing_lead} exposures`;
+  else if (failed.includes('spectral_coverage_at_lead') && sp.exposures_masked_at_lead > 0 && 2 * sp.exposures_masked_at_lead >= sp.exposures_seeing_lead)
+    w[failed.indexOf('spectral_coverage_at_lead')] = `SPHEREx has unusable pixels at the star in ${sp.exposures_masked_at_lead} of ${sp.exposures_seeing_lead} exposures`;
+  if (failed.includes('old_footprint') && o.valid_fraction >= B.T.FOOTPRINT)
+    w[failed.indexOf('old_footprint')] = o.coverage_frames_at_lead < 5 ? `the older picture has ${o.coverage_frames_at_lead} good AllWISE frames at the star, 5 needed` : 'the older picture has no usable pixels at the star';
   return w.slice(0, 2).join('; ');
 }
 
