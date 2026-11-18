@@ -147,7 +147,7 @@ function layout() {
   if (document.body.dataset.view === '3d') return;
   if (!sized && labels.length && document.fonts.status === 'loaded') measure();
   // ---- read (only what changed) ----
-  stats.passes++; lastPass = performance.now();
+  stats.passes++;
   const vw = innerWidth, vh = innerHeight, engine = !!wrapEl.style.width && view.A;   // the engine places the map once it has moved
   const k = (engine ? view.W : wrapEl.offsetWidth) / 360, mr = engine ? null : wrapEl.getBoundingClientRect();
   const at = (u, v) => (engine ? view.win(u, v) : [mr.left + u * mr.width, mr.top + v * mr.height]);
@@ -224,20 +224,7 @@ function layout() {
   }
 
   // ---- write: only what changed ----
-  const bound = Math.max(0, Math.min(1, (k - 4.5) / 4)).toFixed(2);   // borders fade in from 4.5 to 8.5 px per degree
-  if (borderEl) {
-    if (borderEl.style.opacity !== bound) borderEl.style.opacity = bound;   // on the path itself: a property on .map-wrap would restyle everything in it
-    // the pieces near the view (the view and as much again on every side, so a quarter second of panning stays drawn)
-    let vb = [0, 0, 1, 1];
-    if (+bound && engine) {
-      const c = [[0, top], [vw, top], [0, bot], [vw, bot]].map(([x, y]) => view.uvAt(x, y)), us = c.map(p => p[0]), vs = c.map(p => p[1]);
-      const du = Math.max(...us) - Math.min(...us), dv = Math.max(...vs) - Math.min(...vs);
-      vb = [Math.min(...us) - du, Math.min(...vs) - dv, Math.max(...us) + du, Math.max(...vs) + dv];
-    }
-    const near = +bound ? borderPieces.filter(({ box: b }) => b[0] <= vb[2] && vb[0] <= b[2] && b[1] <= vb[3] && vb[1] <= b[3]) : [];
-    const key = near.map(p => p.i).join(',');
-    if (key !== borderKey) { borderKey = key; borderEl.setAttribute('d', near.map(p => p.d).join('')); }
-  }
+  borders();
   for (const [el, [side, dx], spot] of cardWrites) {
     if (el.dataset.at !== spot) el.dataset.at = spot;
     el.classList.toggle('left', side === 'left'); el.classList.toggle('below', side === 'below');
@@ -255,18 +242,42 @@ function layout() {
   if (pin && (pinned.style.left !== pin[0] + 'px' || pinned.style.top !== pin[1] + 'px')) { pinned.style.left = pin[0] + 'px'; pinned.style.top = pin[1] + 'px'; }
 }
 
-let q = 0;
+// The borders: faded in from 4.5 to 8.5 px per degree (on the path itself: a property on .map-wrap would restyle everything
+// in it), and only the pieces near the view are drawn (the view and as much again on every side), since a path of all
+// 10,000 points drawn at a deep zoom cost phones frames. Run on every move: it reads nothing, and redraws the path only
+// when the view leaves the part drawn.
+let drawnBox = null;
+function borders() {
+  if (!borderEl) return;
+  const engine = !!wrapEl.style.width && view.A, k = (engine ? view.W : wrapEl.offsetWidth) / 360;
+  const bound = Math.max(0, Math.min(1, (k - 4.5) / 4)).toFixed(2);
+  if (borderEl.style.opacity !== bound) borderEl.style.opacity = bound;
+  let box = [0, 0, 1, 1];
+  if (+bound && engine) {
+    const c = [[0, view.A.t], [view.A.w, view.A.t], [0, view.A.b], [view.A.w, view.A.b]].map(([x, y]) => view.uvAt(x, y)), us = c.map(p => p[0]), vs = c.map(p => p[1]);
+    box = [Math.min(...us), Math.min(...vs), Math.max(...us), Math.max(...vs)];
+  }
+  const inside = drawnBox && (+bound ? box[0] >= drawnBox[0] && box[1] >= drawnBox[1] && box[2] <= drawnBox[2] && box[3] <= drawnBox[3] : drawnBox === 'none');
+  if (inside) return;
+  if (!+bound) { drawnBox = 'none'; borderEl.setAttribute('d', ''); return; }
+  const du = box[2] - box[0], dv = box[3] - box[1];
+  drawnBox = [box[0] - du, box[1] - dv, box[2] + du, box[3] + dv];
+  const near = borderPieces.filter(({ box: b }) => b[0] <= drawnBox[2] && drawnBox[0] <= b[2] && b[1] <= drawnBox[3] && drawnBox[1] <= b[3]);
+  const key = near.map(p => p.i).join(',');
+  if (key !== borderKey) { borderKey = key; borderEl.setAttribute('d', near.map(p => p.d).join('')); }
+}
+
+let q = 0, idle = 0;
 const stats = { passes: 0, rereads: 0, markReads: 0 };   // the tests read these
 const again = () => { if (!q) q = requestAnimationFrame(layout); };   // the view moved: nothing to read again
-const marked = () => { marksDirty = true; again(); };   // a marker, the pin or a card changed
+const marked = () => { marksDirty = true; if (!idle) again(); };   // a marker, the pin or a card changed (while the map moves: when it stops)
 const soon = () => { fresh = true; again(); };   // anything else: read everything again
 // only real changes: the phone sets the zoom note's hidden on every frame of a zoom, to the value it already has
 const changed = recs => recs.some(r => r.oldValue !== r.target.getAttribute(r.attributeName));
 const watch = { attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class', 'style', 'open', 'data-detent', 'data-view'] };
-// A pan or zoom: the names ride along with the map (they sit in percent of it), so they are laid out again at most every
-// quarter second while it moves, and once 150 ms after it stops. A pass on every frame cost phones frames (CPU 4x).
-let lastPass = -1e9, idle = 0;
-view.onView(() => { clearTimeout(idle); idle = setTimeout(again, 150); if (performance.now() - lastPass > 250) again(); });
+// A pan or zoom: the names ride along with the map (they sit in percent of it) and are laid out again once it has been
+// still for 150 ms. Laying them out while it moved cost phones frames (CPU 4x), even a few times a second.
+view.onView(() => { borders(); clearTimeout(idle); idle = setTimeout(() => { idle = 0; again(); }, 150); });
 addEventListener('resize', soon);
 wrapEl.addEventListener('animationend', soon);   // the map's scale-in moves the whole sky without a view change
 document.fonts.ready.then(() => { if (labels.length) measure(); soon(); });

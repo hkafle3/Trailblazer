@@ -9,8 +9,8 @@ Every check reads real on-screen rectangles (getBoundingClientRect), not the lay
   bounds      no name leaves the window or crosses the top bar or the timeline
   a name      at least one place name is shown (a name, the pinned constellation, or the Milky Way at the whole sky); not
               required where an opened panel covers the names (see ZOOMED below)
-  reads       a 1.2 s zoom re-reads the controls at most twice and the markers on at most a quarter of its frames (reads
-              between other writes forced an extra layout on a frame, the slow frames of the first build)
+  quiet       a 1.2 s zoom lays the names out at most 3 times (when it stops, not on its frames: a pass per frame cost
+              phones frames) and reads the controls again at most twice
   card        the comet card never touches the Flat / 3D switch or the search box, at load and after a pan (the 881 px fix)
   still       C-0176 (tagged star, 1 of 1) has no trail and no tail; C-0175 (tagged unsure) keeps both
 Overlaps between the page's own elements (a card over a marker) are not judged.
@@ -112,10 +112,10 @@ async def main():
                 await pg.mouse.move(w * .5, h * .5); await pg.mouse.down(); await pg.mouse.move(w * .5 - 60, h * .5 + 30, steps=6); await pg.mouse.up(); await pg.wait_for_timeout(400)
                 c1 = await pg.evaluate(CARD)
                 check(c0 == [] and c1 == [], f"comet card clear of Flat / 3D and the search box ({w}x{h})", f"at load {c0}, after a pan {c1}")
-            # a glide from the whole sky to 60 px per degree: one layout pass a frame at most, and the controls read again
-            # only when something besides the view changed (the phone sets its zoom note's hidden on every frame, unchanged)
+            # a 1.2 s zoom from the whole sky to 60 px per degree: the names ride with the map and are laid out once it stops,
+            # and the controls are read again only when something besides the view changed
             g = await pg.evaluate(GLIDE)
-            check(g["rereads"] <= 2 and g["markReads"] <= g["passes"] / 4 and g["passes"] <= g["frames"] + 1, f"a zoom reads the page only when something on it changed ({w}x{h})", str(g))
+            check(g["passes"] <= 3 and g["rereads"] <= 2, f"names are laid out when a zoom stops, not on its frames ({w}x{h})", str(g))
             st = await pg.evaluate(STILL)
             check(st.get("C-0176") == {"trail": False, "tail": False} and st.get("C-0175") == {"trail": True, "tail": True}, f"C-0176 has no trail or tail ({w}x{h})", str({k: st.get(k) for k in ("C-0175", "C-0176")}))
             await sweep(pg, w, h, "plain")
