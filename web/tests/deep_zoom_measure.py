@@ -63,4 +63,4 @@ async def main():
             await pg.context.close()
         await b.close()
     print(json.dumps(out)); print("ALL PASS" if not T.fails else f"{len(T.fails)} FAILED: {T.fails}"); sys.exit(1 if T.fails else 0)
-asyncio.run(main())
+if __name__ == "__main__": asyncio.run(main())   # labels_measure.py imports FLIGHT
