@@ -25,7 +25,7 @@ What it computes for one star (one candidate position), from one field directory
 Run: python -I bake/colors_ref.py <field_dir> <ra> <dec> <out.json> [--rows measurements.npy]
 Field dir: twomass.csv catwise.csv allwise.csv gaia.csv exposures.json exp/*.npz (detector_v3_fetch format).
 """
-import sys, os, json, csv, numpy as np
+import sys, os, re, json, csv, numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
@@ -54,13 +54,32 @@ SEAMS = (3.82, 4.42)
 REQUIRED = dict(twomass=('designation', 'ra', 'dec', 'j_m', 'h_m', 'k_m', 'j_cmsig', 'h_cmsig', 'k_cmsig', 'ph_qual', 'jdate'),
                 catwise=('source_name', 'source_id', 'ra', 'dec', 'ra_pm', 'dec_pm', 'pmra', 'pmdec', 'sigpmra', 'sigpmdec', 'w1mpro_pm', 'w1sigmpro_pm', 'w2mpro_pm', 'w2sigmpro_pm', 'nb', 'ab_flags', 'cc_flags'),
                 allwise=('designation', 'ra', 'dec', 'w1mpro', 'w1sigmpro', 'w2mpro', 'w2sigmpro', 'nb', 'cc_flags', 'w1mjdmean', 'w2mjdmean'),
-                gaia=('source_id', 'ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag', 'phot_variable_flag'))
+                gaia=('source_id', 'ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag', 'phot_variable_flag'),
+                simbad=('main_id', 'otype', 'ra', 'dec'), vsx=('OID', 'Name', 'Type', 'RAJ2000', 'DEJ2000'))
+# SIMBAD object types that make a star a known variable or young star (decade.py's VAR_OTYPE, the list lead-check used;
+# matched as a substring of the type). Plan deviation 1.
+VAR_OTYPE = re.compile(r'(V\*|Ir\*|Or\*|Er\*|RI\*|FU\*|Y\*O|Y\*\?|TT\*|Ae\*|pr\*|LP\*|Mi\*|RR\*|Ce\*|EB\*|El\*|dS\*|Ro\*|BY\*|RS\*|AGN|QSO|Sy1|Sy2|SyG|Bla|BLL|No\*|CV\*|SN\*|C\*|S\*|AB\*|OH\*|WR\*|bC\*|gD\*|Pu\*|HH|YSO|TTS|Ext|Be\*)')
+# the self-check's systematic floor: fractional error added to each pass's 3 to 5 um band mean, calibrated by
+# bake/colors_calib.py on quiet stars of SPOT2 and a27 only (plan deviation 1)
+SYS_FLOOR = 0.0225                             # colors-build/ref/calib.json: 352 pass pairs of 122 quiet stars, robust spread 1.00 (3.17 without)
+# the comparison-choice systematic: bootstrap resamplings of the comparison stars, seeded (mulberry32, shared with colors.js)
+BOOT_N, BOOT_SEED = 200, 20261118
 fl = lambda v: float(v) if v not in ('', 'null', 'NaN', 'nan', None) else float('nan')
 mag2mjy = lambda m, b: ZP[b] * 10 ** (-0.4 * m)
 
 
 class Refused(Exception):
     """An input this method cannot use (a catalogue missing a column): the result is inconclusive, never guessed."""
+
+
+def read_vsx(path):
+    """VizieR ASU-TSV: '#' comments, a header row, a units row and a dashes row, then tab-separated rows."""
+    L = [l.rstrip('\n') for l in open(path) if l.strip() and not l.startswith('#')]
+    if not L or not L[0].startswith('OID'): raise Refused('the vsx catalogue is not a VizieR table')
+    head = [h.strip() for h in L[0].split('\t')]
+    miss = [c for c in REQUIRED['vsx'] if c not in head]
+    if miss: raise Refused(f'the vsx catalogue lacks {", ".join(miss)}')
+    return [dict(zip(head, (v.strip() for v in l.split('\t')))) for l in L[3:]]
 
 
 def read_csv(path, name):
@@ -381,11 +400,22 @@ def inconclusive(state, reason, **more):
 
 def load_field(d):
     cats = {}
-    for name in ('twomass', 'catwise', 'allwise', 'gaia'):
-        p = f'{d}/{name}.csv'
+    for name in ('twomass', 'catwise', 'allwise', 'gaia', 'simbad', 'vsx'):
+        p = f'{d}/{name}.tsv' if name == 'vsx' else f'{d}/{name}.csv'
         if not os.path.exists(p): raise Refused(f'the {name} catalogue is missing')
-        cats[name] = read_csv(p, name)
+        cats[name] = read_vsx(p) if name == 'vsx' else read_csv(p, name)
     return cats
+
+
+def known_variables(cats, kx, ky, ra0, dec0):
+    """Components within 5 arcsec of a Gaia DR3 VARIABLE, a SIMBAD variable or young-star type, or any VSX star."""
+    pts = [(r['ra'], r['dec']) for r in cats['gaia'] if r['phot_variable_flag'] == 'VARIABLE']
+    pts += [(r['ra'], r['dec']) for r in cats['simbad'] if VAR_OTYPE.search(r['otype'] or '')]
+    pts += [(r['RAJ2000'], r['DEJ2000']) for r in cats['vsx']]
+    pts = [(fl(a), fl(b)) for a, b in pts if np.isfinite(fl(a)) and np.isfinite(fl(b))]
+    if not pts: return np.zeros(len(kx), bool)
+    vx, vy = tan([p[0] for p in pts], [p[1] for p in pts], ra0, dec0)
+    return cKDTree(np.c_[vx, vy]).query(np.c_[kx, ky])[0] < VAR_R
 
 
 def load_exposures(d):
@@ -414,10 +444,8 @@ def build(cats, E, ra, dec, nproc=8):
     dd, j = cKDTree(np.c_[tx, ty]).query(np.c_[kx, ky])
     tm = lambda key: np.array([fl(TM[q][key]) if d < STAR_R else np.nan for d, q in zip(dd, j)])
     J, Hm, Km = tm('j_m'), tm('h_m'), tm('k_m'); qual = np.array([TM[q]['ph_qual'] if d < STAR_R else 'XXX' for d, q in zip(dd, j)])
-    # variables: Gaia DR3 VARIABLE within 5 arcsec; crowding: a CatWISE neighbour within 15 arcsec less than 2.5 mag fainter
-    var = np.zeros(n, bool); GV = [r for r in GA if r['phot_variable_flag'] == 'VARIABLE']
-    if GV:
-        vx, vy = tan([fl(r['ra']) for r in GV], [fl(r['dec']) for r in GV], ra0, dec0); var |= cKDTree(np.c_[vx, vy]).query(np.c_[kx, ky])[0] < VAR_R
+    # known variables (Gaia, SIMBAD, VSX); crowding: a CatWISE neighbour within 15 arcsec less than 2.5 mag fainter
+    var = known_variables(cats, kx, ky, ra0, dec0)
     tr = cKDTree(np.c_[kx, ky]); w1 = np.nan_to_num(K['w1'], nan=99); w2 = K['w2']
     crowd = np.array([any(w1[q] < w1[i] + 2.5 for q in tr.query_ball_point([kx[i], ky[i]], CROWD_R) if q != i) for i in range(n)])
     NORM = 'K' if qual[T] == 'AAA' else 'W1'
@@ -471,9 +499,14 @@ def per_source(rows, idx, passes):
 
 def moving(R, npass):
     """The self-check: the 3 to 5 um band mean of a comparison changes between two passes by over 3 sigma."""
+    return any(abs(z) > 3 for z in pair_z(R, npass, SYS_FLOOR))
+
+
+def pair_z(R, npass, floor):
+    """Pass-to-pass changes of the 3 to 5 um band mean, in sigmas: statistical errors plus floor x flux, in quadrature."""
     v = [band_mean(*R[k], 3.0, 5.0) for k in range(npass)]
     v = [x for x in v if np.isfinite(x[0])]
-    return any(abs(a[0] - b[0]) > 3 * np.hypot(a[1], b[1]) for q, a in enumerate(v) for b in v[q + 1:])
+    return [(a[0] - b[0]) / np.sqrt(a[1] ** 2 + b[1] ** 2 + floor ** 2 * (a[0] ** 2 + b[0] ** 2)) for q, a in enumerate(v) for b in v[q + 1:]]
 
 
 def fit_pass(M, S, Tm, spread, nn, FK):
@@ -540,6 +573,8 @@ def spectrum_result(rows, T, cand, col, tol, normflux, NORM, star, used, K, TM, 
     aS = float(np.sum(y[sel] * ph[sel] / sig[sel] ** 2) / np.sum(ph[sel] ** 2 / sig[sel] ** 2)) if NORM == 'K' and sel.any() else 1.0
     res['aS'] = aS
     res['bare'] = dict(lam=[r4(v) for v in lam], mjy=[r4(v) for v in aS * ph], spread=[r4(v) for v in aS * k_['_spread']])
+    res['excess_46'] = float(fits['all']['b'] / np.interp(4.6, lam, aS * ph))
+    res['comparison_systematic'] = comparison_systematic(S, T, comp, normflux, FK, NORM)
     ex = y / (aS * ph) - 1; exs = sig / (aS * ph); det_of = np.digitize(lam, DETEDGE)
     res['excess_by_detector'] = {f'D{d + 1}': dict(mean=float(np.average(ex[det_of == d], weights=1 / exs[det_of == d] ** 2)), err=float(1 / np.sqrt(np.sum(1 / exs[det_of == d] ** 2))),
                                                    n=int((det_of == d).sum())) for d in range(6) if (det_of == d).any()}
@@ -548,6 +583,37 @@ def spectrum_result(rows, T, cand, col, tol, normflux, NORM, star, used, K, TM, 
     res['old'] = old_points(S, comp, T, K, TM, AW)
     _sat(res, sat)
     return res
+
+
+def mulberry32(seed):
+    """The seeded generator colors.js shares (mulberry32): -> function giving floats in [0, 1)."""
+    st = [seed & 0xffffffff]; M = 0xffffffff
+    def rnd():
+        st[0] = (st[0] + 0x6D2B79F5) & M; a = st[0]
+        t = ((a ^ (a >> 15)) * (a | 1)) & M
+        t = ((t + (((t ^ (t >> 7)) * (t | 61)) & M)) & M) ^ t
+        return ((t ^ (t >> 14)) & M) / 4294967296
+    return rnd
+
+
+def comparison_systematic(S, T, comp, normflux, FK, NORM):
+    """The all-pass fit redone on BOOT_N resamplings (with replacement) of the comparison stars: the spread of T and of the
+    dust's share of the light at 4.6 um that the choice of comparisons alone makes (half the 16 to 84 percentile range)."""
+    rnd = mulberry32(BOOT_SEED); n = len(comp); M, Sg = S[T]['all']; Ts, Xs = [], []
+    A0 = np.array([S[i]['all'][0] / normflux(i) for i in comp])
+    import warnings
+    for _ in range(BOOT_N):
+        A = A0[[int(rnd() * n) for _ in range(n)]]
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore'); Tm = np.nanmedian(A, 0); spread = 1.4826 * np.nanmedian(np.abs(A - Tm), 0)
+        ok, f = fit_pass(M, Sg, Tm, spread, np.isfinite(A).sum(0), FK)
+        if f is None: continue
+        lam, y, ph, sig = f['_lam'], f['_y'], f['_ph'], f['_sig']; sel = lam < 2.42
+        aS = float(np.sum(y[sel] * ph[sel] / sig[sel] ** 2) / np.sum(ph[sel] ** 2 / sig[sel] ** 2)) if NORM == 'K' and sel.any() else 1.0
+        Ts.append(f['T']); Xs.append(f['b'] / np.interp(4.6, lam, aS * ph))
+    if len(Ts) < BOOT_N // 2: return None
+    pT, pX = np.percentile(Ts, [16, 50, 84]), np.percentile(Xs, [16, 50, 84])
+    return dict(n=len(Ts), T=[float(v) for v in pT], T_sys=float((pT[2] - pT[0]) / 2), excess_46=[float(v) for v in pX], excess_46_sys=float((pX[2] - pX[0]) / 2))
 
 
 def _sat(res, sat):
