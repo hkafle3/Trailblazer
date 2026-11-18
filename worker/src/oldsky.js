@@ -222,7 +222,9 @@ export async function oldskyTile(request, url, env, deps = {}) {
   const key = `${req.prefix}${name.replace(/\.fits$/, '')}.${crypto.randomUUID().slice(0, 8)}.fits`;
   try {
     // the test tile comes from this Worker's own assets (a Worker cannot fetch its own preview URL)
-    const via = test && env.ASSETS ? (u, init) => env.ASSETS.fetch(new Request(u, init)) : fetchFn;
+    // (asset answers may be compressed on the fly without a length: the 15.6 KB test tile is read whole and given one)
+    const via = test && env.ASSETS ? async (u, init) => { const a = await env.ASSETS.fetch(new Request(u, init)), b = await a.arrayBuffer();
+      return new Response(b, { status: a.status, headers: { 'Content-Length': String(b.byteLength), 'Content-Type': 'application/gzip' } }); } : fetchFn;
     const s = await tries(2, () => storeTile(t, key, req, env, via, deps.wrapBody, deps.DecompressionStream, test?.host));
     const rec = { key, bytes: s.bytes, gzip: s.gzip, etag: s.etag, header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) };
     await env.OLDSKY.put(req.prefix + OK(name), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
