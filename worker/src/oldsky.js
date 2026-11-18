@@ -65,13 +65,13 @@ const tries = async (n, fn) => {
 // after the header, padded to 2880 (the stored length for a plain file, the gzip's ISIZE for a gzip, which also caps what
 // it inflates to). The browser inflates every byte anyway: a gzip cut short or failing its checksum is caught there.
 export const isGzip = b => b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b;
-const MAX_INFLATED = 16 << 20, BLOCK = 2880, PREFIX = 64 << 10;
+const MAX_INFLATED = 16 << 20, BLOCK = 2880, PREFIX = 24 << 10;   // headers of these atlases are 4 to 11 blocks (11 to 32 KB inflated, a few KB as gzip)
 // the header cards and the bytes the whole file must hold, from the file's start (plain FITS, or the start of a gzip)
 export async function fitsHead(prefix) {
   let b = prefix;
   if (isGzip(prefix)) {
     const reader = new Blob([prefix]).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), parts = []; let n = 0;
-    try { while (n < PREFIX) { const c = await reader.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; } }
+    try { while (n < 40 * BLOCK) { const c = await reader.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; } }
     catch { /* the start of a gzip ends mid-stream: what came out before is the header */ }
     finally { reader.cancel().catch(() => {}); }
     b = new Uint8Array(n); let at = 0; for (const p of parts) { b.set(p, at); at += p.byteLength; }
@@ -201,7 +201,6 @@ export async function oldskyTile(request, url, env, deps = {}) {
   if (!env.OLDSKY) return json({ error: 'older survey unavailable', reason: 'no store' }, 503);
   const plan = await readJsonObject(env, req.prefix + PENDING_KEY), t = plan?.tiles.find(x => x.name === name);
   if (!t) return json({ error: 'no such tile in this spot\'s plan; ask GET /api/oldsky first' }, 404, { 'Cache-Control': 'no-store' });
-  if (await env.OLDSKY.head(req.prefix + OK(name))) return json({ name, done: true }, 200, { 'Cache-Control': 'no-store' });
   const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
   if (env.OLDSKY_TILE_LIMIT && !(await env.OLDSKY_TILE_LIMIT.limit({ key: `oldsky-tile:${ip}` })).success)
     return json({ error: 'too many tiles at once, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });

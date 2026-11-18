@@ -220,7 +220,6 @@ test('the tile route takes only names from the stored plan, never a URL, and one
   for (const bad of ['evil.fits', '..%2Fx', 'https%3A%2F%2Fevil.example%2Fa.fits']) assert.equal((await tile(bad)).status, 404, bad);
   assert.equal(irsa.calls.length, before, 'a refused name never reaches IRSA');
   assert.equal((await tile('allwise_W2_int.fits')).status, 200); assert.equal(irsa.calls.length, before + 1, 'one tile, one IRSA request');
-  assert.equal((await tile('allwise_W2_int.fits')).status, 200); assert.equal(irsa.calls.length, before + 1, 'a done tile is not fetched again');
   const mid = await oldsky(...req(q), env, DEPS(irsa.f));
   assert.equal(mid.status, 202); assert.deepEqual((await mid.json()).pending, ['allwise_W2_cov.fits']);
 });
