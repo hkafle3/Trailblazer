@@ -58,6 +58,9 @@
       <p class="xp-d3-hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 0 1 13-5.1M19.5 12a7.5 7.5 0 0 1-13 5.1"/><path d="M17.8 3.4v3.8H14M6.2 20.6v-3.8H10"/></svg>Drag to turn</p>
       <p class="xp-d3-nogl">This browser cannot draw the 3D view. The Distances list has every distance.</p>
       <p class="xp-d3-msg" id="depth-msg" role="status"></p>
+      <button type="button" class="xp-d3-retry" id="depth-retry" hidden>Try again</button>
+      <!-- the flat photo in step with the beam (phase 3): the same frame, the target ringed -->
+      <figure class="p3-inset" aria-hidden="true"><canvas width="336" height="336"></canvas><figcaption><span class="p3-when"></span><span class="p3-by"></span></figcaption></figure>
     </div>
     <!-- while a time-lapse builds: what it is doing and how far along (the status line in Advanced says it to screen readers) -->
     <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
@@ -230,7 +233,7 @@ import { middle, identify } from './live/identity.js';   // the one rule for wha
 import { MJD0 } from './skymap.js';
 import * as candTrack from './live/candtrack.js';
 import { thenAndNow } from './thenandnow.js';   // the third tab on a candidate's time-lapse
-import { designation } from './live/blink.js';   // &cand=: a detector candidate's track and votes
+import { designation, encode as blinkEncode, rgba as blinkRgba, N as BLINK_N, PIX as BLINK_PIX } from './live/blink.js';   // &cand=: a detector candidate's track and votes; the 2010 picture
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -340,7 +343,7 @@ function load(key) {
 }
 TARGETS.forEach(t => load(t.key).catch(() => {}));   // preload: the demo never waits on the network
 
-const state = { m: null, i: 0, playing: false, last: 0, diff: false, still: false, heat: false, fov: 6, spectral: [] };   // opens 6 arcmin wide; zoom to 1.5 for a 2-pixel move
+const state = { m: null, i: 0, old: false, playing: false, last: 0, diff: false, still: false, heat: false, fov: 6, spectral: [] };   // old: the 2010 entry is on screen (Then and now's older picture), state.i stays a SPHEREx visit   // opens 6 arcmin wide; zoom to 1.5 for a 2-pixel move
 const patch = document.getElementById('patch'), ctx = patch.getContext('2d');
 let talk = null;   // discuss.js, set up once the page's functions exist
 const mini = document.getElementById('mini'), mini2d = mini.getContext('2d');
@@ -547,6 +550,7 @@ function view(m) {
 
 function draw() {
   const m = state.m; if (!m) return;
+  if (state.old && old.on()) return drawOld(m);
   if (state.still || state.heat) stack(m);
   if (state.still && state.comp?.main === m) state.comp.layers.forEach(L => stack(L.m));
   const G = m.grid, f = m.frames[state.i], v = view(m), { cw, ch, ox, oy } = v;
@@ -682,7 +686,7 @@ function draw() {
   // for tests: the target's mark as drawn, in canvas pixels: the candidate's ring, the known star's check, or this
   // visit's orange dot when it is the dot (a source measured off it is something else); null when nothing marks it
   window.__mark = { name: tg.name, px: candTrack.on() ? window.__cand.ring : (hit && merged) || starMark ? tgPx : f.x != null && tg.id.srcOff == null ? toPx(f.x, f.y) : null };
-  sayVerdict(m, f);
+  sayVerdict(m, f); sayDepth();
   if (pvView === 'depth') depth.frame();
   knownList(f);
   drawMini(m, f, v);
@@ -891,7 +895,7 @@ function panel(m) {
   else el.innerHTML = `Source seen in ${seen} of ${m.frames.length} visits: a motion needs 3 or more, spanning 6 months`;
   const matched = m.frames.filter(f => f.matched).length;
   document.getElementById('det').title = `Wavelength ${m.lam0.toFixed(2)} µm: ${matched} of ${m.frames.length} visits within ${m.lam_tol.toFixed(3)} µm, detector ${m.detector}`;
-  timeline.visits(m);
+  old.update(); timeline.visits(m);
   spectral.follow(m.lam0);   // the dial opens on this patch's own wavelength
 }
 
@@ -901,12 +905,20 @@ const mjdMs = mjd => (mjd - 40587) * DAY;
 const timeline = (() => {
   const line = document.getElementById('tl-line'), ticks = document.getElementById('tl-ticks'), dots = document.getElementById('tl-visits');
   const knob = document.getElementById('play'), date = document.getElementById('t-date');
-  let from = 0, span = 1, built = '', times = [];
-  const pos = t => (t - from) / span * 100 + '%';
+  let from = 0, span = 1, built = '', times = [], oldT = null;
+  // with the 2010 entry: 2009 to 2012 on the left, a break, then SPHEREx's months (the phase 3 mockup's axis)
+  const Y = y => Date.UTC(y, 0, 1);
+  const x01 = t => (oldT == null ? (t - from) / span : t < Y(2013) ? .03 + (t - Y(2009)) / (Y(2013) - Y(2009)) * .17 : .27 + (t - from) / span * .71);
+  const pos = t => x01(t) * 100 + '%';
+  const tOf = x => (oldT == null ? from + x * span : x < .235 ? Y(2009) + (x - .03) / .17 * (Y(2013) - Y(2009)) : from + (x - .27) / .71 * span);
   function range(t0, t1) {   // a tick for every month from t0's month to t1
     const s = new Date(t0), key = `${s.getUTCFullYear()}-${s.getUTCMonth()}-${t1}`;
-    if (key === built) return;
-    built = key; from = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1); span = t1 - from; ticks.textContent = '';
+    if (key + oldT === built) return;
+    built = key + oldT; from = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1); span = t1 - from; ticks.textContent = '';
+    if (oldT != null) {   // 2009 to 2012, 2010 named; then the break
+      for (const y of [2009, 2010, 2011, 2012]) { const t = document.createElement('span'); t.className = 'tl-tick old'; t.style.left = pos(Y(y)); t.innerHTML = `<b>${y === 2010 ? '2010' : ''}</b>`; ticks.append(t); }
+      const b = document.createElement('i'); b.className = 'tl-break'; b.style.left = '23.5%'; ticks.append(b);
+    }
     for (let y = s.getUTCFullYear(), mo = s.getUTCMonth(); Date.UTC(y, mo, 1) <= t1; mo === 11 ? (y++, mo = 0) : mo++) {
       const t = document.createElement('span'); t.className = 'tl-tick'; t.style.left = pos(Date.UTC(y, mo, 1)); t.dataset.m = mo;
       t.innerHTML = `<b>${MONTHS[mo]}</b>${mo === 0 ? `<small>${y}</small>` : ''}`; ticks.append(t);
@@ -916,11 +928,11 @@ const timeline = (() => {
   // Month names only as often as they fit (a phone has about 14 px a month): every month, or every 2nd, 3rd, 6th or
   // 12th, counted from January so January (with its year) always shows. The ticks themselves all stay.
   function thin() {
-    const all = [...ticks.children];
+    const all = [...ticks.children].filter(t => t.classList.contains('tl-tick') && !t.classList.contains('old'));
     if (all.length < 2) return;
-    const month = line.getBoundingClientRect().width / (span / (30.44 * DAY));   // px per month
+    const month = line.getBoundingClientRect().width * (oldT == null ? 1 : .71) / (span / (30.44 * DAY));   // px per month
     const widest = Math.max(...all.map(t => t.querySelector('b').getBoundingClientRect().width));
-    const step = [1, 2, 3, 6, 12].find(n => n * month >= widest + 8) ?? 12;
+    const step = [1, 2, 3, 6, 12].find(n => n * month >= widest + 8 && (oldT == null || n >= 3)) ?? 12;   // with the 2010 stretch: every quarter at most (the phase 3 mockup)
     for (const t of all) t.classList.toggle('quiet', t.dataset.m % step !== 0);
   }
   new ResizeObserver(thin).observe(line);
@@ -930,29 +942,31 @@ const timeline = (() => {
     async visits(m) {
       await coverLoaded;
       if (state.m !== m) return;
-      times = m.frames.map(f => mjdMs(f.mjd));
+      times = m.frames.map(f => mjdMs(f.mjd)); oldT = old.on() ? old.t : null;
       const t0 = Math.min(cover ? mjdMs(cover.mjd0) : Infinity, times[0]), t1 = Math.max(cover ? mjdMs(cover.mjd0 + cover.days) : -Infinity, times.at(-1));
       range(t0, t1);
       dots.textContent = '';
-      for (const t of times) { const d = document.createElement('i'); d.className = 'tl-visit'; d.style.left = pos(t); dots.append(d); }
-      knob.setAttribute('aria-valuemax', times.length - 1);
+      for (const t of [...(oldT != null ? [oldT] : []), ...times]) { const d = document.createElement('i'); d.className = 'tl-visit'; d.style.left = pos(t); dots.append(d); }
+      knob.setAttribute('aria-valuemax', dots.children.length - 1);
       api.show(m, state.i);
     },
     show(m, i) {
-      if (!built || times.length !== m.frames.length) return;   // visits() calls back once the line is built
-      line.style.setProperty('--x', pos(times[i]));
-      date.textContent = new Date(times[i]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-      knob.setAttribute('aria-valuenow', i);
-      knob.setAttribute('aria-valuetext', `Visit ${i + 1} of ${m.frames.length}, ${monthYear(m.frames[i].start)}`);
+      if (!built || times.length !== m.frames.length || (oldT != null) !== old.on()) return;   // visits() calls back once the line is built
+      const k = entryOf(), n = dots.children.length, t = state.old ? oldT : times[i];
+      line.style.setProperty('--x', pos(t));
+      date.textContent = state.old ? '2010' : new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      [...dots.children].forEach((d, j) => d.classList.toggle('cur', j === k));
+      knob.setAttribute('aria-valuenow', k);
+      knob.setAttribute('aria-valuetext', state.old ? `${old.label}, entry 1 of ${n}` : `Visit ${i + 1} of ${m.frames.length}, ${monthYear(m.frames[i].start)}`);
     },
-    nearest(e) {   // the visit closest to the pointer
-      const b = line.getBoundingClientRect(), t = from + (e.clientX - b.left) / b.width * span;
-      let best = 0; times.forEach((x, n) => { if (Math.abs(x - t) < Math.abs(times[best] - t)) best = n; });
-      return best;
+    nearest(e) {   // the entry closest to the pointer (-1: the 2010 picture)
+      const b = line.getBoundingClientRect(), t = tOf((e.clientX - b.left) / b.width), all = [...(oldT != null ? [oldT] : []), ...times];
+      let best = 0; all.forEach((x, n) => { if (Math.abs(x - t) < Math.abs(all[best] - t)) best = n; });
+      return best - (oldT != null ? 1 : 0);
     },
   };
   // a press on the handle that does not move plays/pauses; any drag, or a press on the line, picks a visit
-  const tl = document.getElementById('tl'), go = n => { if (state.m && n !== state.i) { state.i = n; draw(); } };
+  const tl = document.getElementById('tl'), go = n => { if (state.m && n !== entryOf() - (old.on() ? 1 : 0)) setEntry(n); };
   let down = null;
   tl.addEventListener('pointerdown', e => {
     if (e.button || !state.m) return;
@@ -973,9 +987,9 @@ const timeline = (() => {
   tl.addEventListener('pointercancel', () => { down = null; });
   knob.addEventListener('keydown', e => {
     if (!state.m) return;
-    const N = state.m.frames.length, step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
-    if (step) { stop(); go((state.i + step + N) % N); }
-    else if (e.key === 'Home') { stop(); go(0); }
+    const N = state.m.frames.length, o = old.on() ? 1 : 0, step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+    if (step) { stop(); go((entryOf() + step + N + o) % (N + o) - o); }
+    else if (e.key === 'Home') { stop(); go(-o); }
     else if (e.key === 'End') { stop(); go(N - 1); }
     else if (e.key === 'Enter' || e.key === ' ') togglePlay();
     else return;
@@ -1001,11 +1015,12 @@ function show(m, query, opts = {}) {
     if (onScreen()) check(); else owedCheck = check;
   }
   shownFound = [found, foundAt];   // the discovery belongs to what is on screen: a failed search later restores it
+  state.old = false; depthRetry(null);
   Object.assign(state, { m }, opts.keep ? { i: Math.min(state.i, m.frames.length - 1) } : { i: opts.day != null ? nearestVisit(m, opts.day) : opts.diff ? m.frames.length - 1 : opts.t != null ? Math.max(0, m.frames.findIndex(f => f.at_t)) : 0, diff: !!opts.diff });
   document.getElementById('diff').checked = state.diff;
   dirRaDec(m.ra * D2R, m.dec * D2R, lookGoal);
   candTrack.commit(query);
-  document.getElementById('pv-name').textContent = targetName(m) ?? m.comet ?? 'Sky spot';   // &comet=: the comet its page opened
+  document.getElementById('pv-name').textContent = targetName(m) ?? m.comet ?? (blinkOn ? blinkId : 'Sky spot');   // &comet=: the comet its page opened; &blink=: the candidate
   if (opts.comet && m.t != null && m.comet === undefined) {   // checked once per patch; until then, and if it fails, an ordinary view
     m.comet = null;
     cometOf(m, opts.comet).then(id => {
@@ -1204,6 +1219,7 @@ function search(ra, dec, det, opts = {}) {
     owed = !went && !!state.m && state.mode !== 'sky' && rc.moving();
     setStatus(text + (went || owed ? ' Back at the last spot.' : hint), true);
     if (full) statusEl.title = full;
+    if (!state.m) depthRetry(() => { depthRetry(null); search(ra, dec, det, opts); });
   };
   // the worker itself failed (pipeline.js or a module it imports did not load): start a new one next time
   builder.onerror = e => { e.preventDefault(); builder.terminate(); builder = null; if (id === job) fail('Could not load the image pipeline.', ' Try again in a moment.', e.message); };
@@ -1534,14 +1550,98 @@ document.getElementById('det').onchange = () => {
 // Depth shows the beam in the frame and the Distances card in the right column, for the patch and the visit on screen.
 // The region's photo for the beam's far end: the whole cut-out of the visit on screen, as the mini-map draws it.
 const regionCv = document.createElement('canvas');
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function spanText(a, b) {   // "6 Mar 2026", "14 to 18 Sep 2025", "28 Mar to 6 Apr 2026" (ISO dates)
+  const d = x => [+x.slice(8, 10), MON3[+x.slice(5, 7) - 1], x.slice(0, 4)], [d0, m0, y0] = d(a), [d1, m1, y1] = d(b);
+  return a === b ? `${d0} ${m0} ${y0}` : m0 === m1 && y0 === y1 ? `${d0} to ${d1} ${m0} ${y0}` : y0 === y1 ? `${d0} ${m0} to ${d1} ${m1} ${y1}` : `${d0} ${m0} ${y0} to ${d1} ${m1} ${y1}`;
+}
 function region() {
   const m = state.m; if (!m || state.mode === 'sky') return null;
   const f = m.frames[state.i], G = m.grid;
+  if (state.old && old.on()) return { m, f, canvas: old.crop(m), old: true, when: old.when, by: old.by };
   if (regionCv.width !== G) regionCv.width = regionCv.height = G;
   const img = new ImageData(G, G);
   for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) shade(m, f, c, r, img.data, 4 * (r * G + c));
   regionCv.getContext('2d').putImageData(img, 0, 0);
-  return { m, f, canvas: regionCv };
+  return { m, f, canvas: regionCv, when: spanText(f.start, f.end ?? f.start), by: `SPHEREx · ${f.lam.toFixed(1)} µm` };
+}
+// each pixel's brightness (0 to 1) in the median of the visit frames, with the median's own stretch: Depth's stars glow
+// by it (the phase 3 mockup's rule, SOURCES.md). What moves drops out of a median; a saturated core (no data) counts as 1.
+function levels(m) {
+  if (m.levels) return m.levels;
+  const G = m.grid, n = G * G, fr = m.frames.map(f => f.px).filter(Boolean); if (!fr.length) return null;
+  const med = new Float32Array(n), v = [];
+  for (let k = 0; k < n; k++) { v.length = 0; for (const a of fr) if (Number.isFinite(a[k])) v.push(a[k]); v.sort((x, y) => x - y); med[k] = v.length ? v[v.length >> 1] : NaN; }
+  const s = Array.from(med).filter(Number.isFinite).sort((x, y) => x - y), q = p => s[Math.min(s.length - 1, Math.floor(p * s.length))], lo = q(.05), hi = q(.997), A = Math.asinh(10);
+  m.levels = med.map(x => (Number.isFinite(x) ? Math.min(1, Math.asinh(Math.max(0, (x - lo) / (hi - lo)) * 10) / A) : 1));
+  return m.levels;
+}
+
+// ---------- the 2010 entry (phase 3): Then and now's older picture joins the time-lapse where its band was measured ----------
+// One Then and now run per page (thenandnow.js: the baked blink, or the browser's own build) serves the tab and Depth. The
+// entry is there only while that band's result is ok and the patch's wavelength lies in the band SPHEREx rebuilt it from
+// (W2: 3.96 to 5 µm, so D5 and D6 near 4.6 µm); it goes when the dial leaves the band. state.i keeps indexing m.frames and
+// state.old marks the 2010 entry. Photo then draws the older picture with no layers (they are SPHEREx-only), and Depth's
+// subject glows at 1 there and at the measured ratio on every SPHEREx frame (steady when there is no entry).
+const OLD_BAND = { W2: '4.6', W1: '3.4', Ks: '2.2' }, BANDS = ['W2', 'W1', 'Ks'];
+const old = {
+  res: null, band: null, cv: null, cropKey: '',
+  on() { return !!this.band; },
+  get r() { return this.res?.[this.band]; },
+  get ratio() { return this.r?.report.lead_ratio ?? null; },
+  get t() { const d = this.r.report.old.dates; return (Date.parse(d[0]) + Date.parse(d.at(-1))) / 2; },
+  get year() { return this.r.report.old.dates[0].slice(0, 4); },
+  get label() { return `${this.year}, ${/WISE/.test(this.r.report.old.survey) ? 'AllWISE' : '2MASS'} ${this.band}`; },
+  get when() { const d = this.r.report.old.dates, f = x => `${MON3[+x.slice(5, 7) - 1]} ${x.slice(0, 4)}`; return f(d[0]) === f(d.at(-1)) ? f(d[0]) : `${MON3[+d[0].slice(5, 7) - 1]} to ${f(d.at(-1))}`; },
+  get by() { return `${/WISE/.test(this.r.report.old.survey) ? 'AllWISE' : '2MASS'} · ${OLD_BAND[this.band]} µm`; },
+  // the band the patch's wavelength lies in, among those measured ok
+  update() {
+    const m = state.m, lam = m?.lam0;
+    const band = blinkOn && m && this.res ? BANDS.find(k => this.res[k]?.state === 'ok' && this.res[k].report?.spherex?.synth_range_um && lam >= this.res[k].report.spherex.synth_range_um[0] && lam <= this.res[k].report.spherex.synth_range_um[1]) ?? null : null;
+    if (band === this.band) return;
+    this.band = band; this.cropKey = '';
+    if (!band) state.old = false;
+    if (m) { timeline.visits(m); draw(); }
+  },
+  // the older picture on the patch's own grid: Then and now's 2" frame (its own stretch) averaged into each patch pixel
+  crop(m) {
+    const key = `${m.key}|${this.band}`; if (key === this.cropKey) return this.cv;
+    const G = m.grid, P = m.arcsec_per_pixel, C = (G - 1) / 2, N = BLINK_N, C0 = (N - 1) / 2, r = this.r, { lo, hi } = r.report.display.stretch;
+    const e = blinkEncode(r.frames.ow, lo, hi), D = Math.PI / 180;
+    const dE = (m.ra - blinkRa) * Math.cos(m.dec * D) * 3600, dN = (m.dec - blinkDec) * 3600, k = P / BLINK_PIX, img = new ImageData(G, G);
+    for (let row = 0; row < G; row++) for (let col = 0; col < G; col++) {
+      const east = -(col - C) * P + dE, north = (C - row) * P + dN, x0 = C0 - east / BLINK_PIX, y0 = C0 + north / BLINK_PIX;
+      let sum = 0, n = 0;
+      for (let iy = Math.round(y0 - k / 2 + .5); iy <= Math.round(y0 + k / 2 - .5); iy++) for (let ix = Math.round(x0 - k / 2 + .5); ix <= Math.round(x0 + k / 2 - .5); ix++) {
+        if (ix < 0 || iy < 0 || ix >= N || iy >= N || e.mask[iy * N + ix]) continue; sum += e.g[iy * N + ix]; n++;
+      }
+      img.data.set(n ? [sum / n, sum / n, sum / n, 255] : [22, 26, 34, 255], 4 * (row * G + col));
+    }
+    this.cv ??= document.createElement('canvas'); this.cv.width = this.cv.height = G; this.cv.getContext('2d').putImageData(img, 0, 0);
+    this.cropKey = key; return this.cv;
+  },
+};
+const entryOf = () => (state.old ? 0 : state.i + (old.on() ? 1 : 0));   // the entry on screen: [2010?, ...frames]
+function setEntry(n) { if (n < 0 && !old.on()) return; state.old = n < 0; if (n >= 0) state.i = n; draw(); }
+function nextEntry() { const o = old.on() ? 1 : 0, N = state.m.frames.length; setEntry((entryOf() + 1) % (N + o) - o); }
+// the Photo canvas on the 2010 entry: the older picture alone, cropped as the photo is
+function drawOld(m) {
+  const v = view(m), W = patch.width, H = patch.height;
+  ctx.imageSmoothingEnabled = false; ctx.fillStyle = 'rgb(22,26,34)'; ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(old.crop(m), v.ox, v.oy, v.cw, v.ch, 0, 0, W, H);
+  window.__mark = null;
+  sayVerdict(m, m.frames[state.i]); sayDepth();
+  document.getElementById('vVisit').innerHTML = `<b>${old.when}</b>: ${old.by.replace(' · ', ' at ')}, from Then and now. Color Difference, Hide Stationary and Heat are SPHEREx-only`;
+  timeline.show(m, state.i);
+  if (pvView === 'depth') depth.frame();
+  patch.setAttribute('aria-label', `${old.by.split(' · ')[0]} picture of ${targetName(m) ?? 'the spot'}, ${old.when}`);
+  moreBelow();
+}
+// in Depth, a measured spot's own sentence (the mockup's): where it is, how far, how its light changed
+function sayDepth() {
+  const r = old.res?.W2?.state === 'ok' ? old.res.W2 : null, ctx2 = r?.context;
+  if (pvView !== 'depth' || !r || !ctx2?.region || !ctx2?.distance_ly) return;
+  document.getElementById('pv-say').textContent = `A star in ${ctx2.region}, about ${(Math.round(ctx2.distance_ly / 50) * 50).toLocaleString('en-US')} light-years away. At 4.6 µm it gives ${r.report.lead_ratio.toFixed(2)} times the light it did in ${r.report.old.dates[0].slice(0, 4)}.`;
 }
 const depth = depthView({
   api: API, box: document.getElementById('depth3d'), list: document.getElementById('dist-list'), status: document.getElementById('dist-status'), region,
@@ -1579,24 +1679,34 @@ const depth = depthView({
     const { name, pos } = targetAt(m, f), half = m.grid * m.arcsec_per_pixel / 2;
     return { u: pos ? -pos[0] / half : null, v: pos ? pos[1] / half : null, name: name ?? 'the dot in the middle' };
   },
-  targetName,
+  targetName: m => targetName(m) ?? (blinkOn ? blinkId : null),   // a candidate's time-lapse names its spot as the candidate
+  targetDist: (ly, small) => (blinkOn ? `about ${(Math.round(ly / 50) * 50).toLocaleString('en-US')} ${small ? 'ly' : 'light-years'}` : null),   // as the candidate page says it
+  levels,
+  // the subject's glow: 1 on the 2010 entry, the measured ratio on SPHEREx's (only while the entry is there; else steady)
+  glow: () => (old.on() ? { b: state.old ? 1 : old.ratio, sub: state.old ? `its ${old.year} brightness` : `${old.ratio.toFixed(2)}× its ${old.year} brightness` } : { b: 1, sub: null }),
   // what the target's pick and place depend on, besides the depth answer: its identity, and targetAt's place and exposure
   // time (a later SkyBoT answer can move a match to a closer exposure without changing who it is)
   matchKey: () => { const m = state.m, t = m && targetAt(m, m.frames[state.i]); return JSON.stringify([state.verdict?.match ?? null, t?.pos ?? null, t?.id?.pass.match?.t ?? null]); },
 });
 window.__depth = depth;   // for tests/timelapse_redesign_ui.py
-if (blinkOn) document.getElementById('tab-tn').hidden = false;
+if (blinkOn) { document.getElementById('tab-tn').hidden = false; queueMicrotask(tnRun); }
+// every frame failed (no manifest, so no patch to place anything on): Depth says so and offers a retry; the knob is off
+function depthRetry(again) {
+  const b = document.getElementById('depth-retry');
+  b.hidden = !again; document.getElementById('play').disabled = !!again; b.onclick = again;
+  if (again) { stop(); depth.empty('The photos did not load, so there is nothing to place yet.'); }
+}
 const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]')];
 function dropBlink() {
-  document.getElementById('tab-tn').hidden = true;
+  document.getElementById('tab-tn').hidden = true; old.res = null; old.update();
   if (document.body.classList.contains('tn-on')) setView('photo');
 }
 function setView(v, user = false) {
   pvView = v;
   document.body.classList.toggle('depth', v === 'depth');
   for (const t of viewTabs) { const on = t.dataset.view === v; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; }
-  if (v === 'depth') {   // the Discuss sheet, picking a star and its card, and playing are Photo things: in Depth the right column is Distances
-    talk?.close(); stop();
+  if (v === 'depth') {   // the Discuss sheet and picking a star and its card are Photo things: in Depth the right column is Distances (playing carries on)
+    talk?.close();
     if (spec.mode || spec.at) closeSpec(false);
   }
   depth.show(v === 'depth');
@@ -1605,8 +1715,14 @@ function setView(v, user = false) {
   if (v === 'photo') draw();
   moreBelow();
 }
-// Then and now: built the first time the tab opens; the photo's own controls step aside while it shows
+// Then and now: one run per page, started with the page on a candidate's time-lapse (Depth's 2010 entry reads it too);
+// the photo's own controls step aside while its tab shows
 let tn = null;
+function tnRun() {
+  if (tn) return;
+  tn = thenAndNow(null, { ra: blinkRa, dec: blinkDec, mode: 'lapse', onResult: r => { old.res = r; old.update(); }, slots: { band: document.getElementById('tn-band'), blink: document.getElementById('tn-blink'),
+    ctl: document.getElementById('tn-ltl'), say: document.getElementById('tn-say'), facts: document.getElementById('tn-facts') } });
+}
 function thenNow(on) {
   document.body.classList.toggle('tn-on', on);
   for (const id of ['tn-lapse', 'tn-ltl', 'tn-go', 'tn-who']) document.getElementById(id).hidden = !on;
@@ -1616,9 +1732,7 @@ function thenNow(on) {
   if (on) {
     stop();
     const ra = parseFloat(P.get('ra')), dec = parseFloat(P.get('dec'));
-    if (!tn) tn = thenAndNow(null, { ra, dec, mode: 'lapse', slots: { band: document.getElementById('tn-band'), blink: document.getElementById('tn-blink'),
-      ctl: document.getElementById('tn-ltl'), say: document.getElementById('tn-say'), facts: document.getElementById('tn-facts') } });
-    tn.setActive(true);
+    tnRun(); tn.setActive(true);
     h1.textContent = designation(ra, dec);
     document.getElementById('tn-go').href = `candidate.html?id=${encodeURIComponent(blinkId)}`;
   } else tn?.setActive(false);
@@ -1660,8 +1774,9 @@ for (const b of [document.getElementById('share'), document.getElementById('shar
 
 const playBtn = document.getElementById('play');
 function stop() { state.playing = false; playBtn.classList.remove('on'); }
-// playing is the time-lapse, a Photo thing: Depth asks the catalogs once per visit, so it does not play through them
-function togglePlay() { if (state.playing) return stop(); if (pvView === 'depth') setView('photo', true); state.playing = true; state.last = 0; playBtn.classList.add('on'); }
+// playing steps the entries in Photo (every 0.9 s) and in Depth (every 1.6 s: the subject eases between them); Depth
+// keeps each visit's distances, so stepping through them asks the catalogs once per visit
+function togglePlay() { if (state.playing) return stop(); if (playBtn.disabled) return; state.playing = true; state.last = pvView === 'depth' ? performance.now() : 0; playBtn.classList.add('on'); }
 // Zoom: drag right to zoom in. The bar fills as you do: 12 arcmin (the whole region) is empty, 1 arcmin is full.
 const fov = document.getElementById('fov');
 const setFov = () => { state.fov = 13 - +fov.value; document.getElementById('fov-w').textContent = `${state.fov} arcmin`; fov.style.setProperty('--p', (+fov.value - 1) / 11 * 100 + '%'); fov.setAttribute('aria-valuetext', `${state.fov} arcmin wide`); };
@@ -1832,7 +1947,8 @@ function frame(now) {
     camera.lookAt(camera.position.clone().add(look));
   }
   world?.update(now, frameStart);
-  if (state.playing && state.m && now - state.last > 900) { state.last = now; state.i = (state.i + 1) % state.m.frames.length; draw(); }
+  if (state.playing && state.m && now - state.last > (pvView === 'depth' ? 1600 : 900)) { state.last = now; nextEntry(); }
+  if (pvView === 'depth') depth.tick();   // the one clock: the beam, the photo plane, the inset and the glow move with it
   renderer?.render(scene, camera);
 }
 requestAnimationFrame(frame);

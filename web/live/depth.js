@@ -7,6 +7,10 @@
 // - the Distances list: every placed object, nearest first, with its source and error; then what has no distance, and
 //   any source that is still answering (pending, asked again after retry_after) or not answering (unavailable).
 // Nothing without a catalog distance gets a number. Names from the network are set with textContent.
+// Phase 3 (the time-lapse plays in Depth, phase3-mockups/mockup.html): every Gaia star glows at its distance by its
+// brightness in the median of the visit frames; the photo plane and a flat inset of the photo step with the frames (the
+// page's one clock calls tick() every animation frame); the target's glow eases to the frame's measured brightness
+// (page.glow(): a changing star such as C-0176 pulses, 1 on its 2010 frame and the Then and now ratio on SPHEREx's).
 import * as THREE from 'three';
 
 const TAU = Math.PI * 2, D2R = Math.PI / 180, LY_PC = 3.26156, AU_LY = 1.58125e-5;
@@ -195,7 +199,11 @@ export function controls(el, { S, Z, yaw, render, zoomBox, lim = { a: [-1.3, 1.9
 // the region, north up), target(m, f, stars) -> index of the star that is the patch's own target, or -1 }
 export function depthView(page) {
   const { box, list, status } = page;
-  let S = null, ctl3 = null, gl = true, scene3 = null, data = null, asked = null, retry = 0, tries = 0, ctl = null, open = false, raf = 0;
+  let S = null, ctl3 = null, gl = true, scene3 = null, data = null, asked = null, retry = 0, tries = 0, ctl = null, open = false, dirty = true;
+  const answers = new Map();   // completed answers (no source pending), by request: playing comes back to a visit without asking again
+  const patchOf = m => `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`;
+  // another visit of the same patch, before its answer: the stars stay (Gaia's, for the patch), no SkyBoT mark of another visit
+  const starsOnly = d => ({ ...d, sources: Object.fromEntries(Object.entries(d.sources).map(([k, v]) => [k, k === 'sso' ? { ...v, placed: [], unknown: [] } : v])) });
   const yaw = { a: 0, p: 0, t0: 0 };   // drag: the turn and tilt added to the side view; t0: when the swing out started
   const Z = { k: 1, x: 0, y: 0 };   // the zoom: k times, the view's top-left corner at (x, y) CSS px of the unzoomed view
 
@@ -204,7 +212,10 @@ export function depthView(page) {
   async function fetchNow(url, m, f) {
     ctl?.abort(); clearTimeout(retry);
     const c = ctl = new AbortController();
-    if (!data || data.url !== url) { data = null; say('Asking the catalogs how far each thing is...'); paintList(); clearBeam('Asking the catalogs how far each thing is...'); }
+    if (!data || data.url !== url) {
+      if (data?.d && patchOf(data.m) === patchOf(m)) { data = { url, m, f, d: starsOnly(data.d), stale: true }; msg(''); paintList(); build(); }
+      else { data = null; say('Asking the catalogs how far each thing is...'); paintList(); clearBeam('Asking the catalogs how far each thing is...'); }
+    }
     let d;
     try {
       const r = await fetch(url, { signal: c.signal });
@@ -212,13 +223,21 @@ export function depthView(page) {
       if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
     } catch (e) {
       if (c.signal.aborted) return;
-      data = { url, m, f, failed: String(e.message || e) }; say(`Could not ask the catalogs: ${data.failed}. Trying again in 30 s.`); paintList();
-      clearBeam(`Could not ask the catalogs for distances (${data.failed}). Trying again in 30 s.`, true);
+      const why = String(e.message || e);
+      if (data?.d && patchOf(data.m) === patchOf(m)) {   // a later visit's request failed: the patch's stars stay, and the failure is said
+        data = { url, m, f, d: starsOnly(data.d), stale: true, failed: why }; paintList(); build();
+        say(`The catalog check for this visit failed (${why}). The stars of this patch stay; trying again in 30 s.`);
+        msg(`The catalog check for this visit failed (${why}). Trying again in 30 s.`, true);
+      } else {
+        data = { url, m, f, failed: why }; say(`Could not ask the catalogs: ${data.failed}. Trying again in 30 s.`); paintList();
+        clearBeam(`Could not ask the catalogs for distances (${data.failed}). Trying again in 30 s.`, true);
+      }
       retry = setTimeout(() => fetchNow(url, m, f), 30000);
       return;
     }
     if (asked !== url) return;
     data = { url, m, f, d };
+    if (!Object.values(d.sources).some(s => s.status === 'pending')) answers.set(url, d);
     const down = Object.entries(d.sources).filter(([, s]) => s.status === 'unavailable').map(([k]) => SOURCE[k]);
     msg(down.length === Object.keys(d.sources).length ? `No catalog is answering for this visit (${down.join(', ')}). Trying again in a minute.` : '', down.length === Object.keys(d.sources).length);
     paintList(); build();
@@ -236,7 +255,8 @@ export function depthView(page) {
     for (const s of scene3.beads) { s.sp.removeFromParent(); s.lab.remove(); }
     for (const k of scene3.marks) k.lab.remove();
     scene3.beads = []; scene3.marks = []; scene3.dots = [];
-    for (const p of [scene3.cloud, scene3.unk]) p.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    for (const p of [scene3.cloud, scene3.unk, scene3.stars]) p.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    starList = [];
     render();
   }
 
@@ -253,8 +273,8 @@ export function depthView(page) {
     pickedFor = page.matchKey();
     const t = page.target(data.m, data.f, all), named = page.named?.(data.m, data.f, all) ?? null;   // named: a known star that is not the target keeps its name
     const letters = new Map(), rest = all.map((_, i) => i).filter(i => i !== t && i !== named?.i);
-    const stars = rest.filter(i => all[i].src === 'stars'), other = rest.filter(i => all[i].src !== 'stars');
-    const pick = new Set([stars[0], stars[Math.floor(stars.length / 2)], stars[stars.length - 1], other[other.length - 1], other[0], stars[1]].filter(i => i != null));
+    const other = rest.filter(i => all[i].src !== 'stars');
+    const pick = new Set([other[other.length - 1], other[0], other[Math.floor(other.length / 2)], other[1]].filter(i => i != null));   // stars glow by brightness instead (phase 3)
     [...pick].slice(0, 4).sort((a, b) => a - b).forEach((i, k) => letters.set(i, LETTERS[k]));   // lettered nearest first
     return { target: t, letters, named };
   }
@@ -280,8 +300,9 @@ export function depthView(page) {
     if (!data?.d) return;
     const all = placedHere(); picked = choose(all);
     const S0 = data.d.sources, frag = document.createDocumentFragment();
-    all.forEach((p, i) => frag.append(row(i === picked.target ? 'a' : '', nameOf(p, i),
-      `${how[p.src]}, ${errText(p.o)}${p.src === 'stars' ? ` · Gaia DR3 ${p.o.id}` : ''}`, lyText(p.ly, true).replace(/ ly$/, ''), p.key)));
+    const order = all.map((_, i) => i); if (picked.target > 0) order.unshift(...order.splice(picked.target, 1));   // the target first, then nearest first
+    for (const i of order) { const p = all[i]; frag.append(row(i === picked.target ? 'a' : '', nameOf(p, i),
+      `${how[p.src]}, ${errText(p.o)}${p.src === 'stars' ? ` · Gaia DR3 ${p.o.id}` : ''}`, i === picked.target && page.targetDist?.(p.ly) ? page.targetDist(p.ly).replace(/^about | (light-years|ly)$/g, '') : lyText(p.ly, true).replace(/ ly$/, ''), p.key)); }
     // no distance: named rows with their reasons, then the count of stars Gaia measured too roughly
     for (const src of ['sso', 'galaxies']) for (const o of unknownHere(src))
       frag.append(row('u', o.name ?? o.id, `${how[src]}: ${o.reason}`, 'unknown', `${src}?:${o.id ?? o.name}`));
@@ -327,7 +348,19 @@ export function depthView(page) {
     cloud.renderOrder = 8; cloud.frustumCulled = false; scene.add(cloud);
     const unk = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: rU, size: 11, sizeAttenuation: false, transparent: true, depthTest: false, depthWrite: false }));
     unk.renderOrder = 8; unk.frustumCulled = false; scene.add(unk);
-    scene3 = { photo, beam, craft, cloud, unk, rW, rA, rU, rAu, guides: S.lines(400), beads: [], marks: [], dots: [], fixed: [S.label('the photo'), S.label('SPHEREx')] };
+    // every Gaia star of the patch at its distance: a soft point, as bright as SPHEREx sees it (the median frame)
+    const starMat = new THREE.ShaderMaterial({
+      uniforms: { k: { value: 1 }, a: { value: 0 } }, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+      vertexShader: 'attribute float size; attribute float alpha; uniform float k; varying float va; void main(){ va = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); gl_PointSize = size * k; }',
+      fragmentShader: 'uniform float a; varying float va; void main(){ float r = length(gl_PointCoord - .5) * 2.; float g = smoothstep(1., .0, r); g = g * g; gl_FragColor = vec4(vec3(1., .96, .9), g * va * a); }',
+    });
+    const stars = new THREE.Points(new THREE.BufferGeometry(), starMat); stars.renderOrder = 8; stars.frustumCulled = false; scene.add(stars);
+    const glowT = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      r.addColorStop(0, 'rgba(255,250,240,1)'); r.addColorStop(.18, 'rgba(255,250,240,1)'); r.addColorStop(.42, 'rgba(255,154,77,.45)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = r; g.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+    const subj = { glow: S.sprite(glowT, 10), ripple: S.sprite(ringTex('rgba(255,154,77,.9)'), 10), onPhoto: S.sprite(rA, 6) };
+    for (const k in subj) subj[k].visible = false;
+    scene3 = { photo, beam, craft, cloud, unk, stars, starMat, subj, rW, rA, rU, rAu, guides: S.lines(400), beads: [], marks: [], dots: [], fixed: [S.label('the photo'), S.label('SPHEREx')] };
     const tip = S.label('', 'tip'); tip.el.style.opacity = 0;
     const cv = box.querySelector('canvas');
     // the dot nearest the pointer (within 10 px): its name and distance beside it; a tap does the same on a phone
@@ -343,16 +376,23 @@ export function depthView(page) {
     new ResizeObserver(() => open && render()).observe(box);
     return true;
   }
-  let scale = null, shown = { rings: [], dots: [] };   // shown: which objects the beam draws as named rings, which as dots (for tests)
+  let scale = null, scaleInv = null, starList = [], shown = { rings: [], dots: [] };   // shown: which objects the beam draws as named rings, which as dots (for tests)
   function build() {   // the objects of the answer on screen: positions, the scale, the named ones
     if (!open || !data?.d || !init()) return;
     const all = placedHere(), { m } = data, year = data.f.year ?? 2026;
     // the scale: log10 of light-years across [lo, hi], drawn from 12% to 86% of the way to the photo
     const lg = all.map(p => Math.log10(p.ly));
-    let lo = Math.min(...lg, 0) - .4, hi = Math.max(...lg, 3) + .3; if (hi - lo < 2) hi = lo + 2;
+    let lo = Math.min(...lg) - .4, hi = Math.max(...lg, 3) + .3; if (hi - lo < 2) hi = lo + 2;   // the patch's own range (phase 3: no longer from 1 light-year)
     scale = ly => .12 + .74 * clamp01((Math.log10(ly) - lo) / (hi - lo));
     const uv = p => page.onScreen(m, p.ra, p.dec, p.src === 'stars' ? { year, pmra: p.o.pmra, pmdec: p.o.pmdec } : null);
-    const pos = []; scene3.dots = [];
+    const pos = [], sp = [], ss = [], sa = [], level = page.levels?.(m) ?? null; scene3.dots = []; starList = [];
+    // a star's brightness in the median of the visit frames, sampled at its place (the brightest of the 3x3 pixels there)
+    const bright = (u, v) => {
+      if (!level) return .3;
+      const G = m.grid, C = (G - 1) / 2, c0 = Math.round(C + u * G / 2), r0 = Math.round(C - v * G / 2); let b = 0;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const r = r0 + dr, c = c0 + dc; if (r >= 0 && c >= 0 && r < G && c < G) b = Math.max(b, level[r * G + c]); }
+      return b;
+    };
     for (const s of scene3.beads) { s.sp.removeFromParent(); s.lab.remove(); }
     scene3.beads = [];
     // the target's ring goes where the page places it (targetAt: a matched asteroid at its matched exposure, not where
@@ -360,11 +400,19 @@ export function depthView(page) {
     const tp = picked.target >= 0 ? page.middle(m, data.f) : null;
     all.forEach((p, i) => {
       const [u, v] = i === picked.target && tp?.u != null ? [tp.u, tp.v] : uv(p), f = scale(p.ly), name = i === picked.target || picked.letters.has(i) || i === picked.named?.i;
-      if (!name) { const q = at(u, v, f); pos.push(...q.toArray()); scene3.dots.push({ pos: q, key: p.key, text: `${p.src === 'sso' ? p.o.name : p.src === 'galaxies' ? p.o.id : `star, G ${p.o.g?.toFixed(1) ?? '?'}`} · ${lyText(p.ly, true)}` }); return; }
-      const acc = i === picked.target, L0 = picked.letters.get(i), d = lyText(p.ly, S.W < 500);
+      if (p.src === 'stars') starList.push({ key: p.key, u, v, f, ly: p.ly, d_pc: p.o.d_pc, target: i === picked.target });
+      if (!name) {
+        const q = at(u, v, f); scene3.dots.push({ pos: q, key: p.key, text: `${p.src === 'sso' ? p.o.name : p.src === 'galaxies' ? p.o.id : `star, G ${p.o.g?.toFixed(1) ?? '?'}`} · ${lyText(p.ly, true)}` });
+        if (p.src === 'stars') { const b = bright(u, v); sp.push(...q.toArray()); ss.push(2.2 + 8 * b ** 1.6); sa.push(.32 + .68 * b); } else pos.push(...q.toArray());
+        return;
+      }
+      const acc = i === picked.target, L0 = picked.letters.get(i), d = (acc && page.targetDist?.(p.ly, S.W < 500)) || lyText(p.ly, S.W < 500);
       const text = acc ? `${p.src === 'sso' ? p.o.name : page.targetName(m) ?? 'the star in the middle'} · ${d}` : i === picked.named?.i ? `${picked.named.name} · ${d}` : `${p.src === 'sso' ? p.o.name : `${p.src === 'galaxies' ? 'galaxy' : 'star'} ${L0}`} · ${d}`;
-      const err = p.o.d_lo_pc != null ? [scale(p.o.d_lo_pc * LY_PC), scale(p.o.d_hi_pc * LY_PC)] : null;
-      scene3.beads.push({ u, v, f, pos: at(u, v, f), err, acc, sp: S.sprite(acc ? scene3.rA : scene3.rW, 9), lab: S.label(text, acc ? 'accent' : ''), size: acc ? 20 : 15 });
+      const glow = acc && p.src === 'stars';   // the subject: a star that glows by its measured light, ringed in orange (the mockup's C-0176)
+      const err = p.o.d_lo_pc != null && !glow ? [scale(p.o.d_lo_pc * LY_PC), scale(p.o.d_hi_pc * LY_PC)] : null;
+      const lab = S.label(text, acc ? 'accent' : ''), sub = glow ? document.createElement('span') : null;
+      if (sub) { sub.className = 'sub'; lab.el.append(sub); }
+      scene3.beads.push({ u, v, f, pos: at(u, v, f), err, acc, glow, sub, sp: S.sprite(acc ? scene3.rA : scene3.rW, 9), lab, size: glow ? 30 : acc ? 20 : 15 });
     });
     const mid = picked.target < 0 && page.middle(m, data.f);
     if (mid && mid.u != null) {   // the target, at the photo's end of its line of sight: a dashed orange ring, "distance unknown" (none when it has no place this visit)
@@ -372,14 +420,16 @@ export function depthView(page) {
     }
     scene3.beads.sort((a, b) => a.f - b.f).forEach((b, k) => { b.tier = k; });
     scene3.cloud.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); scene3.cloud.geometry.computeBoundingSphere();
+    const sg = scene3.stars.geometry; sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); sg.setAttribute('size', new THREE.Float32BufferAttribute(ss, 1)); sg.setAttribute('alpha', new THREE.Float32BufferAttribute(sa, 1));
+    scaleInv = f => 10 ** (lo + (f - .12) / .74 * (hi - lo));   // for tests: back from the beam to light-years
     // what has a position and no distance: dashed rings by the photo
     const up = [];
     for (const src of ['sso', 'galaxies']) for (const o of unknownHere(src)) { const [u, v] = page.onScreen(m, o.ra, o.dec, null); up.push(...at(u, v, .95).toArray()); }
     scene3.unk.geometry.setAttribute('position', new THREE.Float32BufferAttribute(up, 3));
     // the scale marks: one decade of light-years per mark, at most three, spread out
     for (const k of scene3.marks) k.lab.remove();
-    const dec = []; for (let x = Math.ceil(lo + .2); x <= Math.floor(hi - .1); x++) dec.push(x);
-    const small = S.W < 500, near = dec.filter(x => scale(10 ** x) < (small ? .55 : .7));   // none by the photo, where its own label sits
+    const dec = []; for (let x = Math.ceil(lo); x <= Math.floor(hi - .1); x++) dec.push(x);
+    const small = S.W < 500, near = dec.filter(x => scale(10 ** x) >= .15 && scale(10 ** x) < (small ? .55 : .82));   // none at SPHEREx or by the photo, where their own labels sit
     const pickD = near.length <= (small ? 2 : 3) ? near : small ? [near[0], near[near.length - 1]] : [near[0], near[Math.floor(near.length / 2)], near[near.length - 1]];
     scene3.marks = pickD.map(x => ({ f: scale(10 ** x), lab: S.label(lyText(10 ** x, false), 'mark') }));
     box.dataset.objects = String(all.length);
@@ -387,19 +437,45 @@ export function depthView(page) {
     shown = { rings: all.filter((_, i) => i === picked.target || picked.letters.has(i) || i === picked.named?.i).map(p => p.key), dots: scene3.dots.map(d => d.key), target: picked.target >= 0 ? all[picked.target].key : 'unknown',
       mark: (b => b ? { uv: [b.u, b.v], label: b.lab.el.textContent } : null)(scene3.beads.find(b => b.acc)) };   // the target's ring and its label, for tests
     photo();
-    render();
+    dirty = true; render();
   }
-  function photo() {   // the region's photo for the visit on screen, as the beam's far end
+  // the subject's glow: its area follows the measured light (page.glow(): 1 on a 2010 frame, the Then and now ratio on
+  // SPHEREx's, steady outside a measured band). It eases to each frame's value over GLIDE (at once with reduced motion);
+  // a jump of more than 20% sends out one ripple.
+  const REDUCED = () => matchMedia('(prefers-reduced-motion: reduce)').matches, GLIDE = .7;
+  const glowS = { from: 1, to: 1, t0: -9, ripple: -9 };
+  const now_ = () => performance.now() / 1000;
+  const curGlow = () => { const k = glowS.t0 > 0 ? sm((now_() - glowS.t0) / GLIDE) : 1; return glowS.from + (glowS.to - glowS.from) * k; };
+  function photo() {   // the region's photo for the entry on screen, as the beam's far end and the inset; the glow's new value
     if (!scene3) return;
     const r = page.region(); if (!r) return;
-    const mat = scene3.photo.material; box.dataset.photo = r.f.mjd.toFixed(4);   // which visit's photo (for tests)
+    const mat = scene3.photo.material; box.dataset.photo = r.old ? 'old' : r.f.mjd.toFixed(4);   // which photo (for tests)
     if (!mat.map || mat.map.image !== r.canvas) { mat.map?.dispose(); mat.map = new THREE.CanvasTexture(r.canvas); mat.map.colorSpace = THREE.SRGBColorSpace; mat.map.magFilter = THREE.NearestFilter; mat.map.minFilter = THREE.LinearFilter; mat.needsUpdate = true; }
     else mat.map.needsUpdate = true;
+    // the flat photo in step: the same picture, the target ringed where the beam's ring meets the photo
+    const fig = box.querySelector('.p3-inset');
+    if (fig) {
+      const c = fig.querySelector('canvas'), g = c.getContext('2d'), t = scene3.beads.find(b => b.acc);
+      g.imageSmoothingEnabled = false; g.fillStyle = '#16191f'; g.fillRect(0, 0, c.width, c.height); g.drawImage(r.canvas, 0, 0, c.width, c.height);
+      if (t) { const x = (t.u + 1) / 2 * c.width, y = (1 - t.v) / 2 * c.height, k = c.width / Math.max(1, c.clientWidth) * .8;
+        for (const [col, lw] of [['rgba(0,0,0,.85)', 4], ['#ff9a4d', 2]]) { g.strokeStyle = col; g.lineWidth = lw * k; g.beginPath(); g.arc(x, y, 10.4 * k, 0, TAU); g.stroke(); } }
+      fig.querySelector('.p3-when').textContent = r.when ?? ''; fig.querySelector('.p3-by').textContent = r.by ?? '';
+      box.dataset.inset = r.old ? 'old' : r.f.mjd.toFixed(4);
+    }
+    const gv = page.glow?.() ?? { b: 1 };
+    if (gv.b !== glowS.to) {
+      const cur = curGlow(), now = now_(), still = REDUCED();
+      if (gv.b > cur * 1.2 && !still) glowS.ripple = now;
+      Object.assign(glowS, { from: cur, to: gv.b, t0: still ? -9 : now });
+    }
+    glowS.sub = gv.sub ?? null;
+    dirty = true;
   }
 
   const q = V();
   function render() {
     if (!S || !open) return;
+    dirty = false;
     S.size(); S.z = 1; S.camera.clearViewOffset();   // the fit below is of the unzoomed view
     const br = box.getBoundingClientRect();
     S.keep = (page.cover?.() ?? []).filter(Boolean).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
@@ -409,10 +485,13 @@ export function depthView(page) {
     S.floor = Math.min(S.H, ...(Z.k > 1 ? [...box.querySelectorAll('.xp-d3-note, .xp-d3-hint')].map(e => e.getBoundingClientRect()).filter(r => r.height).map(r => r.top - br.top - 2) : []));
     const { W, H } = S, small = W < 500, T = yaw.t0 ? (performance.now() - yaw.t0) / 1000 : 9;
     const s = sm(T / 1.8);   // the swing: from through the telescope (the photo fills the view, as in Photo) out to the side
-    const frame = small ? [14, 64, W - 20, H - 40] : [36, 110, W - 46, H - 70];
+    // the side view a little from above, with a wider lens than before (phase 3): the cross-sections open up. The flat
+    // photo sits bottom right on a wide frame (top right on a narrow one); the beam keeps clear of it.
+    const ins = box.querySelector('.p3-inset')?.getBoundingClientRect();
+    const frame = small ? [12, 56, W - 16, H - 34] : [30, 64, W - 40 - (ins?.width ? ins.width * .84 : 0), H - 46];
     const key = [V(-1.25 * CR, CR, 0), V(-1.25 * CR, -CR, 0), ...corners];
-    const tilt = .6 + yaw.a, el = .2 + yaw.p;
-    const to = S.fit(key, V(-Math.sin(tilt) * Math.cos(el), Math.sin(el), Math.cos(tilt) * Math.cos(el)), Y, small ? 22 : 20, frame);
+    const tilt = .85 + yaw.a, el = .5 + yaw.p;
+    const to = S.fit(key, V(-Math.sin(tilt) * Math.cos(el), Math.sin(el), Math.cos(tilt) * Math.cos(el)), Y, small ? 30 : 26, frame);
     const eye = { pos: V(.02, 0, 0), tgt: V(L, 0, 0), fov: 2 * Math.atan(Math.max(hh, hw * H / W) / L) / D2R };
     const mid = V(1.6, .5, 3.2), k = 1 - s;
     S.aim({ pos: V().addScaledVector(eye.pos, k * k).addScaledVector(mid, 2 * k * s).addScaledVector(to.pos, s * s), tgt: eye.tgt.clone().lerp(to.tgt, s), up: Y, fov: eye.fov + (to.fov - eye.fov) * sm(s * 1.4) });
@@ -420,17 +499,19 @@ export function depthView(page) {
     // gaps between them stay their size on screen (S.pxAt is per screen px)
     if (Z.k > 1) { Z.x = Math.min(Z.x, W - W / Z.k); Z.y = Math.min(Z.y, H - H / Z.k); S.camera.setViewOffset(W, H, Z.x, Z.y, W / Z.k, H / Z.k); S.z = Z.k; }
     for (const [n, off] of [['in', Z.k >= 8], ['out', Z.k <= 1]]) { const bt = box.querySelector(`[data-zoom=${n}]`); if (bt) bt.disabled = off; }
-    const a = sm((s - .45) / .4), la = sm((s - .8) / .2);
-    const { guides, craft, beam, cloud, unk } = scene3;
+    const a = sm((s - .45) / .4), la = sm((s - .8) / .2), now = now_();
+    const { guides, craft, beam, cloud, unk, stars, starMat, subj } = scene3;
     unk.material.size = 11 * S.z; craft.visible = s > .02; beam.material.opacity = .055 * a; cloud.material.opacity = (small ? .14 : .28) * a; cloud.material.size = small ? 2.5 : 4; unk.material.opacity = a;   // a phone's narrower beam packs the dots closer
+    starMat.uniforms.a.value = a; starMat.uniforms.k.value = S.renderer.getPixelRatio() * (small ? .8 : 1) * Math.sqrt(S.z);
     guides.begin();
     for (const c of corners) guides.seg(top, c, WHITE, .3 * a, .6 * a);
     corners.forEach((c, i) => guides.seg(c, corners[(i + 1) % 4], WHITE, .9 * a));
     for (const m of scene3.marks) {
       const r = [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([u, v]) => at(u, v, m.f)); r.forEach((c, i) => guides.seg(c, r[(i + 1) % 4], WHITE, .2 * la));
       const p = V(L * m.f, -m.f * hh, m.f * hw), w = S.pxAt(p), t0 = p.clone().addScaledVector(Y, -4 * w), t1 = p.clone().addScaledVector(Y, -12 * w);
-      guides.seg(t0, t1, WHITE, .7 * la); m.lab.at(t1, [0, 5, -.5, 0], la);
+      guides.seg(t0, t1, WHITE, .7 * la); m.t1 = t1;
     }
+    for (const k of Object.values(subj)) k.visible = false;
     for (const b of scene3.beads) {
       const w = S.pxAt(b.pos), col = b.acc ? ACCENT : WHITE; b.sp.position.copy(b.pos); b.sp.scale.setScalar(w * b.size * S.z); b.sp.material.opacity = a;
       guides.seg(top, b.pos, col, .12 * a, .5 * a); guides.seg(b.pos, P(b.u, b.v), col, .5 * a, .25 * a);   // its line of sight, on to the photo
@@ -438,15 +519,24 @@ export function depthView(page) {
         const e0 = at(b.u, b.v, b.err[0]), e1 = at(b.u, b.v, b.err[1]); guides.seg(e0, e1, col, la);
         for (const e of [e0, e1]) guides.seg(e.clone().addScaledVector(Y, 4 * w), e.clone().addScaledVector(Y, -4 * w), col, la);
       }
+      if (b.glow) {   // the subject: its glow's area follows the light; a ripple when it jumps; its ring on the photo
+        const g = curGlow(), r = 9 * Math.sqrt(g);
+        subj.glow.visible = true; subj.glow.position.copy(b.pos); subj.glow.scale.setScalar(w * r * 4.2 * S.z); subj.glow.material.opacity = a * Math.min(1, .55 + .25 * g);
+        const rp = clamp01((now - glowS.ripple) / 1.1); subj.ripple.visible = rp < 1; subj.ripple.position.copy(b.pos); subj.ripple.scale.setScalar(w * (30 + 60 * sm(rp)) * S.z); subj.ripple.material.opacity = a * (1 - rp) * .9;
+        const ph = P(b.u, b.v).add(V(-.01, 0, 0)); subj.onPhoto.visible = true; subj.onPhoto.position.copy(ph); subj.onPhoto.scale.setScalar(S.pxAt(ph) * 22 * S.z); subj.onPhoto.material.opacity = a;
+        if (b.sub && b.sub.textContent !== (glowS.sub ?? '')) b.sub.textContent = glowS.sub ?? '';
+      }
       // its name over the beam's upper edge, each on its own row, joined to the ring by a thin line
       const lift = q.set(b.pos.x, b.f * hh, b.pos.z).clone().addScaledVector(Y, ((small ? 6 : 9) + b.tier * (small ? 14 : 18)) * w);
       guides.seg(b.pos.clone().addScaledVector(Y, b.size / 2 * S.z * w), lift, col, .45 * la); b.lab.at(lift, [-3, -4, -1, -1], la, b.pos);
     }
+    for (const m of scene3.marks) m.lab.at(m.t1, [0, 5, -.5, 0], la);   // after the names: a scale mark gives way to them
     guides.end();
     scene3.fixed[0].at(P(1, -1), [0, small ? 6 : 9, -1, 0], la); scene3.fixed[1].at(V(-CR * .6, -CR, 0), [0, small ? 6 : 10, -.5, 0], la);
     S.draw();
-    if (T < 1.9) { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
   }
+  // still moving: the swing, the glow easing, a ripple
+  const moving = () => (yaw.t0 && performance.now() - yaw.t0 < 1900) || glowS.t0 > 0 && now_() - glowS.t0 < GLIDE + .05 || now_() - glowS.ripple < 1.15;
 
   return {
     // the patch or the visit on screen changed (or the picture: a toggle, a new frame)
@@ -455,18 +545,27 @@ export function depthView(page) {
       const r = page.region(); if (!r) return;
       if (init()) photo();   // the far end shows this visit's photo straight away, whatever the catalogs answer
       const url = want(r.m, r.f);
-      if (asked !== url) { asked = url; tries = 0; fetchNow(url, r.m, r.f); return; }
+      if (asked !== url) {
+        asked = url; tries = 0;
+        if (answers.has(url)) { ctl?.abort(); clearTimeout(retry); data = { url, m: r.m, f: r.f, d: answers.get(url) }; msg(''); paintList(); build(); return; }
+        fetchNow(url, r.m, r.f); return;
+      }
       // the target comes from two answers that land in either order: this one, and the verdict's match (SkyBoT's
       // passers, GET /api/known). A new match re-picks the target and redraws the list and the beam.
       if (data?.d && data.url === url && page.matchKey() !== pickedFor) { paintList(); build(); }
-      else render();
+      else dirty = true;
     },
     show(on) {
       open = on; box.hidden = !on;
-      if (!on) { cancelAnimationFrame(raf); return; }
-      yaw.t0 = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : performance.now();
+      if (!on) return;
+      yaw.t0 = REDUCED() ? 0 : performance.now();
+      Object.assign(glowS, { t0: -9, ripple: -9 }); glowS.from = glowS.to;   // opening shows the frame's glow, no ease into it
       this.frame(); if (data?.d && asked === data.url) build();
     },
+    // the page's one clock: every animation frame. Draws when something changed or still moves.
+    tick() { if (open && S && (dirty || moving())) render(); },
+    // nothing to show: every frame failed (the page's message and retry are over the frame); no beam, no list
+    empty(t) { asked = null; ctl?.abort(); clearTimeout(retry); data = null; paintList(); clearBeam(t, true); say(''); },
     get data() { return data; }, get url() { return asked; }, get gl() { return gl; }, get shown() { return shown; },
     // for tests: the zoom and turn (and the dashed rings' fade), the camera, and the target's ring on screen ([x, y, diameter] in client px)
     get view() { return { k: Z.k, x: Z.x, y: Z.y, a: yaw.a, p: yaw.p, unk: scene3?.unk.material.opacity }; },
@@ -480,6 +579,11 @@ export function depthView(page) {
       const r = box.querySelector('canvas').getBoundingClientRect();
       return (scene3?.beads ?? []).map(b => { const [x, y] = S.px(b.pos); return { xy: [r.left + x, r.top + y], name: b.lab.el.textContent, shown: +b.lab.el.style.opacity > .5 }; });
     },
+    // for tests (E1, E2): each Gaia star in the beam ({ key, u, v, f, ly, d_pc, target }), the beam's log scale back to
+    // light-years, where a point of the beam is on screen, the subject's glow (its diameter in CSS px, its value)
+    stars: () => starList.map(x => ({ ...x, xy: S && (pp => [pp[0], pp[1]])(S.px(at(x.u, x.v, x.f))), photo: S && S.px(P(x.u, x.v)) })),
+    scaleInv: f => scaleInv?.(f), px: ([u, v, f]) => S && S.px(f == null ? P(u, v) : at(u, v, f)),
+    glow() { const b = scene3?.beads.find(x => x.glow); if (!b || !S) return null; return { d: scene3.subj.glow.scale.x / (S.pxAt(b.pos)), b: curGlow(), to: glowS.to, sub: b.sub?.textContent ?? null, settled: !moving() }; },
     screenOf(key) { const d = scene3?.dots.find(x => x.key === key); if (!d) return null; const [x, y] = S.px(d.pos), r = box.querySelector('canvas').getBoundingClientRect(); return [r.left + x, r.top + y]; },
   };
 }

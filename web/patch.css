@@ -503,3 +503,29 @@ body.sky .pv-desc { margin: 0; }
   body.lapse:not(.sky) .pv-specbtn { left: auto; right: 8px; top: 8px !important; bottom: auto !important; height: 44px; padding: 0 14px 0 10px; border-width: 1.5px; font-size: 12.5px; gap: 6px; }
   body.lapse:not(.sky) .pv-spec .cbx { width: 44px; height: 44px; border: 11px solid transparent; border-radius: 14px; box-shadow: inset 0 0 0 1.5px #fff; }
 }
+
+/* ---------- phase 3: the time-lapse plays in Depth (phase3-mockups/phase3.css) ---------- */
+/* the flat photo, in step with the beam: a small square in the frame's lower right, Ming's straight top rule */
+.p3-inset { position: absolute; z-index: 3; right: calc(18 * var(--m)); bottom: calc(40 * var(--m)); width: calc(150 * var(--m)); margin: 0; pointer-events: none; }
+.xp-d3 .p3-inset canvas { position: static; height: auto; display: block; width: 100%; aspect-ratio: 1; border-top: max(1.5px, calc(1.5 * var(--m))) solid #fff; image-rendering: pixelated; background: #16191f; }
+.p3-inset figcaption { display: flex; flex-direction: column; gap: calc(3 * var(--m)); margin-top: calc(7 * var(--m)); font: 400 calc(11 * var(--m)) / 1.3 var(--panel-font); color: rgba(255, 255, 255, .82); letter-spacing: .02em; }
+.p3-inset .p3-by { color: rgba(255, 255, 255, .5); }
+/* the entry on screen; the 2010 entry's stretch of axis, then a break before SPHEREx's months */
+.tl-visit.cur { background: #ff9a4d; box-shadow: 0 0 calc(10 * var(--e)) rgba(255, 154, 77, .8); }
+.tl-break { position: absolute; top: 50%; width: calc(22 * var(--e)); height: calc(26 * var(--e)); transform: translate(-50%, -50%); background: #000; }
+.tl-break::before, .tl-break::after { content: ""; position: absolute; top: 0; bottom: 0; width: max(1px, calc(2 * var(--e))); background: #c9c9c9; transform: skewX(-24deg); }
+.tl-break::before { left: 25%; } .tl-break::after { right: 25%; }
+.tl-knob:disabled { opacity: .35; cursor: default; }
+/* the subject's name in the beam: name and distance, then what changes */
+.xp-d3 .lbl .sub { display: block; color: rgba(255, 255, 255, .62); font-size: .92em; }
+.xp-d3 .lbl.accent .sub { color: rgba(255, 154, 77, .78); }
+.xp-d3 .lbl .sub:empty { display: none; }
+/* every frame failed: the retry under the message */
+.xp-d3-retry { position: absolute; left: 50%; top: calc(46% + 48 * var(--m)); transform: translateX(-50%); height: 36px; padding: 0 16px; border: 1.5px solid #fff; border-radius: 6px; background: #000; color: #fff; font: 400 13px/1 var(--panel-font); cursor: pointer; }
+.xp-d3-retry[hidden] { display: none; }
+@media (max-width: 900px) {
+  .p3-inset { right: 12px; top: 64px; bottom: auto; width: 128px; }
+  .p3-inset figcaption { font-size: 9.5px; }
+  .xp-d3 .lbl .sub { font-size: .9em; }
+}
+@media (prefers-reduced-motion: reduce) { .tl-visit.cur { transition: none; } }
