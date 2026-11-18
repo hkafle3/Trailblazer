@@ -23,6 +23,12 @@ const REQUIRED = {
 const VAR_OTYPE = /(V\*|Ir\*|Or\*|Er\*|RI\*|FU\*|Y\*O|Y\*\?|TT\*|Ae\*|pr\*|LP\*|Mi\*|RR\*|Ce\*|EB\*|El\*|dS\*|Ro\*|BY\*|RS\*|AGN|QSO|Sy1|Sy2|SyG|Bla|BLL|No\*|CV\*|SN\*|C\*|S\*|AB\*|OH\*|WR\*|bC\*|gD\*|Pu\*|HH|YSO|TTS|Ext|Be\*)/;
 const fl = (v) => v === "" || v == null || v === "null" ? NaN : Number(v);
 const sum = (a) => a.reduce((s, v) => s + v, 0), mean = (a) => sum(a) / a.length;
+// colors_ref.ra_mean: a mean right ascension that does not break across 0 degrees (values the same as a plain mean otherwise)
+const raMean = (ra, w = null) => {
+  const lo = Math.min(...ra), hi = Math.max(...ra), v = hi - lo > 180 ? ra.map((x) => (x < 180 ? x + 360 : x)) : ra;
+  const m = w ? sum(v.map((x, i) => x * w[i])) / sum(w) : mean(v);
+  return m >= 360 ? m % 360 : m;
+};
 const mag2mjy = (m, b) => ZP[b] * 10 ** (-0.4 * m);
 const r4 = (v) => v == null || !Number.isFinite(v) ? null : Number(v.toPrecision(6));
 const range = (n) => Array.from({ length: n }, (_, i) => i);
@@ -172,7 +178,7 @@ function components(C, A, G) {
     const pe = fl(r.pmra), pn = fl(r.pmdec), se = fl(r.sigpmra), sn = fl(r.sigpmdec), keep = Math.hypot(pe / (se > 0 ? se : Infinity), pn / (sn > 0 ? sn : Infinity)) > 3;
     return { ra: fl(r.ra_pm), dec: fl(r.dec_pm), pme: keep ? pe : 0, pmn: keep ? pn : 0, w1: fl(r.w1mpro_pm), w2: fl(r.w2mpro_pm), e1: fl(r.w1sigmpro_pm), e2: fl(r.w2sigmpro_pm), gaia: "-1", name: r.source_name, src: "cw", sid: r.source_id, nb: r.nb ? Math.trunc(fl(r.nb)) : 1, ab: r.ab_flags || "00", cc: (r.cc_flags || "0000").slice(0, 2) };
   });
-  const ra0 = mean(K.map((r) => r.ra)), dec0 = mean(K.map((r) => r.dec));
+  const ra0 = raMean(K.map((r) => r.ra)), dec0 = mean(K.map((r) => r.dec));
   const g = G.map((r) => {
     const dt = (MJD_CW - MJD_GAIA) / 365.25, d = fl(r.dec);
     return [fl(r.ra) + fl(r.pmra) * dt / 36e5 / Math.cos(d * RAD), d + fl(r.pmdec) * dt / 36e5];
@@ -183,10 +189,10 @@ function components(C, A, G) {
     const [d, j] = nearest(gp, tan(k.ra, k.dec, ra0, dec0));
     if (d < 1) Object.assign(k, { ra: g[j][0], dec: g[j][1], pme: fl(G[j].pmra) / 1e3, pmn: fl(G[j].pmdec) / 1e3, gaia: G[j].source_id });
   }
-  const cwRa0=mean(K.map(r=>r.ra)),cwDec0=mean(K.map(r=>r.dec));
+  const cwRa0=raMean(K.map(r=>r.ra)),cwDec0=mean(K.map(r=>r.dec));
   const kp = K.map((r) => tan(r.ra, r.dec, cwRa0, cwDec0));
   for (const r of A.filter((r2) => fl(r2.w1mpro) < 10)) if (nearest(kp, tan(fl(r.ra), fl(r.dec), cwRa0, cwDec0))[0] > 3) K.push({ ra: fl(r.ra), dec: fl(r.dec), pme: 0, pmn: 0, w1: fl(r.w1mpro), w2: fl(r.w2mpro), e1: fl(r.w1sigmpro), e2: fl(r.w2sigmpro), gaia: "-1", name: r.designation, src: "aw", sid: r.designation, nb: Math.trunc(fl(r.nb)), ab: "00", cc: (r.cc_flags || "0000").slice(0, 2) });
-  const mergedRa0=mean(K.map(k=>k.ra)),mergedDec0=mean(K.map(k=>k.dec));
+  const mergedRa0=raMean(K.map(k=>k.ra)),mergedDec0=mean(K.map(k=>k.dec));
   const points = K.map(r=>tan(r.ra,r.dec,mergedRa0,mergedDec0)), par = range(K.length);
   function root(i) {
     while (par[i] !== i) {
@@ -209,7 +215,7 @@ function components(C, A, G) {
     const out = { ...K[b], nmem: g2.length, members: g2.map((i) => K[i].name).join("|") };
     if (g2.length > 1) {
       const tot = sum(g2.map((i) => wt[i]));
-      out.ra = sum(g2.map((i) => K[i].ra * wt[i])) / tot;
+      out.ra = raMean(g2.map((i) => K[i].ra), g2.map((i) => wt[i]));
       out.dec = sum(g2.map((i) => K[i].dec * wt[i])) / tot;
       for (const [m, e] of [["w1", "e1"], ["w2", "e2"]]) {
         const tot2 = sum(g2.map((i) => f(K[i][m])));
@@ -227,7 +233,7 @@ function catalogueStep(cats, ra, dec) {
   const { twomass: TM, catwise: CW, allwise: AW, gaia: GA } = cats, K = components(CW, AW, GA), n = K.ra.length;
   const ds = K.ra.map((r, i) => sep(r, K.dec[i], ra, dec)), T = ds.indexOf(Math.min(...ds));
   if (!(ds[T] <= 2)) return { result: inconclusive("no-star", "no catalogued star within 2 arcsec of this spot") };
-  const ra0 = mean(K.ra), dec0 = mean(K.dec), kp = K.ra.map((r, i) => tan(r, K.dec[i], ra0, dec0));
+  const ra0 = raMean(K.ra), dec0 = mean(K.dec), kp = K.ra.map((r, i) => tan(r, K.dec[i], ra0, dec0));
   const tp = TM.map((r) => tan(fl(r.ra), fl(r.dec), ra0, dec0)), match = kp.map((p) => nearest(tp, p));
   const tm = (key) => match.map(([d, j]) => d < 2 ? fl(TM[j][key]) : NaN), J = tm("j_m"), Hm = tm("h_m"), Km = tm("k_m"), qual = match.map(([d, j]) => d < 2 ? TM[j].ph_qual : "XXX");
   const vars = [...GA.filter((r) => r.phot_variable_flag === "VARIABLE"), ...cats.simbad.filter((r) => VAR_OTYPE.test(r.otype || "")), ...cats.vsx.map((r) => ({ ra: r.RAJ2000, dec: r.DEJ2000 }))].filter((r) => Number.isFinite(fl(r.ra)) && Number.isFinite(fl(r.dec))).map((r) => tan(fl(r.ra), fl(r.dec), ra0, dec0));
@@ -457,7 +463,7 @@ function badBox(a, xi, yi, r) {
 }
 // phot_lead.psfs: all exposures, isolated W1=9..12 stars, twenty stamps per detector.
 function psfs(X, K) {
-  const r0 = mean(K.ra), d0 = mean(K.dec), p = K.ra.map((r, i) => tan(r, K.dec[i], r0, d0)), w1 = K.w1.map((v) => Number.isNaN(v) ? 99 : v);
+  const r0 = raMean(K.ra), d0 = mean(K.dec), p = K.ra.map((r, i) => tan(r, K.dec[i], r0, d0)), w1 = K.w1.map((v) => Number.isNaN(v) ? 99 : v);
   const iso = range(w1.length).filter((i) => w1[i] > 9 && w1[i] < 12 && p.every((v, j) => j === i || Math.hypot(v[0] - p[i][0], v[1] - p[i][1]) > 20 || w1[j] > w1[i] + 3)), out = {};
   for (const det of DETS) {
     const stamps = [];
@@ -832,7 +838,7 @@ function oldPoints(S, comp, T, K, TM, AW) {
     if (!R.length) return null;
     const ds = R.map((r) => sep(fl(r.ra), fl(r.dec), ra, dec)), i = ds.indexOf(Math.min(...ds));
     return ds[i] <= 2 ? R[i] : null;
-  }, t2 = nearestRow(TM), aw = nearestRow(AW), ra0 = mean(K.ra), dec0 = mean(K.dec), tp = TM.map((r) => tan(fl(r.ra), fl(r.dec), ra0, dec0)), match = K.ra.map((r, i) => nearest(tp, tan(r, K.dec[i], ra0, dec0))), mag = { W1: K.w1, W2: K.w2 };
+  }, t2 = nearestRow(TM), aw = nearestRow(AW), ra0 = raMean(K.ra), dec0 = mean(K.dec), tp = TM.map((r) => tan(fl(r.ra), fl(r.dec), ra0, dec0)), match = K.ra.map((r, i) => nearest(tp, tan(r, K.dec[i], ra0, dec0))), mag = { W1: K.w1, W2: K.w2 };
   for (const b of ["J", "H", "K"]) mag[b] = match.map(([d, j]) => d < 2 ? fl(TM[j][b.toLowerCase() + "_m"]) : NaN);
   const out = [];
   for (const b of ["J", "H", "K", "W1", "W2"]) {

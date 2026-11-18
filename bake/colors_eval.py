@@ -31,7 +31,7 @@ def quiet_candidates(d):
     """SPOT2's quiet star, frozen rule: 2MASS AAA, Ks 10 to 12, one component, no CatWISE neighbour within 15 arcsec less than
     2.5 mag fainter, no Gaia VARIABLE within 5 arcsec, nearest the field centre first."""
     cats = C.load_field(d); K = C.components(cats['catwise'], cats['allwise'], cats['gaia']); fld = json.load(open(f'{d}/field.json')) if os.path.exists(f'{d}/field.json') else None
-    ra0, dec0 = K['ra'].mean(), K['dec'].mean(); kx, ky = C.tan(K['ra'], K['dec'], ra0, dec0); TM = cats['twomass']
+    ra0, dec0 = C.ra_mean(K['ra']), K['dec'].mean(); kx, ky = C.tan(K['ra'], K['dec'], ra0, dec0); TM = cats['twomass']
     tx, ty = C.tan([C.fl(r['ra']) for r in TM], [C.fl(r['dec']) for r in TM], ra0, dec0); dd, j = cKDTree(np.c_[tx, ty]).query(np.c_[kx, ky])
     w1 = np.nan_to_num(K['w1'], nan=99); tr = cKDTree(np.c_[kx, ky]); GV = [r for r in cats['gaia'] if r['phot_variable_flag'] == 'VARIABLE']
     vx, vy = C.tan([C.fl(r['ra']) for r in GV], [C.fl(r['dec']) for r in GV], ra0, dec0) if GV else ([], [])

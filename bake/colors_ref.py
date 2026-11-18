@@ -95,6 +95,14 @@ def tan(ra, dec, ra0, dec0):
     return AS * np.cos(d) * np.sin(a - a0) / c, AS * (np.cos(d0) * np.sin(d) - np.sin(d0) * np.cos(d) * np.cos(a - a0)) / c
 
 
+def ra_mean(ra, w=None):
+    """A mean right ascension that does not break across 0 degrees; the same value as a plain mean otherwise."""
+    ra = np.asarray(ra, float)
+    if len(ra) and ra.max() - ra.min() > 180: ra = np.where(ra < 180, ra + 360, ra)
+    m = ra.mean() if w is None else (ra * w).sum() / w.sum()
+    return m % 360 if m >= 360 else m
+
+
 def sep_as(ra1, dec1, ra2, dec2):
     a1, d1, a2, d2 = (np.radians(np.asarray(v, float)) for v in (ra1, dec1, ra2, dec2))
     return np.degrees(np.arccos(np.clip(np.sin(d1) * np.sin(d2) + np.cos(d1) * np.cos(d2) * np.cos(a1 - a2), -1, 1))) * 3600
@@ -113,7 +121,7 @@ def components(C, A, G):
     if G:
         g = np.array([[fl(r['ra']), fl(r['dec']), fl(r['pmra']), fl(r['pmdec'])] for r in G]); dt = (MJD_CW - MJD_GAIA) / 365.25
         gra = g[:, 0] + g[:, 2] * dt / 3.6e6 / np.cos(np.radians(g[:, 1])); gdec = g[:, 1] + g[:, 3] * dt / 3.6e6
-        x0, y0 = tan(gra, gdec, ra.mean(), dec.mean()); x1, y1 = tan(ra, dec, ra.mean(), dec.mean())
+        x0, y0 = tan(gra, gdec, ra_mean(ra), dec.mean()); x1, y1 = tan(ra, dec, ra_mean(ra), dec.mean())
         dd, j = cKDTree(np.c_[x0, y0]).query(np.c_[x1, y1])
         m = dd < 1.0; ra[m], dec[m], pme[m], pmn[m] = gra[j[m]], gdec[j[m]], g[j[m], 2] / 1000, g[j[m], 3] / 1000
         gsrc[m] = [int(G[k]['source_id']) for k in j[m]]
@@ -123,8 +131,8 @@ def components(C, A, G):
                nb=np.array([int(fl(r['nb'])) if r['nb'] else 1 for r in C]), ab=np.array([r['ab_flags'] or '00' for r in C]), cc=np.array([(r['cc_flags'] or '0000')[:2] for r in C]))
     aw = [r for r in A if fl(r['w1mpro']) < AW_BRIGHT]
     if aw:
-        ax, ay = tan(np.array([fl(r['ra']) for r in aw]), np.array([fl(r['dec']) for r in aw]), ra.mean(), dec.mean())
-        cx, cy = tan(out['ra'], out['dec'], ra.mean(), dec.mean()); dd, _ = cKDTree(np.c_[cx, cy]).query(np.c_[ax, ay])
+        ax, ay = tan(np.array([fl(r['ra']) for r in aw]), np.array([fl(r['dec']) for r in aw]), ra_mean(ra), dec.mean())
+        cx, cy = tan(out['ra'], out['dec'], ra_mean(ra), dec.mean()); dd, _ = cKDTree(np.c_[cx, cy]).query(np.c_[ax, ay])
         add = [r for r, q in zip(aw, dd) if q > 3.0]
         for k, v in dict(ra=[fl(r['ra']) for r in add], dec=[fl(r['dec']) for r in add], pme=[0.0] * len(add), pmn=[0.0] * len(add),
                          w1=[fl(r['w1mpro']) for r in add], w2=[fl(r['w2mpro']) for r in add], e1=[fl(r['w1sigmpro']) for r in add],
@@ -135,7 +143,7 @@ def components(C, A, G):
 
 
 def merge(K):
-    n = len(K['ra']); x, y = tan(K['ra'], K['dec'], K['ra'].mean(), K['dec'].mean()); par = np.arange(n)
+    n = len(K['ra']); x, y = tan(K['ra'], K['dec'], ra_mean(K['ra']), K['dec'].mean()); par = np.arange(n)
     def root(i):
         while par[i] != i: par[i] = par[par[i]]; i = par[i]
         return i
@@ -148,7 +156,7 @@ def merge(K):
         g = np.array(g); b = g[np.argmax(wt[g])]
         for k in K: out[k].append(K[k][b])
         if len(g) > 1:
-            out['ra'][-1] = float((K['ra'][g] * wt[g]).sum() / wt[g].sum()); out['dec'][-1] = float((K['dec'][g] * wt[g]).sum() / wt[g].sum())
+            out['ra'][-1] = float(ra_mean(K['ra'][g], wt[g])); out['dec'][-1] = float((K['dec'][g] * wt[g]).sum() / wt[g].sum())
             for m, e, FF in (('w1', 'e1', F1), ('w2', 'e2', F2)):
                 tot = FF[g].sum(); out[m][-1] = -2.5 * np.log10(tot) if tot > 0 else np.nan
                 out[e][-1] = float(np.sqrt(np.nansum((FF[g] * K[e][g]) ** 2)) / tot) if tot > 0 else np.nan
@@ -237,7 +245,7 @@ def positions(K, a):
 def psfs(X, K):
     """phot_lead.psfs' rule (W1 9 to 12, no CatWISE source brighter than W1 + 3 within 20 arcsec; median of normalised,
     recentred stamps; 20 stamps a detector or it is dropped), over every exposure. -> {det: spline coefficients or None, det_n}"""
-    x, y = tan(K['ra'], K['dec'], K['ra'].mean(), K['dec'].mean()); tr = cKDTree(np.c_[x, y]); w1 = np.nan_to_num(K['w1'], nan=99)
+    x, y = tan(K['ra'], K['dec'], ra_mean(K['ra']), K['dec'].mean()); tr = cKDTree(np.c_[x, y]); w1 = np.nan_to_num(K['w1'], nan=99)
     cand = np.nonzero((w1 > 9) & (w1 < 12))[0]
     iso = np.array([i for i in cand if all(j == i or w1[j] > w1[i] + 3 for j in tr.query_ball_point([x[i], y[i]], 20.0))], int); out = {}; H = PH + 3
     r = np.hypot(*np.mgrid[-H:H + 1, -H:H + 1])
@@ -434,7 +442,7 @@ def _fit(args):
 def build(cats, E, ra, dec, nproc=8):
     """-> (the Colors result for the star at (ra, dec), the measurements). E: cutouts (dict obs, det, key, t, x0, y0, hdr, img, flg)."""
     TM, CW, AW, GA = cats['twomass'], cats['catwise'], cats['allwise'], cats['gaia']
-    K = components(CW, AW, GA); n = len(K['ra']); ra0, dec0 = K['ra'].mean(), K['dec'].mean()
+    K = components(CW, AW, GA); n = len(K['ra']); ra0, dec0 = ra_mean(K['ra']), K['dec'].mean()
     kx, ky = tan(K['ra'], K['dec'], ra0, dec0)
     # the star: the component within 2 arcsec of the spot
     d_star = sep_as(K['ra'], K['dec'], ra, dec); T = int(np.argmin(d_star))
@@ -692,7 +700,7 @@ def old_points(S, comp, T, K, TM, AW):
         if not R: return None
         d = sep_as([fl(r[rk]) for r in R], [fl(r[dk]) for r in R], ra, dec); i = int(np.argmin(d)); return R[i] if d[i] <= STAR_R else None
     t2, aw = nearest(TM), nearest(AW)
-    ra0, dec0 = K['ra'].mean(), K['dec'].mean(); kx, ky = tan(K['ra'], K['dec'], ra0, dec0)
+    ra0, dec0 = ra_mean(K['ra']), K['dec'].mean(); kx, ky = tan(K['ra'], K['dec'], ra0, dec0)
     tx, ty = tan([fl(r['ra']) for r in TM], [fl(r['dec']) for r in TM], ra0, dec0); dd, j = cKDTree(np.c_[tx, ty]).query(np.c_[kx, ky])
     mag = {b: np.array([fl(TM[q][f'{b.lower()}_m']) if d < STAR_R else np.nan for d, q in zip(dd, j)]) for b in ('J', 'H', 'K')}
     mag['W1'], mag['W2'] = K['w1'], K['w2']

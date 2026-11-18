@@ -16,7 +16,7 @@ from scipy.spatial import cKDTree
 
 def quiet_band_means(d, nproc=8):
     cats = C.load_field(d); K = C.components(cats['catwise'], cats['allwise'], cats['gaia']); n = len(K['ra'])
-    ra0, dec0 = K['ra'].mean(), K['dec'].mean(); kx, ky = C.tan(K['ra'], K['dec'], ra0, dec0); TM = cats['twomass']
+    ra0, dec0 = C.ra_mean(K['ra']), K['dec'].mean(); kx, ky = C.tan(K['ra'], K['dec'], ra0, dec0); TM = cats['twomass']
     tx, ty = C.tan([C.fl(r['ra']) for r in TM], [C.fl(r['dec']) for r in TM], ra0, dec0); dd, j = cKDTree(np.c_[tx, ty]).query(np.c_[kx, ky])
     Km = np.array([C.fl(TM[q]['k_m']) if a < C.STAR_R else np.nan for a, q in zip(dd, j)]); qual = np.array([TM[q]['ph_qual'] if a < C.STAR_R else 'XXX' for a, q in zip(dd, j)])
     var = C.known_variables(cats, kx, ky, ra0, dec0); tr = cKDTree(np.c_[kx, ky]); w1 = np.nan_to_num(K['w1'], nan=99)
