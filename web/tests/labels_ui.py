@@ -9,7 +9,8 @@ Every check reads real on-screen rectangles (getBoundingClientRect), not the lay
   bounds      no name leaves the window or crosses the top bar or the timeline
   a name      at least one place name is shown (a name, the pinned constellation, or the Milky Way at the whole sky); not
               required where an opened panel covers the names (see ZOOMED below)
-  reads       a 1.2 s glide in re-reads the controls at most twice (the slow frames came from re-reading them every frame)
+  reads       a 1.2 s zoom re-reads the controls at most twice and the markers on at most a quarter of its frames (reads
+              between other writes forced an extra layout on a frame, the slow frames of the first build)
   card        the comet card never touches the Flat / 3D switch or the search box, at load and after a pan (the 881 px fix)
   still       C-0176 (tagged star, 1 of 1) has no trail and no tail; C-0175 (tagged unsure) keeps both
 Overlaps between the page's own elements (a card over a marker) are not judged.
@@ -64,7 +65,7 @@ GLIDE = """async () => { const v = await import('/explore-view.js'); if (!matchM
   const [u, vv] = (await import('/skymap.js')).fwd(84, -4), w0 = v.W, w1 = 60 * 360, t0 = performance.now();   // set() each frame, as a glide does (this page has reduced motion)
   await new Promise(r => { const f = () => { const p = Math.min(1, (performance.now() - t0) / 1200), w = w0 * (w1 / w0) ** p; v.set(w, v.A.w / 2 - u * w, (v.A.t + v.A.b) / 2 - vv * w / 2); p < 1 ? requestAnimationFrame(f) : r(); }; requestAnimationFrame(f); });
   await new Promise(r => setTimeout(r, 300)); on = false;
-  return { passes: skyLabels.stats.passes - s0.passes, rereads: skyLabels.stats.rereads - s0.rereads, frames }; }"""
+  return { passes: skyLabels.stats.passes - s0.passes, rereads: skyLabels.stats.rereads - s0.rereads, markReads: skyLabels.stats.markReads - s0.markReads, frames }; }"""
 fails = []
 # a name is required in every view, except under what the person just opened: at the whole sky the pin card, the sheet
 # or the search list can cover its few names (the Milky Way, the Magellanic Clouds, Andromeda), and a phone's search list
@@ -114,7 +115,7 @@ async def main():
             # a glide from the whole sky to 60 px per degree: one layout pass a frame at most, and the controls read again
             # only when something besides the view changed (the phone sets its zoom note's hidden on every frame, unchanged)
             g = await pg.evaluate(GLIDE)
-            check(g["rereads"] <= 2 and g["passes"] <= g["frames"] + 1, f"a zoom reads the controls once ({w}x{h})", str(g))
+            check(g["rereads"] <= 2 and g["markReads"] <= g["passes"] / 4 and g["passes"] <= g["frames"] + 1, f"a zoom reads the page only when something on it changed ({w}x{h})", str(g))
             st = await pg.evaluate(STILL)
             check(st.get("C-0176") == {"trail": False, "tail": False} and st.get("C-0175") == {"trail": True, "tail": True}, f"C-0176 has no trail or tail ({w}x{h})", str({k: st.get(k) for k in ("C-0175", "C-0176")}))
             await sweep(pg, w, h, "plain")

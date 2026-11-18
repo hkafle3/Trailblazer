@@ -113,8 +113,7 @@ const visible = e => !e.closest('[style*="visibility: hidden"]');   // markers n
 const rects = sel => [...document.querySelectorAll(sel)].filter(visible).map(rect).filter(r => r[2] > r[0] && r[3] > r[1]);   // display: none gives an empty box
 
 // what names must keep clear of: the markers and their names, the pin, the controls over the map, the open panels
-const MARKS = '#card-patch, #pin:not([hidden]) .pincard, #pin:not([hidden]) .pin-ring, #t-date, .tl-knob';   // and each marker near the view, below (the date moves with the replay)
-const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns > *, .layers[open] > .layers-body, #csheet:not([hidden]), #dive-aim:not([hidden]) .aim-box, #dive-aim:not([hidden]) .aim-go, #maphint:not([hidden]), #zoomlvl:not([hidden])';
+const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns > *, .layers[open] > .layers-body, #csheet:not([hidden]), #dive-aim:not([hidden]) .aim-box, #dive-aim:not([hidden]) .aim-go, #maphint:not([hidden]), #zoomlvl:not([hidden]), #t-date, .tl-knob';
 // the cards: [right, left] as [dx, dy] from the marker (styles.css, explore.css, candidates.css); under it is BELOW px down
 const CARDS = [['card-comet', [28, -30], [-278, -30]], ['card-cand', [-12, 16], [-258, 16]]].map(([id, r, l]) => ({ id, right: r, left: l }));
 const BELOW = 24;
@@ -124,32 +123,48 @@ const belowAt = (x, w, fixed) => [-w / 2, ...fixed.flatMap(o => [o[2] + PAD + 1 
   .filter(dx => dx <= -20 && dx >= 20 - w).sort((a, b) => Math.abs(a + w / 2) - Math.abs(b + w / 2));
 
 let placed = [];   // [box, label] for the hover test
-// The controls and the top bar and timeline edges do not move with the map: read again only when something other than a
-// pan or zoom asked for this pass (a resize, a panel, a marker change), so a glide reads only the markers near the view.
-let still = null, fresh = true;
+// Nothing is read from the page while the map only moves. The controls, the top bar and the timeline do not move with it:
+// they are read again when something else asked for this pass (a resize, a panel, the timeline's date). The markers, the
+// pin and the cards keep their size and shape at any zoom (they undo the straightening), so each is kept as a box around
+// its sky position and read again only when one of them changes; the Milky Way's text is kept in fractions of the map.
+// A read during a zoom would force a whole extra layout on frames where something else has just written to the page.
+let still = null, fresh = true, kept = null, marksDirty = true, mwFrac = null;
+function readMarks(at) {
+  const parts = [], cards = {};
+  for (const m of marks.children) {
+    if (m.hidden || !m.style.left || !visible(m)) continue;
+    const u = parseFloat(m.style.left) / 100, v = parseFloat(m.style.top) / 100, [x, y] = at(u, v);
+    if (m.id === 'card-comet' || m.id === 'card-cand') { if (m.offsetWidth) cards[m.id] = [m.offsetWidth, m.offsetHeight]; continue; }
+    const els = m.classList.contains('mk') ? [...m.children].filter(e => e.tagName === 'I' || e.tagName === 'B') : m.id === 'pin' ? m.querySelectorAll('.pincard, .pin-ring') : [m];
+    for (const e of els) { const r = rect(e); if (r[2] > r[0] && r[3] > r[1]) parts.push([u, v, r[0] - x, r[1] - y, r[2] - x, r[3] - y]); }
+  }
+  return { parts, cards };
+}
 function layout() {
   q = 0;
   if (document.body.dataset.view === '3d') return;
   if (!sized && labels.length && document.fonts.status === 'loaded') measure();
-  // ---- read ----
-  const vw = innerWidth, vh = innerHeight, k = wrapEl.offsetWidth / 360;
+  // ---- read (only what changed) ----
   stats.passes++;
-  if (fresh || !still) stats.rereads++;
-  if (fresh || !still) still = { top: document.querySelector('.topbar').getBoundingClientRect().bottom, bot: $('tl').getBoundingClientRect().top - BAR,
-    fixed: rects(CONTROLS), topbar: rect(document.querySelector('.topbar')) };
-  fresh = false;
-  const { top, bot, fixed: fixed0, topbar } = still, fixed = [...fixed0];
-  const str = view.straight(), mr = wrapEl.getBoundingClientRect();
-  const at = (u, v) => (str ? view.win(u, v) : [mr.left + u * mr.width, mr.top + v * mr.height]);
-  const taken = rects(MARKS);
-  for (const m of marks.querySelectorAll('.mk:not([hidden])')) {   // markers near the view only: at a deep zoom most are far off
-    const [x, y] = at(parseFloat(m.style.left) / 100, parseFloat(m.style.top) / 100);
-    if (x < -300 || x > vw + 300 || y < top - 100 || y > bot + 100 || !visible(m)) continue;
-    for (const e of m.children) if (e.tagName === 'I' || e.tagName === 'B') { const r = rect(e); if (r[2] > r[0] && r[3] > r[1]) taken.push(r); }
+  const vw = innerWidth, vh = innerHeight, engine = !!wrapEl.style.width && view.A;   // the engine places the map once it has moved
+  const k = (engine ? view.W : wrapEl.offsetWidth) / 360, mr = engine ? null : wrapEl.getBoundingClientRect();
+  const at = (u, v) => (engine ? view.win(u, v) : [mr.left + u * mr.width, mr.top + v * mr.height]);
+  if (fresh || !still) {
+    stats.rereads++;
+    still = { top: document.querySelector('.topbar').getBoundingClientRect().bottom, bot: $('tl').getBoundingClientRect().top - BAR,
+      fixed: rects(CONTROLS), topbar: rect(document.querySelector('.topbar')) };
   }
-  const cards = CARDS.map(c => ({ ...c, el: $(c.id) })).filter(c => c.el && !c.el.hidden && c.el.offsetWidth && visible(c.el))
-    .map(c => ({ ...c, w: c.el.offsetWidth, h: c.el.offsetHeight, u: parseFloat(c.el.style.left) / 100, v: parseFloat(c.el.style.top) / 100 }));
-  const mwBox = mwText && !wrapEl.classList.contains('deep-zoom') ? rect(mwText) : null;
+  if (fresh || marksDirty || !kept) { stats.markReads++; kept = readMarks(at); }
+  fresh = marksDirty = false;
+  const { top, bot, fixed: fixed0, topbar } = still, fixed = [...fixed0];
+  const taken = kept.parts.map(([u, v, a, b, c, d]) => { const [x, y] = at(u, v); return [x + a, y + b, x + c, y + d]; });
+  const cards = CARDS.map(c => ({ ...c, el: $(c.id) })).filter(c => kept.cards[c.id] && !c.el.hidden)
+    .map(c => ({ ...c, w: kept.cards[c.id][0], h: kept.cards[c.id][1], u: parseFloat(c.el.style.left) / 100, v: parseFloat(c.el.style.top) / 100 }));
+  let mwBox = null;
+  if (mwText && !wrapEl.classList.contains('deep-zoom')) {
+    if (!mwFrac) { const r = rect(mwText), [x0, y0] = at(0, 0), [x1, y1] = at(1, 1); if (r[2] > r[0]) mwFrac = [(r[0] - x0) / (x1 - x0), (r[1] - y0) / (y1 - y0), (r[2] - x0) / (x1 - x0), (r[3] - y0) / (y1 - y0)]; }
+    if (mwFrac) { const [a, b] = at(mwFrac[0], mwFrac[1]), [c, d] = at(mwFrac[2], mwFrac[3]); mwBox = [a, b, c, d]; }
+  }
 
   // ---- cards: off the controls, inside the window ----
   const cardWrites = [];
@@ -227,9 +242,10 @@ function layout() {
 }
 
 let q = 0;
-const stats = { passes: 0, rereads: 0 };   // the tests read these
-const again = () => { if (!q) q = requestAnimationFrame(layout); };   // markers, cards and the pin are read on every pass
-const soon = () => { fresh = true; again(); };   // and the controls, top bar and timeline read again too
+const stats = { passes: 0, rereads: 0, markReads: 0 };   // the tests read these
+const again = () => { if (!q) q = requestAnimationFrame(layout); };   // the view moved: nothing to read again
+const marked = () => { marksDirty = true; again(); };   // a marker, the pin or a card changed
+const soon = () => { fresh = true; again(); };   // anything else: read everything again
 // only real changes: the phone sets the zoom note's hidden on every frame of a zoom, to the value it already has
 const changed = recs => recs.some(r => r.oldValue !== r.target.getAttribute(r.attributeName));
 const watch = { attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class', 'style', 'open', 'data-detent', 'data-view'] };
@@ -237,13 +253,13 @@ view.onView(again);   // a pan or zoom: the controls have not moved
 addEventListener('resize', soon);
 wrapEl.addEventListener('animationend', soon);   // the map's scale-in moves the whole sky without a view change
 document.fonts.ready.then(() => { if (labels.length) measure(); soon(); });
-new MutationObserver(recs => { if (changed(recs)) again(); }).observe(marks, { ...watch, subtree: true });
+new MutationObserver(recs => { if (changed(recs)) marked(); }).observe(marks, { ...watch, subtree: true });
 const panels = recs => { if (changed(recs)) soon(); };
-for (const e of [$('csheet'), $('dive-aim'), $('maphint'), $('zoomlvl'), ...document.querySelectorAll('details.layers')]) if (e) new MutationObserver(panels).observe(e, watch);
+for (const e of [$('csheet'), $('dive-aim'), $('maphint'), $('zoomlvl'), $('tl-line'), ...document.querySelectorAll('details.layers')]) if (e) new MutationObserver(panels).observe(e, watch);
 new MutationObserver(panels).observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['class', 'data-view'] });
 const panel = $('xs-panel');   // search.js adds it; this module may run first
 if (panel) new MutationObserver(panels).observe(panel, watch); else new MutationObserver((m, o) => { const p = $('xs-panel'); if (p) { o.disconnect(); new MutationObserver(panels).observe(p, watch); soon(); } }).observe(document.body, { childList: true });
-marks.addEventListener('pointerover', again); marks.addEventListener('pointerout', again);   // a known comet's name shows on hover
+marks.addEventListener('pointerover', marked); marks.addEventListener('pointerout', marked);   // a known comet's name shows on hover
 document.addEventListener('change', soon);   // a Layers switch shows or hides markers with :has(), which changes no attribute
 soon();
 
