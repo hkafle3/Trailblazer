@@ -96,3 +96,9 @@ test('GET /api/colors: the bake within 2 arcsec, else 404; bad position 400', as
 test('readCat rounds to 0.001 degree as the other stores do', () => {
   assert.deepEqual(readCat(new URL('https://x/api/cat?cat=vsx&ra=10.0004&dec=-4.5005')), { cat: 'vsx', ra: 10, dec: -4.501, key: 'cat/v1/vsx/10.000-4.501.tsv' });
 });
+test('a partial (206) answer with a whole header and whole rows is never stored', async () => {
+  const head = CATS['2mass'].need.join(','), body = `${head}\n${CATS['2mass'].need.map(() => '1').join(',')}\n`;
+  const { f } = archive(() => new Response(body, { status: 206, headers: { 'Content-Type': 'text/csv' } })), env = fakeEnv();
+  const r = await cat(...req('cat=2mass&ra=84&dec=-6'), env, { fetch: f });
+  assert.equal(r.status, 503); assert.equal(env.store.size, 0);
+});

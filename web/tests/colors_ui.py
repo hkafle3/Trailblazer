@@ -56,7 +56,7 @@ CHECK = """(R) => {
     if (r.dataset.v !== v || ic !== v) bad.push(`row ${r.dataset.hl} ${ic} for ${v}`);
     if (v === 'inconclusive' && !r.dataset.g.includes(R.fingerprints[r.dataset.hl].reason)) bad.push(`row ${r.dataset.hl} reason`); }
   const big = document.querySelector('#co-big b')?.textContent ?? '', k = R.fits[d.pass];
-  const own = k && k.b >= 5 * k.b_err && k.T > 200 && k.T < 2500, shownT = R.fingerprints.temperature.verdict === 'seen' && (d.pass === 'all' || own);
+  const own = k && k.chi2_star_dust / k.dof_star_dust <= 3 && k.chi2_star - k.chi2_star_dust >= 25 && k.b >= 5 * k.b_err && k.T > 200 && k.T < 2500, shownT = R.fingerprints.temperature.verdict === 'seen' && (d.pass === 'all' || own);
   if (shownT ? big !== `${k.T} K` : /K$/.test(big)) bad.push(`big number ${big}`);
   if (!/^\\d/.test(String(R.comparisons.n)) || !document.querySelector('.co-key .gl').dataset.g.startsWith(`What this star gives off on its own: ${R.comparisons.n} stars`)) bad.push('comparison count');
   return bad;

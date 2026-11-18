@@ -33,7 +33,8 @@ const run = (name, mutate) => new Promise(done => {
   fs.copyFileSync(path.join(here, 'colors_parity.mjs'), path.join(tests, 'colors_parity.mjs'));
   execFile('node', [path.join(tests, 'colors_parity.mjs'), fixture, ref, ra, dec], { maxBuffer: 64 << 20 }, (err, out) => {
     // the run-time check does not count, nor does a crash: a mutant is caught only by a science check failing
-    const failed = out.split('\n').filter(l => l.startsWith('FAIL') && !l.includes('build performance')).map(l => l.slice(5, 60)), ran = /^PASS 1\. |^FAIL 1\. /m.test(out);
+    // ran: the parity test reached its own summary line (no crash); a crash of the test itself never counts as a catch
+    const failed = out.split('\n').filter(l => l.startsWith('FAIL') && !l.includes('build performance')).map(l => l.slice(5, 60)), ran = /^\w+: (PASS|FAIL), [\d.]+ s build, \d+ failed checks$/m.test(out);
     done({ name, caught: ran && failed.length > 0, ran, failed });
   });
 });

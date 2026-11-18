@@ -102,7 +102,7 @@ export async function buildLive({ base, ra, dec, field = null, signal, progress 
 }
 // the baked result (bake/colors_bake.mjs), only when its own star is within 2 arcsec of this spot
 export async function baked(base, ra, dec, signal) {
-  const r = await fetch(`${base}/api/colors?ra=${deg(ra)}&dec=${deg(dec)}`, { signal });
+  const r = await fetch(`${base}/api/colors?ra=${deg(ra)}&dec=${deg(dec)}`, { signal: within(signal) });   // the deadline covers the body too
   if (r.status !== 200) return null;
   const res = await r.json(), D = Math.PI / 180;
   if (!(Math.acos(Math.min(1, Math.sin(dec * D) * Math.sin(res.dec * D) + Math.cos(dec * D) * Math.cos(res.dec * D) * Math.cos((ra - res.ra) * D))) / D * 3600 <= 2)) return null;
@@ -119,7 +119,7 @@ async function run({ id, ra, dec, api: base = '', mode }, post) {
   const ac = new AbortController(), signal = ac.signal;
   if (mode === 'live') stop = ac;
   try {
-    if (mode === 'baked') { const b = await baked(base, ra, dec, signal).catch(e => { if (e.name === 'AbortError') throw e; return null; }); post(b ? { type: 'baked', result: b } : { type: 'none' }); return; }
+    if (mode === 'baked') { const b = await baked(base, ra, dec, signal).catch(e => { if (e.name === 'AbortError' && signal.aborted) throw e; return null; }); post(b ? { type: 'baked', result: b } : { type: 'none' }); return; }
     if (mode === 'estimate') { try { post({ type: 'estimate', ...(await estimate(base, ra, dec, signal)) }); } catch (e) { if (e.name === 'AbortError') return; post({ type: 'result', source: 'live', result: { v: 1, state: e.state ?? 'unavailable', reason: e.message } }); } return; }
     const result = await buildLive({ base, ra, dec, signal, progress: p => post({ type: 'progress', ...p }) });
     post({ type: 'result', result, source: 'live' });

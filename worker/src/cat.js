@@ -44,7 +44,7 @@ export async function fetchTable(u, first, need, fetchFn = fetch) {
   // VizieR's CfA mirror answers 500 to a request without a User-Agent
   const r = await fetchFn(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT), headers: { 'User-Agent': 'comet-hunt/1 (TrailBlazer, NASA Space Apps)' } });
   if (r.status >= 300 && r.status < 400 || r.type === 'opaqueredirect') { r.body?.cancel?.(); throw new Error(`${url.host} redirected (${r.status})`); }
-  if (!r.ok) { r.body?.cancel?.(); throw new Error(`${url.host} HTTP ${r.status}`); }
+  if (r.status !== 200) { r.body?.cancel?.(); throw new Error(`${url.host} HTTP ${r.status}`); }   // never a partial (206) answer
   if (/html|xml/i.test(r.headers.get('Content-Type') ?? '')) { r.body?.cancel?.(); throw new Error(`${url.host} sent a page, not a table`); }
   if (Number(r.headers.get('Content-Length')) > MAX) { r.body?.cancel?.(); throw new Error('answer too large'); }
   // read with the cap enforced as it streams, so an answer without a length cannot fill the isolate's memory

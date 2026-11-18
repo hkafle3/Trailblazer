@@ -195,8 +195,10 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
     if (!svg) return;
     for (const b of coWl.querySelectorAll('.co-seg button')) { const on = +b.dataset.pass === S.pass; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }
     const B = R.bare, bare = l => bareAt(B, l), b46 = bare(4.6), rise = fp.rise?.verdict === 'seen';
-    // a pass's own temperature only when its own dust is detected (5 times its noise) and off the grid's edges
-    const own = f => f && f.b >= 5 * f.b_err && f.T > 200 && f.T < 2500, dust = fp.temperature?.verdict === 'seen' && (p.key === 'all' || own(k));
+    // a pass's own temperature only when that pass alone meets the rise's fit rules (a good fit, the dust worth 25 in chi2 and
+    // 5 times its noise) and sits off the grid's edges
+    const own = f => f && f.chi2_star_dust / f.dof_star_dust <= 3 && f.chi2_star - f.chi2_star_dust >= 25 && f.b >= 5 * f.b_err && f.T > 200 && f.T < 2500;
+    const dust = fp.temperature?.verdict === 'seen' && (p.key === 'all' || own(k));
     const cs = R.comparison_systematic, pct = Math.round((p.key === 'all' ? R.excess_46 : k.b / b46) * 100);
     // the reading
     coBox.querySelector('#co-band').innerHTML = `${gl('0.75–5 µm', G.micron)} · ${esc(p.say)}`;
@@ -266,7 +268,7 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
     add('line', { class: 'cross', x1: 0, x2: 0, y1: Y0, y2: Y1, visibility: 'hidden', id: 'co-cross' });
     add('circle', { class: 'ring', r: 6, visibility: 'hidden', id: 'co-ring' });
     const oldNear = (R.old ?? []).every(o => Math.abs(o.mjy - bare(o.lam)) <= 3 * Math.hypot(o.err ?? 0, spreadAt(B, o.lam)));
-    svg.setAttribute('aria-label', `Spectrum of ${name || 'this star'}, ${p.say}: ${p.lam.length} SPHEREx colours from 0.75 to 5 µm. ${rise ? `Matches the bare star up to about 3 µm, then rises above it; at 4.6 µm it has ${pct}% extra light, fitted by dust at ${k.T} K.` : 'It follows the bare star.'}${R.old?.length ? ` The older points sit ${oldNear ? 'on' : 'off'} the bare star line.` : ''}`);
+    svg.setAttribute('aria-label', `Spectrum of ${name || 'this star'}, ${p.say}: ${p.lam.length} SPHEREx colours from 0.75 to 5 µm. ${rise ? `Matches the bare star up to about 3 µm, then rises above it; at 4.6 µm it has ${pct}% extra light${dust ? `, fitted by dust at ${k.T} K` : ''}.` : 'It follows the bare star.'}${R.old?.length ? ` The older points sit ${oldNear ? 'on' : 'off'} the bare star line.` : ''}`);
     S.pts = pts;
     pub.drawn = { pass: p.key, W: W0, H, X0, X1, Y0, Y1, YMAX, rows: W.rows.map(r => [r.hl, r.v]) };
   }
