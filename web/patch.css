@@ -525,8 +525,14 @@ body.depth .p3-inset:not(.off) { display: block; }
 .xp-d3-retry { position: absolute; left: 50%; top: calc(46% + 48 * var(--m)); transform: translateX(-50%); height: 36px; padding: 0 16px; border: 1.5px solid #fff; border-radius: 6px; background: #000; color: #fff; font: 400 13px/1 var(--panel-font); cursor: pointer; }
 .xp-d3-retry[hidden] { display: none; }
 @media (max-width: 900px) {
-  .p3-inset { right: 12px; top: 64px; bottom: auto; width: 128px; }
-  .p3-inset figcaption { font-size: 9.5px; }
+  .p3-inset { right: 12px; bottom: 36px; width: 96px; }   /* a phone: small, in the lower right, clear of the zoom buttons and the beam */
+  .p3-inset figcaption { font-size: 9.5px; align-items: flex-end; white-space: nowrap; }
   .xp-d3 .lbl .sub { font-size: .9em; }
 }
 @media (prefers-reduced-motion: reduce) { .tl-visit.cur { transition: none; } }
+/* the tabs and the zoom buttons share the frame's top edge: when the frame is too narrow for both (a phone, with Then and
+   now as a third tab), the tabs not chosen keep their icon alone (the name stays for screen readers) */
+.pv-frame { container-type: inline-size; }
+@container (max-width: 540px) {
+  .pv-views [role=tab][aria-selected=false] .tab-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}

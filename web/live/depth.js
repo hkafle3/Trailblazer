@@ -491,7 +491,7 @@ export function depthView(page) {
     // the side view a little from above, with a wider lens than before (phase 3): the cross-sections open up. The flat
     // photo sits bottom right on a wide frame (top right on a narrow one); the beam keeps clear of it.
     const ins = page.inset?.getBoundingClientRect();
-    const frame = small ? [12, 56, W - 16, H - 34] : [30, 64, W - 40 - (ins?.width ? ins.width * .84 : 0), H - 46];
+    const frame = small ? [12, 60, W - 16 - (ins?.width ? ins.width * .9 : 0), H - 40] : [30, 64, W - 40 - (ins?.width ? ins.width * .84 : 0), H - 46];
     const key = [V(-1.25 * CR, CR, 0), V(-1.25 * CR, -CR, 0), ...corners];
     const tilt = .85 + yaw.a, el = .5 + yaw.p;
     const to = S.fit(key, V(-Math.sin(tilt) * Math.cos(el), Math.sin(el), Math.cos(tilt) * Math.cos(el)), Y, small ? 30 : 26, frame);

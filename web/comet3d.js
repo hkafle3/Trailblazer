@@ -197,7 +197,8 @@ export function comet3d(opts) {
   figs.forEach((f, k) => f.addEventListener('click', () => { play(false); go(k); }));
 
   // drag to turn, zoom and pan: the time-lapse Depth view's controls, on the whole box (it holds the canvas)
-  const { zoomAt } = controls(box, { S, Z, yaw, render: kick, zoomBox, lim: { a: [-1.6, 1.6], p: [-.4, .9] }, sign: -1 });
+  const now_ = () => { cancelAnimationFrame(raf); render(); };   // a gesture draws at once (the camera, and what tests read, follow it)
+  controls(box, { S, Z, yaw, render: () => now_(), zoomBox, lim: { a: [-1.6, 1.6], p: [-.4, .9] }, sign: -1 });
   box.tabIndex = 0;
 
   // ---------------------------------------------------------------- one frame

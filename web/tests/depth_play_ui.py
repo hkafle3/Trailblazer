@@ -198,10 +198,11 @@ async def e2_lapse(b):
     # the pulse: the settled glow on a SPHEREx entry over the 2010 entry's, by area, against the band's lead_ratio
     ratio = await pg.evaluate("window.__blink?.results?.W2?.report?.lead_ratio")
     blink = api("/api/blink?ra=84.01810&dec=-6.57700"); want = blink["bands"]["W2"]["report"]["lead_ratio"]
-    await entry(pg, 0); await pg.wait_for_timeout(900); g0 = (await S(pg))["glow"]
-    await entry(pg, 2); await pg.wait_for_timeout(900); g1 = (await S(pg))["glow"]
+    await entry(pg, 0); await pg.wait_for_timeout(1300); g0 = (await S(pg))["glow"]
+    await entry(pg, 2); await pg.wait_for_timeout(1300); g1 = (await S(pg))["glow"]
     area = (g1["d"] / g0["d"]) ** 2
-    check(g0["settled"] and g1["settled"] and abs(area / want - 1) <= .03 and abs(ratio - want) < 1e-9,
+    print(f"  settled {g0['settled']} {g1['settled']}, the page's ratio {ratio}")
+    check(g0["settled"] and g1["settled"] and abs(area / want - 1) <= .03 and ratio is not None and abs(ratio - want) < 1e-9,
           f"pulse: C-0176's settled glow area on a SPHEREx entry over 2010's is {area:.4f}, the band's lead_ratio {want} (within 3%: {100 * abs(area / want - 1):.3f}%)")
     check(g0["sub"] == "its 2010 brightness" and g1["sub"] == f"{want:.2f}× its 2010 brightness", f"pulse: the subject's second line says it ({g0['sub']!r}, {g1['sub']!r})")
     check(not pg.errors, f"time-lapse rows: no page errors {pg.errors[:3]}")
