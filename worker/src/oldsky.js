@@ -246,12 +246,14 @@ export async function stored(url, env) {
     'Cache-Control': 'public, max-age=31536000, immutable', ETag: o.httpEtag } });
 }
 // GET /api/blink?ra=&dec=: the baked blink at this spot (bake/blink_bake.mjs), or 404: the page then builds it live
-export async function blinkBaked(url, env) {
+export const blinkBaked = (url, env) => bakedAt(url, env, 'blink/v1', 'no baked blink here');
+// a baked result under <prefix>/<pos>/ (result.json and the bake's own centre.json), for the spot asked or 404
+export async function bakedAt(url, env, prefix, missing) {
   const ra = Number(url.searchParams.get('ra')), dec = Number(url.searchParams.get('dec'));
   if (!Number.isFinite(ra) || ra < 0 || ra >= 360 || !Number.isFinite(dec) || dec < -90 || dec > 90) return json({ error: 'ra must be 0 to 360 and dec -90 to 90' }, 400);
   // the key rounds to 0.001 degree (up to 2.5 arcsec): the bake's own centre (centre.json, written with it) must be within
   // 2 arcsec of the spot asked for, or another spot's measurements would be served
-  const dir = `blink/v1/${posKey(ra, dec)}/`, c = await env.OLDSKY?.get(dir + 'centre.json'), none = () => json({ error: 'no baked blink here' }, 404, { 'Cache-Control': 'no-store' });
+  const dir = `${prefix}/${posKey(ra, dec)}/`, c = await env.OLDSKY?.get(dir + 'centre.json'), none = () => json({ error: missing }, 404, { 'Cache-Control': 'no-store' });
   if (!c) return none();
   const cen = JSON.parse(await new Response(c.body).text()), D = Math.PI / 180;
   const sep = Math.acos(Math.min(1, Math.sin(dec * D) * Math.sin(cen.dec * D) + Math.cos(dec * D) * Math.cos(cen.dec * D) * Math.cos((ra - cen.ra) * D))) / D * 3600;

@@ -5,7 +5,7 @@ import { fwd } from './skymap.js';
 import { placeLine } from './sky-place.js';   // "In Orion, 1.2° from the Orion Nebula" (labels.json names)
 import { userName } from './discuss.js';
 import { CHANNELS } from './live/spectral.js';
-import { thenAndNow } from './thenandnow.js';
+import { candidateBox } from './colors.js';
 import { designation } from './live/blink.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');
@@ -163,7 +163,8 @@ fetch(`/api/comets/${encodeURIComponent(id ?? '')}`).then(r => (r.ok ? r.json() 
   if (!c.candidate) return location.replace(`comet.html?id=${encodeURIComponent(c.id)}`);   // a comet with its own page
   head(c); talk(c); composer(c);
   // the blink: the reporter's spot, old survey against SPHEREx (baked for the showcase, else built here)
-  thenAndNow($('tn'), { ra: c.ra, dec: c.dec, mode: 'page', onResult: r => {
+  // and its Colors tab, the star's spectrum against the bare star (baked for the showcase, else built here once started)
+  candidateBox($('tn'), { ra: c.ra, dec: c.dec, name: c.id, onResult: r => {
     const ctx = Object.values(r).find(m => m.context)?.context;
     if (ctx && !context) { context = ctx; status(c); where(c); }
   } });

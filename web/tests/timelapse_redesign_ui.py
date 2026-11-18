@@ -299,7 +299,9 @@ async def main():
         await pg.click("#tab-depth"); await pg.wait_for_timeout(300)
         sp = await pg.evaluate("[document.body.classList.contains('speccing'), (r => r.width > 0 && r.height > 0)(document.getElementById('dist').getBoundingClientRect()), (r => r.width > 0)(document.getElementById('spec').getBoundingClientRect()), location.search]")
         check(was and not sp[0] and sp[1] and not sp[2] and "spec=" not in sp[3], f"Spectrum then Depth: the card closes and Distances shows ({sp})")
-        # another visit whose distances cannot be had: the old beam goes at once and the failure is said over it
+        # another visit whose distances cannot be had: the patch's stars stay (Gaia's, for the patch), no other visit's
+        # SkyBoT mark shows, and the failure is said over the beam (phase 3: the beam no longer blanks on each visit)
+        stars_before = await pg.evaluate("__depth.stars().length")
         mjd = await pg.evaluate("__lapse.state.m.frames.map(f => f.mjd.toFixed(4))")
         photo_before = await pg.evaluate("document.getElementById('depth3d').dataset.photo")
         await pg.route("**/api/depth**", lambda r: r.fulfill(status=503, json={"error": "archive down"}))
@@ -307,8 +309,9 @@ async def main():
         await pg.wait_for_function("document.getElementById('depth3d').dataset.state === 'error'", timeout=20000)
         photo_after = await pg.evaluate("document.getElementById('depth3d').dataset.photo")
         check(photo_before == mjd[-1] and photo_after == mjd[0], f"Depth failure: the far end shows the new visit's photo anyway ({photo_before} -> {photo_after})")
-        st = await pg.evaluate("(b => [b.dataset.objects, b.dataset.rings, b.dataset.dots, b.querySelectorAll('.lbl:not(.tip):not(.mark)').length, document.getElementById('depth-msg').textContent, document.querySelectorAll('#dist-list li').length])(document.getElementById('depth3d'))")
-        check(st[:3] == ["0", "0", "0"] and "Could not ask the catalogs" in st[4] and st[5] == 0, f"Depth failure: the old beam and list are gone, the failure is said ({st})")
+        st = await pg.evaluate("(b => [+b.dataset.objects, __depth.stars().length, __depth.shown.rings.concat(__depth.shown.dots).filter(k => k.startsWith('sso:')).length, document.getElementById('depth-msg').textContent, document.querySelectorAll('#dist-list li[data-key^=\"stars:\"]').length])(document.getElementById('depth3d'))")
+        check(st[0] > 0 and st[1] == stars_before and st[2] == 0 and "catalog check for this visit failed" in st[3] and st[4] == st[1],
+              f"Depth failure: the patch's stars stay in the beam and the list, no SkyBoT mark of another visit, the failure is said ({st})")
         await pg.unroute("**/api/depth**")
         # the server's own fault switch (DEPTH_FAULTS=1): every catalog fails for another visit; the photo still follows it
         await pg.route("**/api/depth**", lambda route: route.continue_(url=route.request.url + "&fail=sso,stars,galaxies"))
@@ -355,7 +358,7 @@ async def main():
         # the facts follow the patch: a different wavelength shows, though the verdict's words are the same
         await pg.evaluate("__lapse.state.m.lam0 = 1.234; document.getElementById('split').click(); document.getElementById('split').click()")
         check("1.23 µm" in await pg.text_content("#pv-facts"), f"facts: a new wavelength shows ({await pg.text_content('#pv-facts')})")
-        # one card at a time: Discuss closes the Spectrum card; Depth closes Discuss; Play goes back to Photo
+        # one card at a time: Discuss closes the Spectrum card; Depth closes Discuss; Play in Depth stays in Depth (phase 3)
         # (on a wide screen the Spectrum card covers Report; a narrow one shows both, so the sheet can open over the card)
         await pg.set_viewport_size({"width": 390, "height": 844}); await pg.wait_for_timeout(200)
         await pg.evaluate("__spec.open(271.9, 66.7, 2026)"); await pg.wait_for_timeout(200)
@@ -367,8 +370,8 @@ async def main():
         await pg.evaluate("document.getElementById('play').click()"); await pg.wait_for_timeout(300)
         c = await pg.evaluate("[document.getElementById('tab-photo').getAttribute('aria-selected'), document.getElementById('play').classList.contains('on')]")
         await pg.evaluate("document.getElementById('play').click()")
-        check(a == [False, True, False] and bcls == [False, True, False] and c == ["true", True],
-              f"one card at a time: Discuss closed Spectrum {a}; Depth closed Discuss and shows Distances {bcls}; Play went back to Photo {c}")
+        check(a == [False, True, False] and bcls == [False, True, False] and c == ["false", True],
+              f"one card at a time: Discuss closed Spectrum {a}; Depth closed Discuss and shows Distances {bcls}; Play in Depth stays in Depth {c}")
         check(not pg.errors, f"cards: no page errors {pg.errors}")
         await ctx.close()
 
