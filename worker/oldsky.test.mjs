@@ -80,8 +80,8 @@ async function miss(q, env, deps, ip) {
 }
 // what a failed miss may leave: its plan and tiles that passed their checks (each with its record), never a manifest or a
 // tile without its record: the count of those
-const kept = env => { const ks = [...env.store.keys()];
-  return ks.filter(k => k.endsWith('/manifest.json') || (k.endsWith('.fits') && !ks.includes(k.replace(/([^/]+)$/, 'ok/$1.json')))).length; };
+const kept = env => { const ks = [...env.store.keys()], vouched = new Set(ks.filter(k => k.includes('/ok/')).map(k => JSON.parse(env.store.get(k).v).key));
+  return ks.filter(k => k.endsWith('/manifest.json') || (k.endsWith('.fits') && !vouched.has(k))).length; };
 const req = (q, ip = '1.2.3.4') => { const url = new URL(`https://x.test/api/oldsky?${q}`); return [new Request(url, { headers: { 'CF-Connecting-IP': ip } }), url]; };
 const sha = async b => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b))].map(x => x.toString(16).padStart(2, '0')).join('');
 
@@ -110,7 +110,8 @@ test('a miss fetches, checks and stores the bytes as IRSA sent them (gzip or not
   const m = await r.json(); assert.equal(r.status, 200, JSON.stringify(m));
   assert.deepEqual(m.tiles.map(t => [t.name, t.gzip]), [['allwise_W2_int.fits', false], ['allwise_W2_cov.fits', true]]);
   assert.equal(m.tiles[0].header.DATEOBS1, '2010-03-06T22:30:53.139');
-  const int = env.store.get('oldsky/v1/allwise/W2/780/84.018-6.578/allwise_W2_int.fits').v, cov = env.store.get('oldsky/v1/allwise/W2/780/84.018-6.578/allwise_W2_cov.fits').v;
+  const int = env.store.get(m.tiles[0].path.slice(4)).v, cov = env.store.get(m.tiles[1].path.slice(4)).v;
+  assert.match(m.tiles[0].path, /^api\/oldsky\/v1\/allwise\/W2\/780\/84\.018-6\.578\/allwise_W2_int\.[0-9a-f]{8}\.fits$/);
   assert.deepEqual(int, irsa.w2); assert.deepEqual(cov, irsa.cov);
   assert.deepEqual(m.tiles.map(t => [t.bytes, t.etag]), [[irsa.w2.length, `etag-${irsa.w2.length}`], [irsa.cov.length, `etag-${irsa.cov.length}`]]);
   assert.ok(m.tiles.every(t => !('sha256' in t)), 'no hashing in the Worker');
@@ -222,4 +223,50 @@ test('the tile route takes only names from the stored plan, never a URL, and one
   assert.equal((await tile('allwise_W2_int.fits')).status, 200); assert.equal(irsa.calls.length, before + 1, 'one tile, one IRSA request');
   const mid = await oldsky(...req(q), env, DEPS(irsa.f));
   assert.equal(mid.status, 202); assert.deepEqual((await mid.json()).pending, ['allwise_W2_cov.fits']);
+});
+
+test('tile requests are idempotent: a done tile is not fetched again, and an overlapping failed attempt never removes it', async () => {
+  const q = 'survey=allwise&band=W2&ra=84.01808&dec=-6.5775';
+  let intCalls = 0;
+  const env = fakeEnv(), irsa = await fakeIrsa(u => {
+    if (!u.includes('int-3')) return null;
+    intCalls++;
+    // the first attempt is good but slow; the overlapping second one gets a broken body
+    return intCalls === 1 ? new Promise(res => setTimeout(() => res(new Response(fitsBytes([['BAND', 2]]))), 50)) : new Response(fitsBytes([['BAND', 2]], { nx: 500, ny: 500, dataBytes: 0 }));
+  });
+  const tile = name => { const url = new URL(`https://x.test/api/oldsky/tile?${q}&name=${name}`); return oldskyTile(new Request(url), url, env, DEPS(irsa.f)); };
+  assert.equal((await oldsky(...req(q), env, DEPS(irsa.f))).status, 202);
+  const [a, b] = await Promise.all([tile('allwise_W2_int.fits'), tile('allwise_W2_int.fits')]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 503], 'one attempt passed, the overlapping one failed');
+  const calls = intCalls;
+  assert.equal((await tile('allwise_W2_int.fits')).status, 200, 'asked again: done');
+  assert.equal(intCalls, calls, 'a done tile is not fetched again');
+  assert.equal((await tile('allwise_W2_cov.fits')).status, 200);
+  const r = await oldsky(...req(q), env, DEPS(irsa.f)), m = await r.json();
+  assert.equal(r.status, 200);
+  for (const t of m.tiles) {
+    const f = await stored(new URL(`https://x.test/${t.path}`), env);
+    assert.equal(f.status, 200, `the manifest's ${t.name} is there (${t.path})`);
+  }
+});
+
+test('the header of a gzip is read from small compressed pieces, stopping at END; a gzip over the cap is never inflated', async () => {
+  const { fitsHead } = await import('./src/oldsky.js');
+  // 16 MB of zero pixels compresses to about 16 KB: all of it fits in the bytes read back for the header
+  const big = await gzip(fitsBytes([['BAND', 2]], { nx: 2000, ny: 2000 }));
+  assert.ok(big.length < 24 << 10, `${big.length} bytes`);
+  let fed = 0, made = 0;
+  class Counting extends DecompressionStream {
+    constructor(f) { super(f); made++;
+      const orig = this.writable.getWriter.bind(this.writable);
+      this.writable.getWriter = () => { const ww = orig(), wr = ww.write.bind(ww); ww.write = c => { fed += c.byteLength; return wr(c); }; return ww; }; }
+  }
+  const h = await fitsHead(big, Counting);
+  assert.equal(h.cards.BAND, '2');
+  assert.ok(made === 1 && fed > 0 && fed <= 4096, `fed ${fed} compressed bytes to read a 2-block header`);
+  // over the cap: refused from its size trailer before any inflating
+  made = 0;
+  const env = fakeEnv(), huge = await gzip(fitsBytes([['BAND', 2]], { nx: 3000, ny: 3000 })), irsa = await fakeIrsa(u => (u.includes('int-3') ? new Response(huge) : null));
+  const r = await miss('survey=allwise&band=W2&ra=84.01808&dec=-6.5775', env, { ...DEPS(irsa.f), DecompressionStream: Counting });
+  assert.equal(r.status, 503); assert.equal(made, 0, 'no decompressor was started for a gzip over the cap');
 });

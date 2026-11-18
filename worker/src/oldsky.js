@@ -67,13 +67,29 @@ const tries = async (n, fn) => {
 export const isGzip = b => b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b;
 const MAX_INFLATED = 16 << 20, BLOCK = 2880, PREFIX = 24 << 10;   // headers of these atlases are 4 to 11 blocks (11 to 32 KB inflated, a few KB as gzip)
 // the header cards and the bytes the whole file must hold, from the file's start (plain FITS, or the start of a gzip)
-export async function fitsHead(prefix) {
+// the 80 characters of the header card at byte i of the inflated pieces so far
+function cardAt(parts, i) {
+  let at = 0, out = '';
+  for (const p of parts) { if (i < at + p.byteLength && out.length < 80) for (let k = Math.max(0, i - at); k < p.byteLength && out.length < 80; k++) out += String.fromCharCode(p[k]); at += p.byteLength; }
+  return out.slice(0, 8).trim();
+}
+export async function fitsHead(prefix, DS = DecompressionStream) {
   let b = prefix;
   if (isGzip(prefix)) {
-    const reader = new Blob([prefix]).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), parts = []; let n = 0;
-    try { while (n < 40 * BLOCK) { const c = await reader.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; } }
-    catch { /* the start of a gzip ends mid-stream: what came out before is the header */ }
-    finally { reader.cancel().catch(() => {}); }
+    // fed in 512-byte pieces, read as they come out, stopped at the END card: a highly compressible tile (16 MB of zeros
+    // is 16 KB of gzip) is never inflated whole inside the Worker (Codex re-review 3)
+    const ds = new DS('gzip'), w = ds.writable.getWriter(), rd = ds.readable.getReader(), parts = [];
+    let n = 0, stop = false;
+    const hasEnd = () => { for (let i = Math.max(0, n - 4096 - 80) - (Math.max(0, n - 4096 - 80) % 80); i + 80 <= n; i += 80) if (cardAt(parts, i) === 'END') return true; return false; };
+    const reading = (async () => {
+      try { while (!stop) { const c = await rd.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; if (hasEnd() || n >= 40 * BLOCK) stop = true; } }
+      catch { /* the start of a gzip ends mid-stream: what came out before is the header */ }
+      stop = true;
+    })();
+    for (let off = 0; off < prefix.length && !stop; off += 512) { try { await w.write(prefix.subarray(off, off + 512)); } catch { break; } await new Promise(r => setTimeout(r, 0)); }
+    stop = true;
+    w.abort().catch(() => {}); rd.cancel().catch(() => {});
+    await Promise.race([reading, new Promise(r => setTimeout(r, 50))]);
     b = new Uint8Array(n); let at = 0; for (const p of parts) { b.set(p, at); at += p.byteLength; }
   }
   const cards = {}, dec = new TextDecoder('latin1');
@@ -97,7 +113,7 @@ export async function fitsHead(prefix) {
 // passes through JavaScript), then read back in two small ranges: the first 64 KB for the header, and for a gzip its
 // 4-byte size trailer. Anything wrong deletes what was stored. { gzip, bytes, etag, cards }
 // deps.wrapBody: for the Node tests only, where a stream has no known length (they enforce it with a FixedLengthStream)
-async function storeTile(t, key, req, env, fetchFn, wrapBody = b => b) {
+async function storeTile(t, key, req, env, fetchFn, wrapBody = b => b, DS) {
   const u = new URL(t.url);
   if (u.protocol !== 'https:' || u.host !== 'irsa.ipac.caltech.edu') throw new Error(`not an IRSA URL: ${u.host}`);
   const r = await fetchFn(u.toString(), { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT) });
@@ -112,12 +128,13 @@ async function storeTile(t, key, req, env, fetchFn, wrapBody = b => b) {
   try {
     if (!stored || stored.size !== len) throw new Error(`stored ${stored?.size} of ${len} bytes`);
     const bytesAt = async range => new Uint8Array(await new Response((await env.OLDSKY.get(key, { range })).body).arrayBuffer());
-    const prefix = await bytesAt({ offset: 0, length: Math.min(len, PREFIX) }), gzip = isGzip(prefix), h = await fitsHead(prefix);
+    const gzip = isGzip(await bytesAt({ offset: 0, length: 2 }));
     let full = len;
-    if (gzip) {   // the gzip's ISIZE trailer: what it inflates to (mod 2^32; tiles are far smaller)
+    if (gzip) {   // the gzip's ISIZE trailer first: what it inflates to (mod 2^32; tiles are far smaller), checked before any inflating
       full = new DataView((await bytesAt({ suffix: 4 })).buffer).getUint32(0, true);
       if (full > MAX_INFLATED) throw new Error('gzip inflates past the size cap');
     }
+    const h = await fitsHead(await bytesAt({ offset: 0, length: Math.min(len, PREFIX) }), DS);
     if (full < h.need) throw new Error(`FITS image is short: ${full} bytes, ${h.need} needed`);
     if (!/_cov\.fits$/.test(t.name) && bandOf(req.survey, h.cards) !== req.band) throw new Error(`${t.name} is ${bandOf(req.survey, h.cards)}, not ${req.band}`);
     return { gzip, bytes: len, etag: stored.etag, cards: h.cards };
@@ -162,7 +179,7 @@ const KEEP = ['NAXIS1', 'NAXIS2', 'BAND', 'FILTER', 'DATEOBS1', 'DATEOBS2', 'MID
 const PENDING_KEY = 'plan.json', OK = name => `ok/${name}.json`;
 const manifestOf = (req, plan, done) => ({ v: 2, survey: req.survey, band: req.band, size_arcsec: SIZE, ra: req.ra, dec: req.dec,
   release: req.survey === 'allwise' ? 'AllWISE Atlas (p3am_cdd)' : '2MASS All-Sky Release', fetched_at: new Date().toISOString(),
-  tiles: plan.tiles.map(t => ({ name: t.name, path: `api/${req.prefix}${t.name}`, source: t.url, tile: t.tile, ...done.get(t.name) })) });
+  tiles: plan.tiles.map(t => { const { key, ...rec } = done.get(t.name); return { name: t.name, path: `api/${key}`, source: t.url, tile: t.tile, ...rec }; }) });
 async function readJsonObject(env, key) { const o = await env.OLDSKY.get(key); return o ? JSON.parse(await new Response(o.body).text()) : null; }
 export async function oldsky(request, url, env, deps = {}) {
   const fetchFn = deps.fetch ?? fetch, req = readRequest(url);
@@ -201,12 +218,17 @@ export async function oldskyTile(request, url, env, deps = {}) {
   if (!env.OLDSKY) return json({ error: 'older survey unavailable', reason: 'no store' }, 503);
   const plan = await readJsonObject(env, req.prefix + PENDING_KEY), t = plan?.tiles.find(x => x.name === name);
   if (!t) return json({ error: 'no such tile in this spot\'s plan; ask GET /api/oldsky first' }, 404, { 'Cache-Control': 'no-store' });
+  // done already: never fetched again (and never touched by a later attempt)
+  if (await env.OLDSKY.head(req.prefix + OK(name))) return json({ name, done: true }, 200, { 'Cache-Control': 'no-store' });
   const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
   if (env.OLDSKY_TILE_LIMIT && !(await env.OLDSKY_TILE_LIMIT.limit({ key: `oldsky-tile:${ip}` })).success)
     return json({ error: 'too many tiles at once, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
+  // each attempt writes its own object: one that fails deletes only that, so attempts that overlap never undo each other,
+  // and the record (written only after the checks) names the object it vouches for
+  const key = `${req.prefix}${name.replace(/\.fits$/, '')}.${crypto.randomUUID().slice(0, 8)}.fits`;
   try {
-    const s = await tries(2, () => storeTile(t, req.prefix + t.name, req, env, fetchFn, deps.wrapBody));
-    const rec = { bytes: s.bytes, gzip: s.gzip, etag: s.etag, header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) };
+    const s = await tries(2, () => storeTile(t, key, req, env, fetchFn, deps.wrapBody, deps.DecompressionStream));
+    const rec = { key, bytes: s.bytes, gzip: s.gzip, etag: s.etag, header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) };
     await env.OLDSKY.put(req.prefix + OK(name), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
     return json({ name, done: true }, 200, { 'Cache-Control': 'no-store' });
   } catch (e) {
