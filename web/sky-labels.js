@@ -113,7 +113,7 @@ const visible = e => !e.closest('[style*="visibility: hidden"]');   // markers n
 const rects = sel => [...document.querySelectorAll(sel)].filter(visible).map(rect).filter(r => r[2] > r[0] && r[3] > r[1]);   // display: none gives an empty box
 
 // what names must keep clear of: the markers and their names, the pin, the controls over the map, the open panels
-const MARKS = '#marks .mk:not([hidden]) i, #marks .mk:not([hidden]) b, #card-patch, #pin:not([hidden]) .pincard, #pin:not([hidden]) .pin-ring';
+const MARKS = '#card-patch, #pin:not([hidden]) .pincard, #pin:not([hidden]) .pin-ring';   // and each marker near the view, below
 const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns > *, .layers[open] > .layers-body, #csheet:not([hidden]), #dive-aim:not([hidden]) .aim-box, #dive-aim:not([hidden]) .aim-go, #maphint:not([hidden]), #zoomlvl:not([hidden]), #t-date, .tl-knob';
 // the cards: [right, left] as [dx, dy] from the marker (styles.css, explore.css, candidates.css); under it is BELOW px down
 const CARDS = [['card-comet', [28, -30], [-278, -30]], ['card-cand', [-12, 16], [-258, 16]]].map(([id, r, l]) => ({ id, right: r, left: l }));
@@ -124,20 +124,30 @@ const belowAt = (x, w, fixed) => [-w / 2, ...fixed.flatMap(o => [o[2] + PAD + 1 
   .filter(dx => dx <= -20 && dx >= 20 - w).sort((a, b) => Math.abs(a + w / 2) - Math.abs(b + w / 2));
 
 let placed = [];   // [box, label] for the hover test
+// The controls and the top bar and timeline edges do not move with the map: read again only when something other than a
+// pan or zoom asked for this pass (a resize, a panel, a marker change), so a glide reads only the markers near the view.
+let still = null, fresh = true;
 function layout() {
   q = 0;
   if (document.body.dataset.view === '3d') return;
   if (!sized && labels.length && document.fonts.status === 'loaded') measure();
   // ---- read ----
   const vw = innerWidth, vh = innerHeight, k = wrapEl.offsetWidth / 360;
-  const top = document.querySelector('.topbar').getBoundingClientRect().bottom, bot = $('tl').getBoundingClientRect().top - BAR;
+  if (fresh || !still) still = { top: document.querySelector('.topbar').getBoundingClientRect().bottom, bot: $('tl').getBoundingClientRect().top - BAR,
+    fixed: rects(CONTROLS), topbar: rect(document.querySelector('.topbar')) };
+  fresh = false;
+  const { top, bot, fixed: fixed0, topbar } = still, fixed = [...fixed0];
   const str = view.straight(), mr = wrapEl.getBoundingClientRect();
   const at = (u, v) => (str ? view.win(u, v) : [mr.left + u * mr.width, mr.top + v * mr.height]);
-  const fixed = rects(CONTROLS), taken = rects(MARKS);
+  const taken = rects(MARKS);
+  for (const m of marks.querySelectorAll('.mk:not([hidden])')) {   // markers near the view only: at a deep zoom most are far off
+    const [x, y] = at(parseFloat(m.style.left) / 100, parseFloat(m.style.top) / 100);
+    if (x < -300 || x > vw + 300 || y < top - 100 || y > bot + 100 || !visible(m)) continue;
+    for (const e of m.children) if (e.tagName === 'I' || e.tagName === 'B') { const r = rect(e); if (r[2] > r[0] && r[3] > r[1]) taken.push(r); }
+  }
   const cards = CARDS.map(c => ({ ...c, el: $(c.id) })).filter(c => c.el && !c.el.hidden && c.el.offsetWidth && visible(c.el))
     .map(c => ({ ...c, w: c.el.offsetWidth, h: c.el.offsetHeight, u: parseFloat(c.el.style.left) / 100, v: parseFloat(c.el.style.top) / 100 }));
   const mwBox = mwText && !wrapEl.classList.contains('deep-zoom') ? rect(mwText) : null;
-  const topbar = rect(document.querySelector('.topbar'));
 
   // ---- cards: off the controls, inside the window ----
   const cardWrites = [];
@@ -215,8 +225,8 @@ function layout() {
 }
 
 let q = 0;
-const soon = () => { if (!q) q = requestAnimationFrame(layout); };
-view.onView(soon);
+const soon = () => { fresh = true; if (!q) q = requestAnimationFrame(layout); };
+view.onView(() => { if (!q) q = requestAnimationFrame(layout); });   // a pan or zoom: the controls have not moved
 addEventListener('resize', soon);
 wrapEl.addEventListener('animationend', soon);   // the map's scale-in moves the whole sky without a view change
 document.fonts.ready.then(() => { if (labels.length) measure(); soon(); });
