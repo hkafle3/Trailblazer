@@ -60,11 +60,12 @@ export function parse(q) {
 // Lowercase letters and digits only, so "3i atlas", "wise0855" and "WISE 0855-0714" all match. A hit is ranked: the whole
 // name 0, its start 1, the start of a word 2, anywhere 3 (only from 3 letters typed, so "r" does not list half the sky).
 // s and e mark the matched part in the original name, for bold.
-export const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+const fold = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();   // accents off: "bootes" finds Boötes
+export const norm = s => fold(s).replace(/[^a-z0-9]/g, '');
 export function hit(name, nq) {
   const idx = [];
   let n = '';
-  for (let i = 0; i < name.length; i++) { const c = name[i].toLowerCase(); if (/[a-z0-9]/.test(c)) { idx.push(i); n += c; } }
+  for (let i = 0; i < name.length; i++) { const c = fold(name[i]); if (/[a-z0-9]/.test(c)) { idx.push(i); n += c; } }
   let best = null;
   for (let p = n.indexOf(nq); nq && p >= 0; p = n.indexOf(nq, p + 1)) {
     const s = idx[p], rank = n === nq ? 0 : p === 0 ? 1 : !/[a-z0-9]/i.test(name[s - 1]) ? 2 : 3;

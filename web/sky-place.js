@@ -28,8 +28,8 @@ export function toB1875(ra, dec) {
 }
 export function constellationAt(ra, dec) {
   const [r, d] = toB1875(ra, dec), h = r / 15;
-  for (const [lo, hi, dl, n] of rows) if (lo < h && h < hi && d > dl) return n;   // astropy's test, strict on every side
-  return 'Oct';   // ponytail: reached only exactly on a band edge near the south pole, which Octans holds
+  for (const [lo, hi, dl, n] of rows) if (lo <= h && h < hi && d >= dl) return n;   // Roman's own test: astropy's, but a point on an edge belongs to a band
+  return 'Oct';   // not reached: the last band covers the whole sky south of -90
 }
 
 const sep = (a, b) => {

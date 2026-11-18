@@ -44,7 +44,7 @@ const where = c => (trackAt(c.track, day()) ?? [c.ra, c.dec]).slice(0, 2);   // 
 // the sky's own names (data/labels.json, as sky-labels.js shows them): the 88 constellations by name or abbreviation, then
 // famous objects and clouds, then named stars, brightest first. A pick flies to a zoom where that name shows on the map.
 let places = [];
-fetch('data/labels.json').then(r => (r.ok ? r.json() : null)).then(d => {
+const placesIn = fetch('data/labels.json').then(r => (r.ok ? r.json() : null)).then(d => {
   if (!d) return;
   const seen = new Set(), CMIN = { 1: 5, 2: 7.5, 3: 10 };
   places = [...d.constellations.map(c => ({ ...c, kind: 'constellation', aka: [c.id], min: CMIN[c.rank], max: 45 })), ...d.objects.filter(o => o.kind !== 'star'), ...d.objects.filter(o => o.kind === 'star').map(o => ({ ...o, min: 60 }))]
@@ -89,10 +89,14 @@ function render() {
     // letters too: it may be a catalog name that reads like numbers ("1H 0323+342"), so the star catalogs stay one Enter away
     if (p.error && /[a-z]/i.test(q)) html = group('STAR CATALOGS', row({ kind: 'sesame', q }, ring, `Look up "${esc(q)}"`, '<span class="s">SIMBAD</span>', true));
   } else {   // a name: our targets and comets, the matched part in bold; else the star catalogs on Enter
-    html = group('TARGETS', m.targets.map(x => targetRow(x.t, x.label === x.t.name ? bold(x.label, x.s, x.e) : esc(x.t.name), x.label === x.t.name ? '' : `<span class="s">${bold(x.label, x.s, x.e)}</span>`)).join(''));
-    html += group('COMETS', m.comets.map(x => cometRow(x.c, bold(x.c.id, x.s, x.e), x.c.co2 === 'detected' ? '<span class="s hot">CO2 glow</span>' : '')).join(''));
-    html += group('PLACES', pl.map(x => row({ kind: 'place', p: x.p }, ring, x.label === x.p.name ? bold(x.label, x.s, x.e) : esc(x.p.name),
+    // the sky's names (rows are numbered as they are drawn, so each group is drawn in the order it shows)
+    const sky = () => group('PLACES', pl.map(x => row({ kind: 'place', p: x.p }, ring, x.label === x.p.name ? bold(x.label, x.s, x.e) : esc(x.p.name),
       `<span class="s">${x.label === x.p.name ? KIND_WORD[x.p.kind] ?? '' : bold(x.label, x.s, x.e)}</span>`)).join(''));
+    const exact = pl[0] && pl[0].rank < Math.min(m.targets[0]?.rank ?? 9, m.comets[0]?.rank ?? 9);   // "Ori" is Orion before any comet with ori in it
+    html = exact ? sky() : '';
+    html += group('TARGETS', m.targets.map(x => targetRow(x.t, x.label === x.t.name ? bold(x.label, x.s, x.e) : esc(x.t.name), x.label === x.t.name ? '' : `<span class="s">${bold(x.label, x.s, x.e)}</span>`)).join(''));
+    html += group('COMETS', m.comets.map(x => cometRow(x.c, bold(x.c.id, x.s, x.e), x.c.co2 === 'detected' ? '<span class="s hot">CO2 glow</span>' : '')).join(''));
+    if (!exact) html += sky();
     if (!local) html += group('STAR CATALOGS', row({ kind: 'sesame', q }, ring, `Look up "${esc(q)}"`, '<span class="s">SIMBAD</span>', true));
     html += group('COORDINATES', hint);
   }
@@ -240,7 +244,7 @@ addEventListener('keydown', e => {
 export function init(h) {
   hooks = h;
   const q = new URLSearchParams(location.search).get('q')?.trim();
-  if (q) h.ready.then(() => {
+  if (q) Promise.all([h.ready, placesIn]).then(() => {
     input.value = q;
     if (phone.matches) document.body.classList.add('xs-on');
     render(); show(false);

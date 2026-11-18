@@ -108,7 +108,7 @@ const visible = e => !e.closest('[style*="visibility: hidden"]');   // markers n
 const rects = sel => [...document.querySelectorAll(sel)].filter(visible).map(rect).filter(r => r[2] > r[0] && r[3] > r[1]);   // display: none gives an empty box
 
 // what names must keep clear of: the markers and their names, the pin, the controls over the map, the open panels
-const MARKS = '#marks .mk:not([hidden]) i, #marks .mk:not([hidden]) b, #pin:not([hidden]) .pincard, #pin:not([hidden]) .pin-ring';
+const MARKS = '#marks .mk:not([hidden]) i, #marks .mk:not([hidden]) b, #card-patch, #pin:not([hidden]) .pincard, #pin:not([hidden]) .pin-ring';
 const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns > *, .layers[open] > .layers-body, #csheet:not([hidden]), #dive-aim:not([hidden]) .aim-box, #dive-aim:not([hidden]) .aim-go, #maphint:not([hidden]), #zoomlvl:not([hidden]), #t-date, .tl-knob';
 // the cards: [right, left] as [dx, dy] from the marker (styles.css, explore.css, candidates.css); under it is BELOW px down
 const CARDS = [['card-comet', [28, -30], [-278, -30]], ['card-cand', [-12, 16], [-258, 16]]].map(([id, r, l]) => ({ id, right: r, left: l }));
@@ -221,6 +221,7 @@ new MutationObserver(soon).observe(document.body, { attributes: true, attributeF
 const panel = $('xs-panel');   // search.js adds it; this module may run first
 if (panel) new MutationObserver(soon).observe(panel, watch); else new MutationObserver((m, o) => { const p = $('xs-panel'); if (p) { o.disconnect(); new MutationObserver(soon).observe(p, watch); soon(); } }).observe(document.body, { childList: true });
 marks.addEventListener('pointerover', soon); marks.addEventListener('pointerout', soon);   // a known comet's name shows on hover
+document.addEventListener('change', soon);   // a Layers switch shows or hides markers with :has(), which changes no attribute
 soon();
 
 // ---- hover: a little brighter under the pointer ----

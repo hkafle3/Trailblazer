@@ -66,5 +66,5 @@ assert.ok(Math.abs(sep(0, 0, 90, 0) - 90) < 1e-9 && sep(10, 20, 10, 20) === 0);
   assert.equal(first('andromeda'), 'Andromeda', 'the constellation before the galaxy');
   assert.ok(matchPlaces('andromeda', places).some(x => x.p.name === 'Andromeda Galaxy'));
   assert.equal(new Set(d.constellations.map(c => c.id)).size, 88, 'all 88 constellations (Serpens in two parts)');
-  assert.deepEqual(matchPlaces('', places), []); assert.deepEqual(matchPlaces('zzzq', places), []); }
+  assert.equal(first('bootes'), 'Boötes', 'accents folded'); assert.deepEqual(matchPlaces('', places), []); assert.deepEqual(matchPlaces('zzzq', places), []); }
 console.log('PASS search_core: RA and Dec reader, name matching, sky names, Sesame answer');
