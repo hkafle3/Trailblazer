@@ -113,9 +113,9 @@ export async function fitsHead(prefix, DS = DecompressionStream) {
 // passes through JavaScript), then read back in two small ranges: the first 64 KB for the header, and for a gzip its
 // 4-byte size trailer. Anything wrong deletes what was stored. { gzip, bytes, etag, cards }
 // deps.wrapBody: for the Node tests only, where a stream has no known length (they enforce it with a FixedLengthStream)
-async function storeTile(t, key, req, env, fetchFn, wrapBody = b => b, DS) {
+async function storeTile(t, key, req, env, fetchFn, wrapBody = b => b, DS, testHost = null) {
   const u = new URL(t.url);
-  if (u.protocol !== 'https:' || u.host !== 'irsa.ipac.caltech.edu') throw new Error(`not an IRSA URL: ${u.host}`);
+  if (!(u.protocol === 'https:' && u.host === 'irsa.ipac.caltech.edu') && !(testHost && u.host === testHost)) throw new Error(`not an IRSA URL: ${u.host}`);
   const r = await fetchFn(u.toString(), { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT) });
   if (r.status >= 300 && r.status < 400 || r.type === 'opaqueredirect') { r.body?.cancel?.(); throw new Error(`IRSA redirected (${r.status})`); }
   if (!r.ok) { r.body?.cancel?.(); throw new Error(`IRSA HTTP ${r.status} for ${u.pathname}`); }
@@ -180,11 +180,22 @@ const PENDING_KEY = 'plan.json', OK = name => `ok/${name}.json`;
 const manifestOf = (req, plan, done) => ({ v: 2, survey: req.survey, band: req.band, size_arcsec: SIZE, ra: req.ra, dec: req.dec,
   release: req.survey === 'allwise' ? 'AllWISE Atlas (p3am_cdd)' : '2MASS All-Sky Release', fetched_at: new Date().toISOString(),
   tiles: plan.tiles.map(t => { const { key, ...rec } = done.get(t.name); return { name: t.name, path: `api/${key}`, source: t.url, tile: t.tile, ...rec }; }) });
+// A test hook for the tile step's CPU and its gzip handling in workerd and on a preview, never in production: only when
+// the Worker has OLDSKY_TEST_ORIGIN ('self', or an origin; set in worker/.dev.vars and worker/wrangler.preview.toml, not in
+// worker/wrangler.toml) and the request says test=zeros16m. Its plan is one tile, web/tests/fixtures/zeros16m-w2.fits.gz
+// (a valid 16 MB W2 image of zeros, 15.6 KB as gzip), under oldsky/test/, apart from real keys.
+function testPlan(url, env, req) {
+  if (!env.OLDSKY_TEST_ORIGIN || url.searchParams.get('test') !== 'zeros16m') return null;
+  const origin = env.OLDSKY_TEST_ORIGIN === 'self' ? url.origin : env.OLDSKY_TEST_ORIGIN;
+  return { host: new URL(origin).host, prefix: req.prefix.replace('oldsky/v1/', 'oldsky/test/'), tiles: [{ name: `allwise_${req.band}_int.fits`, url: `${origin}/tests/fixtures/zeros16m-w2.fits.gz`, tile: 'test' }] };
+}
 async function readJsonObject(env, key) { const o = await env.OLDSKY.get(key); return o ? JSON.parse(await new Response(o.body).text()) : null; }
 export async function oldsky(request, url, env, deps = {}) {
   const fetchFn = deps.fetch ?? fetch, req = readRequest(url);
   if (req.error) return json({ error: req.error }, 400);
   if (!env.OLDSKY) return json({ error: 'older survey unavailable', reason: 'no store' }, 503);
+  const test = testPlan(url, env, req);
+  if (test) req.prefix = test.prefix;
   const hit = await env.OLDSKY.get(req.prefix + 'manifest.json');
   if (hit) return new Response(hit.body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400', 'X-Oldsky': 'hit' } });
   const down = reason => json({ error: 'older survey unavailable', reason }, 503, { 'Cache-Control': 'no-store', 'Retry-After': '30' });
@@ -195,7 +206,7 @@ export async function oldsky(request, url, env, deps = {}) {
     if (env.OLDSKY_LIMIT && !(await env.OLDSKY_LIMIT.limit({ key: `oldsky:${ip}` })).success)
       return json({ error: 'too many new spots, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
     let tiles;
-    try { tiles = await plan_(req, fetchFn); } catch (e) { return down(`search: ${e.message}`); }
+    try { tiles = test ? test.tiles : await plan_(req, fetchFn); } catch (e) { return down(`search: ${e.message}`); }
     if (!tiles.length) return json({ error: 'no older survey picture of this spot', survey: req.survey, band: req.band }, 404, { 'Cache-Control': 'no-store' });
     if (tiles.length > MAX_TILES) return down(`${tiles.length} tiles, more than ${MAX_TILES}`);
     plan = { tiles };
@@ -216,6 +227,8 @@ export async function oldskyTile(request, url, env, deps = {}) {
   const fetchFn = deps.fetch ?? fetch, req = readRequest(url), name = url.searchParams.get('name') ?? '';
   if (req.error) return json({ error: req.error }, 400);
   if (!env.OLDSKY) return json({ error: 'older survey unavailable', reason: 'no store' }, 503);
+  const test = testPlan(url, env, req);
+  if (test) req.prefix = test.prefix;
   const plan = await readJsonObject(env, req.prefix + PENDING_KEY), t = plan?.tiles.find(x => x.name === name);
   if (!t) return json({ error: 'no such tile in this spot\'s plan; ask GET /api/oldsky first' }, 404, { 'Cache-Control': 'no-store' });
   // done already: never fetched again (and never touched by a later attempt)
@@ -227,7 +240,7 @@ export async function oldskyTile(request, url, env, deps = {}) {
   // and the record (written only after the checks) names the object it vouches for
   const key = `${req.prefix}${name.replace(/\.fits$/, '')}.${crypto.randomUUID().slice(0, 8)}.fits`;
   try {
-    const s = await tries(2, () => storeTile(t, key, req, env, fetchFn, deps.wrapBody, deps.DecompressionStream));
+    const s = await tries(2, () => storeTile(t, key, req, env, fetchFn, deps.wrapBody, deps.DecompressionStream, test?.host));
     const rec = { key, bytes: s.bytes, gzip: s.gzip, etag: s.etag, header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) };
     await env.OLDSKY.put(req.prefix + OK(name), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
     return json({ name, done: true }, 200, { 'Cache-Control': 'no-store' });

@@ -27,6 +27,8 @@ migrations_dir = "migrations"
 # uploads is the file's MD5 (md5 -q d1.bin). A rebuilt index changes them: build, check, upload, update these, deploy
 # (docs/api.md, "Refreshing the image index"). Any other version of a file is refused and IRSA answers instead.
 [vars]
+# PREVIEW ONLY: the old-sky test hook (worker/src/oldsky.js testPlan), a 16 MB tile of zeros served from this preview itself
+OLDSKY_TEST_ORIGIN = "self"
 SKY_ETAG_D1 = "a275376a6b6548c5e7432d5adc129eb4"
 SKY_ETAG_D2 = "8fbd8f8114aa7f727af849a85e3e0c13"
 SKY_ETAG_D3 = "0b043a67c797baf17c12a77d66945a6d"

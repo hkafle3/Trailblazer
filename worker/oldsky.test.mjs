@@ -270,3 +270,10 @@ test('the header of a gzip is read from small compressed pieces, stopping at END
   const r = await miss('survey=allwise&band=W2&ra=84.01808&dec=-6.5775', env, { ...DEPS(irsa.f), DecompressionStream: Counting });
   assert.equal(r.status, 503); assert.equal(made, 0, 'no decompressor was started for a gzip over the cap');
 });
+
+test('the test hook is off unless the Worker has OLDSKY_TEST_ORIGIN', async () => {
+  const env = fakeEnv(), irsa = await fakeIrsa();
+  const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775&test=zeros16m'), env, DEPS(irsa.f));
+  assert.equal(r.status, 202); assert.ok(irsa.calls.some(c => c.url.includes('/SIA?')), 'a real search, not the test plan');
+  assert.ok(![...env.store.keys()].some(k => k.startsWith('oldsky/test/')));
+});
