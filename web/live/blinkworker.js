@@ -10,6 +10,7 @@ import { imageHeader, imageRows, flagsHeader, flagRows, parseCards } from './fit
 const SURVEY = { W1: ['allwise', 'W1'], W2: ['allwise', 'W2'], Ks: ['2mass', 'Ks'] };
 const SIZE = 2040, HALF = (B.N - 1) / 2 * B.PIX / 3600;   // the field's half width, degrees
 
+export { oldSky };
 export class Unavailable extends Error { constructor(state, reason) { super(reason); this.state = state; } }
 function limiter(n) {
   let busy = 0; const wait = [];
@@ -35,13 +36,19 @@ async function oldSky(base, band, ra, dec, signal, progress) {
   if (r.status === 429) throw new Unavailable('old-unavailable', 'Too many new spots at once. Try again in a minute');
   if (!r.ok) throw new Unavailable('old-unavailable', 'NASA\'s image archive (IRSA) is not answering');
   const man = await r.json(), tiles = [];
+  // The Worker streams tiles into R2 unread (its CPU allows no more), so the full check is here: the bytes stored as
+  // declared, a gzip that inflates whole (its length and checksum), and a complete FITS image. A damaged stored tile
+  // makes the comparison inconclusive, said plainly; it is not fetched again and again.
+  const damaged = why => new Unavailable('inconclusive', `the older survey's stored picture of this spot is damaged (${why})`);
   for (const t of man.tiles) {
     const raw = new Uint8Array(await retry(async () => { const x = await fetch(`${base}/${t.path}`, { signal }); if (!x.ok) throw new Error(`tile HTTP ${x.status}`); return x.arrayBuffer(); }));
-    if (await hex(raw) !== t.sha256) throw new Unavailable('old-unavailable', `${t.name} does not match its checksum`);
-    const bytes = await inflate(raw);
-    tiles.push({ name: t.name, sha256: t.sha256, fits_sha256: await hex(bytes), source: t.source, fits: B.readFits(bytes, parseCards) });
+    if (t.bytes !== undefined && raw.length !== t.bytes) throw damaged(`${t.name}: ${raw.length} bytes, ${t.bytes} stored`);
+    let bytes, fits;
+    try { bytes = await inflate(raw); } catch { throw damaged(`${t.name} does not inflate`); }
+    try { fits = B.readFits(bytes, parseCards); } catch (e) { throw damaged(`${t.name}: ${e.message}`); }
+    tiles.push({ name: t.name, stored_bytes: raw.length, etag: t.etag ?? null, fits_sha256: await hex(bytes), stored_sha256: await hex(raw), source: t.source, fits });
   }
-  const inputs = tiles.map(t => ({ file: t.name, sha256: t.fits_sha256, digest: 'sha256 of the whole FITS file, inflated', stored_sha256: t.sha256, stored_digest: 'sha256 of the bytes as IRSA sent them (gzip or not)', source: t.source }));
+  const inputs = tiles.map(t => ({ file: t.name, sha256: t.fits_sha256, digest: 'sha256 of the whole FITS file, inflated', stored_sha256: t.stored_sha256, stored_digest: 'sha256 of the bytes as stored, as IRSA sent them (gzip or not)', stored_etag: t.etag, source: t.source }));
   if (survey === 'allwise') {
     const int = tiles.find(t => t.name.endsWith('_int.fits')), cov = tiles.find(t => t.name.endsWith('_cov.fits'));
     if (!int || !cov) throw new Unavailable('comparison-unavailable', 'The AllWISE coverage map is missing');
