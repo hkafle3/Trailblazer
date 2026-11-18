@@ -12,7 +12,7 @@ async function range(key, start, end, signal) {
 }
 
 // FITS header: 80-character cards in 2880-byte blocks, ending at the END card
-function parseCards(bytes) {
+export function parseCards(bytes) {
   const h = {};
   for (let i = 0; i + 80 <= bytes.length; i += 80) {
     const card = String.fromCharCode(...bytes.subarray(i, i + 80));
