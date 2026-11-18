@@ -3,12 +3,14 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=   GET /api/depth?ra=&dec=[&t=]
+//   GET /api/oldsky?survey=&band=&ra=&dec=   GET /api/oldsky/v1/...   GET /api/blink?ra=&dec=   GET /api/blink/v1/...   (R2 OLDSKY, worker/src/oldsky.js)
 //   GET /api/comets   GET /api/comets/:id (with `now`, the daily snapshot: cron, worker/src/now.js)   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 import { skyImagesJson, eclipticLat } from './sky_index.js';
 import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
 import { snapshot, nowRow } from './now.js';
+import { oldsky, stored, blinkBaked } from './oldsky.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
 
@@ -629,6 +631,15 @@ export default {
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     if (url.pathname === '/api/depth') return depth(url, env, ctx);   // its own per-source cache, no saved fallback
+    // "Then and now": the older survey's tiles (R2 first, IRSA on a rate-limited miss) and the baked showcase blink
+    if (url.pathname === '/api/oldsky' || url.pathname === '/api/blink' || url.pathname.startsWith('/api/oldsky/') || url.pathname.startsWith('/api/blink/')) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'use GET' }, 405, { Allow: 'GET' });
+      try {
+        if (url.pathname === '/api/oldsky') return await oldsky(request, url, env);
+        if (url.pathname === '/api/blink') return await blinkBaked(url, env);
+        return await stored(url, env);
+      } catch (e) { console.error(e); return json({ error: 'older survey unavailable', reason: 'store is not answering' }, 503, { 'Cache-Control': 'no-store' }); }
+    }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"

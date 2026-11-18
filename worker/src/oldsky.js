@@ -1,0 +1,171 @@
+// "Then and now": the older survey's picture of a spot, for the blink (web/live/blinkworker.js). Contract in docs/api.md.
+//   GET /api/oldsky?survey=allwise|2mass&band=W1|W2|Ks&ra=&dec=   a JSON manifest (tiles, sha256, dates, release)
+//   GET /api/oldsky/v1/...   the tile bytes, same origin, from R2 (OLDSKY)   GET /api/blink/v1/...   a baked blink
+//   GET /api/blink?ra=&dec=   a baked blink's result, when there is one (the showcase), else 404 and the page builds live
+// IRSA's cutouts are FITS, often gzip whatever the name says. They are read as bounded binary (never fetchRetry's
+// .text(), which would corrupt them), checked to be FITS, and stored as IRSA sent them. Only complete answers are stored;
+// an error is never cached. R2 answers first; a miss is rate limited per IP (OLDSKY_LIMIT) before IRSA is asked.
+const IRSA = 'https://irsa.ipac.caltech.edu';
+const SIZE = 780, MAX_TILE = 4 << 20, MAX_TILES = 8, MAX_TEXT = 1 << 20, TIMEOUT = 20000;
+// the only survey/band pairs: the band each one compares with SPHEREx
+export const BANDS = { allwise: ['W1', 'W2'], '2mass': ['Ks'] };
+const CORS = { 'Access-Control-Allow-Origin': '*' };
+const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS, ...extra } });
+
+// the position rounded to 0.001 degree, as it appears in keys: 84.018-6.578, 10.000+4.500
+// (halves away from zero, so a spot and its mirror in Dec round alike)
+const round3 = v => Math.sign(v) * Math.round(Math.abs(v) * 1000) / 1000;
+export const posKey = (ra, dec) => `${(round3(ra) % 360).toFixed(3)}${dec < 0 ? '-' : '+'}${Math.abs(round3(dec)).toFixed(3)}`;
+// GET parameters -> { survey, band, ra, dec, prefix } or { error }
+export function readRequest(url) {
+  const q = url.searchParams, survey = q.get('survey'), band = q.get('band');
+  if (!Object.hasOwn(BANDS, survey ?? '')) return { error: 'survey must be allwise or 2mass' };
+  if (!BANDS[survey].includes(band)) return { error: `band must be ${BANDS[survey].join(' or ')} for ${survey}` };
+  if (q.has('size') && q.get('size') !== String(SIZE)) return { error: `size must be ${SIZE} (arcsec)` };
+  const ra = Number(q.get('ra')), dec = Number(q.get('dec'));
+  if (!q.has('ra') || q.get('ra').trim() === '' || !Number.isFinite(ra) || ra < 0 || ra >= 360) return { error: 'ra must be 0 to 360' };
+  if (!q.has('dec') || q.get('dec').trim() === '' || !Number.isFinite(dec) || dec < -90 || dec > 90) return { error: 'dec must be -90 to 90' };
+  const r = round3(ra) % 360, d = round3(dec);
+  return { survey, band, ra: r, dec: d, prefix: `oldsky/v1/${survey}/${band}/${SIZE}/${posKey(r, d)}/` };
+}
+
+// bytes of an IRSA URL: host fixed, no redirects, at most max bytes, at most TIMEOUT
+export async function irsaBytes(url, max, fetchFn = fetch) {
+  const u = new URL(url);
+  if (u.protocol !== 'https:' || u.host !== 'irsa.ipac.caltech.edu') throw new Error(`not an IRSA URL: ${u.host}`);
+  const r = await fetchFn(u.toString(), { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT) });
+  if (r.status >= 300 && r.status < 400 || r.type === 'opaqueredirect') { r.body?.cancel?.(); throw new Error(`IRSA redirected (${r.status})`); }
+  if (!r.ok) { r.body?.cancel?.(); throw new Error(`IRSA HTTP ${r.status} for ${u.pathname}`); }
+  if (Number(r.headers.get('Content-Length')) > max) { r.body?.cancel?.(); throw new Error('IRSA answer too large'); }
+  const reader = r.body.getReader(), chunks = []; let n = 0;
+  for (let c; !(c = await reader.read()).done;) {
+    n += c.value.byteLength;
+    if (n > max) { reader.cancel().catch(() => {}); throw new Error('IRSA answer too large'); }
+    chunks.push(c.value);
+  }
+  const out = new Uint8Array(n); let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.byteLength; }
+  return out;
+}
+// a few tries, a short wait between (IRSA's cutout service answers 503 now and then); a redirect or an oversize answer is final
+const tries = async (n, fn) => {
+  let last;
+  for (let i = 0; i < n; i++) {
+    try { return await fn(); } catch (e) { last = e; if (/redirect|too large|not an IRSA/.test(e.message)) break; }
+    if (i < n - 1) await new Promise(r => setTimeout(r, 500 * (i + 1)));
+  }
+  throw last;
+};
+
+// the first header block(s) of a FITS file, gzip or not (detected from the bytes 1f 8b): the cards we report
+export const isGzip = b => b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
+async function headOf(bytes) {
+  let head = bytes.subarray(0, 11520);
+  if (isGzip(bytes)) {   // inflate only the start: enough for the header, not the image
+    const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), parts = []; let n = 0;
+    try { while (n < 11520) { const c = await reader.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; } }
+    catch { throw new Error('gzip does not inflate'); }
+    finally { reader.cancel().catch(() => {}); }
+    head = new Uint8Array(n); let at = 0; for (const p of parts) { head.set(p, at); at += p.byteLength; }
+  }
+  const text = new TextDecoder('latin1').decode(head);
+  if (!text.startsWith('SIMPLE  =')) throw new Error('not a FITS file');
+  const cards = {};
+  for (let i = 0; i + 80 <= text.length; i += 80) {
+    const c = text.slice(i, i + 80), k = c.slice(0, 8).trim();
+    if (k === 'END') return cards;
+    if (c[8] !== '=') continue;
+    let v = c.slice(10).trim();
+    v = v.startsWith("'") ? v.slice(1, v.indexOf("'", 1)).trim() : v.split('/')[0].trim();
+    cards[k] = v;
+  }
+  throw new Error('FITS header has no END in its first blocks');
+}
+const sha256 = async b => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b))].map(x => x.toString(16).padStart(2, '0')).join('');
+
+// IRSA's CSV: a header line, then rows; quoted fields are not expected in the columns we read
+function csvRows(text, need) {
+  const lines = text.split('\n'), head = lines[0].replace(/\r$/, '').split(',');
+  if (need.some(k => !head.includes(k))) throw new Error('IRSA sent no table');
+  return lines.slice(1).filter(l => l.includes(',')).map(l => { const v = l.replace(/\r$/, '').split(','); return Object.fromEntries(head.map((h, i) => [h, v[i]])); });
+}
+// which tiles to cut out, from IRSA's searches: [{ name, url }]
+async function plan(req, fetchFn) {
+  const { survey, band, ra, dec } = req, cut = `center=${ra},${dec}&size=${SIZE}arcsec`;
+  const text = async u => new TextDecoder().decode(await tries(2, () => irsaBytes(u, MAX_TEXT, fetchFn)));
+  if (survey === 'allwise') {
+    // the AllWISE Atlas tile nearest the spot (the reference's rule), its intensity image and its coverage map
+    const rows = csvRows(await text(`${IRSA}/SIA?COLLECTION=wise_allwise&POS=circle+${ra}+${dec}+0.01&RESPONSEFORMAT=CSV`), ['s_ra', 's_dec', 'dataproduct_subtype', 'energy_bandpassname', 'access_url', 'obs_id']);
+    const sci = rows.filter(x => x.dataproduct_subtype === 'science' && x.energy_bandpassname === band)
+      .sort((a, b) => ((a.s_ra - ra) ** 2 + (a.s_dec - dec) ** 2) - ((b.s_ra - ra) ** 2 + (b.s_dec - dec) ** 2))[0];
+    if (!sci || !/-int-3\.fits$/.test(sci.access_url)) return [];
+    return [{ name: `allwise_${band}_int.fits`, url: `${sci.access_url}?${cut}`, tile: sci.obs_id },
+      { name: `allwise_${band}_cov.fits`, url: `${sci.access_url.replace(/-int-3\.fits$/, '-cov-3.fits.gz')}?${cut}`, tile: sci.obs_id }];
+  }
+  // 2MASS: every Ks atlas image overlapping the 12 arcmin field (one box search gives the reference's 25-point set)
+  const rows = csvRows(await text(`${IRSA}/ibe/search/twomass/allsky/allsky?POS=${ra},${dec}&SIZE=0.2006&INTERSECT=OVERLAPS&RESPONSEFORMAT=CSV`), ['fname', 'ordate', 'hemisphere', 'scanno', 'filter']);
+  const seen = new Map();
+  for (const x of rows) if (x.filter === 'k' && /^[a-z0-9]+\.fits(\.gz)?$/.test(x.fname) && /^\d{6}$/.test(x.ordate) && /^[ns]$/.test(x.hemisphere) && /^\d+$/.test(x.scanno)) seen.set(x.ordate + x.fname, x);
+  return [...seen.values()].sort((a, b) => (a.ordate + a.fname < b.ordate + b.fname ? -1 : 1)).map(k => ({
+    name: `2mass_Ks_${k.ordate}_${k.fname.split('.')[0]}.fits`, tile: k.fname,
+    url: `${IRSA}/ibe/data/twomass/allsky/allsky/${k.ordate}${k.hemisphere}/s${String(Number(k.scanno)).padStart(3, '0')}/image/${k.fname}?${cut}` }));
+}
+// what the header must say for the band asked: a wrong tile is never stored
+function bandOf(survey, h) { return survey === 'allwise' ? `W${h.BAND}` : h.FILTER === 'k' ? 'Ks' : `?${h.FILTER}`; }
+const KEEP = ['NAXIS1', 'NAXIS2', 'BAND', 'FILTER', 'DATEOBS1', 'DATEOBS2', 'MIDOBS', 'ORDATE', 'MAGZP', 'NUMFRMS', 'MEDCOV', 'COADDID'];
+
+export async function oldsky(request, url, env, deps = {}) {
+  const fetchFn = deps.fetch ?? fetch, req = readRequest(url);
+  if (req.error) return json({ error: req.error }, 400);
+  if (!env.OLDSKY) return json({ error: 'older survey unavailable', reason: 'no store' }, 503);
+  const hit = await env.OLDSKY.get(req.prefix + 'manifest.json');
+  if (hit) return new Response(hit.body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400', 'X-Oldsky': 'hit' } });
+  // a miss costs IRSA requests and storage: limited per IP (misses only)
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+  if (env.OLDSKY_LIMIT && !(await env.OLDSKY_LIMIT.limit({ key: `oldsky:${ip}` })).success)
+    return json({ error: 'too many new spots, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
+  const down = reason => json({ error: 'older survey unavailable', reason }, 503, { 'Cache-Control': 'no-store', 'Retry-After': '30' });
+  let tiles;
+  try { tiles = await plan(req, fetchFn); } catch (e) { return down(`search: ${e.message}`); }
+  if (!tiles.length) return json({ error: 'no older survey picture of this spot', survey: req.survey, band: req.band }, 404, { 'Cache-Control': 'no-store' });
+  if (tiles.length > MAX_TILES) return down(`${tiles.length} tiles, more than ${MAX_TILES}`);
+  // one at a time: IRSA answers 503 to two cutouts of one tile at once (measured 2026-11-18)
+  const got = [];
+  try {
+    for (const t of tiles) {
+      const bytes = await tries(3, () => irsaBytes(t.url, MAX_TILE, fetchFn)), h = await headOf(bytes);
+      if (!/_cov\.fits$/.test(t.name) && bandOf(req.survey, h) !== req.band) throw new Error(`${t.name} is ${bandOf(req.survey, h)}, not ${req.band}`);
+      got.push({ ...t, bytes, gzip: isGzip(bytes), header: Object.fromEntries(KEEP.filter(k => k in h).map(k => [k, h[k]])) });
+    }
+  } catch (e) { return down(e.message); }
+  const manifest = { v: 1, survey: req.survey, band: req.band, size_arcsec: SIZE, ra: req.ra, dec: req.dec,
+    release: req.survey === 'allwise' ? 'AllWISE Atlas (p3am_cdd)' : '2MASS All-Sky Release', fetched_at: new Date().toISOString(), tiles: [] };
+  for (const t of got) {
+    const sum = await sha256(t.bytes);
+    await env.OLDSKY.put(req.prefix + t.name, t.bytes, { httpMetadata: { contentType: 'application/fits' }, customMetadata: { sha256: sum, source: t.url } });
+    manifest.tiles.push({ name: t.name, path: `api/${req.prefix}${t.name}`, source: t.url, tile: t.tile, bytes: t.bytes.byteLength, gzip: t.gzip, sha256: sum, header: t.header });
+  }
+  const body = JSON.stringify(manifest);
+  await env.OLDSKY.put(req.prefix + 'manifest.json', body, { httpMetadata: { contentType: 'application/json' } });   // last: a manifest means every tile is there
+  return new Response(body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400', 'X-Oldsky': 'miss' } });
+}
+
+// stored bytes, by canonical key only: oldsky/v1/<survey>/<band>/780/<pos>/<tile>, blink/v1/<pos>/<file>
+const POS = '\\d{1,3}\\.\\d{3}[+-]\\d{1,2}\\.\\d{3}';
+const FILE = new RegExp(`^(oldsky/v1/(allwise/(W1|W2)|2mass/Ks)/${SIZE}/${POS}/[A-Za-z0-9_.]{1,80}|blink/v1/${POS}/(result\\.json|frames\\.bin))$`);
+export async function stored(url, env) {
+  const key = url.pathname.slice('/api/'.length);
+  if (!FILE.test(key)) return json({ error: 'not found' }, 404);
+  const o = await env.OLDSKY?.get(key);
+  if (!o) return json({ error: 'not found' }, 404, { 'Cache-Control': 'no-store' });
+  return new Response(o.body, { headers: { 'Content-Type': o.httpMetadata?.contentType ?? 'application/octet-stream', ...CORS,
+    'Cache-Control': 'public, max-age=31536000, immutable', ETag: o.httpEtag } });
+}
+// GET /api/blink?ra=&dec=: the baked blink at this spot (bake/blink_bake.mjs), or 404: the page then builds it live
+export async function blinkBaked(url, env) {
+  const ra = Number(url.searchParams.get('ra')), dec = Number(url.searchParams.get('dec'));
+  if (!Number.isFinite(ra) || ra < 0 || ra >= 360 || !Number.isFinite(dec) || dec < -90 || dec > 90) return json({ error: 'ra must be 0 to 360 and dec -90 to 90' }, 400);
+  const o = await env.OLDSKY?.get(`blink/v1/${posKey(ra, dec)}/result.json`);
+  if (!o) return json({ error: 'no baked blink here' }, 404, { 'Cache-Control': 'no-store' });
+  return new Response(o.body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=300' } });
+}
