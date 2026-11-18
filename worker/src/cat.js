@@ -47,14 +47,10 @@ export async function fetchTable(u, first, fetchFn = fetch) {
   if (!r.ok) { r.body?.cancel?.(); throw new Error(`${url.host} HTTP ${r.status}`); }
   if (/html|xml/i.test(r.headers.get('Content-Type') ?? '')) { r.body?.cancel?.(); throw new Error(`${url.host} sent a page, not a table`); }
   if (Number(r.headers.get('Content-Length')) > MAX) { r.body?.cancel?.(); throw new Error('answer too large'); }
-  const reader = r.body.getReader(), parts = []; let n = 0;
-  for (let c; !(c = await reader.read()).done;) {
-    n += c.value.byteLength;
-    if (n > MAX) { reader.cancel().catch(() => {}); throw new Error('answer too large'); }
-    parts.push(c.value);
-  }
-  const out = new Uint8Array(n); let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.byteLength; }
+  // read whole by the runtime (a JavaScript loop over a megabyte's chunks cost 14 ms of CPU on preview, 2026-11-18), then
+  // the cap: an answer past it is dropped, never stored
+  const out = new Uint8Array(await r.arrayBuffer()), n = out.length;
+  if (n > MAX) throw new Error('answer too large');
   // the header: CSV's first line, or for VizieR the first line that is not a comment; and a complete last line
   const head = new TextDecoder().decode(out.subarray(0, Math.min(n, 8192)));
   const line = first === 'OID' ? head.split('\n').find(l => l && !l.startsWith('#')) ?? '' : head.split('\n')[0];
