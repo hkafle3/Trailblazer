@@ -221,7 +221,9 @@ export async function oldskyTile(request, url, env, deps = {}) {
   // and the record (written only after the checks) names the object it vouches for
   const key = `${req.prefix}${name.replace(/\.fits$/, '')}.${crypto.randomUUID().slice(0, 8)}.fits`;
   try {
-    const s = await tries(2, () => storeTile(t, key, req, env, fetchFn, deps.wrapBody, deps.DecompressionStream, test?.host));
+    // the test tile comes from this Worker's own assets (a Worker cannot fetch its own preview URL)
+    const via = test && env.ASSETS ? (u, init) => env.ASSETS.fetch(new Request(u, init)) : fetchFn;
+    const s = await tries(2, () => storeTile(t, key, req, env, via, deps.wrapBody, deps.DecompressionStream, test?.host));
     const rec = { key, bytes: s.bytes, gzip: s.gzip, etag: s.etag, header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) };
     await env.OLDSKY.put(req.prefix + OK(name), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
     return json({ name, done: true }, 200, { 'Cache-Control': 'no-store' });

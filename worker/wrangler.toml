@@ -15,6 +15,7 @@ crons = ["*/10 0-5 * * *"]
 # Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
 [assets]
 directory = "../web"
+binding = "ASSETS"   # the old-sky test hook reads its test tile through this (worker/src/oldsky.js testPlan)
 
 # D1 database: comets and comments (labels are comments with a tag). Schema: worker/migrations/.
 [[d1_databases]]
