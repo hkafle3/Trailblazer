@@ -906,17 +906,19 @@ const timeline = (() => {
   const line = document.getElementById('tl-line'), ticks = document.getElementById('tl-ticks'), dots = document.getElementById('tl-visits');
   const knob = document.getElementById('play'), date = document.getElementById('t-date');
   let from = 0, span = 1, built = '', times = [], oldT = null;
-  // with the 2010 entry: 2009 to 2012 on the left, a break, then SPHEREx's months (the phase 3 mockup's axis)
+  // with the older entry: four years round its survey's year on the left (2009 to 2012 for AllWISE's 2010, 1999 to 2002
+  // for a 2MASS scan in 2000), a break, then SPHEREx's months (the phase 3 mockup's axis)
   const Y = y => Date.UTC(y, 0, 1);
-  const x01 = t => (oldT == null ? (t - from) / span : t < Y(2013) ? .03 + (t - Y(2009)) / (Y(2013) - Y(2009)) * .17 : .27 + (t - from) / span * .71);
+  let oy = 2010;   // the older picture's year (old.year), set by visits()
+  const x01 = t => (oldT == null ? (t - from) / span : t < Y(oy + 3) ? .03 + (t - Y(oy - 1)) / (Y(oy + 3) - Y(oy - 1)) * .17 : .27 + (t - from) / span * .71);
   const pos = t => x01(t) * 100 + '%';
-  const tOf = x => (oldT == null ? from + x * span : x < .235 ? Y(2009) + (x - .03) / .17 * (Y(2013) - Y(2009)) : from + (x - .27) / .71 * span);
+  const tOf = x => (oldT == null ? from + x * span : x < .235 ? Y(oy - 1) + (x - .03) / .17 * (Y(oy + 3) - Y(oy - 1)) : from + (x - .27) / .71 * span);
   function range(t0, t1) {   // a tick for every month from t0's month to t1
     const s = new Date(t0), key = `${s.getUTCFullYear()}-${s.getUTCMonth()}-${t1}`;
-    if (key + oldT === built) return;
-    built = key + oldT; from = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1); span = t1 - from; ticks.textContent = '';
-    if (oldT != null) {   // 2009 to 2012, 2010 named; then the break
-      for (const y of [2009, 2010, 2011, 2012]) { const t = document.createElement('span'); t.className = 'tl-tick old'; t.style.left = pos(Y(y)); t.innerHTML = `<b>${y === 2010 ? '2010' : ''}</b>`; ticks.append(t); }
+    if (key + oldT + oy === built) return;
+    built = key + oldT + oy; from = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1); span = t1 - from; ticks.textContent = '';
+    if (oldT != null) {   // the four years round the older picture's, its year named; then the break
+      for (let y = oy - 1; y <= oy + 2; y++) { const t = document.createElement('span'); t.className = 'tl-tick old'; t.style.left = pos(Y(y)); t.innerHTML = `<b>${y === oy ? oy : ''}</b>`; ticks.append(t); }
       const b = document.createElement('i'); b.className = 'tl-break'; b.style.left = '23.5%'; ticks.append(b);
     }
     for (let y = s.getUTCFullYear(), mo = s.getUTCMonth(); Date.UTC(y, mo, 1) <= t1; mo === 11 ? (y++, mo = 0) : mo++) {
@@ -942,7 +944,7 @@ const timeline = (() => {
     async visits(m) {
       await coverLoaded;
       if (state.m !== m) return;
-      times = m.frames.map(f => mjdMs(f.mjd)); oldT = old.on() ? old.t : null;
+      times = m.frames.map(f => mjdMs(f.mjd)); oldT = old.on() ? old.t : null; if (oldT != null) oy = +old.year;
       const t0 = Math.min(cover ? mjdMs(cover.mjd0) : Infinity, times[0]), t1 = Math.max(cover ? mjdMs(cover.mjd0 + cover.days) : -Infinity, times.at(-1));
       range(t0, t1);
       dots.textContent = '';
@@ -954,7 +956,7 @@ const timeline = (() => {
       if (!built || times.length !== m.frames.length || (oldT != null) !== old.on()) return;   // visits() calls back once the line is built
       const k = entryOf(), n = dots.children.length, t = state.old ? oldT : times[i];
       line.style.setProperty('--x', pos(t));
-      date.textContent = state.old ? '2010' : new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      date.textContent = state.old ? old.year : new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
       [...dots.children].forEach((d, j) => d.classList.toggle('cur', j === k));
       knob.setAttribute('aria-valuenow', k);
       knob.setAttribute('aria-valuetext', state.old ? `${old.label}, entry 1 of ${n}` : `Visit ${i + 1} of ${m.frames.length}, ${monthYear(m.frames[i].start)}`);
@@ -988,7 +990,7 @@ const timeline = (() => {
   knob.addEventListener('keydown', e => {
     if (!state.m) return;
     const N = state.m.frames.length, o = old.on() ? 1 : 0, step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
-    if (step) { stop(); go((entryOf() + step + N + o) % (N + o) - o); }
+    if (step) { stop(); stepEntry(step); }
     else if (e.key === 'Home') { stop(); go(-o); }
     else if (e.key === 'End') { stop(); go(N - 1); }
     else if (e.key === 'Enter' || e.key === ' ') togglePlay();
@@ -1623,7 +1625,8 @@ const old = {
 };
 const entryOf = () => (state.old ? 0 : state.i + (old.on() ? 1 : 0));   // the entry on screen: [2010?, ...frames]
 function setEntry(n) { if (n < 0 && !old.on()) return; state.old = n < 0; if (n >= 0) state.i = n; draw(); }
-function nextEntry() { const o = old.on() ? 1 : 0, N = state.m.frames.length; setEntry((entryOf() + 1) % (N + o) - o); }
+function stepEntry(d) { const o = old.on() ? 1 : 0, N = state.m.frames.length; setEntry((entryOf() + d + N + o) % (N + o) - o); }   // one entry on or back, round the ends
+const nextEntry = () => stepEntry(1);
 // the Photo canvas on the 2010 entry: the older picture alone, cropped as the photo is
 function drawOld(m) {
   const v = view(m), W = patch.width, H = patch.height;
@@ -1814,7 +1817,7 @@ for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat
 addEventListener('keydown', e => {
   if (!state.m || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.target === playBtn) return;   // typing a comment moves the caret, not the visit
   if (e.defaultPrevented || e.target.closest?.('.pv-views, #depth3d') || pvView === 'thenandnow') return;   // the tabs and the 3D view use the arrows themselves; Then and now has no visits
-  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); state.i = (state.i + (e.key === 'ArrowRight' ? 1 : -1) + state.m.frames.length) % state.m.frames.length; draw(); }
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); stepEntry(e.key === 'ArrowRight' ? 1 : -1); }   // the knob's entries, the older one too
 });
 
 // ---------- sky mode: the whiteboard flow. Whole-sky map -> fly there -> click a spot -> its time-lapse ----------

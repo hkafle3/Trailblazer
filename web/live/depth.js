@@ -237,13 +237,14 @@ export function depthView(page) {
     }
     if (asked !== url) return;
     data = { url, m, f, d };
-    if (!Object.values(d.sources).some(s => s.status === 'pending')) answers.set(url, d);
+    if (Object.values(d.sources).every(s => s.status !== 'pending' && s.status !== 'unavailable')) answers.set(url, d);   // only complete answers: a source that is down is asked again
     const down = Object.entries(d.sources).filter(([, s]) => s.status === 'unavailable').map(([k]) => SOURCE[k]);
-    msg(down.length === Object.keys(d.sources).length ? `No catalog is answering for this visit (${down.join(', ')}). Trying again in a minute.` : '', down.length === Object.keys(d.sources).length);
+    const again = Math.min(...Object.values(d.sources).filter(s => s.status === 'unavailable').map(s => s.retry_after || 60), 60);
+    msg(down.length === Object.keys(d.sources).length ? `No catalog is answering for this visit (${down.join(', ')}). Trying again in ${again} s.` : '', down.length === Object.keys(d.sources).length);
     paintList(); build();
-    if (down.length === Object.keys(d.sources).length && tries++ < 8) retry = setTimeout(() => fetchNow(url, m, f), 60000);
-    // a pending source is asked again after retry_after (it keeps fetching in the background), at most 8 times
-    const wait = Object.values(d.sources).filter(s => s.status === 'pending').map(s => s.retry_after || 5);
+    // a pending or unavailable source is asked again after its retry_after (a pending one keeps fetching in the
+    // background), at most 8 times; coming back to this visit later asks again too (only complete answers are kept)
+    const wait = Object.values(d.sources).filter(s => s.status === 'pending' || s.status === 'unavailable').map(s => s.retry_after || (s.status === 'pending' ? 5 : 60));
     if (wait.length && tries++ < 8) retry = setTimeout(() => fetchNow(url, m, f), 1000 * Math.min(...wait));
   }
   function say(t) { status.textContent = t; }
@@ -252,10 +253,10 @@ export function depthView(page) {
   function clearBeam(t, err = false) {
     msg(t, err); shown = { rings: [], dots: [] }; box.dataset.objects = box.dataset.rings = box.dataset.dots = '0';
     if (!scene3) return;
-    for (const s of scene3.beads) { s.sp.removeFromParent(); s.lab.remove(); }
+    for (const s of scene3.beads) { s.sp.removeFromParent(); s.sp.material.dispose(); s.lab.remove(); }
     for (const k of scene3.marks) k.lab.remove();
     scene3.beads = []; scene3.marks = []; scene3.dots = [];
-    for (const p of [scene3.cloud, scene3.unk, scene3.stars]) p.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    for (const p of [scene3.cloud, scene3.unk, scene3.stars]) points(p, { position: [[], 3] });
     starList = [];
     render();
   }
@@ -379,6 +380,11 @@ export function depthView(page) {
     new ResizeObserver(() => open && render()).observe(box);
     return true;
   }
+  // a points object's new contents: a new geometry, the old one disposed (its GPU buffers freed; three.js keeps them otherwise)
+  function points(obj, attrs) {
+    const g = new THREE.BufferGeometry(); for (const [k, [a, n]] of Object.entries(attrs)) g.setAttribute(k, new THREE.Float32BufferAttribute(a, n));
+    obj.geometry.dispose(); obj.geometry = g;
+  }
   let scale = null, scaleInv = null, starList = [], shown = { rings: [], dots: [] };   // shown: which objects the beam draws as named rings, which as dots (for tests)
   function build() {   // the objects of the answer on screen: positions, the scale, the named ones
     if (!open || !data?.d || !init()) return;
@@ -396,7 +402,7 @@ export function depthView(page) {
       for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const r = r0 + dr, c = c0 + dc; if (r >= 0 && c >= 0 && r < G && c < G) b = Math.max(b, level[r * G + c]); }
       return b;
     };
-    for (const s of scene3.beads) { s.sp.removeFromParent(); s.lab.remove(); }
+    for (const s of scene3.beads) { s.sp.removeFromParent(); s.sp.material.dispose(); s.lab.remove(); }
     scene3.beads = [];
     // the target's ring goes where the page places it (targetAt: a matched asteroid at its matched exposure, not where
     // /api/depth puts it at the visit's middle), so Depth and the Photo mark the same spot
@@ -422,13 +428,13 @@ export function depthView(page) {
       scene3.beads.push({ u: mid.u, v: mid.v, f: .95, pos: at(mid.u, mid.v, .95), err: null, acc: true, sp: S.sprite(scene3.rAu, 9), lab: S.label(`${mid.name} · distance unknown`, 'accent'), size: 20, unknown: true });
     }
     scene3.beads.sort((a, b) => a.f - b.f).forEach((b, k) => { b.tier = k; });
-    scene3.cloud.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); scene3.cloud.geometry.computeBoundingSphere();
-    const sg = scene3.stars.geometry; sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); sg.setAttribute('size', new THREE.Float32BufferAttribute(ss, 1)); sg.setAttribute('alpha', new THREE.Float32BufferAttribute(sa, 1));
+    points(scene3.cloud, { position: [pos, 3] }); scene3.cloud.geometry.computeBoundingSphere();
+    points(scene3.stars, { position: [sp, 3], size: [ss, 1], alpha: [sa, 1] });
     scaleInv = f => 10 ** (lo + (f - .12) / .74 * (hi - lo));   // for tests: back from the beam to light-years
     // what has a position and no distance: dashed rings by the photo
     const up = [];
     for (const src of ['sso', 'galaxies']) for (const o of unknownHere(src)) { const [u, v] = page.onScreen(m, o.ra, o.dec, null); up.push(...at(u, v, .95).toArray()); }
-    scene3.unk.geometry.setAttribute('position', new THREE.Float32BufferAttribute(up, 3));
+    points(scene3.unk, { position: [up, 3] });
     // the scale marks: one decade of light-years per mark, at most three, spread out
     for (const k of scene3.marks) k.lab.remove();
     const dec = []; for (let x = Math.ceil(lo); x <= Math.floor(hi - .1); x++) dec.push(x);
