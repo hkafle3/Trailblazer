@@ -318,7 +318,7 @@ export function synthAdd(acc, e, wavemap) {
   const med = nanmedian(g);   // the exposure's own background (zodiacal light)
   for (let k = 0; k < NN; k++) if (b[k] >= 0) { acc.S[b[k] * NN + k] += g[k] - med; acc.Cn[b[k] * NN + k]++; }
   const c = Math.round(C0) * N + Math.round(C0), lc = m[c] ? searchsorted(edges, lamAt(wavemap, e.map.px[c], e.map.py[c])) - 1 : -1;
-  acc.used.push({ key: e.key, det: e.det, mjd: e.t, sha256: e.sha256, bg_median: med, grid_fraction: cnt / NN, at_lead: !!m[c] && lc >= 0 && lc < nb });
+  acc.used.push({ key: e.key, det: e.det, mjd: e.t, sha256: e.sha256, digest: CUTOUT_DIGEST, bg_median: med, grid_fraction: cnt / NN, at_lead: !!m[c] && lc >= 0 && lc < nb });
   return true;
 }
 export function synthEnd(acc, band) {
@@ -385,13 +385,32 @@ export function old2mass(tiles, grid, inputs) {
     const { g, m } = toGrid(sm.img, sm.m, t.fits.w, t.fits.ht, sinMap(hd, grid));
     const med = nanmedian(g);
     for (let k = 0; k < NN; k++) if (m[k]) { S[k] += g[k] - med; Cn[k]++; }
-    const od = String(hd.ORDATE).trim(); dates.add(`20${od.slice(0, 2)}-${od.slice(2, 4)}-${od.slice(4, 6)}`);
+    dates.add(twomassDate(hd.ORDATE));
     if (m[c]) atLead.push(t.name);
   }
   const img = new Float64Array(NN), m = new Uint8Array(NN); let nv = 0;
   for (let k = 0; k < NN; k++) { m[k] = Cn[k] > 0 ? 1 : 0; img[k] = m[k] ? S[k] / Cn[k] : NaN; nv += m[k]; }
   return { img, m, meta: { survey: '2MASS All-Sky Atlas', band_header: 'FILTER k', band: 'Ks', dates: [...dates].sort(), tiles: tiles.map(t => t.name),
     tiles_at_lead: atLead, valid_fraction: +(nv / NN).toFixed(4), release: '2MASS All-Sky Release', inputs } };
+}
+
+// 2MASS ORDATE (yymmdd) -> ISO date. The survey ran 1997 to 2001, so 97-99 are the 1900s, 00-01 the 2000s.
+export function twomassDate(ordate) {
+  const od = String(ordate).trim();
+  if (!/^\d{6}$/.test(od)) throw new Error(`ORDATE ${ordate} is not yymmdd`);
+  return `${+od.slice(0, 2) >= 90 ? '19' : '20'}${od.slice(0, 2)}-${od.slice(2, 4)}-${od.slice(4, 6)}`;
+}
+
+// The digest of one SPHEREx input as the pipeline used it: the IMAGE header's cards, which exposure (its S3 key), the
+// crop's origin and size on the detector, and the IMAGE and FLAGS pixels. Not a checksum of the source file on S3 (that
+// is 50 MB and never read whole): a change of WCS, crop or pixels changes it; where the reader found the data does not.
+export const CUTOUT_DIGEST = 'sha256 of the canonical cutout: S3 key, IMAGE header cards, crop origin and size on the detector, then IMAGE (float32) and FLAGS (int32) pixels, little-endian; not a checksum of the source file';
+export async function cutoutDigest(e) {
+  const cards = Object.keys(e.head).filter(k => !k.startsWith('_')).sort().map(k => [k, e.head[k]]);
+  const meta = new TextEncoder().encode(JSON.stringify({ key: e.key, x0: e.x0, y0: e.y0, w: e.w, h: e.h, header: cards }) + '\n');
+  const img = new Uint8Array(Float32Array.from(e.img).buffer), flg = new Uint8Array(Int32Array.from(e.flg).buffer);
+  const all = new Uint8Array(meta.length + img.length + flg.length); all.set(meta); all.set(img, meta.length); all.set(flg, meta.length + img.length);
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256', all))].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
 // ---------------- display background (build_v3 starmask, bgmodel, bgdiff) ----------------

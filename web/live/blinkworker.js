@@ -41,7 +41,7 @@ async function oldSky(base, band, ra, dec, signal, progress) {
     const bytes = await inflate(raw);
     tiles.push({ name: t.name, sha256: t.sha256, fits_sha256: await hex(bytes), source: t.source, fits: B.readFits(bytes, parseCards) });
   }
-  const inputs = tiles.map(t => ({ file: t.name, sha256: t.fits_sha256, stored_sha256: t.sha256, source: t.source }));
+  const inputs = tiles.map(t => ({ file: t.name, sha256: t.fits_sha256, digest: 'sha256 of the whole FITS file, inflated', stored_sha256: t.sha256, stored_digest: 'sha256 of the bytes as IRSA sent them (gzip or not)', source: t.source }));
   if (survey === 'allwise') {
     const int = tiles.find(t => t.name.endsWith('_int.fits')), cov = tiles.find(t => t.name.endsWith('_cov.fits'));
     if (!int || !cov) throw new Unavailable('comparison-unavailable', 'The AllWISE coverage map is missing');
@@ -85,8 +85,7 @@ async function readExposure(e, grid, bins, wave, signal, stopped = () => null) {
   const [px, fl] = await s3(() => retry(() => Promise.all([imageRows(e.key, h, y0, y1, signal), flagsHeader(e.key, h, signal).then(f => flagRows(e.key, f, y0, y1, signal))])));
   const w = x1 - x0 + 1, ht = y1 - y0 + 1, img = new Float32Array(w * ht), flg = new Int32Array(w * ht);
   for (let y = 0; y < ht; y++) { img.set(px.subarray(y * SIZE + x0, y * SIZE + x1 + 1), y * w); flg.set(fl.subarray(y * SIZE + x0, y * SIZE + x1 + 1), y * w); }
-  const both = new Uint8Array(8 * w * ht); both.set(new Uint8Array(img.buffer)); both.set(new Uint8Array(flg.buffer), 4 * w * ht);
-  return { det: e.det, t: e.t, key: e.key, sha256: await hex(both), img, flg, w, h: ht, x0, y0, map };
+  return { det: e.det, t: e.t, key: e.key, sha256: await B.cutoutDigest({ key: e.key, head: h, x0, y0, w, h: ht, img, flg }), img, flg, w, h: ht, x0, y0, map };
 }
 
 // ---------- one band, start to end ----------
