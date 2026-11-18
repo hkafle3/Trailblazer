@@ -186,6 +186,8 @@ function reasonOf(failed, rep) {
   const o = rep.old ?? {}, sp = rep.spherex ?? {};
   if (failed.includes('spectral_coverage_at_lead') && sp.exposures_saturated_at_lead > 0 && 2 * sp.exposures_saturated_at_lead >= sp.exposures_seeing_lead)
     w[failed.indexOf('spectral_coverage_at_lead')] = `the star is too bright: SPHEREx is saturated there in ${sp.exposures_saturated_at_lead} of ${sp.exposures_seeing_lead} exposures`;
+  else if (failed.includes('spectral_coverage_at_lead') && sp.exposures_masked_at_lead > 0 && 2 * sp.exposures_masked_at_lead >= sp.exposures_seeing_lead)
+    w[failed.indexOf('spectral_coverage_at_lead')] = `SPHEREx has unusable pixels at the star in ${sp.exposures_masked_at_lead} of ${sp.exposures_seeing_lead} exposures`;
   if (failed.includes('old_footprint') && o.valid_fraction >= B.T.FOOTPRINT)
     w[failed.indexOf('old_footprint')] = o.coverage_frames_at_lead < 5 ? `the older picture has ${o.coverage_frames_at_lead} good AllWISE frames at the star, 5 needed` : 'the older picture has no usable pixels at the star';
   return w.slice(0, 2).join('; ');

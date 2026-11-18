@@ -23,8 +23,8 @@ const median = a => { const s = a.filter(Number.isFinite).sort((x, y) => x - y);
 
 // ---------- measuring: the spot's light now minus the same spot's light when the comet was elsewhere ----------
 // Pixels whose quality bits say not to trust them are left out everywhere: the circle, the sky ring and the reference
-// photos. The bits are bake/comet_spectrum.py's BAD (transient, overflow, saturated, nonlinear, hot, cold, nonfunctional,
-// persistence, missing data and the like), plus streak, snowball, halo and saturated halo artifacts.
+// photos. The bits are bake/comet_spectrum.py's BAD (transient, overflow, onboard processing error, nonfunctional, missing, hot, cold, nonlinear,
+// persistence and the like), plus streak, snowball, halo and saturated halo artifacts.
 export const BAD = [0, 1, 2, 6, 9, 10, 11, 15, 17, 25, 27, 28, 29].reduce((m, b) => m | (1 << b), 0);
 export const mask = (v, flag) => (flag & BAD ? NaN : v);
 const HALF = R_OUT + 1, W = 2 * HALF + 1;   // the measuring window: W x W of the photo's own pixels about the spot
