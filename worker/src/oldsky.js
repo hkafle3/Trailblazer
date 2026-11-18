@@ -59,8 +59,8 @@ const tries = async (n, fn) => {
 };
 
 // A tile goes from IRSA straight into R2 without passing through this code: the Worker plan's CPU (10 ms, and a cold miss
-// must stay under half of it) cannot afford to copy, inflate or hash a megabyte. What is read here: the first bytes (the
-// header, inflated from the start of a gzip) and, for a gzip, its 4-byte size trailer from R2. Checked before the manifest
+// must stay under half of it) cannot afford to copy, inflate or hash a megabyte. What is read here, back from R2: the first
+// 64 KB (the header, inflated from the start of a gzip) and, for a gzip, its 4-byte size trailer. Checked before the manifest
 // is written: a 2-D FITS image of a known BITPIX, of the band asked, and enough bytes for NAXIS1 x NAXIS2 x |BITPIX|/8
 // after the header, padded to 2880 (the stored length for a plain file, the gzip's ISIZE for a gzip, which also caps what
 // it inflates to). The browser inflates every byte anyway: a gzip cut short or failing its checksum is caught there.
@@ -71,7 +71,7 @@ export async function fitsHead(prefix) {
   let b = prefix;
   if (isGzip(prefix)) {
     const reader = new Blob([prefix]).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), parts = []; let n = 0;
-    try { while (n < PREFIX * 4) { const c = await reader.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; } }
+    try { while (n < PREFIX) { const c = await reader.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; } }
     catch { /* the start of a gzip ends mid-stream: what came out before is the header */ }
     finally { reader.cancel().catch(() => {}); }
     b = new Uint8Array(n); let at = 0; for (const p of parts) { b.set(p, at); at += p.byteLength; }
@@ -93,18 +93,11 @@ export async function fitsHead(prefix) {
   if (!Number.isInteger(nx) || !Number.isInteger(ny) || nx < 1 || ny < 1 || nx > 8192 || ny > 8192) throw new Error('FITS image size out of range');
   return { cards, need: Math.ceil(end / BLOCK) * BLOCK + Math.ceil(nx * ny * Math.abs(bitpix) / 8 / BLOCK) * BLOCK };
 }
-// the first n bytes of a stream (fewer if it ends), then the stream is let go
-async function first(stream, n) {
-  const reader = stream.getReader(), parts = []; let got = 0;
-  try { while (got < n) { const c = await reader.read(); if (c.done) break; parts.push(c.value); got += c.value.byteLength; } }
-  finally { reader.cancel().catch(() => {}); }
-  const out = new Uint8Array(Math.min(got, n)); let at = 0;
-  for (const p of parts) { const k = Math.min(p.byteLength, out.length - at); out.set(p.subarray(0, k), at); at += k; if (at >= out.length) break; }
-  return out;
-}
-// one tile: IRSA's body teed, one branch straight into R2 at its declared length (a short body fails the put), the
-// other read only for the header. Anything wrong afterwards deletes what was stored. { gzip, bytes, etag, cards }
-async function storeTile(t, key, req, env, fetchFn, FLS) {
+// one tile: IRSA's body handed straight to R2 (R2 holds it to its Content-Length: a short body fails the put; nothing
+// passes through JavaScript), then read back in two small ranges: the first 64 KB for the header, and for a gzip its
+// 4-byte size trailer. Anything wrong deletes what was stored. { gzip, bytes, etag, cards }
+// deps.wrapBody: for the Node tests only, where a stream has no known length (they enforce it with a FixedLengthStream)
+async function storeTile(t, key, req, env, fetchFn, wrapBody = b => b) {
   const u = new URL(t.url);
   if (u.protocol !== 'https:' || u.host !== 'irsa.ipac.caltech.edu') throw new Error(`not an IRSA URL: ${u.host}`);
   const r = await fetchFn(u.toString(), { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT) });
@@ -113,32 +106,24 @@ async function storeTile(t, key, req, env, fetchFn, FLS) {
   const len = Number(r.headers.get('Content-Length'));
   if (!Number.isInteger(len) || len < 9) { r.body?.cancel?.(); throw new Error('IRSA sent no length'); }
   if (len > MAX_TILE) { r.body?.cancel?.(); throw new Error('IRSA answer too large'); }
-  const [head, rest] = r.body.tee(), fl = new FLS(len);
-  const piped = rest.pipeTo(fl.writable).catch(e => e);
-  const put = env.OLDSKY.put(key, fl.readable, { httpMetadata: { contentType: 'application/fits' }, customMetadata: { source: t.url } }).then(o => o, e => { throw new Error(`IRSA sent a short tile (${e.message})`); });
-  put.catch(() => {});
-  let h, stored;
+  let stored;
+  try { stored = await env.OLDSKY.put(key, wrapBody(r.body, len), { httpMetadata: { contentType: 'application/fits' }, customMetadata: { source: t.url } }); }
+  catch (e) { await env.OLDSKY.delete(key).catch(() => {}); throw new Error(`IRSA sent a short tile (${e.message})`); }
   try {
-    h = await fitsHead(await first(head, PREFIX));
-    stored = await put;
-    if (stored.size !== len) throw new Error(`stored ${stored.size} of ${len} bytes`);
-    const sniff = await env.OLDSKY.get(key, { range: { offset: 0, length: 2 } });
-    const gzip = isGzip(new Uint8Array(await new Response(sniff.body).arrayBuffer()));
+    if (!stored || stored.size !== len) throw new Error(`stored ${stored?.size} of ${len} bytes`);
+    const bytesAt = async range => new Uint8Array(await new Response((await env.OLDSKY.get(key, { range })).body).arrayBuffer());
+    const prefix = await bytesAt({ offset: 0, length: Math.min(len, PREFIX) }), gzip = isGzip(prefix), h = await fitsHead(prefix);
     let full = len;
     if (gzip) {   // the gzip's ISIZE trailer: what it inflates to (mod 2^32; tiles are far smaller)
-      const tail = new DataView(await new Response((await env.OLDSKY.get(key, { range: { suffix: 4 } })).body).arrayBuffer());
-      full = tail.getUint32(0, true);
+      full = new DataView((await bytesAt({ suffix: 4 })).buffer).getUint32(0, true);
       if (full > MAX_INFLATED) throw new Error('gzip inflates past the size cap');
     }
     if (full < h.need) throw new Error(`FITS image is short: ${full} bytes, ${h.need} needed`);
     if (!/_cov\.fits$/.test(t.name) && bandOf(req.survey, h.cards) !== req.band) throw new Error(`${t.name} is ${bandOf(req.survey, h.cards)}, not ${req.band}`);
     return { gzip, bytes: len, etag: stored.etag, cards: h.cards };
-  } catch (e) {
-    await put.catch(() => {}); await piped;
-    await env.OLDSKY.delete(key).catch(() => {});
-    throw e;
-  }
+  } catch (e) { await env.OLDSKY.delete(key).catch(() => {}); throw e; }
 }
+
 // IRSA's CSV: a header line, then rows; quoted fields are not expected in the columns we read
 function csvRows(text, need) {
   const lines = text.split('\n'), head = lines[0].replace(/\r$/, '').split(',');
@@ -186,11 +171,11 @@ export async function oldsky(request, url, env, deps = {}) {
   if (!tiles.length) return json({ error: 'no older survey picture of this spot', survey: req.survey, band: req.band }, 404, { 'Cache-Control': 'no-store' });
   if (tiles.length > MAX_TILES) return down(`${tiles.length} tiles, more than ${MAX_TILES}`);
   // one at a time: IRSA answers 503 to two cutouts of one tile at once (measured 2026-11-18)
-  const FLS = deps.FixedLengthStream ?? globalThis.FixedLengthStream, manifest = { v: 2, survey: req.survey, band: req.band, size_arcsec: SIZE, ra: req.ra, dec: req.dec,
+  const manifest = { v: 2, survey: req.survey, band: req.band, size_arcsec: SIZE, ra: req.ra, dec: req.dec,
     release: req.survey === 'allwise' ? 'AllWISE Atlas (p3am_cdd)' : '2MASS All-Sky Release', fetched_at: new Date().toISOString(), tiles: [] };
   try {
     for (const t of tiles) {
-      const s = await tries(3, () => storeTile(t, req.prefix + t.name, req, env, fetchFn, FLS));
+      const s = await tries(3, () => storeTile(t, req.prefix + t.name, req, env, fetchFn, deps.wrapBody));
       manifest.tiles.push({ name: t.name, path: `api/${req.prefix}${t.name}`, source: t.url, tile: t.tile, bytes: s.bytes, gzip: s.gzip, etag: s.etag,
         header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) });
     }

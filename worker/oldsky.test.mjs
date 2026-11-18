@@ -70,7 +70,7 @@ test('400 for an unlisted survey or band, a bad position or another size', async
     'survey=allwise&band=W2&ra=abc&dec=1', 'survey=allwise&band=W2&ra=Infinity&dec=1', 'survey=allwise&band=W2&ra=NaN&dec=1', 'survey=allwise&band=W2&ra=&dec=1',
     'survey=allwise&band=W2&ra=360&dec=1', 'survey=allwise&band=W2&ra=-1&dec=1', 'survey=allwise&band=W2&ra=1&dec=91', 'survey=allwise&band=W2&ra=1',
     'survey=allwise&band=W2&ra=1&dec=1&size=600', 'survey=allwise&band=W2&ra=1&dec=1&size=7800', 'band=W2&ra=1&dec=1']) {
-    const r = await oldsky(...req(q), env, { fetch: withLength(f), FixedLengthStream });
+    const r = await oldsky(...req(q), env, { fetch: withLength(f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) });
     assert.equal(r.status, 400, q);
   }
   assert.equal(calls.length, 0, 'a refused request never reaches IRSA');
@@ -85,7 +85,7 @@ test('positions are canonical: rounded to 0.001 degree, one key', () => {
 
 test('a miss fetches, checks and stores the bytes as IRSA sent them (gzip or not), then a hit needs no IRSA', async () => {
   const env = fakeEnv(), irsa = await fakeIrsa();
-  const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), FixedLengthStream });
+  const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) });
   const m = await r.json(); assert.equal(r.status, 200, JSON.stringify(m));
   assert.deepEqual(m.tiles.map(t => [t.name, t.gzip]), [['allwise_W2_int.fits', false], ['allwise_W2_cov.fits', true]]);
   assert.equal(m.tiles[0].header.DATEOBS1, '2010-03-06T22:30:53.139');
@@ -103,7 +103,7 @@ test('a miss fetches, checks and stores the bytes as IRSA sent them (gzip or not
 
 test('2MASS: every Ks tile from one box search, named and ordered as the reference', async () => {
   const env = fakeEnv(), irsa = await fakeIrsa();
-  const m = await (await oldsky(...req('survey=2mass&band=Ks&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), FixedLengthStream })).json();
+  const m = await (await oldsky(...req('survey=2mass&band=Ks&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) })).json();
   assert.deepEqual(m.tiles.map(t => t.name), ['2mass_Ks_001126_ki1020021.fits', '2mass_Ks_001126_ki1030244.fits']);
   assert.ok(m.tiles[1].source.startsWith('https://irsa.ipac.caltech.edu/ibe/data/twomass/allsky/allsky/001126n/s103/image/ki1030244.fits.gz?center=84.018,-6.578&size=780arcsec'));
   assert.ok(irsa.calls[0].url.includes('SIZE=0.2006&INTERSECT=OVERLAPS'));
@@ -122,7 +122,7 @@ test('an upstream 5xx, an HTML page, a redirect or a non-FITS body is never stor
   cases['gzip of HTML'] = u => (u.includes('cov-3') ? new Response(html) : null);
   for (const [name, o] of Object.entries(cases)) {
     const env = fakeEnv(), irsa = await fakeIrsa(o);
-    const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), FixedLengthStream });
+    const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) });
     assert.equal(r.status, 503, name); assert.equal((await r.json()).error, 'older survey unavailable', name);
     assert.equal(r.headers.get('Cache-Control'), 'no-store', name);
     assert.equal(env.store.size, 0, `${name}: nothing stored`);
@@ -136,7 +136,7 @@ test('a tile over 4 MB, a wrong band, or a search pointing off IRSA is refused',
     ['wrong band', u => (u.includes('int-3') ? new Response(fitsBytes([['BAND', 1]])) : null)],
     ['off IRSA', u => (u.includes('/SIA?') ? new Response(SIA.replaceAll('https://irsa.ipac.caltech.edu', 'https://evil.example')) : null)]]) {
     const env = fakeEnv(), irsa = await fakeIrsa(o);
-    const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), FixedLengthStream });
+    const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) });
     assert.equal(r.status, 503, name); assert.equal(env.store.size, 0, name);
     assert.ok(!irsa.calls.some(c => c.url.includes('evil.example')), name);
   }
@@ -145,9 +145,9 @@ test('a tile over 4 MB, a wrong band, or a search pointing off IRSA is refused',
 test('429 past the limit, on misses only', async () => {
   const env = fakeEnv(2), irsa = await fakeIrsa();
   const s = [];
-  for (const ra of [10, 11, 12]) s.push((await oldsky(...req(`survey=allwise&band=W2&ra=${ra}&dec=1`), env, { fetch: withLength(irsa.f), FixedLengthStream })).status);
+  for (const ra of [10, 11, 12]) s.push((await oldsky(...req(`survey=allwise&band=W2&ra=${ra}&dec=1`), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) })).status);
   assert.deepEqual(s, [200, 200, 429]);
-  assert.equal((await oldsky(...req('survey=allwise&band=W2&ra=10&dec=1'), env, { fetch: withLength(irsa.f), FixedLengthStream })).status, 200, 'a stored spot is never limited');
+  assert.equal((await oldsky(...req('survey=allwise&band=W2&ra=10&dec=1'), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) })).status, 200, 'a stored spot is never limited');
 });
 
 test('stored files: canonical keys only; the baked blink by position', async () => {
@@ -177,7 +177,7 @@ test('a header-only or short FITS, plain or gzip, a body shorter than its Conten
   for (const [name, bytes] of Object.entries(cases)) {
     const env = fakeEnv(), irsa = await fakeIrsa(u => (!u.includes('int-3') ? null : bytes === 'short'
       ? new Response(big.subarray(0, 500000), { headers: { 'Content-Length': String(big.length) } }) : new Response(bytes)));
-    const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), FixedLengthStream });
+    const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) });
     assert.equal(r.status, 503, name); assert.equal(env.store.size, 0, `${name}: nothing stored`);
     const again = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: () => { throw new Error('IRSA blocked'); } });
     assert.notEqual(again.headers.get('X-Oldsky'), 'hit', `${name}: never a hit`);
@@ -185,6 +185,6 @@ test('a header-only or short FITS, plain or gzip, a body shorter than its Conten
   // and a complete 500 x 500 image, gzip or not, is accepted
   for (const bytes of [big, gzBig]) {
     const env = fakeEnv(), irsa = await fakeIrsa(u => (u.includes('int-3') ? new Response(bytes) : null));
-    assert.equal((await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), FixedLengthStream })).status, 200);
+    assert.equal((await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: withLength(irsa.f), wrapBody: (b, len) => b.pipeThrough(new FixedLengthStream(len)) })).status, 200);
   }
 });
