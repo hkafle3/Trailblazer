@@ -7,15 +7,16 @@ from playwright.sync_api import sync_playwright
 BASE = sys.argv[1]; CAND = sys.argv[2] if len(sys.argv) > 2 else 'C-0904'
 with sync_playwright() as p:
     b = p.chromium.launch(channel='chrome'); ctx = b.new_context(viewport={'width': 1440, 'height': 900}); pg = ctx.new_page()
-    pg.add_init_script("window.__long = []; new PerformanceObserver(l => { for (const e of l.getEntries()) window.__long.push(e.duration); }).observe({ type: 'longtask', buffered: true });")
+    pg.add_init_script("window.__marks = []; addEventListener('message', () => {}, true); window.__long = []; new PerformanceObserver(l => { for (const e of l.getEntries()) window.__long.push([e.duration, e.startTime]); }).observe({ type: 'longtask', buffered: true });")
     pg.goto(f'{BASE}/candidate.html?id={CAND}'); pg.wait_for_function('() => window.__colors', timeout=60000); pg.wait_for_timeout(1500)
-    pg.evaluate('() => { window.__long.length = 0; }')
     pg.click('#co-h'); pg.wait_for_selector('[data-start]:not([disabled])', timeout=120000)
-    est = pg.evaluate('() => window.__colors.S.est'); t0 = time.time(); pg.click('[data-start]')
+    est = pg.evaluate('() => window.__colors.S.est'); pg.evaluate('() => { window.__long.length = 0; }')   # the build only, from Start to the drawn result
+    t0 = time.time(); pg.click('[data-start]')
     pg.wait_for_function("() => window.__colors.S.state === 'result'", timeout=600000, polling=500); secs = time.time() - t0
-    r = pg.evaluate('() => ({ state: window.__colors.S.result.state, reason: window.__colors.S.result.reason, bytes: window.__colors.S.prog?.bytes, rows: Object.fromEntries(Object.entries(window.__colors.S.result.fingerprints || {}).map(([k, v]) => [k, v.verdict])), long: window.__long.slice() })')
+    r = pg.evaluate('() => ({ state: window.__colors.S.result.state, reason: window.__colors.S.result.reason, bytes: window.__colors.S.prog?.bytes, rows: Object.fromEntries(Object.entries(window.__colors.S.result.fingerprints || {}).map(([k, v]) => [k, v.verdict])), long: window.__long.slice(), marks: window.__colors.events })')
     b.close()
-gb, worst = (r['bytes'] or 0) / 1e9, max(r['long'] or [0])
+gb, worst = (r['bytes'] or 0) / 1e9, max([d for d, _ in r['long']] or [0])
+for d, t in r['long']: print(f'  long task {d:.0f} ms at {t / 1000:.1f} s; page events: ' + ', '.join(f"{m[0]} {m[1] / 1000:.1f} s" for m in r['marks'] if abs(m[1] - t) < 1500))
 print(f"estimate shown: {est['exposures']} pictures, about {est['bytes'] / 1e9:.1f} GB")
 print(f"{'PASS' if secs <= 120 else 'FAIL'} time {secs:.0f} s (120 s at most)")
 print(f"{'PASS' if gb <= 1.1 else 'FAIL'} read {gb:.2f} GB (1.1 GB at most)")

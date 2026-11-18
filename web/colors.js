@@ -78,9 +78,9 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
     <div class="wl" id="tn-then-wl"></div><div class="wl co-wl" hidden></div></div>
     <div id="tn-then" role="tabpanel" aria-labelledby="tn-h"></div><div id="tn-colors" role="tabpanel" aria-labelledby="co-h" hidden></div>`;
   const $ = s => box.querySelector(s), tabs = $('.tn-tabs'), thenWl = $('#tn-then-wl'), coWl = $('.co-wl'), thenBox = $('#tn-then'), coBox = $('#tn-colors');
-  const blink = thenAndNow(thenBox, { ra, dec, mode: 'page', head: thenWl, onResult });
+  const events = [], blink = thenAndNow(thenBox, { ra, dec, mode: 'page', head: thenWl, onResult: r => { events.push(['blink result', performance.now()]); onResult(r); } });
   const S = { view: 'then', pass: 0, hl: '', state: 'checking', result: null, source: null, est: null, prog: null, id: 0, pts: [] };
-  const pub = window.__colors = { S, drawn: null };
+  const pub = window.__colors = { S, drawn: null, events };   // events: when results arrived (the budget test's long tasks)
   const worker = new Worker(new URL('./live/colorsworker.js', import.meta.url), { type: 'module' });
   worker.onerror = e => { e.preventDefault(); if (S.state === 'building' || S.state === 'checking') { S.state = 'result'; S.result = { state: 'unavailable', reason: 'Colors could not be built in this browser' }; render(); } };
   worker.onmessage = ({ data: m }) => {
@@ -89,7 +89,7 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
     if (m.type === 'baked') { S.result = m.result; S.source = 'baked'; S.state = 'result'; if (Q.get('tab') !== 'then') setView('colors'); render(); return; }
     if (m.type === 'none') { S.state = 'offer'; setView(Q.get('tab') === 'colors' ? 'colors' : S.view); return; }
     if (m.type === 'progress') { S.prog = m; progressOnly(); return; }
-    if (m.type === 'result') { S.result = m.result; S.source = m.source; S.state = 'result'; render(); }
+    if (m.type === 'result') { events.push(['colors result', performance.now()]); S.result = m.result; S.source = m.source; S.state = 'result'; render(); events.push(['colors drawn', performance.now()]); }
   };
   const ask = (mode) => { S.id = Date.now() + Math.random(); worker.postMessage({ id: S.id, ra, dec, api: '', mode }); };
   ask('baked');
