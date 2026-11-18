@@ -11,6 +11,7 @@ import { skyImagesJson, eclipticLat } from './sky_index.js';
 import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
 import { snapshot, nowRow } from './now.js';
 import { oldsky, oldskyTile, stored, blinkBaked } from './oldsky.js';
+import { worthSaving } from './saved.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
 
@@ -95,8 +96,8 @@ async function images(url, env) {
   // skyImagesJson accepts only the pinned version of the file (SKY_ETAG_D1..D6 in wrangler.toml), checks every read and
   // tries once more with a fresh head; if it still cannot answer, IRSA does.
   try {
-    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`], r),
-      { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400' } });
+    const body = await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`], r);   // ASCII: length is bytes
+    return new Response(body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400', 'X-Answer-Bytes': String(body.length) } });
   } catch (e) { console.warn('sky index', e); }
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches
   const colls = Math.abs(eclipticLat(p.ra, p.dec)) > 75 ? [...WIDE, ...DEEP] : WIDE;
@@ -692,11 +693,12 @@ async function save(env, id, text, at) {
 // a cached answer with none saved (answers cached before saving existed, or a save that failed while D1 was down), or
 // more than a day newer than the saved one, is saved on its next cache hit, so it survives an outage too
 async function backfill(env, id, hit) {
-  if (complete(hit)) await save(env, id, () => hit.text(), Number(hit.headers.get('X-Answered-At')) || Date.parse(hit.headers.get('Date')) || 0);
+  if (complete(hit) && worthSaving(hit)) await save(env, id, () => hit.text(), Number(hit.headers.get('X-Answered-At')) || Date.parse(hit.headers.get('Date')) || 0);
 }
 
 async function withSaved(route, url, id, env, ctx) {
   const res = await route(url, env);
+  if (complete(res) && !worthSaving(res)) return res;   // a large answer: not saved (worker/src/saved.js)
   if (complete(res)) {
     const at = Date.now();
     res.headers.set('X-Answered-At', String(at));   // kept with the cached copy, so a later backfill knows its age
