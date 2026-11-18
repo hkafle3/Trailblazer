@@ -3,6 +3,7 @@
 // The old-survey tiles come through the app's /api/oldsky (so they are stored in its R2 as well), SPHEREx from S3.
 // Writes <out>/result.json and <out>/frames.bin, then, with --put, stores them in R2 at blink/v1/<pos>/ (wrangler r2).
 //   node bake/blink_bake.mjs --api http://127.0.0.1:8811 --ra 84.01808 --dec -6.5775 --out /tmp/blink [--put local|remote --bucket comet-hunt-oldsky]
+//     [--region 'Orion A' --distance-ly 1250 --dust-k 680 --context-source 'lead-check report 2026-11-17']
 // The result carries every band's report and checks (the evaluator's numbers), and the code's commit.
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -12,6 +13,9 @@ import { posKey } from '../worker/src/oldsky.js';
 
 const arg = k => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };
 const base = arg('api') ?? 'http://127.0.0.1:8811', ra = Number(arg('ra') ?? 84.01808), dec = Number(arg('dec') ?? -6.5775), out = arg('out') ?? '/tmp/blink-bake';
+// what the page may say about the spot beyond the blink, from a checked source (the showcase: lead-check/report.md,
+// Gaia DR3 parallax 384 pc and the SED fit's 680 K dust): --region "Orion A" --distance-ly 1250 --dust-k 680
+const context = arg('region') || arg('distance-ly') || arg('dust-k') ? { region: arg('region') ?? null, distance_ly: Number(arg('distance-ly')) || null, dust_K: Number(arg('dust-k')) || null, source: arg('context-source') ?? null } : null;
 const put = arg('put'), bucket = arg('bucket') ?? 'comet-hunt-oldsky', config = arg('config') ?? 'worker/wrangler.toml';
 const here = new URL('../web/data/', import.meta.url);
 const curves = JSON.parse(readFileSync(new URL('bands.json', here))), waves = JSON.parse(readFileSync(new URL('wavemaps.json', here)));
@@ -37,7 +41,7 @@ for (const band of ['W2', 'W1', 'Ks']) {
   }
 }
 const prefix = `blink/v1/${pos}`;
-const result = { v: 1, ra, dec, designation: B.designation(ra, dec), baked_at: new Date().toISOString(), code: `web/live/blink.js @ ${commit}`, frames_path: `api/${prefix}/frames.bin`, bands };
+const result = { v: 1, ra, dec, designation: B.designation(ra, dec), context, baked_at: new Date().toISOString(), code: `web/live/blink.js @ ${commit}`, frames_path: `api/${prefix}/frames.bin`, bands };
 mkdirSync(out, { recursive: true });
 writeFileSync(`${out}/result.json`, JSON.stringify(result));
 writeFileSync(`${out}/frames.bin`, Buffer.concat(parts));

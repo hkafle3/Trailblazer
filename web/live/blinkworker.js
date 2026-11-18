@@ -110,17 +110,19 @@ export async function buildBand(band, { base, ra, dec, grid, curves, waves, sign
 // what a band's report becomes on the page: its state, and the frames only when the comparison is good
 export function bandMessage(band, rep) {
   const { state, failed } = B.stateOf(rep), { frames, info, ...report } = rep;
-  const reason = state === 'ok' ? '' : state === 'comparison-unavailable' ? reasonOf(failed, rep) : reasonOf(failed, rep);
+  const reason = state === 'ok' ? '' : reasonOf(failed, rep);
   return { type: 'band', band, state, reason, report, ...(state === 'ok' ? { frames, info } : {}) };
 }
-const WHY = { old_footprint: 'the older picture does not cover enough of the field', spherex_footprint: 'SPHEREx does not cover enough of the field in this band',
-  spectral_coverage_at_lead: 'SPHEREx does not cover enough of this band at the star', band_match: 'the pictures are not of the same band',
+const WHY = { band_match: 'the pictures are not of the same band', spectral_coverage_at_lead: 'SPHEREx does not cover enough of this band at the star',
+  spherex_footprint: 'SPHEREx does not cover enough of the field in this band', old_footprint: 'the older picture does not cover enough of the field',
   qualified_stars: 'too few clean comparison stars', field_scatter_cap: 'nearby stars scatter too much', validation_median: 'the test stars do not come out unchanged',
   finite: 'a measurement is missing', psf_fwhm_match: 'the two pictures could not be matched in sharpness', psf_profile_match: 'star profiles differ between the pictures',
   alignment: 'the pictures do not line up', lead_same_place: 'nothing sits at the same spot in both pictures',
   display_frames_differ: 'the frames are identical', display_no_hidden_gaps: 'a gap would be hidden', display_lead_ratio: 'the drawn frames do not reproduce the measurement',
   display_field_ratio: 'the drawn frames do not reproduce the stars', display_background_match: 'the backgrounds could not be matched' };
+const ORDER = Object.keys(WHY);   // the most telling reason first: coverage, then the stars, then the rest
 function reasonOf(failed, rep) {
+  failed = [...failed].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
   const w = failed.map(k => WHY[k] ?? k);
   if (failed.includes('qualified_stars')) w[failed.indexOf('qualified_stars')] = `${rep.qualified_stars} clean comparison stars, 20 needed`;
   if (failed.includes('field_scatter_cap')) w[failed.indexOf('field_scatter_cap')] = `nearby stars scatter by ${rep.field_scatter_robust_sigma}, over 0.10`;
@@ -132,10 +134,8 @@ async function baked(base, ra, dec, signal) {
   const r = await fetch(`${base}/api/blink?ra=${ra.toFixed(5)}&dec=${dec.toFixed(5)}`, { signal });
   if (r.status !== 200) return null;
   const res = await r.json(), bin = await (await fetch(`${base}/${res.frames_path}`, { signal })).arrayBuffer();
-  return Object.fromEntries(Object.entries(res.bands).map(([band, m]) => {
-    if (m.frames) m.frames = Object.fromEntries(Object.entries(m.frames).map(([k, [off, n]]) => [k, new Float32Array(bin.slice(off, off + 4 * n))]));
-    return [band, m];
-  }));
+  for (const m of Object.values(res.bands)) if (m.frames) m.frames = Object.fromEntries(Object.entries(m.frames).map(([k, [off, n]]) => [k, new Float32Array(bin.slice(off, off + 4 * n))]));
+  return res;
 }
 
 // ---------- the Web Worker ----------
@@ -145,12 +145,13 @@ async function run({ id, ra, dec, api: base = '', bands = ['W2', 'W1', 'Ks'], li
   if (!live) {
     let b = null;
     try { b = await baked(base, ra, dec, signal); } catch (e) { if (e.name === 'AbortError') return; }
-    if (b) { for (const band of bands) if (b[band]) post({ ...b[band], band, type: 'band', baked: true }); post({ type: 'done', source: 'baked' }); return; }
+    if (b) { for (const band of bands) if (b.bands[band]) post({ ...b.bands[band], band, type: 'band', baked: true, context: b.context ?? null }); post({ type: 'done', source: 'baked' }); return; }
   }
   const here = new URL('../data/', import.meta.url);
   const [curves, waves] = await Promise.all(['bands.json', 'wavemaps.json'].map(f => fetch(new URL(f, here)).then(r => r.json())));
   const grid = B.makeGrid(ra, dec);
-  for (const band of bands) {   // one band at a time: the first shown first, and memory for one cube
+  // every band at once: their old-survey fetches and S3 reads overlap; the first band's reads are queued first
+  await Promise.all(bands.map(async band => {
     try {
       const rep = await buildBand(band, { base, ra, dec, grid, curves, waves, signal, progress: text => post({ type: 'progress', band, text }) });
       const m = bandMessage(band, rep);
@@ -159,7 +160,8 @@ async function run({ id, ra, dec, api: base = '', bands = ['W2', 'W1', 'Ks'], li
       if (e.name === 'AbortError') return;
       post({ type: 'band', band, state: e.state ?? 'spherex-unavailable', reason: e.state ? e.message : String(e.message || e) });
     }
-  }
+  }));
+  if (signal.aborted) return;
   post({ type: 'done', source: 'live' });
 }
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof window === 'undefined' && typeof process === 'undefined') {

@@ -4,6 +4,8 @@
 import { fwd } from './skymap.js';
 import { userName } from './discuss.js';
 import { CHANNELS } from './live/spectral.js';
+import { thenAndNow } from './thenandnow.js';
+import { designation } from './live/blink.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -20,25 +22,46 @@ function ago(ms) {
 }
 // Explore's rule (explore.js): unsettled until at least 5 tags and 60% of them say comet
 const settled = t => { const n = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0); return n >= 5 && t.comet / n >= 0.6; };
+// a star lead: at least 3 tags and 60% of them say star (never "Likely comet" for a star)
+const starLead = t => { const n = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0); return n >= 3 && (t.star ?? 0) / n >= 0.6; };
+const statusOf = t => (starLead(t) ? 'Star' : settled(t) ? 'Likely comet' : 'Candidate');
+let context = null;   // what the baked blink adds about the spot (its region, distance), when there is one
+const fmtDate = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 function head(c) {
-  document.title = `${c.id} · Trailblazer`;
-  $('c-id').textContent = c.id;
-  $('c-status').textContent = settled(c.tags) ? 'Likely comet' : 'Candidate';
-  $('c-by').replaceChildren('Reported by ', el('b', null, c.author), ` · ${new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · visit `,
-    el('b', null, visitDate(c.visit)), ' · ', el('b', null, c.det));
+  const star = starLead(c.tags), name = star ? designation(c.ra, c.dec) : c.id;
+  document.title = `${name} · Trailblazer`;
+  $('c-id').textContent = name;
+  status(c);
+  if (star) {   // credit: the reporter and date, then how many others tagged it a star (their latest tag; not the reporter)
+    const latest = new Map(); for (const m of c.comments) if (m.tag) latest.set(m.author, m.tag);
+    const others = [...latest].filter(([a, t]) => t === 'star' && a !== c.author).length;
+    $('c-by').replaceChildren('Reported by ', el('b', null, c.author), ` · ${fmtDate(c.created_at)}`,
+      ...(others ? [el('span', 'also', `${others} other${others === 1 ? '' : 's'} tagged it a star`)] : []));
+  } else
+    $('c-by').replaceChildren('Reported by ', el('b', null, c.author), ` · ${fmtDate(c.created_at)} · visit `, el('b', null, visitDate(c.visit)), ' · ', el('b', null, c.det));
   const lapse = $('c-lapse');
   const ch = c.detail?.candidate?.channel;
-  lapse.href = `timelapse.html?ra=${c.ra.toFixed(4)}&dec=${c.dec.toFixed(4)}&det=${c.det}${ch ? `&ch=${ch}` : ''}`;
+  lapse.href = `timelapse.html?ra=${c.ra.toFixed(4)}&dec=${c.dec.toFixed(4)}&det=${c.det}${ch ? `&ch=${ch}` : ''}&blink=${encodeURIComponent(c.id)}${star ? '&view=thenandnow' : ''}`;
   const [u, v] = fwd(c.ra, c.dec);
   $('c-dot').style.left = u * 100 + '%'; $('c-dot').style.top = v * 100 + '%';
   $('c-find').href = `explore.html?focus=${encodeURIComponent(c.id)}&day=${c.day ?? 0}`;
-  $('c-radec').replaceChildren('RA ', el('b', null, c.ra.toFixed(4)), ' Dec ', el('b', null, `${c.dec >= 0 ? '+' : ''}${c.dec.toFixed(4)}`));
+  where(c);
+}
+function status(c) {
+  const st = statusOf(c.tags), wrap = $('c-status-wrap');
+  $('c-status').textContent = st === 'Star' && context?.region ? `Star · ${context.region}` : st;
+  wrap.classList.toggle('has-dot', st !== 'Candidate');
+  wrap.style.setProperty('--c', st === 'Star' ? '#e3d58f' : 'var(--comet)');   // the star tag's colour (styles.css; ui.css reuses --star for white)
+}
+function where(c) {
+  $('c-radec').replaceChildren('RA ', el('b', null, c.ra.toFixed(4)), ' Dec ', el('b', null, `${c.dec >= 0 ? '+' : '−'}${Math.abs(c.dec).toFixed(4)}`),
+    ...(context?.distance_ly ? [el('br'), `About ${context.distance_ly.toLocaleString('en-US')} light-years away`] : []));
 }
 
 function talk(c) {
   for (const [k, n] of Object.entries(c.tags)) { const e = document.querySelector(`[data-t=${k}]`); if (e) e.textContent = n; }   // a tag this page has no row for is skipped
-  $('c-status').textContent = settled(c.tags) ? 'Likely comet' : 'Candidate';
+  status(c);
   const said = c.comments.filter(m => m.body);   // a tag alone is a vote: counted above, no box
   $('c-talk').replaceChildren(...said.map(m => {
     const box = el('section', 'pv-frame post'), who = el('p', 'pv-info');
@@ -131,10 +154,16 @@ function composer(c) {
 
 fetch(`/api/comets/${encodeURIComponent(id ?? '')}`).then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(c => {
   if (!c.candidate) return location.replace(`comet.html?id=${encodeURIComponent(c.id)}`);   // a comet with its own page
-  head(c); talk(c); composer(c); frames(c);
+  head(c); talk(c); composer(c);
+  // the blink: the reporter's spot, old survey against SPHEREx (baked for the showcase, else built here)
+  thenAndNow($('tn'), { ra: c.ra, dec: c.dec, mode: 'page', onResult: r => {
+    const ctx = Object.values(r).find(m => m.context)?.context;
+    if (ctx && !context) { context = ctx; status(c); where(c); }
+  } });
+  frames(c);
 }).catch(err => {
   console.warn(err);
   $('c-id').textContent = err === 404 ? 'Candidate not found' : 'Could not load this candidate';
   document.querySelector('.cpage .right').hidden = true;
-  for (const s of ['#c-frames', '#c-compose']) document.querySelector(s).closest('section, form').hidden = true;
+  for (const s of ['#c-frames', '#c-compose', '#tn']) document.querySelector(s).closest('section, form').hidden = true;
 });
