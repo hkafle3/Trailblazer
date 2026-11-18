@@ -7,10 +7,11 @@ import assert from 'node:assert/strict';
 import { oldsky, stored, blinkBaked, readRequest, posKey } from './src/oldsky.js';
 
 const card = (k, v) => (k.padEnd(8) + (v === undefined ? '' : '= ' + String(v).padStart(20))).padEnd(80);
-function fitsBytes(cards) {
-  let h = [card('SIMPLE', 'T'), card('BITPIX', -32), card('NAXIS', 2), card('NAXIS1', 2), card('NAXIS2', 2), ...cards.map(([k, v]) => card(k, v)), card('END')].join('');
+// a FITS file: header, then NAXIS1 x NAXIS2 float32 pixels padded to 2880 (dataBytes overrides how much data follows)
+function fitsBytes(cards, { nx = 2, ny = 2, dataBytes } = {}) {
+  let h = [card('SIMPLE', 'T'), card('BITPIX', -32), card('NAXIS', 2), card('NAXIS1', nx), card('NAXIS2', ny), ...cards.map(([k, v]) => card(k, v)), card('END')].join('');
   h = h.padEnd(Math.ceil(h.length / 2880) * 2880, ' ');
-  const out = new Uint8Array(h.length + 2880); out.set(new TextEncoder().encode(h)); return out;
+  const out = new Uint8Array(h.length + (dataBytes ?? Math.ceil(nx * ny * 4 / 2880) * 2880)); out.set(new TextEncoder().encode(h)); return out;
 }
 const gzip = async b => new Uint8Array(await new Response(new Blob([b]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
 const SIA = 's_ra,s_dec,dataproduct_subtype,energy_bandpassname,access_url,obs_id\n' +
@@ -139,4 +140,32 @@ test('stored files: canonical keys only; the baked blink by position', async () 
   assert.equal((await blinkBaked(new URL('https://x.test/api/blink?ra=84.01808&dec=-6.5775'), env)).status, 200);
   assert.equal((await blinkBaked(new URL('https://x.test/api/blink?ra=10&dec=1'), env)).status, 404);
   assert.equal((await blinkBaked(new URL('https://x.test/api/blink?ra=x&dec=1'), env)).status, 400);
+});
+
+test('a header-only or truncated FITS, plain or gzip, a broken gzip, or one inflating past the cap is never stored or served as a hit', async () => {
+  const W2 = [['BAND', 2]];
+  const big = fitsBytes(W2, { nx: 500, ny: 500 });
+  const gzBig = await gzip(big), cases = {
+    'header declares 500x500, no pixels': fitsBytes(W2, { nx: 500, ny: 500, dataBytes: 0 }),
+    'pixels short of NAXIS1 x NAXIS2 x 4': fitsBytes(W2, { nx: 500, ny: 500, dataBytes: 999999 }),
+    'pixels not padded to 2880': fitsBytes(W2, { nx: 500, ny: 500, dataBytes: 1000000 }),
+    'gzip of a header-only file': await gzip(fitsBytes(W2, { nx: 500, ny: 500, dataBytes: 0 })),
+    'gzip cut short': gzBig.subarray(0, gzBig.length - 40),
+    'gzip with a bad checksum': (() => { const b = gzBig.slice(); b[b.length - 6] ^= 0xff; return b; })(),
+    'NAXIS 3': fitsBytes([['BAND', 2]]).map((v, i, a) => v),
+    'inflates past 32 MB': await gzip(fitsBytes(W2, { nx: 3000, ny: 3000 })),
+  };
+  cases['NAXIS 3'] = new TextEncoder().encode(new TextDecoder().decode(fitsBytes(W2)).replace('NAXIS   =                    2', 'NAXIS   =                    3'));
+  for (const [name, bytes] of Object.entries(cases)) {
+    const env = fakeEnv(), irsa = await fakeIrsa(u => (u.includes('int-3') ? new Response(bytes) : null));
+    const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: irsa.f });
+    assert.equal(r.status, 503, name); assert.equal(env.store.size, 0, `${name}: nothing stored`);
+    const again = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: () => { throw new Error('IRSA blocked'); } });
+    assert.notEqual(again.headers.get('X-Oldsky'), 'hit', `${name}: never a hit`);
+  }
+  // and a complete 500 x 500 image, gzip or not, is accepted
+  for (const bytes of [big, gzBig]) {
+    const env = fakeEnv(), irsa = await fakeIrsa(u => (u.includes('int-3') ? new Response(bytes) : null));
+    assert.equal((await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775'), env, { fetch: irsa.f })).status, 200);
+  }
 });

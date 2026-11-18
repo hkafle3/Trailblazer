@@ -57,29 +57,43 @@ const tries = async (n, fn) => {
   throw last;
 };
 
-// the first header block(s) of a FITS file, gzip or not (detected from the bytes 1f 8b): the cards we report
+// A FITS image, gzip or not (detected from the bytes 1f 8b): the whole file is inflated, at most MAX_INFLATED bytes (a gzip
+// that is cut short or fails its checksum throws), and must be one complete 2-D image: SIMPLE, a known BITPIX, NAXIS 2,
+// and NAXIS1 x NAXIS2 x |BITPIX|/8 bytes of pixels after the header, padded to 2880. Returns the header cards.
 export const isGzip = b => b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
-async function headOf(bytes) {
-  let head = bytes.subarray(0, 11520);
-  if (isGzip(bytes)) {   // inflate only the start: enough for the header, not the image
-    const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), parts = []; let n = 0;
-    try { while (n < 11520) { const c = await reader.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; } }
-    catch { throw new Error('gzip does not inflate'); }
-    finally { reader.cancel().catch(() => {}); }
-    head = new Uint8Array(n); let at = 0; for (const p of parts) { head.set(p, at); at += p.byteLength; }
-  }
-  const text = new TextDecoder('latin1').decode(head);
-  if (!text.startsWith('SIMPLE  =')) throw new Error('not a FITS file');
-  const cards = {};
-  for (let i = 0; i + 80 <= text.length; i += 80) {
-    const c = text.slice(i, i + 80), k = c.slice(0, 8).trim();
-    if (k === 'END') return cards;
+const MAX_INFLATED = 16 << 20, BLOCK = 2880;
+async function inflated(bytes) {
+  if (!isGzip(bytes)) return bytes;
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), parts = []; let n = 0;
+  try {
+    for (let c; !(c = await reader.read()).done;) {
+      n += c.value.byteLength;
+      if (n > MAX_INFLATED) { reader.cancel().catch(() => {}); throw new Error('gzip inflates past the size cap'); }
+      parts.push(c.value);
+    }
+  } catch (e) { throw new Error(/cap/.test(e.message) ? e.message : 'gzip does not inflate (cut short or corrupt)'); }
+  const out = new Uint8Array(n); let at = 0; for (const p of parts) { out.set(p, at); at += p.byteLength; }
+  return out;
+}
+export async function checkFits(bytes) {
+  const b = await inflated(bytes), cards = {}, dec = new TextDecoder('latin1');
+  if (dec.decode(b.subarray(0, 9)) !== 'SIMPLE  =') throw new Error('not a FITS file');
+  let end = -1;
+  for (let i = 0; i + 80 <= b.length && i < 100 * BLOCK; i += 80) {
+    const c = dec.decode(b.subarray(i, i + 80)), k = c.slice(0, 8).trim();
+    if (k === 'END') { end = i + 80; break; }
     if (c[8] !== '=') continue;
     let v = c.slice(10).trim();
     v = v.startsWith("'") ? v.slice(1, v.indexOf("'", 1)).trim() : v.split('/')[0].trim();
     cards[k] = v;
   }
-  throw new Error('FITS header has no END in its first blocks');
+  if (end < 0) throw new Error('FITS header has no END');
+  const bitpix = Number(cards.BITPIX), nx = Number(cards.NAXIS1), ny = Number(cards.NAXIS2);
+  if (cards.SIMPLE !== 'T' || ![8, 16, 32, -32, -64].includes(bitpix) || cards.NAXIS !== '2') throw new Error('not a 2-D FITS image');
+  if (!Number.isInteger(nx) || !Number.isInteger(ny) || nx < 1 || ny < 1 || nx > 8192 || ny > 8192) throw new Error('FITS image size out of range');
+  const need = Math.ceil(end / BLOCK) * BLOCK + Math.ceil(nx * ny * Math.abs(bitpix) / 8 / BLOCK) * BLOCK;
+  if (b.length < need) throw new Error(`FITS image is short: ${b.length} bytes, ${need} needed`);
+  return cards;
 }
 const sha256 = async b => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b))].map(x => x.toString(16).padStart(2, '0')).join('');
 
@@ -133,7 +147,7 @@ export async function oldsky(request, url, env, deps = {}) {
   const got = [];
   try {
     for (const t of tiles) {
-      const bytes = await tries(3, () => irsaBytes(t.url, MAX_TILE, fetchFn)), h = await headOf(bytes);
+      const bytes = await tries(3, () => irsaBytes(t.url, MAX_TILE, fetchFn)), h = await checkFits(bytes);
       if (!/_cov\.fits$/.test(t.name) && bandOf(req.survey, h) !== req.band) throw new Error(`${t.name} is ${bandOf(req.survey, h)}, not ${req.band}`);
       got.push({ ...t, bytes, gzip: isGzip(bytes), header: Object.fromEntries(KEEP.filter(k => k in h).map(k => [k, h[k]])) });
     }
