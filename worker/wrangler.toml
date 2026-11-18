@@ -15,6 +15,7 @@ crons = ["*/10 0-5 * * *"]
 # Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
 [assets]
 directory = "../web"
+binding = "ASSETS"   # the old-sky test hook reads its test tile through this (worker/src/oldsky.js testPlan)
 
 # D1 database: comets and comments (labels are comments with a tag). Schema: worker/migrations/.
 [[d1_databases]]
@@ -38,6 +39,26 @@ SKY_ETAG_D6 = "f34a8f81a218d17e2c8c33ce755c43ea"
 [[r2_buckets]]
 binding = "SKY"
 bucket_name = "comet-hunt-sky-index"
+
+# "Then and now" (worker/src/oldsky.js): the older survey's tiles fetched from IRSA once per spot, and the baked
+# showcase blink (bake/blink_bake.mjs). Served same origin, so the bucket needs no CORS rules.
+[[r2_buckets]]
+binding = "OLDSKY"
+bucket_name = "comet-hunt-oldsky"
+
+# Rate limit for GET /api/oldsky on a miss (a new spot costs IRSA requests and storage): 6 a minute per IP. A page asks
+# for three bands, so this is two new spots a minute; tiles already stored are never limited.
+[[ratelimits]]
+name = "OLDSKY_LIMIT"
+namespace_id = "1003"
+simple = { limit = 6, period = 60 }
+
+# Rate limit for GET /api/oldsky/tile (one tile of a new spot's plan per request, so each stays inside the CPU budget):
+# 30 a minute per IP, enough for three bands of a new spot (2MASS can need 8 tiles) with retries.
+[[ratelimits]]
+name = "OLDSKY_TILE_LIMIT"
+namespace_id = "1004"
+simple = { limit = 30, period = 60 }
 
 # Rate limit for POST /api/checks (heat map counts): each visitor's IP gets 10 a minute, counted by Cloudflare,
 # so a script cannot spend the database's daily write allowance (which comments need too).

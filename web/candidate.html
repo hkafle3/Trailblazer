@@ -9,11 +9,12 @@
 <link rel="stylesheet" href="patch.css">
 <link rel="stylesheet" href="header.css">
 <link rel="stylesheet" href="discuss.css">
+<link rel="stylesheet" href="thenandnow.css">
 </head>
 <body class="page">
 <header class="topbar">
   <a class="brand" href="./" aria-label="Trailblazer home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Trailblazer</span></a>
-  <nav><a class="on" href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a><a href="candidates.html">Candidates</a></nav>
+  <nav><a href="comet.html">Comets</a><a href="explore.html">Explore</a><a href="forums.html">Forums</a><a class="on" href="candidates.html">Candidates</a></nav>
 </header>
 
 <!-- A dot someone reported from a time-lapse ("Discuss this", POST /api/candidates). Laid out from Ming's Forums.png:
@@ -22,9 +23,11 @@
   <div class="left">
     <section class="pv-frame head">
       <h1 id="c-id">&nbsp;</h1>
-      <span class="pv-info" id="c-status"></span>
+      <span class="pv-info status" id="c-status-wrap"><i aria-hidden="true"></i><span id="c-status"></span></span>
       <span class="pv-info byline" id="c-by"></span>
     </section>
+    <!-- Then and now: the older survey against SPHEREx, blinked and measured (thenandnow.js, live/blinkworker.js) -->
+    <section class="pv-frame tn" id="tn" aria-labelledby="tn-h"></section>
     <section class="pv-frame" aria-label="The spot at each visit">
       <div class="frames" id="c-frames"></div>
       <p class="pv-info frames-note" id="c-frames-note">Building the frames…</p>
@@ -54,7 +57,7 @@
     <section class="pv-card" aria-labelledby="c-where-h">
       <h2 id="c-where-h">Where it is</h2>
       <a class="where" id="c-find" aria-label="Find it on the Explore map"><div class="skymini"><i id="c-dot"></i></div></a>
-      <p class="pv-info" id="c-radec"></p>
+      <p class="pv-info where-p" id="c-radec"></p>
     </section>
   </div>
 </main>

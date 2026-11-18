@@ -205,3 +205,17 @@ test('the poles and RA near 360 stay inside the grid', () => {
   assert.equal(cellAt(0, 90), 0);
   assert.equal(cellAt(359.999, -90), cellAt(0, -89.9) + Math.floor(359.999 / 360 * 3));
 });
+
+test('fmt=2: the compact answer decodes to the full answer\'s t, key and obs, in order', async () => {
+  const { skyImagesCompact } = await import('./src/sky_index.js'), { imagesOf } = await import('../web/live/images.js');
+  deploy(A);
+  for (const [ra, dec, r] of [[saved.ra, saved.dec, 0.001], [saved.ra, saved.dec, 0.1424], [10, -40, 0.001]]) {
+    const full = JSON.parse(await skyImagesJson(read, ra, dec, 1, pin, r)), c = JSON.parse(await skyImagesCompact(read, ra, dec, 1, pin, r));
+    assert.deepEqual(imagesOf(c), full.images.map(({ t, key, obs }) => ({ t, key, obs })));
+    assert.deepEqual(c.collections, full.collections);
+  }
+  // an IRSA answer in fmt 2 carries [t, key, obs]; a full answer passes through unchanged
+  assert.deepEqual(imagesOf({ fmt: 2, folders: null, images: [[60000.5, 'dr1/x.fits', 'o_1']] }), [{ t: 60000.5, key: 'dr1/x.fits', obs: 'o_1' }]);
+  const old = { images: [{ t: 1, key: 'k', obs: 'o', coll: 'spherex_dr1' }] };
+  assert.equal(imagesOf(old), old.images);
+});

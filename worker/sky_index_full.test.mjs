@@ -57,3 +57,32 @@ for (const det of [1, 2, 3, 4, 5, 6]) {
     assert.equal(pinned, createHash('md5').update(readFileSync(`${dir}/d${det}.bin`)).digest('hex'));
   });
 }
+
+// A region search ("Then and now": r up to 0.15 degree) at the densest spot, the north ecliptic pole on D5 (about 5,700
+// images): the same answer as the object form, and CPU within 3 times the point search (plus 2 ms of noise)'s (Codex re-review 1: it was 9x,
+// about 20 ms, before the writer kept row references). Medians of 15 warm runs, process CPU time.
+test('a region search at the ecliptic pole: same answer as the object form, CPU close to the point search', { skip: !dir && 'set SKY_INDEX_DIR to run' }, async () => {
+  const [ra, dec, det, r] = [270, 66.560708, 5, 0.1424];
+  const want = JSON.stringify({ ra, dec, det: `D${det}`, r, ...(await skyImages(read, ra, dec, det, 'file', r)), source: 'index' });
+  assert.equal(await skyImagesJson(read, ra, dec, det, 'file', r), want);
+  const cpu = async rr => { const t = []; for (let i = 0; i < 15; i++) { const a = process.cpuUsage(); await skyImagesJson(read, ra, dec, det, 'file', rr); const b = process.cpuUsage(a); t.push(b.user + b.system); } return t.sort((x, y) => x - y)[7] / 1000; };
+  await cpu(0.001); await cpu(r);
+  const point = await cpu(0.001), region = await cpu(r);
+  console.log(`# point ${point.toFixed(2)} ms, region ${region.toFixed(2)} ms`);
+  assert.ok(region <= 3 * point + 2, `region ${region.toFixed(2)} ms vs point ${point.toFixed(2)} ms`);
+});
+
+// fmt=2 (skyImagesCompact, web/live/images.js): every field the browser reads (t, key, obs), the collection counts and
+// the order identical to the full answer, at the pole, the showcase spot, a few edges and 200 random spots, every
+// detector, point and region search
+test('the compact answer holds the full answer\'s t, key, obs, order and counts everywhere', { skip: !dir && 'set SKY_INDEX_DIR to run' }, async () => {
+  const { skyImagesCompact } = await import('./src/sky_index.js'), { imagesOf } = await import('../web/live/images.js');
+  let rnd = 12345; const rand = () => (rnd = (rnd * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const spots = [[270, 66.560708], [84.01808, -6.5775], [90, -66.560708], [0.0005, 0.2], [359.9995, -0.3], [12, 89.95], [200, -89.9]];
+  for (let k = 0; k < 200; k++) spots.push([rand() * 360, Math.asin(2 * rand() - 1) / Math.PI * 180]);
+  for (const [ra, dec] of spots) for (const det of [1, 2, 3, 4, 5, 6]) for (const r of [0.001, 0.1424]) {
+    const full = JSON.parse(await skyImagesJson(read, ra, dec, det, 'file', r)), c = JSON.parse(await skyImagesCompact(read, ra, dec, det, 'file', r));
+    assert.deepEqual(imagesOf(c), full.images.map(({ t, key, obs }) => ({ t, key, obs })), `D${det} (${ra}, ${dec}) r ${r}`);
+    assert.deepEqual(c.collections, full.collections); assert.equal(c.fmt, 2);
+  }
+});

@@ -3,12 +3,15 @@
 // proxies both with retries and caches answers for a day. The pixels never pass through here: the browser
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=   GET /api/depth?ra=&dec=[&t=]
+//   GET /api/oldsky?survey=&band=&ra=&dec=   GET /api/oldsky/v1/...   GET /api/blink?ra=&dec=   GET /api/blink/v1/...   (R2 OLDSKY, worker/src/oldsky.js)
 //   GET /api/comets   GET /api/comets/:id (with `now`, the daily snapshot: cron, worker/src/now.js)   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
-import { skyImagesJson, eclipticLat } from './sky_index.js';
+import { skyImagesJson, skyImagesCompact, eclipticLat } from './sky_index.js';
 import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
 import { snapshot, nowRow } from './now.js';
+import { oldsky, oldskyTile, stored, blinkBaked } from './oldsky.js';
+import { worthSaving, fitsSave, toFmt2 } from './saved.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
 
@@ -83,6 +86,12 @@ async function images(url, env) {
   if (p.error) return json(p, 400);
   const det = url.searchParams.get('det') || 'D1';
   if (!/^D[1-6]$/.test(det)) return json({ error: 'det must be D1 to D6' }, 400);
+  // r (degrees, optional): every image coming within r of the spot, for a field rather than a point ("Then and now")
+  const r = url.searchParams.has('r') ? Number(url.searchParams.get('r')) : 0.001;
+  if (!(r >= 0.001 && r <= 0.15)) return json({ error: 'r must be 0.001 to 0.15 degrees' }, 400);
+  // fmt=2: only the fields the browser reads, compactly (sky_index.js skyImagesCompact, web/live/images.js)
+  const fmt = url.searchParams.get('fmt') ?? '1';
+  if (fmt !== '1' && fmt !== '2') return json({ error: 'fmt must be 1 or 2' }, 400);
   // Our own index of the level-2 images (bake/sky_index.py, in R2) answers first; IRSA's search only when it cannot
   // (no binding, a missing file, an R2 error). Same answer: checked against IRSA at 47 D1 positions, 0 differences.
   // The answer is written as JSON text straight from the index rows (the same bytes json() would give), which halves
@@ -90,15 +99,15 @@ async function images(url, env) {
   // skyImagesJson accepts only the pinned version of the file (SKY_ETAG_D1..D6 in wrangler.toml), checks every read and
   // tries once more with a fresh head; if it still cannot answer, IRSA does.
   try {
-    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`]),
-      { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400' } });
+    const body = await (fmt === '2' ? skyImagesCompact : skyImagesJson)(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`], r);   // ASCII: length is bytes
+    return new Response(body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400', 'X-Answer-Bytes': String(body.length) } });
   } catch (e) { console.warn('sky index', e); }
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches
   const colls = Math.abs(eclipticLat(p.ra, p.dec)) > 75 ? [...WIDE, ...DEEP] : WIDE;
   // On 2026-11-15 IRSA's search failed most requests with an instant 502 and answered about one in three after ~21 s,
   // so each try waits up to 45 s and the instant failures are retried, one at a time per search. 40 tries are shared
   // out (the free plan allows 50 outside requests per visit, and D1 and the cache need a few).
-  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} 0.001`, BAND: BAND[det], RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`,
+  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} ${r}`, BAND: BAND[det], RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`,
     Math.floor(40 / colls.length), 45000).then(spherexRows);
   const results = await Promise.allSettled(colls.map(search));
   if (results.slice(0, WIDE.length).some(r => r.status === 'rejected'))   // an empty answer must mean "no images", never "search failed"
@@ -116,7 +125,7 @@ async function images(url, env) {
   const partial = Object.values(counts).includes('failed');
   if (partial && !list.length)
     return json({ error: 'IRSA search is not answering, try again or pick a baked target', retry_after: 30 }, 503, { 'Retry-After': '30' });
-  return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts, source: 'IRSA' }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
+  return json({ ra: p.ra, dec: p.dec, det, ...(r !== 0.001 ? { r } : {}), ...(fmt === '2' ? { fmt: 2, folders: null, images: list.map(x => [x.t, x.key, x.obs]) } : { images: list }), collections: counts, source: 'IRSA' }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
 }
 
 // skyImagesJson reads byte ranges of d1.bin .. d6.bin from the R2 bucket bound as SKY, each with the file's etag and
@@ -629,6 +638,16 @@ export default {
       catch (e) { console.error(e); return json({ error: 'database is not answering, try again' }, 503); }
     }
     if (url.pathname === '/api/depth') return depth(url, env, ctx);   // its own per-source cache, no saved fallback
+    // "Then and now": the older survey's tiles (R2 first, IRSA on a rate-limited miss) and the baked showcase blink
+    if (url.pathname === '/api/oldsky' || url.pathname === '/api/blink' || url.pathname.startsWith('/api/oldsky/') || url.pathname.startsWith('/api/blink/')) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'use GET' }, 405, { Allow: 'GET' });
+      try {
+        if (url.pathname === '/api/oldsky') return await oldsky(request, url, env);
+        if (url.pathname === '/api/oldsky/tile') return await oldskyTile(request, url, env);
+        if (url.pathname === '/api/blink') return await blinkBaked(url, env);
+        return await stored(url, env);
+      } catch (e) { console.error(e); return json({ error: 'older survey unavailable', reason: 'store is not answering' }, 503, { 'Cache-Control': 'no-store' }); }
+    }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
     // v2: answers cached before 2026-11-14's fix could hold a failed deep-field search as "no images"
@@ -651,7 +670,7 @@ const SAVED_MAX = 100e6, PART = 500000;   // bytes kept (the migration's CHECK i
 const complete = res => res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '');
 // keyed on the parameters the searches read, exactly as sent (a bad value misses and gets its 400), plus v, which marks a
 // new answer shape and is read by no search, cut to 8 characters. Junk parameters add no keys; save() skips long keys.
-const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 't', 'v'].filter(n => url.searchParams.has(n))
+const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 'r', 'fmt', 't', 'v'].filter(n => url.searchParams.has(n))
   .map(n => [n, n === 'v' ? url.searchParams.get(n).slice(0, 8) : url.searchParams.get(n)]));
 
 // One transaction. An answer saved less than a day before this one, or after it, is kept as it is and nothing is written:
@@ -666,6 +685,7 @@ async function save(env, id, text, at) {
     'coalesce((SELECT sum(length(CAST(body AS BLOB)) + 2 * length(CAST(key AS BLOB)) + 64) FROM searches WHERE key = ?), 0) AS old').bind(id, id).first();
   if (r.at !== null && r.at > at - DAY) return;
   const body = await text();
+  if (!fitsSave(id, body)) return;   // worker/src/saved.js
   if (r.n - r.old + body.length > SAVED_MAX) return;   // ponytail: a full store takes no new searches; evict the oldest if that ever bites
   const parts = [];
   for (let i = 0; i < body.length; i += PART) parts.push(body.slice(i, i + PART));   // a deep field's answer can pass 2 MB
@@ -677,11 +697,12 @@ async function save(env, id, text, at) {
 // a cached answer with none saved (answers cached before saving existed, or a save that failed while D1 was down), or
 // more than a day newer than the saved one, is saved on its next cache hit, so it survives an outage too
 async function backfill(env, id, hit) {
-  if (complete(hit)) await save(env, id, () => hit.text(), Number(hit.headers.get('X-Answered-At')) || Date.parse(hit.headers.get('Date')) || 0);
+  if (complete(hit) && worthSaving(hit)) await save(env, id, () => hit.text(), Number(hit.headers.get('X-Answered-At')) || Date.parse(hit.headers.get('Date')) || 0);
 }
 
 async function withSaved(route, url, id, env, ctx) {
   const res = await route(url, env);
+  if (complete(res) && !worthSaving(res)) return res;   // a large answer: not saved (worker/src/saved.js)
   if (complete(res)) {
     const at = Date.now();
     res.headers.set('X-Answered-At', String(at));   // kept with the cached copy, so a later backfill knows its age
@@ -690,9 +711,14 @@ async function withSaved(route, url, id, env, ctx) {
     return res;
   }
   if (res.status !== 200 && res.status < 500) return res;   // a bad request stays an error
-  let rows = [];
-  try { rows = (await env.DB.prepare('SELECT body, saved_at FROM searches WHERE key = ? ORDER BY part').bind(id).all()).results; } catch {}
+  const savedRows = async k => { try { return (await env.DB.prepare('SELECT body, saved_at FROM searches WHERE key = ? ORDER BY part').bind(k).all()).results; } catch { return []; } };
+  let rows = await savedRows(id), body = rows.map(r => r.body).join(''), fmt = url.searchParams.get('fmt');
+  if (!rows.length && fmt && url.pathname === '/api/images') {   // saved before clients asked with fmt: same search, old shape
+    const u = new URL(url); u.searchParams.delete('fmt');
+    rows = await savedRows(savedKey(u)); body = rows.map(r => r.body).join('');
+    if (rows.length && fmt === '2') try { body = toFmt2(body); } catch { return res; }
+  }
   if (!rows.length) return res;
-  return new Response(rows.map(r => r.body).join(''), { status: 200,
+  return new Response(body, { status: 200,
     headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'no-store', 'X-Saved-At': new Date(rows[0].saved_at).toISOString() } });
 }

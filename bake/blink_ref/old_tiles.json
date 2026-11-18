@@ -1,0 +1,42 @@
+{
+ "allwise_W1_int.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w1-int-3.fits?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "0b0c4eeb06ff671531c4570b4872994e609dae25f019d029676889ee1703e02f"
+ },
+ "allwise_W1_cov.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w1-cov-3.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "e9502b4a69b30492d873d45b9697c931534f7ef051ccc0c2a78e2314716e60e7"
+ },
+ "allwise_W2_int.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w2-int-3.fits?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "2c6559256ecce2a41149020934015adb3f98815aa4c1d20e82b87bd5e446efe9"
+ },
+ "allwise_W2_cov.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w2-cov-3.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "86f9daef39585d4a8b9319ad3da3ef42ce27a823fb7a384dfe5c52553b74d644"
+ },
+ "2mass_Ks_001126_ki1020021.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/twomass/allsky/allsky/001126n/s102/image/ki1020021.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "b600592bf1c7627cf5d410929ff0f9d1566614c28bc0b902f42a5234c6bcdd9c"
+ },
+ "2mass_Ks_001126_ki1020033.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/twomass/allsky/allsky/001126n/s102/image/ki1020033.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "63be2ec7314db0da843ef836adda356451f67e04ce6e7f41a45eaf2285e34663"
+ },
+ "2mass_Ks_001126_ki1030244.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/twomass/allsky/allsky/001126n/s103/image/ki1030244.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "0da4d2e691963e0f4378d5d8b30869b69bdbcefa9ad48471b72403b257feece5"
+ },
+ "2mass_Ks_001126_ki1030256.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/twomass/allsky/allsky/001126n/s103/image/ki1030256.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "269b4392ee54ed3d5419124f886078403bc9facae941c62cfd57fdc3ab77a64f"
+ },
+ "2mass_Ks_001126_ki1040021.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/twomass/allsky/allsky/001126n/s104/image/ki1040021.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "5c742be251b5d181f369a9aab0bc571cd82e46b3b6a49566391a37d72bbf38a1"
+ },
+ "2mass_Ks_001126_ki1040033.fits": {
+  "url": "https://irsa.ipac.caltech.edu/ibe/data/twomass/allsky/allsky/001126n/s104/image/ki1040033.fits.gz?center=84.01808,-6.5775&size=780arcsec",
+  "sha256": "4caa123d41c5c95b67baf65e93ef3ab717fb3225e2dd1e0ea7f3187f42bb8b5b"
+ }
+}

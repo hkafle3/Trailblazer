@@ -333,3 +333,24 @@ The Forums feed: the 200 newest comments that have text, across every comet, new
 { "posts": [ { "comet_id": "3I/ATLAS", "author": "mira_v", "tag": "comet", "body": "Strong carbon dioxide peak at 4.26.",
   "created_at": 1763200000000, "kind": "known", "ra": 247.109, "dec": -16.84, "real": true } ] }
 ```
+
+## GET /api/oldsky (R2 OLDSKY, then IRSA)
+
+The older survey's picture of a spot, for "Then and now" (`worker/src/oldsky.js`, used by `web/live/blinkworker.js`). Only `survey=allwise` with `band=W1` or `W2`, and `survey=2mass` with `band=Ks`; one size, 780 arcsec (`size`, if sent, must be `780`); `ra` 0 to 360 and `dec` -90 to 90, rounded to 0.001 degree for the stored key.
+
+```json
+{ "v": 1, "survey": "allwise", "band": "W2", "size_arcsec": 780, "ra": 84.018, "dec": -6.578, "release": "AllWISE Atlas (p3am_cdd)",
+  "tiles": [ { "name": "allwise_W2_int.fits", "path": "api/oldsky/v1/allwise/W2/780/84.018-6.578/allwise_W2_int.fits",
+    "source": "https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/...-w2-int-3.fits?center=84.018,-6.578&size=780arcsec",
+    "bytes": 1084025, "gzip": true, "etag": "...", "header": { "BAND": "2", "DATEOBS1": "2010-03-06T22:30:53.139", "DATEOBS2": "2010-09-17T04:47:46.567" } } ] }
+```
+
+- R2 first (`X-Oldsky: hit`). A miss is rate limited per IP (`OLDSKY_LIMIT`, 6 a minute; 429 past it), then IRSA is asked: the host is fixed to irsa.ipac.caltech.edu, redirects are refused, 20 s and at most 4 MB a tile (by its Content-Length), at most 8 tiles, one at a time. The Worker plan allows 10 ms of CPU, so a tile is streamed into R2 at its declared length without being copied, inflated or hashed here; the Worker reads only its first 64 KB (the header: a 2-D image of a known BITPIX, of the band asked) and, for a gzip (detected from its first bytes), its 4-byte size trailer, and checks the stored length (or the gzip's inflated size, at most 16 MB) covers NAXIS1 x NAXIS2 x |BITPIX|/8 after the header, padded to 2880. Anything wrong deletes what was stored. The manifest is stored last and carries each tile's size and R2 etag, no checksum. The browser inflates every byte and checks the whole image; a damaged stored tile makes that band "inconclusive" (there is no route to drop a stored tile: delete its manifest in R2 by hand). An IRSA failure answers `503 {"error":"older survey unavailable"}` with `Cache-Control: no-store` and stores nothing; no tile at all is `404`.
+- AllWISE: the nearest Atlas tile's intensity image and coverage map. 2MASS: every Ks atlas image overlapping the 12 arcmin field (one box search).
+- `GET /api/oldsky/v1/...` serves a stored tile as IRSA sent it (canonical keys only). The page checks it against `sha256`.
+
+A new spot comes in steps, so each request stays inside the Workers plan's CPU limit (a whole 2MASS mosaic in one request measured 17.6 ms on a 10 ms plan): the first request searches IRSA, stores the plan and answers `202 {"pending": ["2mass_Ks_001126_ki1020021.fits", ...]}`; then `GET /api/oldsky/tile?survey=&band=&ra=&dec=&name=` stores one tile of that plan per request (names from the plan only; `OLDSKY_TILE_LIMIT`, 30 a minute per IP; `404` for a name not in the plan); then `GET /api/oldsky` again writes and answers the manifest once every tile has passed its checks. A tile that fails is deleted and its request answers `503`; tiles that passed are kept, and there is no manifest until all have.
+
+## GET /api/blink?ra=&dec= (R2 OLDSKY)
+
+A baked "Then and now" blink at this spot (`bake/blink_bake.mjs`; the showcase J053604.34-063439.0), or `404`, and the page builds it live. `result.json` holds each band's state, report and checks; `frames_path` (`GET /api/blink/v1/<pos>/frames.bin`) the calibrated frames as float32. To bake the showcase into production R2 once Ed has reported it: `node bake/blink_bake.mjs --api https://comet-hunt.comet-hunt.workers.dev --put remote --region "Orion A" --distance-ly 1250 --dust-k 680`.

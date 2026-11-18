@@ -89,7 +89,7 @@ const unit = (x, y, z) => { const l = Math.hypot(x, y, z); return [x / l, y / l,
 // polygon is a corner, or a point inside one edge's segment; widening each edge on its own (all n . p >= TOL) would
 // also take points diagonally off a corner, up to R * sqrt(2) away. Corners come back as the crossing of neighbouring
 // edges, the one on p's side. Only rows already within TOL of every edge get here.
-function nearOutside(f32, j, x, y, z, d) {
+function nearOutside(f32, j, x, y, z, d, near = NEAR) {
   const n = k => [f32[j + 3 * k], f32[j + 3 * k + 1], f32[j + 3 * k + 2]];
   const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], p = [x, y, z];
@@ -98,13 +98,13 @@ function nearOutside(f32, j, x, y, z, d) {
     return dot(v, p) < 0 ? v.map(c => -c) : v;
   };
   const cs = [0, 1, 2, 3].map(corner);
-  if (cs.some(v => dot(v, p) >= NEAR)) return true;
+  if (cs.some(v => dot(v, p) >= near)) return true;
   for (let k = 0; k < 4; k++) {
     if (d[k] >= 0) continue;
     const e = n(k), a = cs[k], b = cs[(k + 1) % 4];
     // p projects inside the segment a..b when it is between the planes through the edge normal and each end
     const ma = cross(e, a), mb = cross(e, b);
-    if (dot(ma, p) * dot(ma, b) >= 0 && dot(mb, p) * dot(mb, a) >= 0) return true;   // and then its distance is asin(-d) <= R
+    if (dot(ma, p) * dot(ma, b) >= 0 && dot(mb, p) * dot(mb, a) >= 0) return true;   // and then its distance is asin(-d) <= r
   }
   return false;
 }
@@ -113,11 +113,13 @@ function nearOutside(f32, j, x, y, z, d) {
 // images per collection searched. Rows are stored in time order, so the answer comes out sorted. An obs_id seen again
 // in a lower (earlier listed) collection takes the place of the first one, as /api/images keeps DR1 first; only then is
 // a re-sort needed. Plain numbers only: the two writers below turn the rows into objects or straight into JSON text.
-async function pickOnce(read, ra, dec, det, pin) {
+// r (degrees): images within r of the point instead of SIA's 0.001; cell: which cell's rows to search (default the point's)
+async function pickOnce(read, ra, dec, det, pin, r = 0.001, cell = null) {
+  const tol = r === 0.001 ? TOL : -Math.sin(r * RAD), near = r === 0.001 ? NEAR : Math.cos(r * RAD);
   const name = `d${det}.bin`, hp = skyHead(read, det, pin), h = await hp;
   if (h.etag !== pin) { if (heads.get(name) === hp) heads.delete(name); throw new Error(`${name}: head from another version`); }
   try {
-    const c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
+    const c = cell ?? cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
     const deep = Math.abs(eclipticLat(ra, dec)) > 75;
     const collections = Object.fromEntries((deep ? COLLS : COLLS.slice(0, 2)).map(k => [k, 0]));
     // an empty cell is only an answer from the file the head came from: one small read checks it is still there, unchanged
@@ -140,13 +142,13 @@ async function pickOnce(read, ra, dec, det, pin) {
       if (!(ma * ma + mb * mb + mc * mc + me * me < 1e-8)) bad(i);   // each |n|^2 within 1e-4 of 1; NaN fails too
       if (coll >= 2 && !deep) continue;
       d[0] = a0 * x + a1 * y + a2 * z; d[1] = b0 * x + b1 * y + b2 * z; d[2] = c0 * x + c1 * y + c2 * z; d[3] = e0 * x + e1 * y + e2 * z;
-      if (d[0] < TOL || d[1] < TOL || d[2] < TOL || d[3] < TOL) continue;
+      if (d[0] < tol || d[1] < tol || d[2] < tol || d[3] < tol) continue;
       // within reach of the point: the footprint must be an image's before it is used or its corners worked out.
       // Opposite edges face each other (n . n' is -0.998 for a 3.5 degree square) and neighbours are far from parallel;
       // unit normals pointing anywhere else could cover half the sky. bake/sky_index.py checks the same at build time.
       if (!(a0 * c0 + a1 * c1 + a2 * c2 < -0.99 && b0 * e0 + b1 * e1 + b2 * e2 < -0.99 && Math.abs(a0 * b0 + a1 * b1 + a2 * b2) < 0.5 &&
         Math.abs(b0 * c0 + b1 * c1 + b2 * c2) < 0.5 && Math.abs(c0 * e0 + c1 * e1 + c2 * e2) < 0.5 && Math.abs(e0 * a0 + e1 * a1 + e2 * a2) < 0.5)) bad(i);
-      if ((d[0] < 0 || d[1] < 0 || d[2] < 0 || d[3] < 0) && !nearOutside(f32, j, x, y, z, d)) continue;
+      if ((d[0] < 0 || d[1] < 0 || d[2] < 0 || d[3] < 0) && !nearOutside(f32, j, x, y, z, d, near)) continue;
       const fo = h.folders[u16[i * 32 + 28]], seq = u16[i * 32 + 29], sub = u8[i * ROW + 60];
       collections[COLLS[coll]]++;
       const id = (fo.p * 10000 + seq) * 10 + sub, had = at.get(id);
@@ -163,8 +165,16 @@ async function pickOnce(read, ra, dec, det, pin) {
 
 // A file replaced since this instance read its head shows as a different etag (or a range past its end): one more try
 // with a fresh head. A second failure goes to the caller.
-async function pick(read, ra, dec, det, pin) {
-  try { return await pickOnce(read, ra, dec, det, pin); } catch { return await pickOnce(read, ra, dec, det, pin); }
+async function pick(read, ra, dec, det, pin, r, cell) {
+  try { return await pickOnce(read, ra, dec, det, pin, r, cell); } catch { return await pickOnce(read, ra, dec, det, pin, r, cell); }
+}
+// A region (r over 0.001 degree): every cell the circle can touch. Cells are about 3.5 degrees, far larger than any r
+// allowed (0.15), so a cell the circle's bounding box touches holds one of the box's corners; each image is stored in
+// every cell its footprint touches, so the cell holding any point it shares with the circle is among these.
+function regionCells(ra, dec, r) {
+  const dr = Math.min(180, r / Math.max(Math.cos(Math.min(89.9, Math.abs(dec) + r) * RAD), 1e-6)), cs = new Set();
+  for (const [a, d] of [[0, 0], [-dr, -r], [-dr, r], [dr, -r], [dr, r]]) cs.add(cellAt((((ra + a) % 360) + 360) % 360, Math.max(-90, Math.min(90, dec + d))));
+  return [...cs];
 }
 
 // one row's fields; t is MJD-BEG to 6 decimals, the way SIA writes t_min. The file already holds it rounded (version
@@ -174,8 +184,41 @@ function fields(p, i) {
   return [Number(p.f64[i * 8].toFixed(6)), fo.pre + rest + fo.post, `${fo.period}_${rest}`, COLLS[p.u8[i * ROW + 61]]];
 }
 
-// The images of one detector covering (ra, dec): { images: [{ t, key, obs, coll }] sorted by t, collections }
-export async function skyImages(read, ra, dec, det, pin) {
+// A region's rows as [pick, row] pairs (each pick holds its cell's buffers), one per obs_id with DR1 first, sorted by time,
+// and the matching images per collection, each counted once. No strings or objects per row: the JSON writer below
+// prints straight from the buffers, as the point search does (Codex re-review 1: building them cost 9x the point search).
+async function pickRegion(read, ra, dec, det, pin, r) {
+  // numbers only, no per-row objects: a row is (pick k, row i) packed as k * 2^21 + i; first[] keeps first-seen order,
+  // which breaks ties in time as the stable sort of an insertion-ordered list did
+  const picks = [], best = new Map(), mask = new Map(), first = new Map(); let collections = null, n = 0;
+  for (const cell of regionCells(ra, dec, r)) {
+    const p = await pick(read, ra, dec, det, pin, r, cell), k = picks.push(p) - 1;
+    collections ??= Object.fromEntries(Object.keys(p.collections).map(c => [c, 0]));
+    const u16 = p.u16, u8 = p.u8, folders = p.h.folders;
+    for (let q = 0; q < p.rows.length; q++) {
+      const i = p.rows[q], id = (folders[u16[i * 32 + 28]].p * 10000 + u16[i * 32 + 29]) * 10 + u8[i * ROW + 60], coll = u8[i * ROW + 61];
+      const m = mask.get(id) ?? 0;
+      if (!(m & (1 << coll))) { mask.set(id, m | (1 << coll)); collections[COLLS[coll]]++; }
+      const had = best.get(id);
+      if (had === undefined) { best.set(id, k * 2097152 + i); first.set(id, n++); }
+      else if (coll < picks[Math.floor(had / 2097152)].u8[(had % 2097152) * ROW + 61]) best.set(id, k * 2097152 + i);
+    }
+  }
+  const ids = [...best.keys()], ts = new Float64Array(ids.length), order = new Uint32Array(ids.length), firsts = new Float64Array(ids.length);
+  for (let q = 0; q < ids.length; q++) { const v = best.get(ids[q]); ts[q] = picks[Math.floor(v / 2097152)].f64[(v % 2097152) * 8]; firsts[q] = first.get(ids[q]); order[q] = q; }
+  order.sort((x, y) => ts[x] - ts[y] || firsts[x] - firsts[y]);
+  const rows = new Array(ids.length);
+  for (let q = 0; q < ids.length; q++) { const v = best.get(ids[order[q]]); rows[q] = [picks[Math.floor(v / 2097152)], v % 2097152]; }
+  return { rows, collections: collections ?? {} };
+}
+
+// The images of one detector covering (ra, dec), or (r > 0.001) coming within r degrees of it:
+// { images: [{ t, key, obs, coll }] sorted by t, collections }
+export async function skyImages(read, ra, dec, det, pin, r = 0.001) {
+  if (r !== 0.001) {
+    const { rows, collections } = await pickRegion(read, ra, dec, det, pin, r);
+    return { images: rows.map(([p, i]) => { const [t, key, obs, coll] = fields(p, i); return { t, key, obs, coll }; }), collections };
+  }
   const p = await pick(read, ra, dec, det, pin);
   return { images: p.rows.map(i => { const [t, key, obs, coll] = fields(p, i); return { t, key, obs, coll }; }), collections: p.collections };
 }
@@ -184,7 +227,16 @@ export async function skyImages(read, ra, dec, det, pin) {
 // { ra, dec, det: 'D<det>', ...skyImages(), source: 'index' } (worker/sky_index.test.mjs checks it), without building
 // thousands of objects first. A deep-field answer is about 1 MB and that building took most of a request's CPU.
 // Numbers print as JSON.stringify prints them; keys, obs and collections need no escaping (head() checks the folders).
-export async function skyImagesJson(read, ra, dec, det, pin) {
+export async function skyImagesJson(read, ra, dec, det, pin, r = 0.001) {
+  if (r !== 0.001) {
+    const { rows, collections } = await pickRegion(read, ra, dec, det, pin, r);
+    let s = `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}","r":${JSON.stringify(r)},"images":[`;
+    for (let k = 0; k < rows.length; k++) {
+      const [p, i] = rows[k], fo = p.h.folders[p.u16[i * 32 + 28]], rest = String(p.u16[i * 32 + 29]).padStart(4, '0') + '_' + p.u8[i * ROW + 60];
+      s += (k ? ',{"t":' : '{"t":') + p.f64[i * 8] + fo.a + rest + fo.b + rest + COLL_END[p.u8[i * ROW + 61]];
+    }
+    return `${s}],"collections":${JSON.stringify(collections)},"source":"index"}`;
+  }
   const p = await pick(read, ra, dec, det, pin);
   let s = `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}","images":[`;
   for (let k = 0; k < p.rows.length; k++) {   // fields() inlined, with the constant text cut once per folder
@@ -192,4 +244,22 @@ export async function skyImagesJson(read, ra, dec, det, pin) {
     s += (k ? ',{"t":' : '{"t":') + p.f64[i * 8] + fo.a + rest + fo.b + rest + COLL_END[p.u8[i * ROW + 61]];
   }
   return `${s}],"collections":${JSON.stringify(p.collections)},"source":"index"}`;
+}
+
+// /api/images?fmt=2: the same images in the fields the browser reads, compactly: each image [t, folder, seq, sub] with
+// its folder's key and obs text given once in folders ([pre, post, period]); the key is pre + seq (4 digits) + '_' + sub +
+// post, the obs period + '_' + seq + '_' + sub (web/live/images.js turns it back). No per-image strings: at the north
+// ecliptic pole (5,126 images) the answer is about a seventh of the full one and far cheaper to write.
+export async function skyImagesCompact(read, ra, dec, det, pin, r = 0.001) {
+  let rows, collections, one = null;
+  if (r !== 0.001) ({ rows, collections } = await pickRegion(read, ra, dec, det, pin, r));
+  else { one = await pick(read, ra, dec, det, pin); collections = one.collections; rows = one.rows; }
+  const local = new Map(), folders = [];
+  let s = '';
+  for (let k = 0; k < rows.length; k++) {
+    const p = one ?? rows[k][0], i = one ? rows[k] : rows[k][1], fo = p.h.folders[p.u16[i * 32 + 28]];
+    let f = local.get(fo); if (f === undefined) { f = folders.length; local.set(fo, f); folders.push(fo); }
+    s += (k ? ',[' : '[') + p.f64[i * 8] + ',' + f + ',' + p.u16[i * 32 + 29] + ',' + p.u8[i * ROW + 60] + ']';
+  }
+  return `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}"${r !== 0.001 ? `,"r":${JSON.stringify(r)}` : ''},"fmt":2,"folders":${JSON.stringify(folders.map(fo => [fo.pre, fo.post, fo.period]))},"images":[${s}],"collections":${JSON.stringify(collections)},"source":"index"}`;
 }

@@ -3,6 +3,7 @@
 // The worker stays alive between builds. A new message replaces the build in flight (one with no ra only stops it), and
 // a build for a spot the listed images still cover reuses the list, their headers and the rows already read.
 // Each visit becomes one frame: exposures at one matched wavelength, reprojected north up, combined (combine below).
+import { imagesOf } from './images.js';
 import { imageHeader, imageRows, worldToPix, wavelengthAt, flagsHeader, flagRows } from './fits.js';
 import { BAD } from './cutout.js';
 
@@ -226,8 +227,9 @@ self.onmessage = async ({ data: { id, ra, dec, det, api, band, t } }) => {
     let usable = lists.has(det) ? lists.get(det).map(here).filter(v => v.length) : [];
     if (!usable.length) {
       // v=2: a browser may still hold a failed search that the old Worker let it cache for a day (2026-11-14)
-      const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}&v=2`, { signal });
+      const res = await fetch(`${api}/api/images?ra=${ra}&dec=${dec}&det=${det}&fmt=2&v=2`, { signal });
       const found = await res.json();
+      if (res.ok) found.images = imagesOf(found);
       alive();
       if (!res.ok) return post({ type: 'error', error: found.error || `HTTP ${res.status}` });
       if (!found.images.length) return post({ type: 'empty' });

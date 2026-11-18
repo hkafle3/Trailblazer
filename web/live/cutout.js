@@ -2,6 +2,7 @@
 // For a known comet's page (comet.js): each visit's photo centred on where JPL says the comet was, so the comet stays in
 // the middle and the stars slide past. The picture is drawn the way bake/comet_spectrum.py photo() draws a measured
 // comet's (96 pixels of 6.15 arcsec, bilinear like reproject_interp); the light is measured on the raw pixels.
+import { imagesOf } from './images.js';
 import { imageHeader, imageRows, worldToPix, pixToWorld, wavelengthAt, flagsHeader, flagRows, varianceHeader } from './fits.js';
 
 const D2R = Math.PI / 180, SIZE = 2040;
@@ -235,12 +236,12 @@ export async function knownPhoto(s, { api = '', signal, maps } = {}) {
   const det = s.det ?? 'D1';
   let r;   // a 503 is IRSA busy behind the Worker (when the sky index cannot answer): two more tries, 3 s apart
   for (let k = 0; ; k++) {
-    r = await fetch(`${api}/api/images?ra=${s.ra.toFixed(4)}&dec=${s.dec.toFixed(4)}&det=${det}&v=2`, { signal });
+    r = await fetch(`${api}/api/images?ra=${s.ra.toFixed(4)}&dec=${s.dec.toFixed(4)}&det=${det}&fmt=2&v=2`, { signal });
     if (r.status !== 503 || k === 2) break;
     await new Promise(ok => setTimeout(ok, 3000));
   }
   if (!r.ok) throw new Error(`image search: HTTP ${r.status}`);
-  const { images } = await r.json(), img = images.find(i => i.obs === s.obs);
+  const images = imagesOf(await r.json()), img = images.find(i => i.obs === s.obs);
   if (!img) throw new Error(`${s.obs} is not in the image search`);
   const [h, map] = await Promise.all([imageHeader(img.key, signal), (maps ? Promise.resolve(maps) : wavemaps()).then(m => m[det])]);
   const p = worldToPix(h, s.ra, s.dec);

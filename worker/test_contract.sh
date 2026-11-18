@@ -13,6 +13,9 @@ check "images for Barnard's Star" "/api/images?ra=269.4463&dec=4.7671&det=D1" 20
 check "ra out of range" "/api/images?ra=400&dec=4" 400 'ra must be 0 to 360'
 check "dec out of range" "/api/images?ra=10&dec=-95" 400 'dec must be -90 to 90'
 check "bad detector" "/api/images?ra=10&dec=4&det=D9" 400 'det must be D1 to D6'
+check "images fmt 2" "/api/images?ra=269.4463&dec=4.7671&det=D1&fmt=2" 200 '"fmt":2,"folders":'
+check "images bad fmt" "/api/images?ra=10&dec=4&det=D1&fmt=3" 400 'fmt must be 1 or 2'
+check "images region too wide" "/api/images?ra=10&dec=4&det=D1&r=0.5" 400 'r must be 0.001 to 0.15 degrees'
 check "missing ra" "/api/images?dec=4" 400 'ra must be 0 to 360'
 check "Gaia near Barnard's Star" "/api/gaia?ra=269.4463&dec=4.7671" 200 '"pmdec":10362'
 check "depth for the 3I/ATLAS patch" "/api/depth?ra=167.1309&dec=5.1732&t=61023.3194" 200 '"rules":"depth-v1"'
@@ -39,6 +42,38 @@ check "Forums search box" "/forums.html" 200 'id="q"'
 # a malformed id must get our JSON error from the Worker; on the live site Cloudflare's edge refuses it first
 case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is not valid"' ;; *) bad_id='400 Bad Request' ;; esac
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
+# "Then and now": the older survey's tiles (worker/src/oldsky.js). Refusals, then a real spot: a stored tile's bytes are
+# IRSA's own (sha256 of the FITS, gzip or not, against a direct download) and its checksum is the manifest's
+check "oldsky unlisted survey" "/api/oldsky?survey=neowise&band=W2&ra=84&dec=-6" 400 'survey must be allwise or 2mass'
+check "oldsky band not of the survey" "/api/oldsky?survey=2mass&band=W2&ra=84&dec=-6" 400 'band must be Ks'
+check "oldsky non-finite ra" "/api/oldsky?survey=allwise&band=W2&ra=Infinity&dec=-6" 400 'ra must be 0 to 360'
+check "oldsky dec out of range" "/api/oldsky?survey=allwise&band=W2&ra=84&dec=-91" 400 'dec must be -90 to 90'
+check "oldsky another size" "/api/oldsky?survey=allwise&band=W2&ra=84&dec=-6&size=1200" 400 'size must be 780'
+check "oldsky odd key refused" "/api/oldsky/v1/allwise/W2/780/84.018-6.578/..%2F..%2Fx" 404 'not found'
+if python3 - "$BASE" <<'PY'
+import gzip, hashlib, json, sys, time, urllib.request
+base = sys.argv[1]; get = lambda u: urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "comet-hunt-contract-test"}), timeout=180).read()
+inf = lambda b: gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
+import random
+spot = f"ra={random.uniform(0, 360):.3f}&dec={random.uniform(-60, 60):.3f}"   # a fresh spot: a real miss each run (and the showcase's, a hit)
+for q in ("survey=allwise&band=W2", "survey=2mass&band=Ks"):
+  for where in (spot, "ra=84.01808&dec=-6.5775"):
+    for step in range(4):   # a new spot comes in steps: 202 with the tiles pending, each fetched, then the manifest
+        m = json.loads(get(f"{base}/api/oldsky?{q}&{where}"))
+        if "pending" not in m: break
+        for name in m["pending"]: get(f"{base}/api/oldsky/tile?{q}&{where}&name={name}")
+    assert "tiles" in m, m
+    for t in m["tiles"][:2]:
+        mine = get(f"{base}/{t['path']}"); time.sleep(0.5); theirs = get(t["source"])
+        assert t["source"].startswith("https://irsa.ipac.caltech.edu/"), t["source"]
+        assert len(mine) == t["bytes"], t["name"]   # manifest v2: size and R2 etag (the Worker hashes nothing); v1 had sha256
+        assert "sha256" not in t or hashlib.sha256(mine).hexdigest() == t["sha256"], t["name"]
+        assert hashlib.sha256(inf(mine)).hexdigest() == hashlib.sha256(inf(theirs)).hexdigest(), t["name"]
+        assert inf(mine)[:9] == b"SIMPLE  =", t["name"]
+PY
+then echo "PASS oldsky tiles are IRSA's own bytes, checksums match"; else echo "FAIL oldsky tiles"; fails=$((fails + 1)); fi
+check "baked showcase blink" "/api/blink?ra=84.01808&dec=-6.5775" 200 '"designation":"J053604.34-063439.0"'
+check "no baked blink elsewhere" "/api/blink?ra=10&dec=10" 404 'no baked blink here'
 check "explored cells" "/api/explored" 200 '"cells":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":'
 check "home page served" "/" 200 'Trailblazer'
