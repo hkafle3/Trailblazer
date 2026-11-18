@@ -190,7 +190,10 @@ def main():
     table = re.search(r"const ROMAN = '([^']*)'", js).group(1).split(";")
     want = [f"{float(a):g},{float(b):g},{float(c):g},{n}" for a, b, c, n in rows]
     assert table == want, "web/sky-place.js ROMAN differs from bake/labels_raw/VI42-roman87.dat"
-    names = {l[:3]: l[4:] for l in (RAW / "constellation_names.dat").read_text(encoding="utf-8").splitlines() if l and not l.startswith("#")}
+    names = {l[:3]: l[4:].strip() for l in (RAW / "constellation_names.dat").read_text(encoding="utf-8").splitlines() if l and not l.startswith("#")}
+    names.update(Cha="Chamaeleon", Oph="Ophiuchus", PsA="Piscis Austrinus")   # misspelt in astropy's copy
+    js_names = dict(x.split(" ", 1) for x in re.search(r"const NAMES = '([^']*)'", js).group(1).split(";"))
+    assert js_names == names, "web/sky-place.js NAMES differs from the IAU names"
     if not FIXTURE.exists() or "--fixture" in sys.argv:   # drawn once; --fixture draws it again
         FIXTURE.write_text(json.dumps(fixture(objects + stars, bpieces, names), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
         print("wrote", FIXTURE.relative_to(ROOT))
