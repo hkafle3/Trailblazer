@@ -4,6 +4,7 @@
 // reads them straight from NASA's public S3 copy (see web/live/fits.js).
 //   GET /api/images?ra=&dec=&det=D1..D6   GET /api/gaia?ra=&dec=   GET /api/known?ra=&dec=&t=   GET /api/depth?ra=&dec=[&t=]
 //   GET /api/oldsky?survey=&band=&ra=&dec=   GET /api/oldsky/v1/...   GET /api/blink?ra=&dec=   GET /api/blink/v1/...   (R2 OLDSKY, worker/src/oldsky.js)
+//   GET /api/cat?cat=&ra=&dec=   GET /api/colors?ra=&dec=   (R2 OLDSKY, worker/src/cat.js)
 //   GET /api/comets   GET /api/comets/:id (with `now`, the daily snapshot: cron, worker/src/now.js)   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
@@ -11,6 +12,7 @@ import { skyImagesJson, skyImagesCompact, eclipticLat } from './sky_index.js';
 import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
 import { snapshot, nowRow } from './now.js';
 import { oldsky, oldskyTile, stored, blinkBaked } from './oldsky.js';
+import { cat, colorsBaked } from './cat.js';
 import { worthSaving, fitsSave, toFmt2 } from './saved.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
@@ -647,6 +649,12 @@ export default {
         if (url.pathname === '/api/blink') return await blinkBaked(url, env);
         return await stored(url, env);
       } catch (e) { console.error(e); return json({ error: 'older survey unavailable', reason: 'store is not answering' }, 503, { 'Cache-Control': 'no-store' }); }
+    }
+    // Colors: a spot's catalogues (R2 first, the archives on a rate-limited miss) and the baked showcase
+    if (url.pathname === '/api/cat' || url.pathname === '/api/colors') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'use GET' }, 405, { Allow: 'GET' });
+      try { return url.pathname === '/api/cat' ? await cat(request, url, env) : await colorsBaked(url, env); }
+      catch (e) { console.error(e); return json({ error: 'catalogue unavailable', reason: 'store is not answering' }, 503, { 'Cache-Control': 'no-store' }); }
     }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);
