@@ -175,6 +175,7 @@ test('429 past the limit, on misses only', async () => {
 test('stored files: canonical keys only; the baked blink by position', async () => {
   const env = fakeEnv();
   env.store.set('blink/v1/84.018-6.578/result.json', { v: '{"v":1}', meta: { contentType: 'application/json' } });
+  env.store.set('blink/v1/84.018-6.578/centre.json', { v: '{"ra":84.01808,"dec":-6.5775}', meta: { contentType: 'application/json' } });
   for (const p of ['/api/oldsky/v1/allwise/W2/780/84.018-6.578/../../x', '/api/oldsky/v1/neowise/W2/780/84.018-6.578/a.fits', '/api/blink/v1/84.018-6.578/other.json', '/api/oldsky/v1/allwise/W2/600/84.018-6.578/a.fits'])
     assert.equal((await stored(new URL(`https://x.test${p}`), env)).status, 404, p);
   assert.equal((await stored(new URL('https://x.test/api/blink/v1/84.018-6.578/result.json'), env)).status, 200);
@@ -276,4 +277,16 @@ test('the test hook is off unless the Worker has OLDSKY_TEST_ORIGIN', async () =
   const r = await oldsky(...req('survey=allwise&band=W2&ra=84.01808&dec=-6.5775&test=zeros16m'), env, DEPS(irsa.f));
   assert.equal(r.status, 202); assert.ok(irsa.calls.some(c => c.url.includes('/SIA?')), 'a real search, not the test plan');
   assert.ok(![...env.store.keys()].some(k => k.startsWith('oldsky/test/')));
+});
+
+test('a baked blink is served only within 2 arcsec of where it was baked, never to another spot sharing its key', async () => {
+  const env = fakeEnv();
+  env.store.set('blink/v1/84.018-6.578/result.json', { v: '{"v":1}', meta: { contentType: 'application/json' } });
+  env.store.set('blink/v1/84.018-6.578/centre.json', { v: '{"ra":84.01808,"dec":-6.5775}', meta: { contentType: 'application/json' } });
+  const at = (ra, dec) => blinkBaked(new URL(`https://x.test/api/blink?ra=${ra}&dec=${dec}`), env);
+  assert.equal((await at(84.01808, -6.5775)).status, 200);
+  assert.equal((await at(84.0184, -6.5778)).status, 200, '1.6 arcsec away');
+  assert.equal((await at(84.01849, -6.57849)).status, 404, '3.85 arcsec away, same rounded key');
+  env.store.delete('blink/v1/84.018-6.578/centre.json');
+  assert.equal((await at(84.01808, -6.5775)).status, 404, 'a bake without its centre is not trusted');
 });

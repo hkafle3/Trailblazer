@@ -167,7 +167,10 @@ function reasonOf(failed, rep) {
 async function baked(base, ra, dec, signal) {
   const r = await fetch(`${base}/api/blink?ra=${ra.toFixed(5)}&dec=${dec.toFixed(5)}`, { signal });
   if (r.status !== 200) return null;
-  const res = await r.json(), bin = await (await fetch(`${base}/${res.frames_path}`, { signal })).arrayBuffer();
+  const res = await r.json(), D = Math.PI / 180;
+  // the bake's own centre within 2 arcsec of this spot, as the Worker checks too: never another spot's measurements
+  if (!(Math.acos(Math.min(1, Math.sin(dec * D) * Math.sin(res.dec * D) + Math.cos(dec * D) * Math.cos(res.dec * D) * Math.cos((ra - res.ra) * D))) / D * 3600 <= 2)) return null;
+  const bin = await (await fetch(`${base}/${res.frames_path}`, { signal })).arrayBuffer();
   for (const m of Object.values(res.bands)) if (m.frames) m.frames = Object.fromEntries(Object.entries(m.frames).map(([k, [off, n]]) => [k, new Float32Array(bin.slice(off, off + 4 * n))]));
   return res;
 }

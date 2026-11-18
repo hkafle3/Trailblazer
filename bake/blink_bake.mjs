@@ -45,10 +45,11 @@ const result = { v: 1, ra, dec, designation: B.designation(ra, dec), context, ba
 mkdirSync(out, { recursive: true });
 writeFileSync(`${out}/result.json`, JSON.stringify(result));
 writeFileSync(`${out}/frames.bin`, Buffer.concat(parts));
+writeFileSync(`${out}/centre.json`, JSON.stringify({ ra, dec }));   // the Worker serves the bake only within 2 arcsec of this
 console.log(`wrote ${out}/result.json and frames.bin (${(off / 1e6).toFixed(1)} MB)`);
 if (put) {
   if (!['local', 'remote'].includes(put)) throw new Error('--put local or remote');
-  for (const [f, type] of [['frames.bin', 'application/octet-stream'], ['result.json', 'application/json']])
+  for (const [f, type] of [['frames.bin', 'application/octet-stream'], ['result.json', 'application/json'], ['centre.json', 'application/json']])
     execFileSync('npx', ['wrangler', 'r2', 'object', 'put', `${bucket}/${prefix}/${f}`, '--file', `${out}/${f}`, '--content-type', type, `--${put}`, '--config', config], { stdio: 'inherit' });
   console.log(`stored at ${bucket}/${prefix}/ (${put})`);
 }

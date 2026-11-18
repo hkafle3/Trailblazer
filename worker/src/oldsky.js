@@ -251,7 +251,7 @@ export async function oldskyTile(request, url, env, deps = {}) {
 
 // stored bytes, by canonical key only: oldsky/v1/<survey>/<band>/780/<pos>/<tile>, blink/v1/<pos>/<file>
 const POS = '\\d{1,3}\\.\\d{3}[+-]\\d{1,2}\\.\\d{3}';
-const FILE = new RegExp(`^(oldsky/v1/(allwise/(W1|W2)|2mass/Ks)/${SIZE}/${POS}/[A-Za-z0-9_.]{1,80}|blink/v1/${POS}/(result\\.json|frames\\.bin))$`);
+const FILE = new RegExp(`^(oldsky/v1/(allwise/(W1|W2)|2mass/Ks)/${SIZE}/${POS}/[A-Za-z0-9_.]{1,80}|blink/v1/${POS}/(result\\.json|frames\\.bin|centre\\.json))$`);
 export async function stored(url, env) {
   const key = url.pathname.slice('/api/'.length);
   if (!FILE.test(key)) return json({ error: 'not found' }, 404);
@@ -264,7 +264,14 @@ export async function stored(url, env) {
 export async function blinkBaked(url, env) {
   const ra = Number(url.searchParams.get('ra')), dec = Number(url.searchParams.get('dec'));
   if (!Number.isFinite(ra) || ra < 0 || ra >= 360 || !Number.isFinite(dec) || dec < -90 || dec > 90) return json({ error: 'ra must be 0 to 360 and dec -90 to 90' }, 400);
-  const o = await env.OLDSKY?.get(`blink/v1/${posKey(ra, dec)}/result.json`);
-  if (!o) return json({ error: 'no baked blink here' }, 404, { 'Cache-Control': 'no-store' });
+  // the key rounds to 0.001 degree (up to 2.5 arcsec): the bake's own centre (centre.json, written with it) must be within
+  // 2 arcsec of the spot asked for, or another spot's measurements would be served
+  const dir = `blink/v1/${posKey(ra, dec)}/`, c = await env.OLDSKY?.get(dir + 'centre.json'), none = () => json({ error: 'no baked blink here' }, 404, { 'Cache-Control': 'no-store' });
+  if (!c) return none();
+  const cen = JSON.parse(await new Response(c.body).text()), D = Math.PI / 180;
+  const sep = Math.acos(Math.min(1, Math.sin(dec * D) * Math.sin(cen.dec * D) + Math.cos(dec * D) * Math.cos(cen.dec * D) * Math.cos((ra - cen.ra) * D))) / D * 3600;
+  if (!(sep <= 2)) return none();
+  const o = await env.OLDSKY.get(dir + 'result.json');
+  if (!o) return none();
   return new Response(o.body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=300' } });
 }
