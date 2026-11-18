@@ -112,6 +112,10 @@ const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns >
 // the cards: [right, left] as [dx, dy] from the marker (styles.css, explore.css, candidates.css); under it is BELOW px down
 const CARDS = [['card-comet', [28, -30], [-278, -30]], ['card-cand', [-12, 16], [-258, 16]]].map(([id, r, l]) => ({ id, right: r, left: l }));
 const BELOW = 24;
+// where a card under its marker can sit across: centred, then just clear of each control's side, nearest the centre
+// first; always with the marker over the card (20 px in from either end) so the rule meets it
+const belowAt = (x, w, fixed) => [-w / 2, ...fixed.flatMap(o => [o[2] + PAD + 1 - x, o[0] - PAD - 1 - w - x])]
+  .filter(dx => dx <= -20 && dx >= 20 - w).sort((a, b) => Math.abs(a + w / 2) - Math.abs(b + w / 2));
 
 let placed = [];   // [box, label] for the hover test
 function layout() {
@@ -134,7 +138,7 @@ function layout() {
   for (const c of cards) {
     const [x, y] = at(c.u, c.v), def = c.u > 0.75 ? 'left' : 'right';
     const tries = [[def, c[def][0], c[def][1]], [def === 'left' ? 'right' : 'left', ...c[def === 'left' ? 'right' : 'left']],
-      ...[-c.w / 2, -30, 30 - c.w].map(dx => ['below', dx, BELOW])];
+      ...belowAt(x, c.w, fixed).map(dx => ['below', dx, BELOW])];
     const fits = ([, dx, dy]) => { const b = [x + dx, y + dy, x + dx + c.w, y + dy + c.h]; return b[0] >= 0 && b[2] <= vw && b[3] <= vh && ![...fixed, topbar].some(o => hit(b, o)); };
     const pick = tries.find(fits) ?? tries[0];
     cardWrites.push([c.el, pick]);

@@ -7,7 +7,8 @@ Every check reads real on-screen rectangles (getBoundingClientRect), not the lay
               rings, cards, the pin, the controls (search box and list, Flat / 3D, zoom buttons, the button row, open
               panels, the phone sheet, the dive's aim) and the Milky Way text
   bounds      no name leaves the window or crosses the top bar or the timeline
-  a name      at least one place name is shown (a name, the pinned constellation, or the Milky Way at the whole sky)
+  a name      at least one place name is shown (a name, the pinned constellation, or the Milky Way at the whole sky); not
+              required where an opened panel covers the names (see ZOOMED below)
   card        the comet card never touches the Flat / 3D switch or the search box, at load and after a pan (the 881 px fix)
   still       C-0176 (tagged star, 1 of 1) has no trail and no tail; C-0175 (tagged unsure) keeps both
 Overlaps between the page's own elements (a card over a marker) are not judged.
@@ -57,6 +58,10 @@ FREE = """() => { for (const [fx, fy] of [[.42, .47], [.38, .52], [.47, .42], [.
   const x = innerWidth * fx, y = innerHeight * fy, e = document.elementFromPoint(x, y);
   if (e?.closest('#map') && !e.closest('.mk, a')) return [x, y]; } return null; }"""
 fails = []
+# a name is required in every view, except under what the person just opened: at the whole sky the pin card, the sheet
+# or the search list can cover its few names (the Milky Way, the Magellanic Clouds, Andromeda), and a phone's search list
+# covers the whole map. Overlap is judged in every view.
+ZOOMED, NEVER = (lambda k: k is not None), (lambda k: False)
 def check(ok, name, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (": " + detail if detail else ""), flush=True)
     if not ok: fails.append(name)
@@ -71,8 +76,8 @@ async def page(b, w, h, dpr, path="/explore.html?day=529"):
     await pg.evaluate("document.fonts.ready"); await pg.wait_for_timeout(1500)
     return pg
 
-async def sweep(pg, w, h, state, prepare=None):
-    """every zoom at every spot; returns the number of views judged"""
+async def sweep(pg, w, h, state, prepare=None, need=lambda k: True):
+    """every zoom at every spot. need(k): whether this state must show a name at zoom k (None is the whole sky)"""
     n, bad, empty = 0, [], []
     for spot, (ra, dec) in SPOTS.items():
         for k in ZOOMS:
@@ -83,7 +88,7 @@ async def sweep(pg, w, h, state, prepare=None):
             j = await pg.evaluate(JUDGE); n += 1
             where = f"{spot} at {'whole sky' if k is None else k} ({j['k']:.1f} px/deg)"
             if j["bad"]: bad.append(f"{where}: {j['bad'][:3]}")
-            if not j["any"]: empty.append(where)
+            if not j["any"] and need(k): empty.append(where)
     check(not bad, f"no overlap, {state} ({w}x{h})", f"{n} views" + (f"; {len(bad)} with overlaps, first: {bad[:2]}" if bad else ""))
     check(not empty, f"always a name, {state} ({w}x{h})", f"{n} views" + (f"; none shown at {empty[:3]}" if empty else ""))
 
@@ -104,17 +109,17 @@ async def main():
             async def pin(pg):   # a click on bare sky near the middle (not on a marker, which would open its page)
                 xy = await pg.evaluate(FREE)
                 if xy: await pg.mouse.click(*xy); await pg.wait_for_timeout(450)   # past the double-click window
-            await sweep(pg, w, h, "pin dropped", pin)
+            await sweep(pg, w, h, "pin dropped", pin, ZOOMED)
             if phone:
                 await pg.evaluate("document.querySelector('#marks .mk.known:not([hidden])').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))")
                 await pg.wait_for_timeout(500)
                 check(await pg.evaluate("!document.getElementById('csheet').hidden"), f"comet sheet opened ({w}x{h})")
-                await sweep(pg, w, h, "sheet up")
+                await sweep(pg, w, h, "sheet up", None, ZOOMED)
                 await pg.evaluate("document.querySelector('#csheet .sheet-x').click()"); await pg.wait_for_timeout(400)
                 await pg.click("#xs-open")
             await pg.fill("#xs-q", "C-01"); await pg.wait_for_timeout(400)
             check(await pg.evaluate("!document.getElementById('xs-panel').hidden"), f"search list opened ({w}x{h})")
-            await sweep(pg, w, h, "search list open")
+            await sweep(pg, w, h, "search list open", None, NEVER if phone else ZOOMED)
             check(not pg.errs, f"no page errors ({w}x{h})", str(pg.errs[:3]))
             await pg.context.close()
             pg = await page(b, w, h, dpr, "/explore.html?focus=C-0176&day=501")   # C-0176's card, as "Find on map" opens it
