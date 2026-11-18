@@ -19,7 +19,7 @@ function limiter(n) {
 }
 const s3 = limiter(12), api = limiter(4);
 const hex = async bytes => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('');
-async function retry(fn, n = 3) { let last; for (let i = 0; i < n; i++) { try { return await fn(); } catch (e) { last = e; if (e.name === 'AbortError') throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); } } throw last; }
+async function retry(fn, n = 3) { let last; for (let i = 0; i < n; i++) { try { return await fn(); } catch (e) { last = e; if (e.name === 'AbortError' || e.missing) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); } } throw last; }
 async function inflate(bytes) {
   if (!(bytes[0] === 0x1f && bytes[1] === 0x8b)) return bytes;
   return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
@@ -53,13 +53,28 @@ async function oldSky(base, band, ra, dec, signal, progress) {
   if (r.status === 404) throw new Unavailable('comparison-unavailable', `No ${survey === 'allwise' ? 'AllWISE' : '2MASS'} picture covers this spot`);
   if (r.status === 429) throw new Unavailable('old-unavailable', 'Too many new spots at once. Try again in a minute');
   if (!r.ok) throw new Unavailable('old-unavailable', 'NASA\'s image archive (IRSA) is not answering');
-  const man = await r.json(), tiles = [];
+  let man;
+  try { man = await r.json(); } catch { throw irsaDown; }
+  const tiles = [];
   // The Worker streams tiles into R2 unread (its CPU allows no more), so the full check is here: the bytes stored as
   // declared, a gzip that inflates whole (its length and checksum), and a complete FITS image. A damaged stored tile
   // makes the comparison inconclusive, said plainly; it is not fetched again and again.
   const damaged = why => new Unavailable('inconclusive', `the older survey's stored picture of this spot is damaged (${why})`);
   for (const t of man.tiles) {
-    const raw = new Uint8Array(await retry(async () => { const x = await fetch(`${base}/${t.path}`, { signal }); if (!x.ok) throw new Error(`tile HTTP ${x.status}`); return x.arrayBuffer(); }));
+    // a stored tile that is gone (404) is damage, said as such; any other failure to read it is the old survey unavailable
+    let raw;
+    try {
+      raw = new Uint8Array(await retry(async () => {
+        const x = await fetch(`${base}/${t.path}`, { signal });
+        if (x.status === 404 || x.status === 410) { const e = new Error('missing'); e.missing = true; throw e; }
+        if (!x.ok) throw new Error(`tile HTTP ${x.status}`);
+        return x.arrayBuffer();
+      }));
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      if (e.missing) throw damaged(`${t.name} is missing from the store`);
+      throw new Unavailable('old-unavailable', 'The stored older picture could not be read');
+    }
     if (t.bytes !== undefined && raw.length !== t.bytes) throw damaged(`${t.name}: ${raw.length} bytes, ${t.bytes} stored`);
     let bytes, fits;
     try { bytes = await inflate(raw); } catch { throw damaged(`${t.name} does not inflate`); }
@@ -117,7 +132,10 @@ async function readExposure(e, grid, bins, wave, signal, stopped = () => null) {
 export async function buildBand(band, { base, ra, dec, grid, curves, waves, signal, progress = () => {} }) {
   // the older survey and SPHEREx at once; if either fails the band stops there (queued S3 reads are skipped)
   let failed = null;
-  const oldP = oldSky(base, band, ra, dec, signal, progress);
+  const oldP = oldSky(base, band, ra, dec, signal, progress).catch(e => {
+    if (e instanceof Unavailable || e.name === 'AbortError') throw e;
+    throw new Unavailable('old-unavailable', 'The older survey\'s picture could not be read');   // never reported as SPHEREx's failure
+  });
   const { dets } = B.PAIRS[band], acc = B.synthStart(curves[band], dets);
   const spxP = (async () => {
     const all = (await Promise.all(dets.map(d => exposures(base, d, ra, dec, signal)))).flat();

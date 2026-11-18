@@ -54,3 +54,19 @@ test('a damaged stored old-survey tile makes the band inconclusive, not unavaila
     assert.equal(r.state, 'inconclusive', what); assert.match(r.message, /stored picture of this spot is damaged/, what);
   }
 });
+
+test('an old-survey tile that cannot be downloaded is the old survey\'s failure, never SPHEREx\'s', async () => {
+  const { oldSky } = await import('../live/blinkworker.js');
+  const man = { tiles: [{ name: 'allwise_W2_int.fits', path: 'api/x/int', bytes: 10 }, { name: 'allwise_W2_cov.fits', path: 'api/x/cov', bytes: 10 }] };
+  const run = async tile => {
+    const real = globalThis.fetch;
+    globalThis.fetch = async u => { if (String(u).includes('/api/oldsky?')) return new Response(JSON.stringify(man)); return tile(); };
+    try { return await oldSky('', 'W2', 84, -6.5, undefined, () => {}); } catch (e) { return e; } finally { globalThis.fetch = real; }
+  };
+  const missing = await run(() => new Response('{"error":"not found"}', { status: 404 }));
+  assert.equal(missing.state, 'inconclusive'); assert.match(missing.message, /stored picture of this spot is damaged/);
+  for (const [what, f] of [['HTTP 503', () => new Response('busy', { status: 503 })], ['HTTP 500', () => new Response('', { status: 500 })], ['the network', () => { throw new TypeError('fetch failed'); }]]) {
+    const e = await run(f);
+    assert.equal(e.state, 'old-unavailable', `${what}: ${e.state} ${e.message}`);
+  }
+});
