@@ -41,7 +41,8 @@ export function readCat(url) {
 export async function fetchTable(u, first, fetchFn = fetch) {
   const url = new URL(u);
   if (url.protocol !== 'https:' || !HOSTS.has(url.host)) throw new Error(`not a listed archive: ${url.host}`);
-  const r = await fetchFn(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT) });
+  // VizieR's CfA mirror answers 500 to a request without a User-Agent
+  const r = await fetchFn(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT), headers: { 'User-Agent': 'comet-hunt/1 (TrailBlazer, NASA Space Apps)' } });
   if (r.status >= 300 && r.status < 400 || r.type === 'opaqueredirect') { r.body?.cancel?.(); throw new Error(`${url.host} redirected (${r.status})`); }
   if (!r.ok) { r.body?.cancel?.(); throw new Error(`${url.host} HTTP ${r.status}`); }
   if (/html|xml/i.test(r.headers.get('Content-Type') ?? '')) { r.body?.cancel?.(); throw new Error(`${url.host} sent a page, not a table`); }

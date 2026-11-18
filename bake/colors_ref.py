@@ -579,7 +579,8 @@ def spectrum_result(rows, T, cand, col, tol, normflux, NORM, star, used, K, TM, 
     res['excess_by_detector'] = {f'D{d + 1}': dict(mean=float(np.average(ex[det_of == d], weights=1 / exs[det_of == d] ** 2)), err=float(1 / np.sqrt(np.sum(1 / exs[det_of == d] ** 2))),
                                                    n=int((det_of == d).sum())) for d in range(6) if (det_of == d).any()}
     F = fits['all']; mod = F['a'] * ph + F['b'] * bnu(lam, F['T']) / bnu(4.6, F['T']); r = (y - mod) / sig
-    res['fingerprints'] = fingerprints(lam, r, F, res['excess_by_detector'], NORM)
+    rs = (y - F['a_star'] * ph) / sig                                  # residuals from the star alone, for the seams
+    res['fingerprints'] = fingerprints(lam, r, F, res['excess_by_detector'], NORM, rs, y / sig)
     res['old'] = old_points(S, comp, T, K, TM, AW)
     _sat(res, sat)
     return res
@@ -627,16 +628,31 @@ def all_rows(verdict, reason):
     return {k: dict(verdict=verdict, reason=reason) for k in ROWS}
 
 
-def fingerprints(lam, r, F, exd, NORM):
-    """The verdicts, thresholds fixed in plan.md. lam, r: the all-pass bins and their residuals from the star + dust fit (sigma)."""
+def fingerprints(lam, r, F, exd, NORM, rs, snr):
+    """The verdicts, thresholds fixed in plan.md (deviation 2 for the seams). lam, r: the all-pass bins and their residuals
+    from the star + dust fit (sigma); rs: residuals from the star alone; snr: flux over sigma per bin."""
     out = {}
     chi = F['chi2_star_dust'] / max(1, F['dof_star_dust'])
     if chi > 3:
         return all_rows('inconclusive', f'the best fit misses the colours (chi2 per point {chi:.1f}, 3 at most)')
+    # seams first, on the star-only residuals: a jump there must not be read as dust
+    vals, missing = {}, []
+    for e in SEAMS:
+        lo = (lam < e) & (lam > e - 0.25); hi = (lam > e) & (lam < e + 0.25)
+        if lo.sum() < 2 or hi.sum() < 2: missing.append(e); continue
+        jump = float(rs[hi].mean() - rs[lo].mean()); lim = float(3 * np.sqrt(1 / lo.sum() + 1 / hi.sum()))
+        vals[str(e)] = dict(jump=jump, limit=lim, n=[int(lo.sum()), int(hi.sum())], sensitivity=float(lim / snr[hi].mean()))
+    jumps = [e for e in SEAMS if str(e) in vals and abs(vals[str(e)]['jump']) >= vals[str(e)]['limit']]
+    sens = max((v['sensitivity'] for v in vals.values()), default=None)
+    if jumps: seam = dict(verdict='seen', reason='', steps=vals, sensitivity=sens)
+    elif missing: seam = dict(verdict='inconclusive', reason=f'too few colours on both sides of {" and ".join(f"{e:.2f}" for e in missing)} um', steps=vals, sensitivity=sens)
+    else: seam = dict(verdict='not seen', reason='', steps=vals, sensitivity=sens)
     n_lo, n_hi = int((lam < 2.42).sum()), int((lam >= 3.82).sum())
     dchi = F['chi2_star'] - F['chi2_star_dust']; nsig_b = F['b'] / F['b_err'] if F['b_err'] > 0 else 0.0
     if NORM != 'K':
         out['rise'] = dict(verdict='inconclusive', reason='no clean 2MASS Ks')
+    elif jumps:
+        out['rise'] = dict(verdict='inconclusive', reason=f'possible calibration jump at {" and ".join(f"{e:.2f}" for e in jumps)} um')
     elif n_lo < 5 or n_hi < 5:
         out['rise'] = dict(verdict='inconclusive', reason=f'too few colours: {n_lo} below 2.42 um and {n_hi} above 3.82 um, 5 each needed')
     else:
@@ -661,16 +677,7 @@ def fingerprints(lam, r, F, exd, NORM):
         if seen: out[kind] = dict(verdict='seen', reason='', sigma=vals)
         elif missing: out[kind] = dict(verdict='inconclusive', reason=f'no SPHEREx colour at {" or ".join(m.split(" ", 1)[1] if " " in m else m for m in missing)} um', sigma=vals)
         else: out[kind] = dict(verdict='not seen', reason='', sigma=vals)
-    vals, missing = {}, []
-    for e in SEAMS:
-        lo = (lam < e) & (lam > e - 0.25); hi = (lam > e) & (lam < e + 0.25)
-        if lo.sum() < 2 or hi.sum() < 2: missing.append(e); continue
-        jump = float(r[hi].mean() - r[lo].mean()); lim = float(3 * np.sqrt(1 / lo.sum() + 1 / hi.sum()))
-        vals[str(e)] = dict(jump=jump, limit=lim, n=[int(lo.sum()), int(hi.sum())])
-    seen = any(abs(v['jump']) >= v['limit'] for v in vals.values())
-    if seen: out['seam'] = dict(verdict='seen', reason='', steps=vals)
-    elif missing: out['seam'] = dict(verdict='inconclusive', reason=f'too few colours on both sides of {" and ".join(f"{e:.2f}" for e in missing)} um', steps=vals)
-    else: out['seam'] = dict(verdict='not seen', reason='', steps=vals)
+    out['seam'] = seam
     return out
 
 

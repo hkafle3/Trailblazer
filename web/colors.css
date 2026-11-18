@@ -1,0 +1,69 @@
+/* Colors (web/colors.js): the star's SPHEREx spectrum per pass against the bare star, with the 2000 and 2010 points.
+   The approved mockup's styles (yoshi/deliverables/space-apps-2026/colors-mockup/colors.css), built on the Then and now box
+   (thenandnow.css): same frame, same header row, same result type and check rows. */
+
+/* ---------- the two views as title tabs, in the place of the box's h2 ---------- */
+.tn-tabs { display: flex; align-items: flex-end; gap: calc(26 * var(--m)); }
+.tn-tab { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: calc(9 * var(--m)); padding: 0 0 calc(7 * var(--m)); min-height: 30px;
+  border-bottom: max(1.5px, calc(1.5 * var(--m))) solid transparent; font: 400 calc(21 * var(--m)) / 1 var(--panel-font); color: var(--ink-3); cursor: pointer; white-space: nowrap; transition: color .15s; }
+.tn-tab svg { width: calc(18 * var(--m)); height: calc(18 * var(--m)); min-width: 15px; min-height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tn-tab:hover { color: var(--dim); }
+.tn-tab[aria-selected=true] { color: #fff; border-bottom-color: #fff; }
+.tn-tab:focus-visible { outline: 2px solid var(--comet); outline-offset: 3px; border-radius: 2px; }
+
+/* ---------- the Colors body: chart wide on the left (the focal point), the reading on the right ---------- */
+.co-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+@container (min-width: 640px) { .co-body { grid-template-columns: minmax(0, 590fr) minmax(0, 310fr); gap: calc(34 * var(--m)); } }
+.co-chart { position: relative; }
+.co-axisname { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font: 400 calc(11.5 * var(--m)) / 1 var(--panel-font); color: var(--dim); }
+#co-svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+#co-svg text { font: 400 10.5px var(--panel-font); fill: #9aa3b4; }
+#co-svg .grid { stroke: rgba(255, 255, 255, .09); }
+#co-svg .axis { stroke: rgba(255, 255, 255, .55); }
+#co-svg .bare-band { fill: rgba(207, 214, 228, .08); }
+#co-svg .bare { fill: none; stroke: rgba(207, 214, 228, .7); stroke-width: 1.2; }
+#co-svg .extra { fill: var(--comet); fill-opacity: .17; transition: fill-opacity .2s; }
+#co-svg .fit { fill: none; stroke: var(--comet); stroke-width: 1.6; stroke-linejoin: round; }
+#co-svg .err { stroke-width: 1; opacity: .45; }
+#co-svg .dot { stroke: #000; stroke-width: .6; }
+#co-svg .old { fill: #000; stroke: #fff; stroke-width: 1.5; }
+#co-svg .old-err { stroke: #fff; stroke-width: 1; opacity: .6; }
+#co-svg .lab-bare { fill: rgba(207, 214, 228, .75); }
+#co-svg .lab-extra { fill: var(--comet); }
+#co-svg .mark { stroke: #fff; stroke-width: 1; stroke-dasharray: 2 3; opacity: 0; transition: opacity .2s; }
+#co-svg .mark-lab { fill: #fff; opacity: 0; transition: opacity .2s; }
+#co-svg .ring { fill: none; stroke: #fff; stroke-width: 1.5; pointer-events: none; }
+#co-svg .cross { stroke: rgba(255, 255, 255, .25); stroke-width: 1; pointer-events: none; }
+/* a fingerprint row hovered, focused or open lights its place on the chart */
+#co-svg[data-hl=rise] .extra { fill-opacity: .34; }
+#co-svg[data-hl=spike] .hl-spike, #co-svg[data-hl=dip] .hl-dip, #co-svg[data-hl=seam] .hl-seam { opacity: .9; }
+.co-key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: calc(10 * var(--m)); font: 400 calc(11.5 * var(--m)) / 1.2 var(--panel-font); color: var(--dim); }
+.co-key > span, .co-key > .gl { display: inline-flex; align-items: center; gap: 6px; }
+.co-key svg { width: 12px; height: 12px; overflow: visible; }
+.co-key .k-dot { width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(90deg, rgb(120,170,255), rgb(140,255,170), rgb(255,160,80)); display: inline-block; }
+.co-key .k-bare { width: 14px; height: 2px; background: rgba(207, 214, 228, .7); display: inline-block; }
+
+/* the reading: Then and now's result type and check rows */
+.co-res .near .gl { color: #fff; }
+.co-res .near { color: #fff; }
+.co-res .big b { white-space: nowrap; }
+.co-chk .ci { overflow: visible; }
+
+/* the pass switch: Then and now's band switch with dates */
+.co-seg button .sh { display: none; }
+@container (max-width: 520px) { .co-seg button .lg { display: none; } .co-seg button .sh { display: inline; } }
+
+.co-how p { margin: 0; font: 400 calc(12.5 * var(--m)) / 1.6 var(--panel-font); color: var(--grey); max-width: 70ch; }
+.co-how p + p { margin-top: 10px; }
+.co-how .diff-in { display: block; }
+
+[data-view] [hidden] { display: none !important; }
+@media (max-width: 900px) { .tn-tabs { gap: 20px; } .tn-tab { font-size: 18px; } }
+@media (max-width: 480px) { .tn-tab { font-size: 16.5px; gap: 7px; } .tn-tabs { gap: 16px; } .co-key { font-size: 11px; gap: 6px 12px; } }
+
+/* states the mockup has no still of: inconclusive rows, the start offer, progress, an inconclusive or unavailable result */
+.chk .unsure { stroke: var(--dim); }
+.co-msg { aspect-ratio: auto; min-height: calc(300 * var(--m)); margin-bottom: calc(18 * var(--m)); }
+.co-msg .btn-line[disabled] { opacity: .45; cursor: default; }
+.down-msg .bar.det i { animation: none; transition: width .3s var(--ease); }
+.co-res.wait .near { color: var(--grey); }
