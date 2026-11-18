@@ -17,9 +17,10 @@
 // Most important first: giant, constellation, cloud, object, star (then by rank or magnitude). A point name tries right,
 // then left; an area name tries middle, below, above, left, right, further below. A name is dropped when it comes within
 // 4 px of anything already there, leaves the window, or crosses the top bar or the timeline.
-// The two cards that hang off a marker (#card-comet, #card-cand) are placed in the same pass, before the names: the
-// default side (left near the map's right edge), then the other side, then under the marker, so they never sit under
-// the fixed controls (the Flat / 3D switch, the search box). A card that fits nowhere keeps its default side.
+// The two cards that hang off a marker (#card-comet, #card-cand) are placed in the same pass, before the names: where
+// the card is now while it still fits, else the default side (left near the map's right edge), then the other side,
+// then under the marker, so they never sit under the fixed controls (the Flat / 3D switch, the search box). A card that
+// fits nowhere keeps its default side.
 import { fwd, fwdLon, wrap, RAD } from './skymap.js';
 import * as view from './explore-view.js';
 import { constellationAt, constellationName } from './sky-place.js';
@@ -140,8 +141,11 @@ function layout() {
     const tries = [[def, c[def][0], c[def][1]], [def === 'left' ? 'right' : 'left', ...c[def === 'left' ? 'right' : 'left']],
       ...belowAt(x, c.w, fixed).map(dx => ['below', dx, BELOW])];
     const fits = ([, dx, dy]) => { const b = [x + dx, y + dy, x + dx + c.w, y + dy + c.h]; return b[0] >= 0 && b[2] <= vw && b[3] <= vh && ![...fixed, topbar].some(o => hit(b, o)); };
-    const pick = tries.find(fits) ?? tries[0];
-    cardWrites.push([c.el, pick]);
+    // where it is now comes first while it still fits, so a pan or a timeline tick never makes it jump sides
+    const cl = c.el.classList, now = cl.contains('below') ? ['below', parseFloat(c.el.style.getPropertyValue('--bx')), BELOW] : cl.contains('left') ? ['left', ...c.left] : ['right', ...c.right];
+    const same = c.el.dataset.at === c.el.style.left + c.el.style.top;   // the same spot as last time (a pan or zoom, not a new comet or day)
+    const pick = (same && Number.isFinite(now[1]) && fits(now) ? now : null) ?? tries.find(fits) ?? tries[0];
+    cardWrites.push([c.el, pick, c.el.style.left + c.el.style.top]);
     taken.push([x + pick[1], y + pick[2], x + pick[1] + c.w, y + pick[2] + c.h]);
   }
   taken.push(...fixed);
@@ -187,7 +191,8 @@ function layout() {
 
   // ---- write: only what changed ----
   wrapEl.style.setProperty('--bound', Math.max(0, Math.min(1, (k - 4.5) / 4)).toFixed(2));   // borders fade in from 4.5 to 8.5 px per degree
-  for (const [el, [side, dx]] of cardWrites) {
+  for (const [el, [side, dx], spot] of cardWrites) {
+    if (el.dataset.at !== spot) el.dataset.at = spot;
     el.classList.toggle('left', side === 'left'); el.classList.toggle('below', side === 'below');
     const bx = side === 'below' ? Math.round(dx) + 'px' : '';
     if (el.style.getPropertyValue('--bx') !== bx) el.style.setProperty('--bx', bx);

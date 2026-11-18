@@ -2,11 +2,12 @@
 Desktop: / and Cmd+K focus the box, arrows move through the suggestions, Enter picks, Escape closes; "269.45 4.69" drops
 the pin within 0.1 degrees and puts it in the address (?q=); "08h55m10.8s -07d14m42s" reads as RA 133.795 Dec -7.245;
 "271 95" says Dec 95 is off the sky; "barnard" suggests Barnard's Star; "3I/ATLAS" opens its card where its JPL path
-(trackAt) has it on the timeline's day; Sesame resolves "Vega" (live, or mocked with --mock-sesame); "planet nine" shows the
+(trackAt) has it on the timeline's day; "Vega" is a sky name (no lookup); Sesame resolves "Kapteyn's Star" (live, or mocked with --mock-sesame); "planet nine" shows the
 no-match message; ?q= opens on the result; the panel and the pin card have straight top rules; targets are 44 px or more.
 Phone: the search button opens the box at the top, a result closes the list and opens the sheet or the pin, clear brings
 the button back; the four buttons fit in one row at 360 px.
 Run: uv run -q --with playwright python web/tests/search_ui.py [base url] [--mock-sesame]   (default http://127.0.0.1:8787)"""
+from urllib.parse import unquote
 import asyncio, sys
 from playwright.async_api import async_playwright
 
@@ -55,7 +56,7 @@ async def search(pg, text):
 async def mock(ctx):
     async def answer(route):
         name = route.request.url.split("?", 1)[1]
-        body = "%J 279.23473479 +38.78368896 = 18:36:56.33 +38:47:01.2\n" if name.lower() == "vega" else "#! *** Nothing found *** \n"
+        body = "%J 077.91904660 -45.01843823 = 05:11:40.57 -45:01:06.3\n" if unquote(name).lower() == "kapteyn's star" else "#! *** Nothing found *** \n"
         await asyncio.sleep(0.4)
         await route.fulfill(status=200, body=body, headers={"Access-Control-Allow-Origin": "*", "Content-Type": "text/plain"})
     await ctx.route("https://cds.unistra.fr/**", answer)
@@ -137,22 +138,31 @@ async def desktop(b):
     print("PASS comet: C/2023 A3 (Tsuchinshan-ATLAS) takes over the card")
 
     # ---- Sesame, then no match ----
+    # a named star is one of the sky's own names now (labels.json): no lookup, the pin at its IAU position
     await pg.click("#xs-q"); await search(pg, "Vega")
     rows = await pg.evaluate(ROWS)
-    assert rows[0].startswith('Look up "Vega"'), rows
+    assert rows[0].startswith("Vega"), rows
     await pg.keyboard.press("Enter")
-    await pg.wait_for_function("document.getElementById('xs-msg').textContent.includes('Looking') || !document.getElementById('pin').hidden && document.querySelector('#pin .eyebrow').textContent === 'Vega'", timeout=3000)
-    await pg.wait_for_function("!document.getElementById('pin').hidden && document.querySelector('#pin .eyebrow').textContent === 'Vega'", timeout=8000)
+    await pg.wait_for_function("!document.getElementById('pin').hidden && document.querySelector('#pin .eyebrow').textContent === 'Vega'", timeout=3000)
+    vega = await pg.evaluate(PIN)
+    assert angle_ok(vega, 279.2347, 38.7837, 0.01), vega
+    print(f"PASS sky name: Vega is found without a lookup, pinned at RA {vega['ra']:.3f} Dec {vega['dec']:.3f}")
+    await pg.click("#xs-q"); await search(pg, "Kapteyn's Star")
+    rows = await pg.evaluate(ROWS)
+    assert rows[0].startswith('Look up "Kapteyn'), rows
+    await pg.keyboard.press("Enter")
+    await pg.wait_for_function("document.getElementById('xs-msg').textContent.includes('Looking') || !document.getElementById('pin').hidden && document.querySelector('#pin .eyebrow').textContent === \"Kapteyn's Star\"", timeout=3000)
+    await pg.wait_for_function("!document.getElementById('pin').hidden && document.querySelector('#pin .eyebrow').textContent === \"Kapteyn's Star\"", timeout=8000)
     got = await pg.evaluate(PIN)
-    assert angle_ok(got, 279.2347, 38.7837, 0.1), got
+    assert angle_ok(got, 77.919, -45.018, 0.1), got
     # Escape while a lookup runs drops it; Cmd+K opens the list again even when the box kept the focus
-    await pg.click("#xs-q"); await search(pg, "Sirius"); await pg.keyboard.press("Enter"); await pg.keyboard.press("Escape")
+    await pg.click("#xs-q"); await search(pg, "Tabby's Star"); await pg.keyboard.press("Enter"); await pg.keyboard.press("Escape")
     await pg.wait_for_timeout(2500)
-    assert await pg.is_hidden("#xs-panel") and await pg.evaluate("document.querySelector('#pin .eyebrow').textContent") == "Vega", "a dropped lookup still acted"
+    assert await pg.is_hidden("#xs-panel") and await pg.evaluate("document.querySelector('#pin .eyebrow').textContent") == "Kapteyn's Star", "a dropped lookup still acted"
     await pg.keyboard.press("Meta+k")
     assert await pg.is_visible("#xs-panel"), "Cmd+K did not reopen the list"
     await pg.keyboard.press("Escape")
-    print(f"PASS Sesame ({'mocked' if MOCK else 'live'}): Vega resolves to RA {got['ra']:.3f} Dec {got['dec']:.3f} and drops a pin named Vega")
+    print(f"PASS Sesame ({'mocked' if MOCK else 'live'}): Kapteyn's Star resolves to RA {got['ra']:.3f} Dec {got['dec']:.3f} and drops a pin named for it")
     await pg.click("#xs-q"); await search(pg, "planet nine"); await pg.keyboard.press("Enter")
     await pg.wait_for_function("document.getElementById('xs-msg').textContent.startsWith('Nothing called \"planet nine\".')", timeout=9000)
     print("PASS no match: planet nine says Nothing called \"planet nine\" after the catalog lookup")

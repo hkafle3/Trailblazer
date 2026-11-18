@@ -46,4 +46,3 @@ body[data-view="3d"] .skypin { visibility: hidden; }
 
 /* the credit line at the foot of the Layers panel */
 body.explore .layers .credit { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .08); font: 400 10.5px/1.45 var(--panel-font); color: #8d8d8d; }
-body.explore .layers .credit a { color: inherit; text-underline-offset: 2px; }

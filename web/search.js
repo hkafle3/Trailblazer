@@ -132,12 +132,13 @@ function pick(r) {
     text = r.c.id;
     if (phone.matches) mk?.click();   // explore-phone.js opens its sheet and glides it into view
     else { hooks.feature(r.c, mk); fly(...where(r.c)); }
-  } else if (r.kind === 'place') {   // fly to a zoom where its name shows; the name itself marks the spot
+  } else if (r.kind === 'place') {   // fly to a zoom where its name shows
     const k = Math.min(Math.max(8, r.p.min * 1.15), (r.p.max ?? Infinity) * 0.9), w = k * 360;
     text = r.p.name;
     if (phone.matches && !$('csheet').hidden) $('csheet').querySelector('.sheet-x').click();
     if (!phone.matches) deskFly(r.p.ra, r.p.dec, 1);   // starts the desktop engine; its own flyTo never zooms out
     if (A) viewFly(r.p.ra, r.p.dec, w, 600);
+    if (r.p.kind !== 'constellation') hooks.showPin(r.p.ra, r.p.dec, r.p.name);   // a star or an object: its pin card opens the time-lapse there
   } else if (r.kind === 'target') {
     text = r.t.name;
     pin(r.t.ra, r.t.dec, r.t.name, `timelapse.html?target=${r.t.key}`);
