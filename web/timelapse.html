@@ -242,14 +242,21 @@ const P = new URLSearchParams(location.search);
 // Every place that writes the address (show, back, recenter, spSync, the Spectrum card) goes through replaceState, so the
 // view is added there once instead of in each of them.
 // Then and now is offered on a candidate's time-lapse (&blink=<candidate id>, with ra and dec): view=thenandnow
-const blinkId = P.get('blink'), blinkOn = !!blinkId && Number.isFinite(parseFloat(P.get('ra'))) && Number.isFinite(parseFloat(P.get('dec')));
+// The comparison belongs to the candidate's position: every rewrite of the address keeps blink= while the spot stays
+// within 2 arcsec of it, and a new position drops it (dropBlink: the tab goes, Photo shows).
+const blinkId = P.get('blink'), blinkRa = parseFloat(P.get('ra')), blinkDec = parseFloat(P.get('dec'));
+let blinkOn = !!blinkId && Number.isFinite(blinkRa) && Number.isFinite(blinkDec);
+const sameSpot = u => { const ra = parseFloat(u.searchParams.get('ra')), dec = parseFloat(u.searchParams.get('dec'));
+  return Number.isFinite(ra) && Number.isFinite(dec) && Math.abs(dec - blinkDec) < 5.6e-4 && Math.abs(((ra - blinkRa + 540) % 360 - 180) * Math.cos(dec * Math.PI / 180)) < 5.6e-4; };
 let pvView = P.get('view') === 'depth' ? 'depth' : P.get('view') === 'thenandnow' && blinkOn ? 'thenandnow' : 'photo';
 {
   const replace = history.replaceState.bind(history);
   history.replaceState = (st, title, url) => {
     // by hand, not searchParams: re-serialising would encode the rest of the address (layers=9,77 -> 9%2C77)
-    const u = new URL(url ?? location.href, location.href), q = u.search.replace(/([?&])view=[^&]*&?/g, '$1').replace(/[?&]$/, '');
-    u.search = pvView !== 'photo' ? `${q}${q ? '&' : '?'}view=${pvView}` : q;
+    const u = new URL(url ?? location.href, location.href), q = u.search.replace(/([?&])(view|blink)=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+    if (blinkOn && !sameSpot(u)) { blinkOn = false; if (pvView === 'thenandnow') pvView = 'photo'; queueMicrotask(dropBlink); }
+    const add = [...(blinkOn ? [`blink=${encodeURIComponent(blinkId)}`] : []), ...(pvView !== 'photo' ? [`view=${pvView}`] : [])].join('&');
+    u.search = add ? `${q}${q ? '&' : '?'}${add}` : q;
     replace(st, title, u.href);
   };
 }
@@ -1579,7 +1586,11 @@ const depth = depthView({
 });
 window.__depth = depth;   // for tests/timelapse_redesign_ui.py
 if (blinkOn) document.getElementById('tab-tn').hidden = false;
-const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]:not([hidden])')];
+const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]')];
+function dropBlink() {
+  document.getElementById('tab-tn').hidden = true;
+  if (document.body.classList.contains('tn-on')) setView('photo');
+}
 function setView(v, user = false) {
   pvView = v;
   document.body.classList.toggle('depth', v === 'depth');
@@ -1615,8 +1626,8 @@ function thenNow(on) {
 for (const t of viewTabs) t.addEventListener('click', () => setView(t.dataset.view, true));
 document.querySelector('.pv-views').addEventListener('keydown', e => {   // tabs: arrows move between them
   const k = { ArrowLeft: -1, ArrowRight: 1, Home: -99, End: 99 }[e.key]; if (!k) return;
-  const i = Math.max(0, Math.min(viewTabs.length - 1, viewTabs.findIndex(t => t.dataset.view === pvView) + k));
-  setView(viewTabs[i].dataset.view, true); viewTabs[i].focus(); e.preventDefault(); e.stopPropagation();
+  const tabs = viewTabs.filter(t => !t.hidden), i = Math.max(0, Math.min(tabs.length - 1, tabs.findIndex(t => t.dataset.view === pvView) + k));
+  setView(tabs[i].dataset.view, true); tabs[i].focus(); e.preventDefault(); e.stopPropagation();
 });
 
 // ---------- Advanced: the drawer with every control. Open or shut, it stays that way next time (localStorage ch.adv) ----------

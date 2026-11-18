@@ -140,7 +140,7 @@ function composer(c) {
       const out = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(out.error || `Could not post (${r.status})`);
       c.comments.push(out.comment); c.tags = out.tags;
-      talk(c);
+      talk(c); head(c);   // the credit line, the star count, the name and the time-lapse link follow the votes
       text.value = ''; document.querySelectorAll('[name=tag]').forEach(x => { x.checked = false; });
       delete $('c-note').dataset.said; say('');
     } catch (err) {

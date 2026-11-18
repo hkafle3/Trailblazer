@@ -257,6 +257,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, context =
   addEventListener('resize', show);
   tips();
   start();
+  play(S.playing);   // the blink plays from the start (held still with reduced motion); it flips once a band is drawn
   return {
     setActive(on) { S.active = on; play(on && !matchMedia('(prefers-reduced-motion: reduce)').matches); if (on) show(); },
     results: S.results,

@@ -124,10 +124,11 @@ async def main():
         cred = await pg.evaluate("document.querySelector('.credits').textContent")
         check(all(s in cred for s in ["Spectro-Photometer for the History of the Universe", "Jet Propulsion Laboratory", "Bock et al. 2026", "WISE", "2MASS", "IRSA", "SVO"]), "credits: SPHEREx's wording, WISE, 2MASS, IRSA, SVO")
         # the knob plays and pauses, a stop or the picture shows one frame, F flips
-        await pg.click("#tn .knob"); f0 = await pg.evaluate("window.__blink.S.playing")
-        await pg.click("#tn .stop[data-to='1']"); fr = await pg.evaluate("[window.__blink.S.playing, window.__blink.S.frame]")
+        await pg.click("#tn .knob"); await pg.wait_for_timeout(400)   # playing since load: the knob pauses it (the knob sits on the frame shown)
+        f0, fa = await pg.evaluate("[window.__blink.S.playing, window.__blink.S.frame]")
+        await pg.click(f"#tn .stop[data-to='{1 - fa}']"); fr = await pg.evaluate("[window.__blink.S.playing, window.__blink.S.frame]")
         await pg.keyboard.press("f"); f2 = await pg.evaluate("window.__blink.S.frame")
-        check(f0 is False and fr == [False, 1] and f2 == 0, "knob pauses, the 2025 stop shows SPHEREx, F flips back")
+        check(f0 is False and fr == [False, 1 - fa] and f2 == fa, "knob pauses, the other year's stop shows that picture, F flips back")
         check(not errs, f"no page errors: {errs[:2]}")
         await c.close()
 
@@ -206,6 +207,55 @@ async def main():
         await pg.click("#tab-photo"); check(await pg.locator("#tn-lapse").is_hidden() and await pg.get_attribute("#pv-name", "hidden") is None and await pg.locator("#tn-name").is_hidden()
               and await pg.locator("#patch").is_visible(), "Photo tab puts the time-lapse back")
         await c.close()
+
+        # ---- Codex review 1: the blink plays on load with no interaction; with reduced motion it stays still ----
+        for motion in ("no-preference", "reduce"):
+            c = await ctx(reduced_motion=motion); pg = await c.new_page()
+            await pg.goto(f"{BASE}/candidate.html?id={SHOW}"); await wait_state(pg, "W2")
+            seen = set()
+            for _ in range(12):
+                seen.add(await pg.evaluate("document.querySelector('#tn .blink[data-state=ok]').dataset.frame + [...document.querySelectorAll('#tn canvas.fr')].map(c => c.classList.contains('off') ? 0 : 1).join('')"))
+                await pg.wait_for_timeout(250)
+            knob = await pg.evaluate("document.querySelector('#tn .knob').classList.contains('on')")
+            if motion == "reduce": check(len(seen) == 1 and not knob, f"reduced motion: the blink holds still, knob shows play ({seen})")
+            else: check(len(seen) == 2 and knob, f"the blink plays on load with no interaction: frames shown {sorted(seen)}")
+            await c.close()
+
+        # ---- Codex review 3: the comparison stays in the time-lapse's address through its rewrites and a reload ----
+        c = await ctx(); pg = await c.new_page()
+        await pg.goto(f"{BASE}/timelapse.html?ra=84.0181&dec=-6.5775&det=D6&blink={SHOW}&view=thenandnow")
+        await wait_state(pg, "W2"); await pg.wait_for_function("window.__lapse?.state?.m", timeout=120000); await pg.wait_for_timeout(1500)
+        q = await pg.evaluate("location.search")
+        check(f"blink={SHOW}" in q and "view=thenandnow" in q, f"address keeps blink and view after the time-lapse built: {q}")
+        await pg.reload(); await wait_state(pg, "W2")
+        check(await pg.get_attribute("#tab-tn", "aria-selected") == "true" and await pg.locator("#tn-name").is_visible(), "after a reload: Then and now still open")
+        await pg.evaluate("document.getElementById('coords').value = '84.3000 -6.2000'; document.getElementById('search').requestSubmit()")
+        await pg.wait_for_function("!location.search.includes('blink=')", timeout=120000)
+        check(await pg.locator("#tab-tn").is_hidden() and await pg.get_attribute("#tab-photo", "aria-selected") == "true" and "view=thenandnow" not in await pg.evaluate("location.search"),
+              "a new position drops the comparison: no blink in the address, the tab gone, Photo shown")
+        await c.close()
+
+        # ---- Codex review 8: a vote refreshes the credit, the count, the name and the time-lapse link (local only: Turnstile's test key) ----
+        if any(h in BASE for h in ("127.0.0.1", "localhost")):
+            async def vote(pg, nick):
+                await pg.click("label.pv-row:has([value=star])")
+                await pg.fill(".nick", nick)
+                await pg.wait_for_function("window.turnstile?.getResponse?.()", timeout=60000)
+                n0 = int(await pg.text_content("[data-t=star]"))
+                await pg.click("#c-compose button[type=submit]")
+                await pg.wait_for_function(f"+document.querySelector('[data-t=star]').textContent > {n0}", timeout=30000)
+            c = await ctx(); pg = await c.new_page()
+            await pg.goto(f"{BASE}/candidate.html?id={SHOW}"); await wait_state(pg, "W2")
+            await vote(pg, f"vote_{int(time.time()) % 100000}")
+            by = await pg.text_content("#c-by")
+            check("3 others tagged it a star" in by, f"after a star vote the credit counts it: {by}")
+            await pg.goto(f"{BASE}/candidate.html?id={SPARSE}"); await pg.wait_for_selector("#c-id:not(:empty)")
+            before = await pg.text_content("#c-id")
+            for k in range(2): await vote(pg, f"vote{k}_{int(time.time()) % 100000}"); await pg.wait_for_timeout(500)
+            after, href, st = await pg.text_content("#c-id"), await pg.get_attribute("#c-lapse", "href"), await pg.text_content("#c-status")
+            check(before == SPARSE and after.startswith("J") and "view=thenandnow" in href and "Star" in st and "others tagged it a star" in await pg.text_content("#c-by"),
+                  f"crossing the star threshold renames the lead and its time-lapse link: {before} -> {after}, {st}, {href}")
+            await c.close()
 
         # ---- phone ----
         c = await ctx(390, 844); pg = await c.new_page()

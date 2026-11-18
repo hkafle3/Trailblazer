@@ -14,7 +14,7 @@ export { oldSky };
 export class Unavailable extends Error { constructor(state, reason) { super(reason); this.state = state; } }
 function limiter(n) {
   let busy = 0; const wait = [];
-  const next = () => { if (busy >= n || !wait.length) return; busy++; const [fn, ok, no] = wait.shift(); fn().then(ok, no).finally(() => { busy--; next(); }); };
+  const next = () => { if (busy >= n || !wait.length) return; busy++; const [fn, ok, no] = wait.shift(); Promise.resolve().then(fn).then(ok, no).finally(() => { busy--; next(); }); };
   return fn => new Promise((ok, no) => { wait.push([fn, ok, no]); next(); });
 }
 const s3 = limiter(12), api = limiter(4);
@@ -78,7 +78,7 @@ async function exposures(base, det, ra, dec, signal) {
 // one exposure: header, the grid's map onto it, and (when any of the field is on the detector, in band) its rows
 async function readExposure(e, grid, bins, wave, signal, stopped = () => null) {
   if (stopped()) return null;
-  const h = await s3(() => stopped() ? null : retry(() => imageHeader(e.key, signal)));
+  const h = await s3(async () => (stopped() ? null : retry(() => imageHeader(e.key, signal))));
   if (!h) return null;
   const map = B.spherexMap(h, grid);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
