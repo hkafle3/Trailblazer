@@ -572,6 +572,7 @@ export function depthView(page) {
     get data() { return data; }, get url() { return asked; }, get gl() { return gl; }, get shown() { return shown; },
     // for tests: the zoom and turn (and the dashed rings' fade), the camera, and the target's ring on screen ([x, y, diameter] in client px)
     get view() { return { k: Z.k, x: Z.x, y: Z.y, a: yaw.a, p: yaw.p, unk: scene3?.unk.material.opacity, swing: yaw.t0 ? (performance.now() - yaw.t0) / 1000 : null }; },
+    info: () => S && { geometries: S.renderer.info.memory.geometries, textures: S.renderer.info.memory.textures },   // for tests: GPU memory
     get cam() { return S && [...S.camera.matrixWorld.elements, ...S.camera.projectionMatrix.elements]; },
     ringOf() {
       const b = scene3?.beads.find(x => x.acc); if (!b) return null;

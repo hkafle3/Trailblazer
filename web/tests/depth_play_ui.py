@@ -329,6 +329,62 @@ async def e4(b):
         check(seen and not bad, f"E4 {name}: the tabs and the zoom group never overlap at {len(widths)} widths in both views ({seen} views with both shown) {bad[:4]}")
         await ctx.close()
 
+# ---------------------------------------------------------------- the review's four cases (Codex, 18 Nov)
+GLCOUNT = """(() => { const live = window.__gl = { buffers: 0, textures: 0 };
+  for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext].filter(Boolean)) {
+    const P = C.prototype, wrap = (make, kill, k) => { const m = P[make], d = P[kill]; P[make] = function (...a) { live[k]++; return m.apply(this, a); }; P[kill] = function (o) { if (o) live[k]--; return d.call(this, o); }; };
+    wrap('createBuffer', 'deleteBuffer', 'buffers'); wrap('createTexture', 'deleteTexture', 'textures'); } })()"""
+async def review(b):
+    # 1. repeated playback and switching: live GPU buffers and textures, and renderer.info, stay flat
+    ctx = await b.new_context(viewport={"width": 1440, "height": 900}); await ctx.add_init_script("try { localStorage.setItem('ch.tour', '1') } catch {}"); await ctx.add_init_script(GLCOUNT)
+    pg = await ctx.new_page(); await pg.goto(C0176); await pg.wait_for_function("!!window.__lapse?.state.m", timeout=300000); await pg.evaluate(SHOWN_FN); await drawn(pg, 4)
+    async def rounds(n):
+        for _ in range(n):
+            for k in range(4): await entry(pg, k); await pg.wait_for_timeout(120)
+            await pg.click("#tab-photo"); await pg.wait_for_timeout(150); await pg.click("#tab-depth"); await pg.wait_for_timeout(150)
+        await pg.wait_for_timeout(800)
+        return await pg.evaluate("({ gl: { ...__gl }, info: __depth.info?.() ?? null })")
+    a = await rounds(3); z = await rounds(12)
+    flat = z["gl"]["buffers"] <= a["gl"]["buffers"] and z["gl"]["textures"] <= a["gl"]["textures"] and a["info"] is not None and z["info"]["geometries"] <= a["info"]["geometries"] and z["info"]["textures"] <= a["info"]["textures"]
+    check(flat, f"review 1: 12 more rounds of every entry and Photo/Depth switches leave GPU buffers, textures and renderer.info flat ({a} -> {z})")
+    await ctx.close()
+    # 2. an unavailable answer is not kept for good: leaving the visit and coming back says it again, and it recovers after retry_after
+    down = {"on": True}
+    async def fault(route):
+        if down["on"] and "t=61105" in route.request.url:
+            return await route.fulfill(json={"sources": {k: {"status": "unavailable", "error": "test outage", "retry_after": 3} for k in ("sso", "stars", "galaxies")}})
+        await route.continue_()
+    ctx, pg = await lapse(b, C0176, routes=[("**/api/depth?**", fault)]); await drawn(pg, 4)
+    await entry(pg, 2); await pg.wait_for_function("/No catalog is answering/.test(document.getElementById('depth-msg').textContent)", timeout=30000)
+    await entry(pg, 3); await pg.wait_for_timeout(1500); await entry(pg, 2); await pg.wait_for_timeout(300)
+    back = await pg.evaluate("[document.getElementById('depth-msg').textContent, document.getElementById('depth3d').dataset.state]")
+    down["on"] = False
+    try:
+        await pg.wait_for_function("document.getElementById('depth3d').dataset.state === 'ready' && __depth.stars().length > 0 && !document.getElementById('depth-msg').textContent", timeout=20000); ok = True
+    except Exception: ok = False
+    check("No catalog is answering" in back[0] and back[1] == "error" and ok, f"review 2: back on a visit whose catalogs were down, the banner stays ({back}) and it recovers once they answer ({ok})")
+    await ctx.close()
+    # 3. the older entry's axis follows its survey's dates: Ks (2MASS, 2000), W1 and W2 (AllWISE, 2010); knob and dot on the line
+    for band, ch, year in (("Ks", 47, "2000"), ("W1", 64, "2010"), ("W2", 91, "2010")):
+        ctx, pg = await lapse(b, f"{BASE}/timelapse.html?{SPOT}&ch={ch}&view=depth"); await drawn(pg)
+        try: await pg.wait_for_function("document.querySelectorAll('#tl-visits i').length === __lapse.state.m.frames.length + 1", timeout=60000)
+        except Exception: pass
+        await entry(pg, 0); await pg.wait_for_timeout(300)
+        r = await pg.evaluate("""() => { const l = document.getElementById('tl-line').getBoundingClientRect(), k = document.getElementById('play').getBoundingClientRect(), d = document.querySelector('#tl-visits i');
+          const ticks = [...document.querySelectorAll('#tl-ticks .tl-tick.old b')].map(b => b.textContent).filter(Boolean);
+          return { old: __lapse.state.old, date: document.getElementById('t-date').textContent, knob: (k.left + k.right) / 2 - l.left, dot: d ? d.getBoundingClientRect().left + 3 - l.left : null, w: l.width, ticks }; }""")
+        on = r["old"] and r["date"] == year and 0 <= r["knob"] <= r["w"] and r["dot"] is not None and 0 <= r["dot"] <= r["w"] and year in r["ticks"]
+        check(on, f"review 3 {band} (ch {ch}): the older entry is dated {year}, its knob and dot on the line, its year on the axis ({r})")
+        await ctx.close()
+    # 4. the page's own arrow keys (focus outside the knob) step through the same entries, the 2010 one too
+    ctx, pg = await lapse(b, C0176); await drawn(pg, 4); await entry(pg, 0)
+    await pg.evaluate("document.activeElement.blur()"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(200); s1 = await S(pg)
+    await pg.keyboard.press("ArrowLeft"); await pg.wait_for_timeout(200); s0 = await S(pg)
+    await pg.keyboard.press("ArrowLeft"); await pg.wait_for_timeout(200); s3 = await S(pg)
+    check(s1["k"] == 1 and agree(s1) and s0["k"] == 0 and agree(s0) and s3["k"] == 3 and agree(s3),
+          f"review 4: page arrows from the 2010 entry go to visit 1, back to 2010, and round to the last visit, everything in step ({s1['k']}, {s0['k']}, {s3['k']})")
+    await ctx.close()
+
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True, args=["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"])
@@ -337,6 +393,7 @@ async def main():
         if ONLY in (None, "e2"): await e2_lapse(b)
         if ONLY in (None, "e2", "comet"): await e2_comet(b)
         if ONLY in (None, "e4"): await e4(b)
+        if ONLY in (None, "review"): await review(b)
         await b.close()
     print(f"{'PASS' if not fails else 'FAIL'} depth play: {len(fails)} failed"); sys.exit(1 if fails else 0)
 
