@@ -113,8 +113,8 @@ const visible = e => !e.closest('[style*="visibility: hidden"]');   // markers n
 const rects = sel => [...document.querySelectorAll(sel)].filter(visible).map(rect).filter(r => r[2] > r[0] && r[3] > r[1]);   // display: none gives an empty box
 
 // what names must keep clear of: the markers and their names, the pin, the controls over the map, the open panels
-const MARKS = '#card-patch, #pin:not([hidden]) .pincard, #pin:not([hidden]) .pin-ring';   // and each marker near the view, below
-const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns > *, .layers[open] > .layers-body, #csheet:not([hidden]), #dive-aim:not([hidden]) .aim-box, #dive-aim:not([hidden]) .aim-go, #maphint:not([hidden]), #zoomlvl:not([hidden]), #t-date, .tl-knob';
+const MARKS = '#card-patch, #pin:not([hidden]) .pincard, #pin:not([hidden]) .pin-ring, #t-date, .tl-knob';   // and each marker near the view, below (the date moves with the replay)
+const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns > *, .layers[open] > .layers-body, #csheet:not([hidden]), #dive-aim:not([hidden]) .aim-box, #dive-aim:not([hidden]) .aim-go, #maphint:not([hidden]), #zoomlvl:not([hidden])';
 // the cards: [right, left] as [dx, dy] from the marker (styles.css, explore.css, candidates.css); under it is BELOW px down
 const CARDS = [['card-comet', [28, -30], [-278, -30]], ['card-cand', [-12, 16], [-258, 16]]].map(([id, r, l]) => ({ id, right: r, left: l }));
 const BELOW = 24;
@@ -133,6 +133,8 @@ function layout() {
   if (!sized && labels.length && document.fonts.status === 'loaded') measure();
   // ---- read ----
   const vw = innerWidth, vh = innerHeight, k = wrapEl.offsetWidth / 360;
+  stats.passes++;
+  if (fresh || !still) stats.rereads++;
   if (fresh || !still) still = { top: document.querySelector('.topbar').getBoundingClientRect().bottom, bot: $('tl').getBoundingClientRect().top - BAR,
     fixed: rects(CONTROLS), topbar: rect(document.querySelector('.topbar')) };
   fresh = false;
@@ -225,18 +227,23 @@ function layout() {
 }
 
 let q = 0;
-const soon = () => { fresh = true; if (!q) q = requestAnimationFrame(layout); };
-view.onView(() => { if (!q) q = requestAnimationFrame(layout); });   // a pan or zoom: the controls have not moved
+const stats = { passes: 0, rereads: 0 };   // the tests read these
+const again = () => { if (!q) q = requestAnimationFrame(layout); };   // markers, cards and the pin are read on every pass
+const soon = () => { fresh = true; again(); };   // and the controls, top bar and timeline read again too
+// only real changes: the phone sets the zoom note's hidden on every frame of a zoom, to the value it already has
+const changed = recs => recs.some(r => r.oldValue !== r.target.getAttribute(r.attributeName));
+const watch = { attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class', 'style', 'open', 'data-detent', 'data-view'] };
+view.onView(again);   // a pan or zoom: the controls have not moved
 addEventListener('resize', soon);
 wrapEl.addEventListener('animationend', soon);   // the map's scale-in moves the whole sky without a view change
 document.fonts.ready.then(() => { if (labels.length) measure(); soon(); });
-const watch = { attributes: true, attributeFilter: ['hidden', 'class', 'style', 'open', 'data-detent', 'data-view'] };
-new MutationObserver(soon).observe(marks, { ...watch, subtree: true });
-for (const e of [$('csheet'), $('dive-aim'), $('maphint'), $('zoomlvl'), $('t-date'), ...document.querySelectorAll('details.layers')]) if (e) new MutationObserver(soon).observe(e, watch);
-new MutationObserver(soon).observe(document.body, { attributes: true, attributeFilter: ['class', 'data-view'] });
+new MutationObserver(recs => { if (changed(recs)) again(); }).observe(marks, { ...watch, subtree: true });
+const panels = recs => { if (changed(recs)) soon(); };
+for (const e of [$('csheet'), $('dive-aim'), $('maphint'), $('zoomlvl'), ...document.querySelectorAll('details.layers')]) if (e) new MutationObserver(panels).observe(e, watch);
+new MutationObserver(panels).observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['class', 'data-view'] });
 const panel = $('xs-panel');   // search.js adds it; this module may run first
-if (panel) new MutationObserver(soon).observe(panel, watch); else new MutationObserver((m, o) => { const p = $('xs-panel'); if (p) { o.disconnect(); new MutationObserver(soon).observe(p, watch); soon(); } }).observe(document.body, { childList: true });
-marks.addEventListener('pointerover', soon); marks.addEventListener('pointerout', soon);   // a known comet's name shows on hover
+if (panel) new MutationObserver(panels).observe(panel, watch); else new MutationObserver((m, o) => { const p = $('xs-panel'); if (p) { o.disconnect(); new MutationObserver(panels).observe(p, watch); soon(); } }).observe(document.body, { childList: true });
+marks.addEventListener('pointerover', again); marks.addEventListener('pointerout', again);   // a known comet's name shows on hover
 document.addEventListener('change', soon);   // a Layers switch shows or hides markers with :has(), which changes no attribute
 soon();
 
@@ -246,4 +253,4 @@ const hover = l => { if (l === hov) return; hov?.el.classList.remove('hover'); h
 map.addEventListener('pointermove', e => { const p = placed.find(([b, l]) => l && e.clientX >= b[0] - 2 && e.clientX <= b[2] + 2 && e.clientY >= b[1] - 2 && e.clientY <= b[3] + 2); hover(p?.[1] ?? null); });
 map.addEventListener('pointerleave', () => hover(null));
 
-window.skyLabels = { layout, labels, placed: () => placed.map(([, l]) => l?.name ?? pinned.textContent) };   // the tests read these
+window.skyLabels = { layout, labels, stats, placed: () => placed.map(([, l]) => l?.name ?? pinned.textContent) };   // the tests read these
