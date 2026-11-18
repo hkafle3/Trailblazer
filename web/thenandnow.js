@@ -115,9 +115,10 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, context =
     </div>`;
   }
   function axis(w) {
-    const t0 = 1999, t1 = 2027, x = t => ((t - t0) / (t1 - t0) * 100).toFixed(2) + '%';
+    // from the year before the oldest picture (2MASS goes back to 1997; the mockup's 1999 when it is 2000 or later) to 2027
+    const t0 = Math.min(1999, Math.floor(w.oldT) - 1), t1 = 2027, x = t => ((t - t0) / (t1 - t0) * 100).toFixed(2) + '%';
     let ticks = '';
-    for (let y = 2000; y <= 2026; y++) { const big = y % 5 === 0; ticks += `<i class="tick${big ? ' big' : ''}" style="left:${x(y)}">${big ? `<b${y % 10 ? ' class="minor"' : ''}>${y}</b>` : ''}</i>`; }
+    for (let y = t0 + 1; y <= 2026; y++) { const big = y % 5 === 0; ticks += `<i class="tick${big ? ' big' : ''}" style="left:${x(y)}">${big ? `<b${y % 10 ? ' class="minor"' : ''}>${y}</b>` : ''}</i>`; }
     return `<div class="ctl"><div class="axis"><div class="tl-line"><div class="track">${ticks}
       <button type="button" class="stop" data-to="0" style="left:${x(w.oldT)}" aria-label="Show the ${w.oldYear} picture"></button>
       <button type="button" class="stop" data-to="1" style="left:${x(w.nowT)}" aria-label="Show the SPHEREx picture"></button>

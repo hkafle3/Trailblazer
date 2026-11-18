@@ -257,6 +257,23 @@ async def main():
                   f"crossing the star threshold renames the lead and its time-lapse link: {before} -> {after}, {st}, {href}")
             await c.close()
 
+        # ---- Codex re-review 6: the year axis holds a 1997 picture as well as 2000 and 2010 ----
+        for when in ("1997-10-04", None):
+            c = await ctx(); pg = await c.new_page()
+            if when:
+                async def on_res(route, when=when):
+                    r = await route.fetch(); j = await r.json(); j["bands"]["Ks"]["report"]["old"]["dates"] = [when]
+                    await route.fulfill(response=r, body=json.dumps(j))
+                await pg.route("**/api/blink?*", on_res)
+            await pg.goto(f"{BASE}/candidate.html?id={SHOW}"); await wait_state(pg, "Ks"); await pg.click("#tn [data-band=Ks]")
+            await pg.wait_for_function("window.__blink.drawn.band === 'Ks'")
+            await pg.click("#tn .knob"); await pg.evaluate("document.querySelector('#tn .stop[data-to=\"0\"]').click()"); await pg.wait_for_timeout(400)
+            pos = await pg.evaluate("""() => { const ax = document.querySelector('#tn .axis .track').getBoundingClientRect(), s = document.querySelector('#tn .stop[data-to="0"]').getBoundingClientRect(), k = document.querySelector('#tn .knob').getBoundingClientRect(), label = [...document.querySelectorAll('#tn .tick b')].map(b => b.textContent);
+              return { stop: (s.left + s.width / 2 - ax.left) / ax.width, knob: (k.left + k.width / 2 - ax.left) / ax.width, yr: document.querySelector('#tn .flabel .yr').textContent, first: label[0] }; }""")
+            check(0 < pos["stop"] < 1 and abs(pos["knob"] - pos["stop"]) < 0.01 and pos["yr"] == (when or "2000")[:4],
+                  f"the {(when or '2000')[:4]} picture's stop and the knob sit on the axis: {pos}")
+            await c.close()
+
         # ---- phone ----
         c = await ctx(390, 844); pg = await c.new_page()
         await pg.goto(f"{BASE}/candidate.html?id={SHOW}"); await wait_state(pg, "W2")
