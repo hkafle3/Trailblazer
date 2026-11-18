@@ -333,3 +333,22 @@ The Forums feed: the 200 newest comments that have text, across every comet, new
 { "posts": [ { "comet_id": "3I/ATLAS", "author": "mira_v", "tag": "comet", "body": "Strong carbon dioxide peak at 4.26.",
   "created_at": 1763200000000, "kind": "known", "ra": 247.109, "dec": -16.84, "real": true } ] }
 ```
+
+## GET /api/oldsky (R2 OLDSKY, then IRSA)
+
+The older survey's picture of a spot, for "Then and now" (`worker/src/oldsky.js`, used by `web/live/blinkworker.js`). Only `survey=allwise` with `band=W1` or `W2`, and `survey=2mass` with `band=Ks`; one size, 780 arcsec (`size`, if sent, must be `780`); `ra` 0 to 360 and `dec` -90 to 90, rounded to 0.001 degree for the stored key.
+
+```json
+{ "v": 1, "survey": "allwise", "band": "W2", "size_arcsec": 780, "ra": 84.018, "dec": -6.578, "release": "AllWISE Atlas (p3am_cdd)",
+  "tiles": [ { "name": "allwise_W2_int.fits", "path": "api/oldsky/v1/allwise/W2/780/84.018-6.578/allwise_W2_int.fits",
+    "source": "https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/...-w2-int-3.fits?center=84.018,-6.578&size=780arcsec",
+    "bytes": 1084025, "gzip": true, "sha256": "...", "header": { "BAND": "2", "DATEOBS1": "2010-03-06T22:30:53.139", "DATEOBS2": "2010-09-17T04:47:46.567" } } ] }
+```
+
+- R2 first (`X-Oldsky: hit`). A miss is rate limited per IP (`OLDSKY_LIMIT`, 6 a minute; 429 past it), then IRSA is asked: the host is fixed to irsa.ipac.caltech.edu, redirects are refused, each tile is read as bounded binary (20 s, 4 MB, at most 8 tiles, one at a time), gzip is detected from its bytes, and a tile is stored only if it is FITS of the band asked. The manifest is stored last. An IRSA failure answers `503 {"error":"older survey unavailable"}` with `Cache-Control: no-store` and stores nothing; no tile at all is `404`.
+- AllWISE: the nearest Atlas tile's intensity image and coverage map. 2MASS: every Ks atlas image overlapping the 12 arcmin field (one box search).
+- `GET /api/oldsky/v1/...` serves a stored tile as IRSA sent it (canonical keys only). The page checks it against `sha256`.
+
+## GET /api/blink?ra=&dec= (R2 OLDSKY)
+
+A baked "Then and now" blink at this spot (`bake/blink_bake.mjs`; the showcase J053604.34-063439.0), or `404`, and the page builds it live. `result.json` holds each band's state, report and checks; `frames_path` (`GET /api/blink/v1/<pos>/frames.bin`) the calibrated frames as float32. To bake the showcase into production R2 once Ed has reported it: `node bake/blink_bake.mjs --api https://comet-hunt.comet-hunt.workers.dev --put remote --region "Orion A" --distance-ly 1250 --dust-k 680`.

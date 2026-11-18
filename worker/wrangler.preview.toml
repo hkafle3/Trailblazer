@@ -1,0 +1,67 @@
+# PREVIEW ONLY: the same Worker uploaded as a preview version (npx wrangler versions upload --config worker/wrangler.preview.toml),
+# never deployed. Its own D1 database (comet-hunt-preview, migrations plus the seeded showcase candidate) and its own R2
+# bucket for "Then and now" (comet-hunt-oldsky-preview, with the baked showcase blink), so no test touches production data.
+# No cron: the daily snapshot writes production rows. Everything else is worker/wrangler.toml.
+# One Worker serves the app (web/) and the API (/api/*). Run from the repo root: npm run dev
+name = "comet-hunt"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# Workers Logs: per-request logs with CPU time, in the dashboard's Observability tab
+[observability]
+enabled = true
+
+
+# Static files: any request that matches a file in web/ is served directly; everything else (the API) runs src/index.js
+[assets]
+directory = "../web"
+
+# D1 database: comets and comments (labels are comments with a tag). Schema: worker/migrations/.
+[[d1_databases]]
+binding = "DB"
+database_name = "comet-hunt-preview"
+database_id = "36b0dd66-a65f-42d9-8d08-73770e3f0b18"
+migrations_dir = "migrations"
+
+# The one version of each index file the Worker accepts: R2's etag of d1.bin .. d6.bin, which for these single-part
+# uploads is the file's MD5 (md5 -q d1.bin). A rebuilt index changes them: build, check, upload, update these, deploy
+# (docs/api.md, "Refreshing the image index"). Any other version of a file is refused and IRSA answers instead.
+[vars]
+SKY_ETAG_D1 = "a275376a6b6548c5e7432d5adc129eb4"
+SKY_ETAG_D2 = "8fbd8f8114aa7f727af849a85e3e0c13"
+SKY_ETAG_D3 = "0b043a67c797baf17c12a77d66945a6d"
+SKY_ETAG_D4 = "6a560e3c6fff9f77f1f3a59c7adb2790"
+SKY_ETAG_D5 = "f8efad9a34924aedd42a49e8dcde9239"
+SKY_ETAG_D6 = "f34a8f81a218d17e2c8c33ce755c43ea"
+
+# R2 bucket with our own index of SPHEREx images (d1.bin .. d6.bin from bake/sky_index.py), read by /api/images
+[[r2_buckets]]
+binding = "SKY"
+bucket_name = "comet-hunt-sky-index"
+
+# "Then and now" (worker/src/oldsky.js): the older survey's tiles fetched from IRSA once per spot, and the baked
+# showcase blink (bake/blink_bake.mjs). Served same origin, so the bucket needs no CORS rules.
+[[r2_buckets]]
+binding = "OLDSKY"
+bucket_name = "comet-hunt-oldsky-preview"
+
+# Rate limit for GET /api/oldsky on a miss (a new spot costs IRSA requests and storage): 6 a minute per IP. A page asks
+# for three bands, so this is two new spots a minute; tiles already stored are never limited.
+[[ratelimits]]
+name = "OLDSKY_LIMIT"
+namespace_id = "1003"
+simple = { limit = 6, period = 60 }
+
+# Rate limit for POST /api/checks (heat map counts): each visitor's IP gets 10 a minute, counted by Cloudflare,
+# so a script cannot spend the database's daily write allowance (which comments need too).
+[[ratelimits]]
+name = "CHECKS_LIMIT"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+# Rate limit for POST /api/candidates and POST /api/sightings ("Discuss this" on the time-lapse): 5 a minute per IP for
+# each route. Cloudflare's rate limit counts only 10 or 60 second periods, so a minute is the longest window.
+[[ratelimits]]
+name = "CANDIDATES_LIMIT"
+namespace_id = "1002"
+simple = { limit = 5, period = 60 }

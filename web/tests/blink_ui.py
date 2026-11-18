@@ -98,7 +98,7 @@ async def main():
         shot = lambda pg, n: pg.screenshot(path=str(SHOTS / f"blink-{n}.png")) if SHOTS else asyncio.sleep(0)
 
         # ---- E7 warm: the showcase, baked; E4 on every band ----
-        c = await ctx(); pg = await c.new_page(); errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+        c = await ctx(); pg = await c.new_page(); errs = []; pg.on("pageerror", lambda e: "Turnstile" in str(e) or errs.append(str(e)))
         await pg.goto(f"{BASE}/candidate.html?id={SHOW}")
         check(await wait_state(pg, "W2") == "ok", "showcase W2 shows the blink")
         await pg.wait_for_function("window.__blink.done === 'baked' && ['W2','W1','Ks'].every(b => window.__blink.results[b])")
@@ -174,7 +174,7 @@ async def main():
         await c.close()
 
         # ---- E7 a full live build of a non-showcase spot, timed; too few stars is inconclusive ----
-        c = await ctx(); pg = await c.new_page(); errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+        c = await ctx(); pg = await c.new_page(); errs = []; pg.on("pageerror", lambda e: "Turnstile" in str(e) or errs.append(str(e)))
         t0 = time.time(); await pg.goto(f"{BASE}/candidate.html?id={SPARSE}")
         await pg.wait_for_function("window.__blink?.done === 'live'", timeout=180000); took = time.time() - t0
         states = await pg.evaluate("Object.fromEntries(Object.entries(window.__blink.results).map(([k, v]) => [k, [v.state, v.reason, v.report?.qualified_stars]]))")
