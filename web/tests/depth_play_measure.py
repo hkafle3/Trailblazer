@@ -41,7 +41,8 @@ async def run(b, name, w, h, dpr):
     if await k.count() and await k.is_visible(): await k.click()
     await pg.wait_for_timeout(int(loops * 1000) + 500)
     if await k.count() and await k.is_visible(): await k.click()
-    # a drag turn
+    # a drag turn (main leaves Depth when played: back to it first)
+    if not await pg.locator(box).is_visible(): await pg.click("#tab-depth"); await pg.wait_for_timeout(2000)
     r = await pg.locator(box).bounding_box(); cx, cy = r["x"] + r["width"] * .55, r["y"] + r["height"] * .55
     await pg.mouse.move(cx, cy); await pg.mouse.down()
     for n in range(40): await pg.mouse.move(cx - 4 * n, cy + n); await pg.wait_for_timeout(16)
