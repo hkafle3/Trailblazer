@@ -18,8 +18,8 @@ let commit = 'unknown'; try { commit = execFileSync('git', ['rev-parse', '--shor
 const t0 = Date.now();
 const result = await buildLive({ base, ra, dec, progress: p => process.stdout.write(`\r${p.text}${p.bytes ? ` (${(p.bytes / 1e9).toFixed(2)} GB)` : ''}`.padEnd(90)) });
 Object.assign(result, { ra, dec, baked_at: new Date().toISOString(), code: `web/live/colors.js @ ${commit}` });
-// an archive that did not answer is never baked: the page would show it for good
-if (result.state === 'unavailable') { console.error(`\nnot baked: ${result.reason}`); process.exit(1); }
+// an archive that did not answer, or a damaged stored input, is never baked: the page would show it for good
+if (result.input_failure || result.state === 'unavailable') { console.error(`\nnot baked: ${result.reason}`); process.exit(1); }
 const prefix = `colors/v1/${posKey(ra, dec)}`;
 mkdirSync(out, { recursive: true });
 writeFileSync(`${out}/result.json`, JSON.stringify(result));

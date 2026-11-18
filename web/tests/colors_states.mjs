@@ -22,9 +22,10 @@ const keep = new Set(result.comparisons.names.slice(0, 9).map(n => ctx.K.name.in
 save('under12', again(rows.filter(r => r[0] === T || keep.has(r[0]))));
 save('poor_fit', again(rows.map(r => (r[0] === T ? [r[0], r[1], r[2] * (1 + 0.25 * Math.sin(r[1] * 60)), r[3], r[4]] : r))));
 const bnu = (l, t) => 1 / (l ** 3 * Math.expm1(Math.min(14387.77 / (l * t), 700)));
-// the quiet star (SPOT2) with 200 K dust as bright as the star at 4.6 um: a rise whose temperature sits on the grid's edge
+// the quiet star (SPOT2) with 200 K dust at a fifth of the star at 4.6 um: a rise whose temperature sits on the grid's edge
+// (brighter cold dust jumps across the 4.42 um seam and is read as a possible calibration jump, plan deviation 2)
 const Q = measure(path.join(fx, 'SPOT2'), 206.52297618247366, 11.640239417061798), b46 = Q.result.bare.mjy[Q.result.bare.lam.findIndex(l => l > 4.6)];
-save('grid_edge', parity.clean(parity.spectrumResult(Q.ctx, Q.rows.map(r => (r[0] === Q.ctx.T ? [r[0], r[1], r[2] + b46 * bnu(r[1], 200) / bnu(4.6, 200), r[3], r[4]] : r)), Q.used)));
+save('grid_edge', parity.clean(parity.spectrumResult(Q.ctx, Q.rows.map(r => (r[0] === Q.ctx.T ? [r[0], r[1], r[2] + 0.2 * b46 * bnu(r[1], 200) / bnu(4.6, 200), r[3], r[4]] : r)), Q.used)));
 save('quiet', Q.result);
 const w1 = measure(L1, ra, dec, cats => ({ ...cats, twomass: cats.twomass.map(r => (Math.abs(+r.ra - 84.018124) < 1e-4 && Math.abs(+r.dec + 6.577501) < 1e-4 ? { ...r, ph_qual: 'ABA' } : r)) }));
 save('w1_mode', w1.result);

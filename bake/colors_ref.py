@@ -530,7 +530,10 @@ def spectrum_result(rows, T, cand, col, tol, normflux, NORM, star, used, K, TM, 
     res = dict(v=1, method='colors-v1', state='ok', reason='', star=star, data=used)
     st = rows[rows[:, 0] == T]
     if not len(st):
-        res.update(state='inconclusive', reason='SPHEREx measured no colours of this star'); res['fingerprints'] = all_rows('inconclusive', res['reason']); return res
+        res.update(state='inconclusive', reason='SPHEREx measured no colours of this star'); res['fingerprints'] = all_rows('inconclusive', res['reason'])
+        # a star saturated in every exposure leaves no measurements: the saturation is still the reason given
+        res['saturation'] = dict(n=used['saturated'], of=used['exposures_on_star'])
+        _sat(res, 2 * used['saturated'] >= used['exposures_on_star'] and used['saturated'] > 0); return res
     t_all = np.sort(np.unique(st[:, 4])); g = pass_groups(t_all); passes = np.array([t_all[g == k].mean() for k in np.unique(g)])
     S = per_source(rows, [T] + list(cand), passes)
     npass = len(passes)

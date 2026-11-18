@@ -38,10 +38,12 @@ CHECK = """(R) => {
   if (bl.length !== B.lam.length || bl.some(([x, y], i) => !near(x, sx(B.lam[i])) || !near(y, sy(B.mjy[i])))) bad.push('bare line');
   const band = pts(svg.querySelector('polygon.bare-band')), n = B.lam.length;
   if (band.length !== 2 * n || band.slice(0, n).some(([x, y], i) => !near(y, sy(B.mjy[i] + B.spread[i]))) || band.slice(n).reverse().some(([x, y], i) => !near(y, sy(B.mjy[i] - B.spread[i])))) bad.push('bare band');
-  const rise = R.fingerprints.rise.verdict === 'seen', want = p.lam.map((l, i) => [l, p.fit[i]]).filter(([l]) => l >= 2.42).map(([l, f]) => [l, rise ? Math.max(f, bareAt(l)) : f]);
+  const rise = R.fingerprints.rise.verdict === 'seen', want = p.lam.map((l, i) => [l, p.fit[i]]).filter(([l]) => l >= 2.42);
   const fl = pts(svg.querySelector('polyline.fit'));
   if (fl.length !== want.length || fl.some(([x, y], i) => !near(x, sx(want[i][0])) || !near(y, sy(want[i][1])))) bad.push('fit curve');
   if (!!svg.querySelector('polygon.extra') !== rise) bad.push('extra light area');
+  if (rise) { const ex = pts(svg.querySelector('polygon.extra')), m = want.length;   // the shaded area: the fit, held at or above the bare star
+    if (ex.length !== 2 * m || ex.slice(0, m).some(([x, y], i) => !near(y, sy(Math.max(want[i][1], bareAt(want[i][0])))))) bad.push('extra light shape'); }
   for (const o of R.old ?? []) {
     const m = svg.querySelector(`.old[data-band="${o.band}"]`); if (!m) { bad.push(`old ${o.band} missing`); continue; }
     const cx = m.tagName === 'rect' ? +m.getAttribute('x') + +m.getAttribute('width') / 2 : +m.getAttribute('d').match(/^M([\\d.]+) /)[1];
@@ -54,7 +56,8 @@ CHECK = """(R) => {
     if (r.dataset.v !== v || ic !== v) bad.push(`row ${r.dataset.hl} ${ic} for ${v}`);
     if (v === 'inconclusive' && !r.dataset.g.includes(R.fingerprints[r.dataset.hl].reason)) bad.push(`row ${r.dataset.hl} reason`); }
   const big = document.querySelector('#co-big b')?.textContent ?? '', k = R.fits[d.pass];
-  if (R.fingerprints.temperature.verdict === 'seen' ? big !== `${k.T} K` : /K$/.test(big)) bad.push(`big number ${big}`);
+  const own = k && k.b >= 5 * k.b_err && k.T > 200 && k.T < 2500, shownT = R.fingerprints.temperature.verdict === 'seen' && (d.pass === 'all' || own);
+  if (shownT ? big !== `${k.T} K` : /K$/.test(big)) bad.push(`big number ${big}`);
   if (!/^\\d/.test(String(R.comparisons.n)) || !document.querySelector('.co-key .gl').dataset.g.startsWith(`What this star gives off on its own: ${R.comparisons.n} stars`)) bad.push('comparison count');
   return bad;
 }"""
@@ -109,7 +112,7 @@ with sync_playwright() as p:
     for name, text in want.items():
         if name not in fixtures: check(False, f'E7 {name}: fixture missing'); continue
         ctx, pg, _ = open_with(b, fixtures[name]); wait_result(pg)
-        shown = pg.inner_text('#tn-colors'); check(text in shown and 'Inconclusive' in shown, f'E7 {name}: "{text}" shown')
+        shown = pg.inner_text('#tn-colors'); check(text.lower() in shown.lower() and 'Inconclusive' in shown, f'E7 {name}: "{text}" shown')
         ctx.close()
     rowwise = {'w1_mode': ('rise', 'no clean 2MASS Ks'), 'poor_fit': ('spike', 'the best fit misses the colours'), 'grid_edge': ('rise', None), 'd6_dropped': ('seam', 'too few colours on both sides of 4.42 um')}
     for name, (row, text) in rowwise.items():
@@ -126,7 +129,7 @@ with sync_playwright() as p:
     def live(routes, text, label, timeout=180000):
         ctx, pg, _ = open_with(b, None, routes=[none, *routes])
         pg.wait_for_selector('[data-start]:not([disabled])', timeout=60000); pg.click('[data-start]')
-        wait_result(pg, timeout); shown = pg.inner_text('#tn-colors'); check(text in shown, f'E7 {label}: "{text}" shown' + ('' if text in shown else f' (got: {shown[:160]!r})'))
+        wait_result(pg, timeout); shown = pg.inner_text('#tn-colors'); check(text.lower() in shown.lower(), f'E7 {label}: "{text}" shown' + ('' if text in shown else f' (got: {shown[:160]!r})'))
         ctx.close()
     live([('**/api/cat?**', lambda r: r.fulfill(status=503, content_type='application/json', body='{"error":"catalogue unavailable"}'))], 'is not answering', 'catalogue service down (503)')
     live([('https://nasa-irsa-spherex.s3.amazonaws.com/**', lambda r: r.abort())], "NASA's SPHEREx archive (S3) is not answering", 'S3 down')

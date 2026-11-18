@@ -866,6 +866,9 @@ function spectrumResult(ctx, rows, used) {
     res.state = "inconclusive";
     res.reason = "SPHEREx measured no colours of this star";
     res.fingerprints = allRows("inconclusive", res.reason);
+    // a star saturated in every exposure leaves no measurements: the saturation is still the reason given
+    res.saturation = { n: used.saturated, of: used.exposures_on_star };
+    saturation(res, 2 * used.saturated >= used.exposures_on_star && used.saturated > 0);
     return res;
   }
   const times = Array.from(new Set(st.map((r2) => r2[4]))).sort((a, b) => a - b), g = passGroups(times), passes = Array.from(new Set(g), (k) => mean(times.filter((_, i) => g[i] === k))), S = perSource(rows, [T, ...cand], passes), ct = col(T), dc = cand.map((i) => col(i).map((v, k) => Math.abs(v - ct[k]))), mov = Object.fromEntries(cand.map((i) => [i, S[i] ? pairZ(S[i], passes.length).some((z) => Math.abs(z) > 3) : false]));

@@ -74,6 +74,15 @@ PY
 then echo "PASS oldsky tiles are IRSA's own bytes, checksums match"; else echo "FAIL oldsky tiles"; fails=$((fails + 1)); fi
 check "baked showcase blink" "/api/blink?ra=84.01808&dec=-6.5775" 200 '"designation":"J053604.34-063439.0"'
 check "no baked blink elsewhere" "/api/blink?ra=10&dec=10" 404 'no baked blink here'
+# Colors (worker/src/cat.js): catalogues and the baked showcase
+check "catalogue: unlisted" "/api/cat?cat=sdss&ra=84.0181&dec=-6.577" 400 'cat must be one of'
+check "catalogue: bad position" "/api/cat?cat=2mass&ra=400&dec=0" 400 'ra must be 0 to 360'
+check "catalogue: 2MASS at C-0176" "/api/cat?cat=2mass&ra=84.0181&dec=-6.577" 200 'designation,ra,dec,err_maj'
+check "catalogue: Gaia with its variable flag" "/api/cat?cat=gaia&ra=84.0181&dec=-6.577" 200 'phot_variable_flag'
+check "catalogue: SIMBAD" "/api/cat?cat=simbad&ra=84.0181&dec=-6.577" 200 'main_id,otype,ra,dec'
+check "catalogue: VSX" "/api/cat?cat=vsx&ra=84.0181&dec=-6.577" 200 'OID'
+check "baked showcase colors" "/api/colors?ra=84.0181&dec=-6.577" 200 '"method":"colors-v1"'
+check "no baked colors elsewhere" "/api/colors?ra=10&dec=10" 404 'no baked colors here'
 check "explored cells" "/api/explored" 200 '"cells":'
 check "explored suggests a patch" "/api/explored" 200 '"suggest":{"ra":'
 check "home page served" "/" 200 'Trailblazer'

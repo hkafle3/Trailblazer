@@ -32,13 +32,17 @@ const run = (name, mutate) => new Promise(done => {
   fs.copyFileSync(path.join(here, '../live/fits.js'), path.join(live, 'fits.js'));
   fs.copyFileSync(path.join(here, 'colors_parity.mjs'), path.join(tests, 'colors_parity.mjs'));
   execFile('node', [path.join(tests, 'colors_parity.mjs'), fixture, ref, ra, dec], { maxBuffer: 64 << 20 }, (err, out) => {
-    // the run-time check does not count: a mutant is caught only by a science check failing, or by crashing
-    const failed = out.split('\n').filter(l => l.startsWith('FAIL') && !l.includes('build performance')).map(l => l.slice(5, 60));
-    done({ name, caught: failed.length > 0 || (!!err && !/FAIL /.test(out)), failed });
+    // the run-time check does not count, nor does a crash: a mutant is caught only by a science check failing
+    const failed = out.split('\n').filter(l => l.startsWith('FAIL') && !l.includes('build performance')).map(l => l.slice(5, 60)), ran = /^PASS 1\. |^FAIL 1\. /m.test(out);
+    done({ name, caught: ran && failed.length > 0, ran, failed });
   });
 });
+// the unmutated copy first: it must run every check and fail none, or the mutants prove nothing
+const base = await run('baseline', s => s);
+if (!base.ran || base.failed.length) { console.log(`FAIL baseline: ${base.ran ? base.failed.join('; ') : 'the parity test did not run'}`); process.exit(1); }
+console.log('PASS baseline: the unmutated copy passes every science check');
 const res = await Promise.all(Object.entries(MUTANTS).map(([n, m]) => run(n, m)));
 let bad = 0;
-for (const r of res) { console.log(`${r.caught ? 'PASS' : 'FAIL'} ${r.name}: ${r.caught ? 'caught by ' + (r.failed.join('; ') || 'a crash') : 'SURVIVED the parity test'}`); bad += !r.caught; }
+for (const r of res) { console.log(`${r.caught ? 'PASS' : 'FAIL'} ${r.name}: ${r.caught ? 'caught by ' + (r.failed.join('; ') || 'a crash') : (r.ran ? 'SURVIVED the parity test' : 'did not run')}`); bad += !r.caught; }
 console.log(bad ? `E4: ${bad} mutation(s) survived` : 'E4: PASS, every mutation caught');
 process.exit(bad ? 1 : 0);

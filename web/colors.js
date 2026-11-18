@@ -172,7 +172,8 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
   const yearOf = o => (o.jd ? new Date((o.jd - 2440587.5) * 864e5).getUTCFullYear() : mjdDate(o.mjd.filter(Number.isFinite).reduce((a, b) => a + b, 0) / o.mjd.filter(Number.isFinite).length).getUTCFullYear());
   function passList(R) {
     const ps = R.passes.filter(p => p.lam.length), n = ps.filter(p => p.key !== 'all').length;
-    return ps.filter(p => p.key === 'all' ? n > 1 : true).map(p => {
+    // "All" with the passes when there are two or more; a lone pass alone; "All" alone when no single pass has colours
+    return ps.filter(p => (p.key === 'all' ? n !== 1 : true)).map(p => {
       if (p.key === 'all') return { ...p, lg: 'All', sh: 'All', say: `all ${nWord(n)} passes` };
       const d = mjdDate(p.mjd); return { ...p, lg: `${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`, sh: `${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`, say: `${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}` };
     });
@@ -193,7 +194,9 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
     const R = S.result, P = passList(R), p = P[S.pass], k = R.fits[p.key], svg = coBox.querySelector('#co-svg'), fp = R.fingerprints, W = words(R);
     if (!svg) return;
     for (const b of coWl.querySelectorAll('.co-seg button')) { const on = +b.dataset.pass === S.pass; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }
-    const B = R.bare, bare = l => bareAt(B, l), b46 = bare(4.6), dust = fp.temperature?.verdict === 'seen', rise = fp.rise?.verdict === 'seen';
+    const B = R.bare, bare = l => bareAt(B, l), b46 = bare(4.6), rise = fp.rise?.verdict === 'seen';
+    // a pass's own temperature only when its own dust is detected (5 times its noise) and off the grid's edges
+    const own = f => f && f.b >= 5 * f.b_err && f.T > 200 && f.T < 2500, dust = fp.temperature?.verdict === 'seen' && (p.key === 'all' || own(k));
     const cs = R.comparison_systematic, pct = Math.round((p.key === 'all' ? R.excess_46 : k.b / b46) * 100);
     // the reading
     coBox.querySelector('#co-band').innerHTML = `${gl('0.75–5 µm', G.micron)} · ${esc(p.say)}`;
@@ -207,6 +210,9 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
       const grew = pf.length > 1 ? ` Over the ${nWord(pf.length)} passes it went ${pf.map(f => f.b.toFixed(2)).join(', ')} mJy. ${Math.max(...steps) < 3 ? `Each step is within about ${Math.max(1, Math.round(Math.max(...steps)))} times the noise: ${up ? 'a hint of growth, not yet a finding' : 'no clear change between passes'}.` : 'At least one step is larger than three times the noise.'}` : '';
       const sysx = p.key === 'all' && cs ? ` The choice of comparison stars alone moves the ${pct}% by about ${Math.round(cs.excess_46_sys * 100)} points.` : '';
       near.innerHTML = gl(`+${pct}% light at 4.6 µm`, `The dust adds ${k.b.toFixed(2)} mJy at 4.6 µm on top of the bare star's ${b46.toFixed(2)}, so ${p.key === 'all' ? 'the star now shines' : 'it shone'} about ${(1 + k.b / b46).toFixed(1)} times as bright there.${grew}${sysx}`);
+    } else if (fp.temperature?.verdict === 'seen') {
+      big.innerHTML = '';
+      near.textContent = `In this pass alone the dust is not detected: ${k.b.toFixed(2)} ± ${k.b_err.toFixed(2)} mJy at 4.6 µm. All passes together give ${R.fits.all.T} K.`;
     } else if (fp.rise?.verdict === 'not seen') {
       big.innerHTML = `<b>No dust</b><span>${gl('star alone', 'The bare star fits every colour within the noise, so there is no dust to measure.')}</span>`;
       near.innerHTML = gl(`${pct >= 0 ? '+' : ''}${pct}% light at 4.6 µm`, `The fit puts ${k.b.toFixed(2)} mJy of extra light at 4.6 µm on the bare star's ${b46.toFixed(2)}, within the noise (${k.b_err.toFixed(2)}).`);
@@ -236,7 +242,7 @@ export function candidateBox(box, { ra, dec, name = '', onResult = () => {} }) {
     // the fitted star (+ dust) curve from where the curve leaves the bare star; the extra light only when the rise is seen
     const fitPts = p.lam.map((l, i) => [l, p.fit[i]]).filter(([l]) => l >= 2.42), area = fitPts.map(([l, f]) => [l, Math.max(f, bare(l)), bare(l)]);
     if (rise) add('polygon', { class: 'extra', points: [...area.map(([l, f]) => `${sx(l).toFixed(1)},${sy(f).toFixed(1)}`), ...area.map(([l, , b]) => `${sx(l).toFixed(1)},${sy(b).toFixed(1)}`).reverse()].join(' ') });
-    line((rise ? area.map(([l, f]) => [l, f]) : fitPts).map(([l, f]) => [sx(l), sy(f)]), 'fit');
+    line(fitPts.map(([l, f]) => [sx(l), sy(f)]), 'fit');   // the fitted curve as computed; only the shaded area stops at the bare star
     const mark = (l, label, cls, anchor = 'middle') => { add('line', { class: `mark ${cls}`, x1: sx(l), x2: sx(l), y1: Y0, y2: Y1 }); add('text', { class: `mark-lab ${cls}`, x: sx(l), y: Y0 - 4, 'text-anchor': anchor }).textContent = label; };
     mark(4.05, 'Brα 4.05', 'hl-spike'); mark(3.0, 'water ice', 'hl-dip'); mark(4.27, 'CO₂ ice', 'hl-dip', 'end'); mark(3.82, 'seam', 'hl-seam', 'end'); mark(4.42, 'seam', 'hl-seam', 'start');
     const pts = [];
