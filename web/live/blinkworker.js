@@ -38,7 +38,12 @@ async function oldSky(base, band, ra, dec, signal, progress) {
     const { pending } = await r.json();
     for (const [i, name] of pending.entries()) {
       progress(`Fetching the ${survey === 'allwise' ? 'AllWISE' : '2MASS'} picture: ${i + 1} of ${pending.length}`);
-      const t = await get(`${base}/api/oldsky/tile?${q}&name=${encodeURIComponent(name)}`);
+      let t;
+      for (let k = 0; k < 3; k++) {   // IRSA's cutouts answer 503 now and then: each try is a new, cheap request
+        t = await get(`${base}/api/oldsky/tile?${q}&name=${encodeURIComponent(name)}`);
+        if (t.ok || t.status === 429 || t.status === 404) break;
+        await new Promise(res => setTimeout(res, 1500 * (k + 1)));
+      }
       if (t.status === 429) throw new Unavailable('old-unavailable', 'Too many new spots at once. Try again in a minute');
       if (!t.ok) throw irsaDown;
     }
