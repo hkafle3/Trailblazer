@@ -9,14 +9,15 @@ For every known comet in the data, at 1440x900 and on a phone (390x844):
 - one time-lapse link per SPHEREx visit (detail.facts.inv.visits), each naming the comet (&comet=) and pointing at a
   picture the comet's record holds (the time-lapse's own check, timelapse.html cometOf: within 5 s, same detector,
   within 2 pixels); web/tests/comet_timelapse_ui.py follows them into the time-lapse;
-- the Depth tab draws the comet's path, the Sun, Earth and where the comet is now;
+- the Depth tab plays the comet's photos in 3D (comet3d.js): its path, the Sun, Earth with SPHEREx and the comet, read
+  from the scene's test hook (window.__scene);
 - no tag vote; Discuss is folded;
 - images load, no page or console errors, nothing wider than the window.
 The list: every known comet is listed once and links to its page; the same label, width and error checks.
 A name that is not in the data says so and links back to the list.
 Full-size screenshots of Bok, 235P and the list at both sizes go to the folder given as the second argument.
 Run: uv run -q --with playwright python web/tests/comet_page_ui.py [base url] [screenshot folder]   (default http://127.0.0.1:8873)"""
-import asyncio, math, sys, urllib.parse
+import asyncio, json, math, sys, urllib.parse, urllib.request
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8873"
@@ -73,9 +74,9 @@ READ = """() => { const $ = s => document.querySelector(s), $$ = s => [...docume
     visits: $$('.vstrip .v:not(.next)').length, links: $$('.vstrip .v a.lapse').map(a => a.getAttribute('href')),
     tags: $$('input[name=tag], [data-t]').length, discussOpen: $('.discuss')?.open ?? null,
     imgs: $$('main img').filter(i => i.complete && i.naturalWidth === 0 && i.getAttribute('src')).map(i => i.getAttribute('src')) }; }"""
-DEPTH = """() => { const s = document.querySelector('.shot .depth .scene svg'); if (!s || !s.getClientRects().length) return null;
-  const p = s.querySelector('.cpath'); return { pts: p ? p.getAttribute('points').trim().split(/\\s+/).length : 0,
-    sun: !!s.querySelector('.sun'), earth: !!s.querySelector('.earth'), now: !!s.querySelector('.now') }; }"""
+DEPTH = """() => { const s = window.__scene, c = document.querySelector('.shot .depth .p3-solar canvas'); if (!s || !c || !c.getClientRects().length) return null;
+  const sh = s.shown, names = s.labels().map(l => l.text);
+  return { pts: sh.pts, sun: !!s.view().sun && names.includes('Sun'), earth: sh.earth.length === 3 && names.includes('Earth · SPHEREx'), comet: sh.comet.length === 3 }; }"""
 CLIPPED = """() => { const W = innerWidth, out = [];
   for (const e of document.querySelectorAll('main *')) { const r = e.getBoundingClientRect();
     if (r.width && r.height && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.vstrip') && (r.right > W + 1 || r.left < -1)) out.push(e.id || e.className.baseVal || e.className || e.tagName); }
@@ -151,10 +152,10 @@ async def comet_page(ctx, size, cid, c):
         await fullshot(pg, f"{SHOTS}/{SHOT_IDS[cid]}-{size}.png")
     try:
         await pg.click("#tab-depth", timeout=3000)
-        await pg.wait_for_timeout(300)
+        await pg.wait_for_function("window.__scene !== undefined", timeout=30000); await pg.wait_for_timeout(300)
         dp = await pg.evaluate(DEPTH)
     except Exception as e: dp = str(e)[:80]
-    check(isinstance(dp, dict) and dp["pts"] >= 10 and dp["sun"] and dp["earth"] and dp["now"], f"{why}: Depth path scene {dp}")
+    check(isinstance(dp, dict) and dp["pts"] >= 10 and dp["sun"] and dp["earth"] and dp["comet"], f"{why}: Depth path scene {dp}")
     if cid in SHOT_IDS and SHOTS and isinstance(dp, dict):
         await pg.locator(".shot").screenshot(path=f"{SHOTS}/{SHOT_IDS[cid]}-{size}-depth.png")
     check(not errors, f"{why}: page or console errors {errors[:3]}")
@@ -195,46 +196,53 @@ async def list_page(ctx, size, known, listing):
 
 
 async def depth_solution(ctx):
-    """Depth never joins the daily snapshot to the baked path when they come from different JPL solutions (x.same)."""
-    for soln, joined in ((None, True), ("JPL#999", False)):
+    """Depth shows JPL's positions at each photo's time from the baked path (and its solution), never the daily snapshot:
+    a snapshot from another JPL solution changes nothing in it."""
+    cid = "C/2026 A2 (Bok)"
+    rec = json.loads(urllib.request.urlopen(BASE + "/api/comets/" + urllib.parse.quote(cid, safe="")).read())
+    soln = (rec["detail"]["facts"]["path"].get("soln") or rec["detail"]["facts"]["orb"]["soln"])
+    got = []
+    for other in (None, "JPL#999"):
         pg = await ctx.new_page(); errors = watch(pg)
-        if soln:
-            def other(soln):
+        if other:
+            def swap(other):
                 async def handle(route):
-                    r = await route.fetch(); body = await r.json(); body["now"]["soln"] = soln
+                    r = await route.fetch(); body = await r.json(); body["now"]["soln"] = other
                     await route.fulfill(response=r, json=body)
                 return handle
-            await pg.route("**/api/comets/C%2F2026%20A2%20(Bok)", other(soln))
-        await pg.goto(BASE + "/comet.html?id=" + urllib.parse.quote("C/2026 A2 (Bok)", safe=""))
+            await pg.route("**/api/comets/C%2F2026%20A2%20(Bok)", swap(other))
+        await pg.goto(BASE + "/comet.html?id=" + urllib.parse.quote(cid, safe=""))
         await ready(pg, "depth solution")
-        await pg.click("#tab-depth"); await pg.wait_for_timeout(400)
-        g = await pg.evaluate("({ sight: !!document.querySelector('.shot .depth .sight'), now: !!document.querySelector('.shot .depth .now'), src: document.getElementById('c-scene-src').textContent })")
-        why = f"Depth with {'another JPL solution' if soln else 'the same solution'} in the snapshot"
-        if joined: check(g["sight"] and g["now"] and "as of" in g["src"], f"{why}: {g}")
-        else: check(not g["sight"] and g["now"] and "as of" not in g["src"], f"{why}: the snapshot is drawn onto the baked path {g}")
+        await pg.click("#tab-depth"); await pg.wait_for_function("!!window.__scene", timeout=30000)
+        await pg.evaluate("(async () => { await __scene.ready; __scene.play(false); __scene.go(0, { glide: false }); })()"); await pg.wait_for_timeout(200)
+        g = await pg.evaluate("({ src: document.getElementById('c-scene-src').textContent, earth: __scene.shown.earth, comet: __scene.shown.comet })")
+        why = f"Depth with {'another JPL solution' if other else 'the same solution'} in the snapshot"
+        check(soln in g["src"] and "at each photo's time" in g["src"] and "as of" not in g["src"], f"{why}: the caption names the baked positions ({g['src']})")
+        got.append((g["earth"], g["comet"]))
         check(not errors, f"{why}: errors {errors[:3]}")
         await pg.close()
+    check(got[0] == got[1], f"Depth: the snapshot's solution changes nothing in the scene ({got})")
 
 
 # ---------------- Depth zoom (the time-lapse Depth view's, web/live/depth.js, mirrored on the path scene) ----------------
-SCENE = """() => { const v = window.__scene?.view?.() ?? null, f = document.querySelector('.shot .depth .scene svg text');
+SCENE = """() => { const v = window.__scene?.view?.() ?? null, f = document.querySelector('.shot .depth .p3-solar .lbl');
   return { v, font: f ? getComputedStyle(f).fontSize : null, scale: visualViewport.scale, sy: scrollY + document.body.scrollTop }; }"""
 # names shown in the scene that run past its edges or under the tabs or the zoom buttons
 UNDER = """(() => { const sc = document.querySelector('.shot .depth .scene').getBoundingClientRect(), out = [];
   const covers = ['.shot .tabs', '.shot .dzoom'].map(s => document.querySelector(s)).filter(e => e && e.offsetWidth).map(e => e.getBoundingClientRect());
-  for (const t of document.querySelectorAll('.shot .depth .scene svg text')) { const r = t.getBoundingClientRect(); if (!r.width) continue;
+  for (const t of document.querySelectorAll('.shot .depth .p3-solar .lbl')) { const r = t.getBoundingClientRect(); if (!r.width || +t.style.opacity < .01) continue;
     if (r.left < sc.left - 1 || r.right > sc.right + 1 || r.top < sc.top - 1 || r.bottom > sc.bottom + 1) out.push(t.textContent + ' past the edge');
     for (const c of covers) if (r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top) out.push(t.textContent + ' under a control'); }
   return out; })()"""
-# names that do not sit at what they name: each text's data-at lists its point (or a ring's points), and the text's box
-# must come within 22 px of one of them
+# names that do not sit at what they name: each shown name's data-at is its point (in the scene's own px), and the name's
+# box must come within 22 px of it
 AWAY = """(() => { const sc = document.querySelector('.shot .depth .scene').getBoundingClientRect(), out = [];
-  for (const t of document.querySelectorAll('.shot .depth .scene svg text[data-at]')) { const r = t.getBoundingClientRect();
+  for (const t of document.querySelectorAll('.shot .depth .p3-solar .lbl[data-at]:not([data-at=""])')) { const r = t.getBoundingClientRect(); if (+t.style.opacity < .01) continue;
     const d = Math.min(...t.dataset.at.split(' ').map(s => s.split(',').map(Number)).map(([x, y]) => { x += sc.left; y += sc.top;
       return Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)); }));
     if (d > 22) out.push(`${t.textContent} ${Math.round(d)} px from it`); }
-  const names = [...document.querySelectorAll('.shot .depth .scene svg text')].map(t => t.textContent);
-  for (const n of ['Earth today', 'Sun']) if (!names.includes(n)) out.push(n + ' missing');
+  const names = [...document.querySelectorAll('.shot .depth .p3-solar .lbl')].filter(t => +t.style.opacity > .5).map(t => t.textContent);
+  for (const n of ['Earth · SPHEREx', 'Sun']) if (!names.includes(n)) out.push(n + ' missing');
   return out; })()"""
 about = lambda p, a, f: [a[0] + (p[0] - a[0]) * f, a[1] + (p[1] - a[1]) * f]
 off = lambda p, q: math.hypot(p[0] - q[0], p[1] - q[1]) if p and q else 1e9
@@ -244,7 +252,7 @@ async def depth_zoom(b):
     bok = BASE + "/comet.html?id=" + urllib.parse.quote("C/2026 A2 (Bok)", safe="")
     # ---------------- desktop ----------------
     ctx = await b.new_context(viewport={"width": 1440, "height": 900}); pg = await ctx.new_page(); errors = watch(pg)
-    await pg.goto(bok); await ready(pg, "zoom"); await pg.click("#tab-depth"); await pg.wait_for_timeout(400)
+    await pg.goto(bok); await ready(pg, "zoom"); await pg.click("#tab-depth"); await pg.wait_for_function("!!window.__scene", timeout=30000); await pg.wait_for_timeout(1400)
     st = lambda: pg.evaluate(SCENE)
     s0 = await st()
     if not s0["v"]:
@@ -292,7 +300,7 @@ async def depth_zoom(b):
     await ctx.close()
     # ---------------- phone: a two-finger pinch about its midpoint ----------------
     ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True); pg = await ctx.new_page(); errors = watch(pg)
-    await pg.goto(bok); await ready(pg, "zoom phone"); await pg.click("#tab-depth"); await pg.wait_for_timeout(400)
+    await pg.goto(bok); await ready(pg, "zoom phone"); await pg.click("#tab-depth"); await pg.wait_for_function("!!window.__scene", timeout=30000); await pg.wait_for_timeout(1400)
     await pg.locator(".shot").scroll_into_view_if_needed(); await pg.wait_for_timeout(200)
     st = lambda: pg.evaluate(SCENE); s0 = await st()
     if not s0["v"]:

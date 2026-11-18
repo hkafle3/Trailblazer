@@ -76,7 +76,7 @@ body.cometpage::before, body.cometpage::after { display: none; }   /* styles.css
 .cometpage .chero .key { margin-bottom: 30px; }
 .cometpage .actions { display: flex; align-items: center; gap: 28px; }
 .cometpage .actions .state { width: 300px; }
-.cometpage .shot { position: relative; }
+.cometpage .shot { position: relative; container-type: inline-size; }   /* Reset view's name goes when the box is too narrow for both control groups (below) */
 .cometpage .shot .tabs { position: absolute; left: 14px; top: 14px; z-index: 2; display: inline-flex; border: 1.5px solid #fff; border-radius: 6px; overflow: hidden; background: #000; }
 .cometpage .shot .tabs button { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; font: 400 13px/1 var(--panel-font); }
 .cometpage .shot .tabs button + button { border-left: 1.5px solid #fff; }
@@ -104,24 +104,42 @@ body.cometpage::before, body.cometpage::after { display: none; }   /* styles.css
 .cometpage .shot .dzoom button:disabled { color: rgba(255, 255, 255, .35); cursor: default; }
 .cometpage .shot .dzoom button:focus-visible { outline: 2px solid var(--comet); outline-offset: -3px; }
 .cometpage .shot .dzoom svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.cometpage .scene svg { display: block; width: 100%; height: 100%; font-family: var(--panel-font); }
-.cometpage .scene .lap { fill: none; stroke: rgba(200, 215, 255, .32); stroke-width: 1; }
-.cometpage .scene .cpath { fill: none; stroke: none; }
-.cometpage .scene .cpast { fill: none; stroke: var(--comet); stroke-width: 2.2; stroke-dasharray: 1 6; stroke-linecap: round; }
-.cometpage .scene .cfut { fill: none; stroke: var(--comet); stroke-width: 1.6; stroke-dasharray: 1 7; stroke-linecap: round; opacity: .5; }
-.cometpage .scene .glow { fill: rgba(255, 190, 110, .14); }
-.cometpage .scene .sun { fill: #fff4dc; }
-.cometpage .scene .earth { fill: #cfe3ff; }
-.cometpage .scene .sight { stroke: rgba(255, 255, 255, .55); stroke-width: 1; }
-.cometpage .scene .drop { stroke: rgba(255, 255, 255, .22); stroke-width: 1; stroke-dasharray: 1 3; }
-.cometpage .scene .mark.seen { fill: #fff; }
-.cometpage .scene .mark.faint { fill: #000; stroke: rgba(255, 255, 255, .65); stroke-width: 1.2; }
-.cometpage .scene .mark.peri { fill: #000; stroke: #fff; stroke-width: 1.5; }
-.cometpage .scene .halo { fill: rgba(255, 154, 77, .18); }
-.cometpage .scene .now { fill: var(--comet); }
-.cometpage .scene text { font-size: 11px; fill: #fff; }
-.cometpage .scene text.dim { fill: rgba(255, 255, 255, .6); }
-.cometpage .scene text.o { fill: var(--comet); }
+/* the 3D view (comet3d.js, the phase 3 mockup's comet-live/scene.css): the scene fills the square box; its names are the
+   time-lapse Depth view's (patch.css .xp-d3 .lbl) */
+.cometpage #c-scene { position: relative; }
+.cometpage .p3-solar { position: absolute; inset: 0; overflow: hidden; background: #010206; }
+.cometpage .p3-solar canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: 0; }
+.cometpage .p3-solar canvas:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+.cometpage .p3-solar .xp-d3-lbl { position: absolute; inset: 0; pointer-events: none; }
+.cometpage .p3-solar .lbl { position: absolute; left: 0; top: 0; font: 400 11px/1.3 var(--panel-font); letter-spacing: .02em; color: rgba(255, 255, 255, .82); white-space: pre; text-shadow: 0 0 6px #000, 0 0 3px #000, 0 0 2px #000; }
+.cometpage .p3-solar .lbl.accent { color: #ff9a4d; }
+.cometpage .p3-solar .lbl.dist { font-size: 12px; color: #fff; }
+.cometpage .p3-solar .lbl.mark { color: rgba(255, 255, 255, .55); font-size: 10px; }
+.cometpage .p3-miss { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); margin: 0; padding: 6px 10px; background: rgba(0, 0, 0, .8); border-top: 1.5px solid #fff; font: 400 11px/1.4 var(--panel-font); color: #fff; white-space: nowrap; pointer-events: none; }
+.cometpage .p3-miss[hidden], .cometpage .p3-play[hidden] { display: none; }
+/* the timeline: a dot per visit at its date, the knob plays and scrubs; the date over the knob */
+.cometpage .p3-play { margin-top: 34px; }
+.cometpage .p3-play .tl-line { position: relative; height: 1.5px; margin: 0 11px; background: #c9c9c9; cursor: pointer; }
+.cometpage .p3-play .tl-line::before { content: ""; position: absolute; left: 0; right: 0; top: -14px; bottom: -14px; }
+.cometpage .p3-play .tl-visit { position: absolute; top: 50%; width: 7px; height: 7px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); pointer-events: none; }
+.cometpage .p3-play .tl-visit.cur { background: #ff9a4d; box-shadow: 0 0 8px rgba(255, 154, 77, .8); }
+.cometpage .p3-play .tl-visit.miss { background: none; border: 1.5px solid rgba(255, 255, 255, .55); box-sizing: border-box; }
+.cometpage .p3-play .tl-date { position: absolute; top: -24px; transform: translateX(-50%); font: 400 11.5px/1 var(--panel-font); color: #e8e8e8; white-space: nowrap; pointer-events: none; }
+.cometpage .p3-play .tl-knob { position: absolute; top: 50%; left: var(--x, 0%); width: 22px; height: 22px; transform: translate(-50%, -50%); padding: 0; border: 0; border-radius: 50%; background: #ececec; color: #050505; cursor: grab; display: grid; place-items: center; }
+.cometpage .p3-play .tl-knob:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.cometpage .p3-play .tl-knob svg { width: 62%; height: 62%; fill: currentColor; }
+.cometpage .p3-play .tl-knob .i-play { margin-left: -6%; }
+.cometpage .p3-play .tl-knob .i-pause, .cometpage .p3-play .tl-knob.on .i-play { display: none; }
+.cometpage .p3-play .tl-knob.on .i-pause { display: block; }
+/* the photos in a row, the selected one in orange (the page's own vstrip colours); more than fit at 44 px scroll sideways */
+.cometpage .p3-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(44px, 1fr); gap: 8px; margin-top: 20px; overflow-x: auto; scrollbar-width: none; }
+.cometpage .p3-strip::-webkit-scrollbar { display: none; }
+.cometpage .p3-strip figure { margin: 0; cursor: pointer; font: 400 10.5px/1.2 var(--panel-font); color: var(--ink-3, rgba(255, 255, 255, .55)); text-align: center; white-space: nowrap; }
+.cometpage .p3-strip img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border: 1.5px solid rgba(255, 255, 255, .45); border-radius: 4px; background: #000; box-sizing: border-box; }
+.cometpage .p3-strip figcaption { margin-top: 6px; }
+.cometpage .p3-strip figure.now img { border-color: #ff9a4d; box-shadow: 0 0 10px rgba(255, 154, 77, .35); }
+.cometpage .p3-strip figure.now { color: #fff; }
+.cometpage .p3-strip figure.miss img { visibility: hidden; }
 
 /* ---------------------------------------------------------------- the six answers */
 .cometpage .answers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 56px 44px; margin-top: 104px; }
@@ -258,6 +276,8 @@ body.cometpage::before, body.cometpage::after { display: none; }   /* styles.css
   .cometpage .shot .dzoom { right: 8px; top: 8px; }
   .cometpage .shot .dzoom button { height: 44px; min-width: 44px; padding: 0; }
   .cometpage .shot .dzoom span { display: none; }   /* Reset view: the icon alone on a phone (its name is its aria-label) */
+  .cometpage .p3-strip { gap: 6px; }
+  .cometpage .p3-solar .lbl { font-size: 10px; }
   .cometpage .saw { margin-top: 72px; }
   .cometpage .saw-head { flex-direction: column; gap: 4px; }
   .cometpage .vstrip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 16px; margin-right: -16px; padding-right: 16px; padding-top: 6px; }
@@ -275,3 +295,6 @@ body.cometpage::before, body.cometpage::after { display: none; }   /* styles.css
   .cometpage .crows { grid-template-columns: minmax(0, 1fr); }
   .cometpage .crow small { white-space: normal; }
 }
+/* the Photo | Depth tabs and the zoom buttons share the box's top edge: when it is too narrow for both with Reset view
+   named, Reset view keeps its icon alone (its name is its aria-label), as on a phone */
+@container (max-width: 420px) { .cometpage .shot .dzoom span { display: none; } }
