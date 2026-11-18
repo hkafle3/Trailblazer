@@ -2,6 +2,7 @@
 // detector, so one spot on the sky is seen at a different wavelength in every exposure that covers it, and on six
 // detectors at once (0.75 to 5 µm). The spot's light in enough exposures is its spectrum: here, the exposure nearest
 // the middle of each of the 102 channels (live/spectral.js), measured by cutout.js starLight.
+import { imagesOf } from './images.js';
 import { imageHeader, worldToPix, wavelengthAt } from './fits.js';
 import { pool, starLight } from './cutout.js';
 import { CHANNELS } from './spectral.js';
@@ -13,8 +14,8 @@ export const MJY = (6.15 / 206265) ** 2 * 1e9;   // MJy/sr over one 6.15 arcsec 
 
 async function images(api, ra, dec, det, signal) {   // a 503 is IRSA busy behind the Worker: two more tries, 3 s apart
   for (let k = 0; ; k++) {
-    const r = await fetch(`${api}/api/images?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}&v=2`, { signal });
-    if (r.ok) return (await r.json()).images;
+    const r = await fetch(`${api}/api/images?ra=${ra.toFixed(4)}&dec=${dec.toFixed(4)}&det=${det}&fmt=2&v=2`, { signal });
+    if (r.ok) return imagesOf(await r.json());
     if (r.status !== 503 || k === 2) throw new Error(`image search ${det}: HTTP ${r.status}`);
     await new Promise(ok => setTimeout(ok, 3000));
   }

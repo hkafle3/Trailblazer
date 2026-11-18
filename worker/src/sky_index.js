@@ -188,18 +188,27 @@ function fields(p, i) {
 // and the matching images per collection, each counted once. No strings or objects per row: the JSON writer below
 // prints straight from the buffers, as the point search does (Codex re-review 1: building them cost 9x the point search).
 async function pickRegion(read, ra, dec, det, pin, r) {
-  const best = new Map(), seen = new Set(); let collections = null;
+  // numbers only, no per-row objects: a row is (pick k, row i) packed as k * 2^21 + i; first[] keeps first-seen order,
+  // which breaks ties in time as the stable sort of an insertion-ordered list did
+  const picks = [], best = new Map(), mask = new Map(), first = new Map(); let collections = null, n = 0;
   for (const cell of regionCells(ra, dec, r)) {
-    const p = await pick(read, ra, dec, det, pin, r, cell);
-    collections ??= Object.fromEntries(Object.keys(p.collections).map(k => [k, 0]));
-    for (const i of p.rows) {
-      const fo = p.h.folders[p.u16[i * 32 + 28]], id = (fo.p * 10000 + p.u16[i * 32 + 29]) * 10 + p.u8[i * ROW + 60], coll = p.u8[i * ROW + 61];
-      if (!seen.has(id * 4 + coll)) { seen.add(id * 4 + coll); collections[COLLS[coll]]++; }
+    const p = await pick(read, ra, dec, det, pin, r, cell), k = picks.push(p) - 1;
+    collections ??= Object.fromEntries(Object.keys(p.collections).map(c => [c, 0]));
+    const u16 = p.u16, u8 = p.u8, folders = p.h.folders;
+    for (let q = 0; q < p.rows.length; q++) {
+      const i = p.rows[q], id = (folders[u16[i * 32 + 28]].p * 10000 + u16[i * 32 + 29]) * 10 + u8[i * ROW + 60], coll = u8[i * ROW + 61];
+      const m = mask.get(id) ?? 0;
+      if (!(m & (1 << coll))) { mask.set(id, m | (1 << coll)); collections[COLLS[coll]]++; }
       const had = best.get(id);
-      if (!had || coll < had[0].u8[had[1] * ROW + 61]) best.set(id, [p, i]);
+      if (had === undefined) { best.set(id, k * 2097152 + i); first.set(id, n++); }
+      else if (coll < picks[Math.floor(had / 2097152)].u8[(had % 2097152) * ROW + 61]) best.set(id, k * 2097152 + i);
     }
   }
-  const rows = [...best.values()].sort((x, y) => x[0].f64[x[1] * 8] - y[0].f64[y[1] * 8]);
+  const ids = [...best.keys()], ts = new Float64Array(ids.length), order = new Uint32Array(ids.length), firsts = new Float64Array(ids.length);
+  for (let q = 0; q < ids.length; q++) { const v = best.get(ids[q]); ts[q] = picks[Math.floor(v / 2097152)].f64[(v % 2097152) * 8]; firsts[q] = first.get(ids[q]); order[q] = q; }
+  order.sort((x, y) => ts[x] - ts[y] || firsts[x] - firsts[y]);
+  const rows = new Array(ids.length);
+  for (let q = 0; q < ids.length; q++) { const v = best.get(ids[order[q]]); rows[q] = [picks[Math.floor(v / 2097152)], v % 2097152]; }
   return { rows, collections: collections ?? {} };
 }
 
@@ -235,4 +244,22 @@ export async function skyImagesJson(read, ra, dec, det, pin, r = 0.001) {
     s += (k ? ',{"t":' : '{"t":') + p.f64[i * 8] + fo.a + rest + fo.b + rest + COLL_END[p.u8[i * ROW + 61]];
   }
   return `${s}],"collections":${JSON.stringify(p.collections)},"source":"index"}`;
+}
+
+// /api/images?fmt=2: the same images in the fields the browser reads, compactly: each image [t, folder, seq, sub] with
+// its folder's key and obs text given once in folders ([pre, post, period]); the key is pre + seq (4 digits) + '_' + sub +
+// post, the obs period + '_' + seq + '_' + sub (web/live/images.js turns it back). No per-image strings: at the north
+// ecliptic pole (5,126 images) the answer is about a seventh of the full one and far cheaper to write.
+export async function skyImagesCompact(read, ra, dec, det, pin, r = 0.001) {
+  let rows, collections, one = null;
+  if (r !== 0.001) ({ rows, collections } = await pickRegion(read, ra, dec, det, pin, r));
+  else { one = await pick(read, ra, dec, det, pin); collections = one.collections; rows = one.rows; }
+  const local = new Map(), folders = [];
+  let s = '';
+  for (let k = 0; k < rows.length; k++) {
+    const p = one ?? rows[k][0], i = one ? rows[k] : rows[k][1], fo = p.h.folders[p.u16[i * 32 + 28]];
+    let f = local.get(fo); if (f === undefined) { f = folders.length; local.set(fo, f); folders.push(fo); }
+    s += (k ? ',[' : '[') + p.f64[i * 8] + ',' + f + ',' + p.u16[i * 32 + 29] + ',' + p.u8[i * ROW + 60] + ']';
+  }
+  return `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}"${r !== 0.001 ? `,"r":${JSON.stringify(r)}` : ''},"fmt":2,"folders":${JSON.stringify(folders.map(fo => [fo.pre, fo.post, fo.period]))},"images":[${s}],"collections":${JSON.stringify(collections)},"source":"index"}`;
 }

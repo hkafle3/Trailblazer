@@ -4,6 +4,7 @@
 // live/blink.js. A baked blink (GET /api/blink, the showcase) is used instead when there is one.
 // in: { id, ra, dec, api, bands: ['W2', 'W1', 'Ks'], live?: true (skip the baked one) }
 // out: { id, type: 'progress', band, text } | { id, type: 'band', band, state, reason, report, frames: { ow, sw }, info } | { id, type: 'done', source }
+import { imagesOf } from './images.js';
 import * as B from './blink.js';
 import { imageHeader, imageRows, flagsHeader, flagRows, parseCards } from './fits.js';
 
@@ -99,9 +100,9 @@ async function exposures(base, det, ra, dec, signal) {
     // them truly overlap the field is decided from each one's own header (readExposure)
     const seen = new Map(), R = +(HALF * Math.SQRT2 + 0.001).toFixed(4);
     const res = await api(() => retry(async () => {
-      const r = await fetch(`${base}/api/images?ra=${ra.toFixed(5)}&dec=${dec.toFixed(5)}&det=${det}&r=${R}&v=2`, { signal });
+      const r = await fetch(`${base}/api/images?ra=${ra.toFixed(5)}&dec=${dec.toFixed(5)}&det=${det}&r=${R}&fmt=2&v=2`, { signal });
       if (!r.ok) throw new Error(`images HTTP ${r.status}`);
-      return r.json();
+      return { images: imagesOf(await r.json()) };
     }, 2).catch(e => { if (e.name === 'AbortError') throw e; throw new Unavailable('spherex-unavailable', 'The SPHEREx image search is not answering'); }));
     for (const x of res.images) if (!seen.has(x.obs)) seen.set(x.obs, { ...x, det });
     return [...seen.values()].sort((a, b) => a.t - b.t);

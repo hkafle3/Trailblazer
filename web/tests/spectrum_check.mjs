@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { starMeasure, starLight, mask, pool, R_AP } from '../live/cutout.js';
 import { csv } from '../live/spectrum.js';
+import { imagesOf } from '../live/images.js';
 import { imageHeader } from '../live/fits.js';
 
 let fail = 0;
@@ -51,7 +52,7 @@ for (const [results, attempts, measured] of [
 ]) {
   let tried = 0;
   const measure = runInNewContext(`${spectrumSource}\nspectrum`, {
-    pool, CHANNELS: [{ n: 0, detector: 'D1', lo: 1, hi: 2, um: 1.5 }],
+    pool, imagesOf, CHANNELS: [{ n: 0, detector: 'D1', lo: 1, hi: 2, um: 1.5 }],
     fetch: async u => ({ ok: true, json: async () => ({ images: u.includes('det=D1&') ? results.map((_, k) => ({ key: `${k}`, t: k })) : [] }) }),
     imageHeader: async () => ({}), worldToPix: () => [100, 100], wavelengthAt: () => [1.5, 0.02],
     starLight: async e => {
