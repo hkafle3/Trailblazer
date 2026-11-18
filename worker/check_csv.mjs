@@ -77,11 +77,11 @@ const stmt = (q, a = []) => ({ q, a, bind: (...b) => stmt(q, b),
   async first() { return this.exec().get(...a) ?? null; }, async all() { return { results: this.exec().all(...a) }; }, async run() { return this.exec().run(...a); } });
 const DB = { prepare: q => stmt(q), async batch(list) { sql.exec('BEGIN'); try { for (const x of list) x.exec().run(...x.a); sql.exec('COMMIT'); } catch (e) { sql.exec('ROLLBACK'); throw e; } } };
 const CORS = { 'Access-Control-Allow-Origin': '*' };
-const { worthSaving } = await import('./src/saved.js');
-const saved = new Function('CORS', 'worthSaving', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return { withSaved, backfill, savedKey };')(CORS, worthSaving);
+const { worthSaving, fitsSave, toFmt2 } = await import('./src/saved.js');
+const saved = new Function('CORS', 'worthSaving', 'fitsSave', 'toFmt2', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return { withSaved, backfill, savedKey };')(CORS, worthSaving, fitsSave, toFmt2);
 const waits = [], ctx = { waitUntil: p => waits.push(p) };
 const answer = (status, body, cc = 'public, max-age=86400') => async () => new Response(JSON.stringify(body), { status, headers: { 'Cache-Control': cc } });
-const ask = async (route, q) => { const u = new URL('https://x/api/images?' + q), r = await saved.withSaved(route, u, saved.savedKey(u), { DB }, ctx); await Promise.all(waits.splice(0)); return [r.status, await r.text(), r.headers]; };
+const ask = async (route, q, path = 'gaia') => { const u = new URL(`https://x/api/${path}?` + q), r = await saved.withSaved(route, u, saved.savedKey(u), { DB }, ctx); await Promise.all(waits.splice(0)); return [r.status, await r.text(), r.headers]; };
 const big = { images: Array.from({ length: 20000 }, (_, i) => ({ t: 60000 + i, key: `dr1/level2/2025W18_1B/l2b-v20-2025-${i}/image_${i}.fits`, obs: `2025W18_1B_${i}_1`, coll: 'spherex_dr1' })) };
 const s1 = await ask(answer(200, big), 'ra=1&dec=2&det=D1');
 const s2 = await ask(answer(503, { error: 'down' }), 'det=D1&dec=2&ra=1&junk=7');   // same search: other order, a junk parameter
@@ -95,7 +95,7 @@ dbDown = true; const s7 = await ask(answer(503, { error: 'down' }), 'ra=1&dec=2&
 const hitKey = saved.savedKey(new URL('https://x/api/gaia?ra=5&dec=6&cache=v2'));   // an answer already in the edge cache
 await saved.backfill({ DB }, hitKey, new Response('{"stars":[]}', { headers: { 'Cache-Control': 'public, max-age=86400', Date: 'Sat, 14 Nov 2026 10:00:00 GMT' } }));
 const filled = sql.prepare('SELECT body, saved_at FROM searches WHERE key = ?').get(hitKey);
-const bigText = JSON.stringify(big), parts = sql.prepare("SELECT count(*) n FROM searches WHERE key = '/api/images?ra=1&dec=2&det=D1'").get().n;
+const bigText = JSON.stringify(big), parts = sql.prepare("SELECT count(*) n FROM searches WHERE key = '/api/gaia?ra=1&dec=2&det=D1'").get().n;
 const okSaved = bigText.length > 2e6 && s1[0] === 200 && s2[0] === 200 && s2[1] === bigText && s2[2].get('Cache-Control') === 'no-store' && /^\d{4}-/.test(s2[2].get('X-Saved-At') || '')
   && s3[1] === bigText && s4[0] === 400 && s5[0] === 503 && s6[1] === '{"images":[7]}' && parts === 1 && s7[0] === 503
   && filled?.body === '{"stars":[]}' && filled.saved_at === Date.parse('2026-11-14T10:00:00Z')
@@ -103,7 +103,7 @@ const okSaved = bigText.length > 2e6 && s1[0] === 200 && s2[0] === 200 && s2[1] 
 // a late save of yesterday's cached answer never replaces a newer one
 await saved.backfill({ DB }, '/api/known?ra=1', new Response('{"old":1}', { headers: { 'Cache-Control': 'public, max-age=86400', Date: 'Sat, 14 Nov 2026 10:00:00 GMT' } }));
 sql.prepare("UPDATE searches SET body = '{\"new\":1}', saved_at = ? WHERE key = '/api/known?ra=1'").run(Date.now());
-const saveFn = new Function('CORS', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return save;')(CORS);
+const saveFn = new Function('CORS', 'fitsSave', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return save;')(CORS, fitsSave);
 const late = (env, id, body, at = Date.now()) => saveFn(env, id, async () => body, at), DAY = 86400e3;
 // two saves of the same search at once (both passed the early check) write once; the second finds the first's parts
 const writes = () => sql.prepare("SELECT count(*) n FROM searches WHERE key = '/api/twice'").get().n;
@@ -143,4 +143,25 @@ const okNewer2 = okNewer && sql.prepare("SELECT body FROM searches WHERE key = '
 console.log(`${okKey && okReplace && okNewer2 ? 'PASS' : 'FAIL'} saved searches: two saves at once write once, short keys, a bad detector is its own key, replacements near the cap, a cached answer over a day newer replaces the saved one, nothing rewritten within a day`); fail += !(okKey && okReplace && okNewer2);
 console.log(`${okOrder && okCap && okRace ? 'PASS' : 'FAIL'} saved searches: the newest answer wins, the 100 MB cap holds for one save or two at once`); fail += !(okOrder && okCap && okRace);
 console.log(`${okSaved ? 'PASS' : 'FAIL'} saved searches: a ${(bigText.length / 1e6).toFixed(1)} MB answer kept in parts and served on a failure or partial answer, replaced whole, never for a bad request or unsaved search; cached answers backfilled`); fail += !okSaved;
+// an image answer over 64 KB is never written to D1, measured on the text: an IRSA answer has no size header, nor has an
+// answer cached before the header existed (Codex review 3: a 111 KB fmt=2 IRSA answer was saved)
+const rowsOf = k => sql.prepare('SELECT count(*) n FROM searches WHERE key = ?').get(k).n;
+const irsaBig = { ra: 3, dec: 4, det: 'D2', fmt: 2, folders: null, images: Array.from({ length: 1500 }, (_, i) => [60000 + i, `dr1/level2/2025W18_1B/l2b/image_${i}.fits`, `2025W18_1B_${i}_1`]), source: 'IRSA' };
+const sBig = await ask(answer(200, irsaBig), 'ra=3&dec=4&det=D2&fmt=2', 'images');
+await saved.backfill({ DB }, '/api/images?ra=5&dec=6&det=D2', new Response(JSON.stringify(big), { headers: { 'Cache-Control': 'public, max-age=86400', Date: 'Sat, 14 Nov 2026 10:00:00 GMT' } }));
+await ask(answer(200, { images: [{ t: 1, key: 'k', obs: 'o' }] }), 'ra=7&dec=8&det=D2', 'images');   // a small one still is
+const okBig = JSON.stringify(irsaBig).length > 100e3 && sBig[0] === 200 && rowsOf('/api/images?ra=3&dec=4&det=D2&fmt=2') === 0
+  && rowsOf('/api/images?ra=5&dec=6&det=D2') === 0 && rowsOf('/api/images?ra=7&dec=8&det=D2') === 1;
+console.log(`${okBig ? 'PASS' : 'FAIL'} saved searches: image answers over 64 KB are not saved, with or without the size header (IRSA, old cache)`); fail += !okBig;
+// clients now ask with fmt=2; an answer saved before that (no fmt in its key) still serves them in an outage, converted
+const legacy = { ra: 9, dec: 10, det: 'D3', images: [{ t: 60001.5, key: 'dr1/a/image_0001_1.fits', obs: '2025W18_1B_0001_1' }, { t: 60002.5, key: 'dr1/b/image_0002_3.fits', obs: '2025W18_1B_0002_3' }], collections: { spherex_dr1: 2 }, source: 'IRSA' };
+await ask(answer(200, legacy), 'ra=9&dec=10&det=D3', 'images');
+const sNew = await ask(answer(503, { error: 'down' }), 'ra=9&dec=10&det=D3&fmt=2', 'images');
+const sOld = await ask(answer(503, { error: 'down' }), 'ra=9&dec=10&det=D3&fmt=1', 'images');
+const { imagesOf } = await import('../web/live/images.js');
+let conv = null; try { conv = JSON.parse(sNew[1]); } catch {}
+const okLegacy = sNew[0] === 200 && conv?.fmt === 2 && JSON.stringify(imagesOf(conv)) === JSON.stringify(legacy.images)
+  && JSON.stringify(conv.collections) === JSON.stringify(legacy.collections) && conv.ra === 9 && conv.source === 'IRSA' && sNew[2].get('Cache-Control') === 'no-store'
+  && sOld[0] === 200 && sOld[1] === JSON.stringify(legacy);
+console.log(`${okLegacy ? 'PASS' : 'FAIL'} saved searches: in an outage a fmt=2 (or fmt=1) search falls back to the answer saved without fmt, converted`); fail += !okLegacy;
 process.exit(fail ? 1 : 0);

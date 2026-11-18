@@ -5,3 +5,8 @@
 // go down with IRSA, so the outage copy matters least for them.
 export const SAVE_MAX_BYTES = 64 << 10;
 export const worthSaving = res => !(Number(res.headers.get('X-Answer-Bytes')) > SAVE_MAX_BYTES);
+// The header only skips the work early. The limit itself is measured on the text when saving, so image answers without
+// the header (IRSA's, and answers cached before the header existed) obey it too. Characters: the answers are ASCII.
+export const fitsSave = (id, body) => !id.startsWith('/api/images') || body.length <= SAVE_MAX_BYTES;
+// An answer saved before clients asked with fmt=2 (its key has no fmt) in the fmt=2 shape: IRSA's, folders null
+export const toFmt2 = text => { const a = JSON.parse(text); return JSON.stringify({ ...a, fmt: 2, folders: null, images: a.images.map(x => [x.t, x.key, x.obs]) }); };

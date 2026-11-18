@@ -11,7 +11,7 @@ import { skyImagesJson, skyImagesCompact, eclipticLat } from './sky_index.js';
 import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
 import { snapshot, nowRow } from './now.js';
 import { oldsky, oldskyTile, stored, blinkBaked } from './oldsky.js';
-import { worthSaving } from './saved.js';
+import { worthSaving, fitsSave, toFmt2 } from './saved.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
 
@@ -685,6 +685,7 @@ async function save(env, id, text, at) {
     'coalesce((SELECT sum(length(CAST(body AS BLOB)) + 2 * length(CAST(key AS BLOB)) + 64) FROM searches WHERE key = ?), 0) AS old').bind(id, id).first();
   if (r.at !== null && r.at > at - DAY) return;
   const body = await text();
+  if (!fitsSave(id, body)) return;   // worker/src/saved.js
   if (r.n - r.old + body.length > SAVED_MAX) return;   // ponytail: a full store takes no new searches; evict the oldest if that ever bites
   const parts = [];
   for (let i = 0; i < body.length; i += PART) parts.push(body.slice(i, i + PART));   // a deep field's answer can pass 2 MB
@@ -710,9 +711,14 @@ async function withSaved(route, url, id, env, ctx) {
     return res;
   }
   if (res.status !== 200 && res.status < 500) return res;   // a bad request stays an error
-  let rows = [];
-  try { rows = (await env.DB.prepare('SELECT body, saved_at FROM searches WHERE key = ? ORDER BY part').bind(id).all()).results; } catch {}
+  const savedRows = async k => { try { return (await env.DB.prepare('SELECT body, saved_at FROM searches WHERE key = ? ORDER BY part').bind(k).all()).results; } catch { return []; } };
+  let rows = await savedRows(id), body = rows.map(r => r.body).join(''), fmt = url.searchParams.get('fmt');
+  if (!rows.length && fmt && url.pathname === '/api/images') {   // saved before clients asked with fmt: same search, old shape
+    const u = new URL(url); u.searchParams.delete('fmt');
+    rows = await savedRows(savedKey(u)); body = rows.map(r => r.body).join('');
+    if (rows.length && fmt === '2') try { body = toFmt2(body); } catch { return res; }
+  }
   if (!rows.length) return res;
-  return new Response(rows.map(r => r.body).join(''), { status: 200,
+  return new Response(body, { status: 200,
     headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'no-store', 'X-Saved-At': new Date(rows[0].saved_at).toISOString() } });
 }
