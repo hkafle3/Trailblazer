@@ -184,24 +184,31 @@ function fields(p, i) {
   return [Number(p.f64[i * 8].toFixed(6)), fo.pre + rest + fo.post, `${fo.period}_${rest}`, COLLS[p.u8[i * ROW + 61]]];
 }
 
+// A region's rows as [pick, row] pairs (each pick holds its cell's buffers), one per obs_id with DR1 first, sorted by time,
+// and the matching images per collection, each counted once. No strings or objects per row: the JSON writer below
+// prints straight from the buffers, as the point search does (Codex re-review 1: building them cost 9x the point search).
+async function pickRegion(read, ra, dec, det, pin, r) {
+  const best = new Map(), seen = new Set(); let collections = null;
+  for (const cell of regionCells(ra, dec, r)) {
+    const p = await pick(read, ra, dec, det, pin, r, cell);
+    collections ??= Object.fromEntries(Object.keys(p.collections).map(k => [k, 0]));
+    for (const i of p.rows) {
+      const fo = p.h.folders[p.u16[i * 32 + 28]], id = (fo.p * 10000 + p.u16[i * 32 + 29]) * 10 + p.u8[i * ROW + 60], coll = p.u8[i * ROW + 61];
+      if (!seen.has(id * 4 + coll)) { seen.add(id * 4 + coll); collections[COLLS[coll]]++; }
+      const had = best.get(id);
+      if (!had || coll < had[0].u8[had[1] * ROW + 61]) best.set(id, [p, i]);
+    }
+  }
+  const rows = [...best.values()].sort((x, y) => x[0].f64[x[1] * 8] - y[0].f64[y[1] * 8]);
+  return { rows, collections: collections ?? {} };
+}
+
 // The images of one detector covering (ra, dec), or (r > 0.001) coming within r degrees of it:
 // { images: [{ t, key, obs, coll }] sorted by t, collections }
 export async function skyImages(read, ra, dec, det, pin, r = 0.001) {
-  if (r !== 0.001) {   // a region: rows from every cell it can touch, one per obs_id (DR1 first), counted once each
-    const best = new Map(), counted = new Map();
-    let collections = null;
-    for (const cell of regionCells(ra, dec, r)) {
-      const p = await pick(read, ra, dec, det, pin, r, cell);
-      collections ??= Object.fromEntries(Object.keys(p.collections).map(k => [k, 0]));
-      for (const i of p.rows) {
-        const [t, key, obs, coll] = fields(p, i);
-        counted.set(`${obs} ${coll}`, coll);
-        const had = best.get(obs);
-        if (!had || COLLS.indexOf(coll) < COLLS.indexOf(had.coll)) best.set(obs, { t, key, obs, coll });
-      }
-    }
-    for (const coll of counted.values()) collections[coll]++;
-    return { images: [...best.values()].sort((a, b) => a.t - b.t), collections };
+  if (r !== 0.001) {
+    const { rows, collections } = await pickRegion(read, ra, dec, det, pin, r);
+    return { images: rows.map(([p, i]) => { const [t, key, obs, coll] = fields(p, i); return { t, key, obs, coll }; }), collections };
   }
   const p = await pick(read, ra, dec, det, pin);
   return { images: p.rows.map(i => { const [t, key, obs, coll] = fields(p, i); return { t, key, obs, coll }; }), collections: p.collections };
@@ -212,7 +219,15 @@ export async function skyImages(read, ra, dec, det, pin, r = 0.001) {
 // thousands of objects first. A deep-field answer is about 1 MB and that building took most of a request's CPU.
 // Numbers print as JSON.stringify prints them; keys, obs and collections need no escaping (head() checks the folders).
 export async function skyImagesJson(read, ra, dec, det, pin, r = 0.001) {
-  if (r !== 0.001) return JSON.stringify({ ra, dec, det: `D${det}`, r, ...(await skyImages(read, ra, dec, det, pin, r)), source: 'index' });
+  if (r !== 0.001) {
+    const { rows, collections } = await pickRegion(read, ra, dec, det, pin, r);
+    let s = `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}","r":${JSON.stringify(r)},"images":[`;
+    for (let k = 0; k < rows.length; k++) {
+      const [p, i] = rows[k], fo = p.h.folders[p.u16[i * 32 + 28]], rest = String(p.u16[i * 32 + 29]).padStart(4, '0') + '_' + p.u8[i * ROW + 60];
+      s += (k ? ',{"t":' : '{"t":') + p.f64[i * 8] + fo.a + rest + fo.b + rest + COLL_END[p.u8[i * ROW + 61]];
+    }
+    return `${s}],"collections":${JSON.stringify(collections)},"source":"index"}`;
+  }
   const p = await pick(read, ra, dec, det, pin);
   let s = `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}","images":[`;
   for (let k = 0; k < p.rows.length; k++) {   // fields() inlined, with the constant text cut once per folder
