@@ -52,12 +52,16 @@ if python3 - "$BASE" <<'PY'
 import gzip, hashlib, json, sys, time, urllib.request
 base = sys.argv[1]; get = lambda u: urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "comet-hunt-contract-test"}), timeout=180).read()
 inf = lambda b: gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
+import random
+spot = f"ra={random.uniform(0, 360):.3f}&dec={random.uniform(-60, 60):.3f}"   # a fresh spot: a real miss each run (and the showcase's, a hit)
 for q in ("survey=allwise&band=W2", "survey=2mass&band=Ks"):
-    m = json.loads(get(f"{base}/api/oldsky?{q}&ra=84.01808&dec=-6.5775"))
+  for where in (spot, "ra=84.01808&dec=-6.5775"):
+    m = json.loads(get(f"{base}/api/oldsky?{q}&{where}"))
     for t in m["tiles"][:2]:
         mine = get(f"{base}/{t['path']}"); time.sleep(0.5); theirs = get(t["source"])
         assert t["source"].startswith("https://irsa.ipac.caltech.edu/"), t["source"]
-        assert hashlib.sha256(mine).hexdigest() == t["sha256"], t["name"]
+        assert len(mine) == t["bytes"], t["name"]   # manifest v2: size and R2 etag (the Worker hashes nothing); v1 had sha256
+        assert "sha256" not in t or hashlib.sha256(mine).hexdigest() == t["sha256"], t["name"]
         assert hashlib.sha256(inf(mine)).hexdigest() == hashlib.sha256(inf(theirs)).hexdigest(), t["name"]
         assert inf(mine)[:9] == b"SIMPLE  =", t["name"]
 PY
