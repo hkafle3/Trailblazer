@@ -5,6 +5,7 @@
 // IRSA's cutouts are FITS, often gzip whatever the name says. They are streamed into R2 as IRSA sent them (never through
 // fetchRetry's .text(), which would corrupt them), at their declared length, and checked from their header and size. Only complete answers are stored;
 // an error is never cached. R2 answers first; a miss is rate limited per IP (OLDSKY_LIMIT) before IRSA is asked.
+import { inflateStart } from './inflate_start.js';
 const IRSA = 'https://irsa.ipac.caltech.edu';
 const SIZE = 780, MAX_TILE = 4 << 20, MAX_TILES = 8, MAX_TEXT = 1 << 20, TIMEOUT = 20000;
 // the only survey/band pairs: the band each one compares with SPHEREx
@@ -67,31 +68,11 @@ const tries = async (n, fn) => {
 export const isGzip = b => b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b;
 const MAX_INFLATED = 16 << 20, BLOCK = 2880, PREFIX = 24 << 10;   // headers of these atlases are 4 to 11 blocks (11 to 32 KB inflated, a few KB as gzip)
 // the header cards and the bytes the whole file must hold, from the file's start (plain FITS, or the start of a gzip)
-// the 80 characters of the header card at byte i of the inflated pieces so far
-function cardAt(parts, i) {
-  let at = 0, out = '';
-  for (const p of parts) { if (i < at + p.byteLength && out.length < 80) for (let k = Math.max(0, i - at); k < p.byteLength && out.length < 80; k++) out += String.fromCharCode(p[k]); at += p.byteLength; }
-  return out.slice(0, 8).trim();
-}
-export async function fitsHead(prefix, DS = DecompressionStream) {
+export async function fitsHead(prefix) {
   let b = prefix;
-  if (isGzip(prefix)) {
-    // fed in 512-byte pieces, read as they come out, stopped at the END card: a highly compressible tile (16 MB of zeros
-    // is 16 KB of gzip) is never inflated whole inside the Worker (Codex re-review 3)
-    const ds = new DS('gzip'), w = ds.writable.getWriter(), rd = ds.readable.getReader(), parts = [];
-    let n = 0, stop = false;
-    const hasEnd = () => { for (let i = Math.max(0, n - 4096 - 80) - (Math.max(0, n - 4096 - 80) % 80); i + 80 <= n; i += 80) if (cardAt(parts, i) === 'END') return true; return false; };
-    const reading = (async () => {
-      try { while (!stop) { const c = await rd.read(); if (c.done) break; parts.push(c.value); n += c.value.byteLength; if (hasEnd() || n >= 40 * BLOCK) stop = true; } }
-      catch { /* the start of a gzip ends mid-stream: what came out before is the header */ }
-      stop = true;
-    })();
-    for (let off = 0; off < prefix.length && !stop; off += 512) { try { await w.write(prefix.subarray(off, off + 512)); } catch { break; } await new Promise(r => setTimeout(r, 0)); }
-    stop = true;
-    w.abort().catch(() => {}); rd.cancel().catch(() => {});
-    await Promise.race([reading, new Promise(r => setTimeout(r, 50))]);
-    b = new Uint8Array(n); let at = 0; for (const p of parts) { b.set(p, at); at += p.byteLength; }
-  }
+  // a gzip's start, inflated in JavaScript to at most 40 blocks (inflate_start.js): bounded however compressible the tile
+  // is (16 MB of zeros is 16 KB of gzip), and it yields what a cut-short start holds (Codex re-review 3)
+  if (isGzip(prefix)) b = inflateStart(prefix, 40 * BLOCK);
   const cards = {}, dec = new TextDecoder('latin1');
   if (dec.decode(b.subarray(0, 9)) !== 'SIMPLE  =') throw new Error('not a FITS file');
   let end = -1;
@@ -134,7 +115,7 @@ async function storeTile(t, key, req, env, fetchFn, wrapBody = b => b, DS, testH
       full = new DataView((await bytesAt({ suffix: 4 })).buffer).getUint32(0, true);
       if (full > MAX_INFLATED) throw new Error('gzip inflates past the size cap');
     }
-    const h = await fitsHead(await bytesAt({ offset: 0, length: Math.min(len, PREFIX) }), DS);
+    const h = await fitsHead(await bytesAt({ offset: 0, length: Math.min(len, PREFIX) }));
     if (full < h.need) throw new Error(`FITS image is short: ${full} bytes, ${h.need} needed`);
     if (!/_cov\.fits$/.test(t.name) && bandOf(req.survey, h.cards) !== req.band) throw new Error(`${t.name} is ${bandOf(req.survey, h.cards)}, not ${req.band}`);
     return { gzip, bytes: len, etag: stored.etag, cards: h.cards };

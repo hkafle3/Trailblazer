@@ -251,25 +251,27 @@ test('tile requests are idempotent: a done tile is not fetched again, and an ove
   }
 });
 
-test('the header of a gzip is read from small compressed pieces, stopping at END; a gzip over the cap is never inflated', async () => {
-  const { fitsHead } = await import('./src/oldsky.js');
+test('the header of a gzip is inflated to at most 40 blocks, however compressible the tile; a gzip over the cap is refused from its size', async () => {
+  const { fitsHead } = await import('./src/oldsky.js'), { inflateStart } = await import('./src/inflate_start.js');
+  const zlib = await import('node:zlib');
   // 16 MB of zero pixels compresses to about 16 KB: all of it fits in the bytes read back for the header
-  const big = await gzip(fitsBytes([['BAND', 2]], { nx: 2000, ny: 2000 }));
+  const raw = fitsBytes([['BAND', 2]], { nx: 2000, ny: 2000 }), big = await gzip(raw);
   assert.ok(big.length < 24 << 10, `${big.length} bytes`);
-  let fed = 0, made = 0;
-  class Counting extends DecompressionStream {
-    constructor(f) { super(f); made++;
-      const orig = this.writable.getWriter.bind(this.writable);
-      this.writable.getWriter = () => { const ww = orig(), wr = ww.write.bind(ww); ww.write = c => { fed += c.byteLength; return wr(c); }; return ww; }; }
+  assert.equal(inflateStart(big, 40 * 2880).length, 40 * 2880, 'never more than the limit');
+  for (const level of [1, 6, 9]) for (const cut of [200, 1000, 5000]) {   // a cut-short start yields what it holds, byte for byte
+    const gz = zlib.gzipSync(raw, { level }), o = inflateStart(gz.subarray(0, cut), 40 * 2880);
+    assert.deepEqual(o, raw.subarray(0, o.length), `level ${level}, ${cut} bytes`);
   }
-  const h = await fitsHead(big, Counting);
-  assert.equal(h.cards.BAND, '2');
-  assert.ok(made === 1 && fed > 0 && fed <= 4096, `fed ${fed} compressed bytes to read a 2-block header`);
-  // over the cap: refused from its size trailer before any inflating
-  made = 0;
-  const env = fakeEnv(), huge = await gzip(fitsBytes([['BAND', 2]], { nx: 3000, ny: 3000 })), irsa = await fakeIrsa(u => (u.includes('int-3') ? new Response(huge) : null));
-  const r = await miss('survey=allwise&band=W2&ra=84.01808&dec=-6.5775', env, { ...DEPS(irsa.f), DecompressionStream: Counting });
-  assert.equal(r.status, 503); assert.equal(made, 0, 'no decompressor was started for a gzip over the cap');
+  const h = await fitsHead(big);
+  assert.equal(h.cards.BAND, '2'); assert.equal(h.need, 2880 + Math.ceil(16e6 / 2880) * 2880);
+  let made = 0;
+  class Counting extends DecompressionStream { constructor(f) { super(f); made++; } }
+  const real = globalThis.DecompressionStream; globalThis.DecompressionStream = Counting;
+  try {
+    const env = fakeEnv(), huge = await gzip(fitsBytes([['BAND', 2]], { nx: 3000, ny: 3000 })), irsa = await fakeIrsa(u => (u.includes('int-3') ? new Response(huge) : null));
+    const r = await miss('survey=allwise&band=W2&ra=84.01808&dec=-6.5775', env, DEPS(irsa.f));
+    assert.equal(r.status, 503); assert.equal(made, 0, 'no stream decompressor anywhere in the tile step');
+  } finally { globalThis.DecompressionStream = real; }
 });
 
 test('the test hook is off unless the Worker has OLDSKY_TEST_ORIGIN', async () => {
