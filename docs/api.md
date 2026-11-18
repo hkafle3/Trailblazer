@@ -317,6 +317,12 @@ Gaia DR3 stars within 0.04 degrees, with proper motions and Gaia G brighter than
 
 Every complete answer from `/api/images`, `/api/gaia` and `/api/known` is also saved in D1 under its path and the parameters it reads (`ra`, `dec`, `det`, `t`, `v`; others are ignored). When the outside service fails (a `5xx`) or `/api/images` answers only in part, the last saved answer to that exact search is sent instead: `200`, the same JSON, `Cache-Control: no-store` and an `X-Saved-At` time. A search never answered before still gets the `503`; a bad request still gets its `400`. Added after IRSA's image search answered 502 for most of 2026-11-15.
 
+## GET /api/cat?cat=&ra=&dec= (R2 OLDSKY, then the archives)
+The Colors tab's catalogues for one spot (`worker/src/cat.js`): `cat` is `2mass`, `catwise`, `allwise`, `gaia` (Gaia DR3 with `phot_variable_flag`), all from IRSA's TAP, `simbad` (SIMBAD's TAP at CDS, else its CfA mirror) or `vsx` (VSX, `B/vsx`, from VizieR's ASU service at CDS, else CfA), in a 0.275 degree cone about the spot rounded to 0.001 degree. The answer is the archive's own text (CSV; VSX tab-separated), stored in R2 at `cat/v1/<cat>/<pos>.csv|tsv` the first time and served from there after. Before storing, the Worker checks only that the answer is a table with every column the browser needs and a complete last line; the browser parses and checks every row. Errors: `400` for an unlisted catalogue or a bad position; `429` past 12 new spots' catalogues a minute per IP (stored ones are never limited); `503` when no archive answers with a usable table (nothing is stored, so a later request asks again). Redirects are refused and only the listed hosts are asked.
+
+## GET /api/colors?ra=&dec= (R2 OLDSKY)
+A baked Colors result at this spot (`bake/colors_bake.mjs`; the showcase), or `404` and the page offers a live build. The bake's own centre must be within 2 arcsec of the spot asked for. To bake the showcase into production R2 once Ed has reported it: `node bake/colors_bake.mjs --api https://comet-hunt.comet-hunt.workers.dev --ra 84.0181 --dec -6.577 --out <dir> --put remote --bucket comet-hunt-oldsky --config worker/wrangler.toml`.
+
 ## Planned (not built)
 
 - `GET /api/comets/:id`: one comet with its dots, photos, measurements and comment thread.

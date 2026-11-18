@@ -62,6 +62,13 @@ name = "OLDSKY_TILE_LIMIT"
 namespace_id = "1004"
 simple = { limit = 30, period = 60 }
 
+# Rate limit for GET /api/cat on a miss (a new spot's catalogue costs an archive query and storage): 12 a minute per IP.
+# Colors asks for six catalogues a spot, so this is two new spots a minute; stored catalogues are never limited.
+[[ratelimits]]
+name = "CAT_LIMIT"
+namespace_id = "1005"
+simple = { limit = 12, period = 60 }
+
 # Rate limit for POST /api/checks (heat map counts): each visitor's IP gets 10 a minute, counted by Cloudflare,
 # so a script cannot spend the database's daily write allowance (which comments need too).
 [[ratelimits]]

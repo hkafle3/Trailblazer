@@ -78,7 +78,12 @@ function trend(results, context) {
   return { text: 'Differs by wavelength', detail: `${ok.map(([k, r]) => `${BAND[k].um} µm ${r.lead_ratio.toFixed(2)}×`).join(', ')}.`, pass: true };
 }
 
-export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, context = null, onResult = () => {} }) {
+// the data credits, shared by both tabs of the box (web/colors.js)
+export const CREDITS = `<details class="diffbox credits-d"><summary><span>Data credits</span>${ICON.chev}</summary><div class="credits"><p>This publication makes use of data products from the Spectro-Photometer for the History of the Universe, Epoch of Reionization and Ices Explorer (SPHEREx), which is a joint project of the Jet Propulsion Laboratory and the California Institute of Technology, and is funded by the National Aeronautics and Space Administration (Bock et al. 2026; spherex_dr1 and spherex_qr3, L2 l2b-v27), with its channels as described by Hui et al. 2026.</p><p><b>WISE</b> UCLA and JPL/Caltech, funded by NASA (AllWISE Atlas) · <b>2MASS</b> UMass and IPAC/Caltech, funded by NASA and NSF (All-Sky Release) · <b>CatWISE2020</b> Marocco et al. 2021 · <b>Gaia DR3</b> ESA and the Gaia Data Processing and Analysis Consortium (DPAC), Vallenari et al. 2023 · <b>SIMBAD</b> CDS, Strasbourg, Wenger et al. 2000 · <b>VSX</b> AAVSO International Variable Star Index, Watson et al. 2006, through VizieR (CDS, Ochsenbein et al. 2000) · <b>IRSA</b> NASA/IPAC Infrared Science Archive, funded by NASA, operated by Caltech · <b>Band curves</b> SVO Filter Profile Service</p></div></details>`;
+
+// head (page mode, optional): the element that holds the band switch, when the box's title row belongs to a tab shell
+// (web/colors.js); the box then renders only its body into root, and the shell survives every render
+export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = null, context = null, onResult = () => {} }) {
   const S = { band: 'W2', frame: 0, playing: !matchMedia('(prefers-reduced-motion: reduce)').matches, results: {}, progress: {}, active: mode === 'page' };
   const pub = window.__blink = { S, results: S.results, drawn: {} };
   let worker = null, timer = null;
@@ -153,15 +158,16 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, context =
       <div><p><span class="key"><i style="background:var(--comet)"></i>brighter now</span><span class="key"><i style="background:var(--known)"></i>dimmer</span></p>
       <p>Now minus then, 6 arcmin wide.</p><p>Rings around bright stars are not change: the two cameras blur stars slightly differently.</p></div></div></details>`;
   }
-  const credits = `<details class="diffbox credits-d"><summary><span>Data credits</span>${ICON.chev}</summary><div class="credits"><p>This publication makes use of data products from the Spectro-Photometer for the History of the Universe, Epoch of Reionization and Ices Explorer (SPHEREx), which is a joint project of the Jet Propulsion Laboratory and the California Institute of Technology, and is funded by the National Aeronautics and Space Administration (Bock et al. 2026; spherex_dr1 and spherex_qr3, L2 l2b-v27).</p><p><b>WISE</b> UCLA and JPL/Caltech, funded by NASA (AllWISE Atlas) · <b>2MASS</b> UMass and IPAC/Caltech, funded by NASA and NSF (All-Sky Release) · <b>IRSA</b> NASA/IPAC Infrared Science Archive, funded by NASA, operated by Caltech · <b>Band curves</b> SVO Filter Profile Service</p></div></details>`;
 
   // ---------- render ----------
   function render() {
     const m = S.results[S.band], w = m?.state === 'ok' ? words(S.band, m, context) : null;
     const openDiff = root?.querySelector('.diffbox:not(.credits-d)')?.open, openCred = root?.querySelector('.credits-d')?.open;
     if (mode === 'page') {
-      root.innerHTML = `<div class="tn-top"><h2 id="tn-h">Then and now</h2><div class="wl">${gl('Wavelength', G.micron)}${bandSwitch()}</div></div>
-        <div class="tn-body"><div>${blinkBox(m)}${w ? axis(w) + '<p class="hint">Watch the marked star.</p>' : ''}</div><div>${result(m, w)}${checks(m, w)}</div></div>${diffBox(m)}${credits}`;
+      const top = `${gl('Wavelength', G.micron)}${bandSwitch()}`;
+      if (head) head.innerHTML = top;
+      root.innerHTML = `${head ? '' : `<div class="tn-top"><h2 id="tn-h">Then and now</h2><div class="wl">${top}</div></div>`}
+        <div class="tn-body"><div>${blinkBox(m)}${w ? axis(w) + '<p class="hint">Watch the marked star.</p>' : ''}</div><div>${result(m, w)}${checks(m, w)}</div></div>${diffBox(m)}${CREDITS}`;
       if (openDiff) root.querySelector('.diffbox:not(.credits-d)')?.setAttribute('open', '');
       if (openCred) root.querySelector('.credits-d').setAttribute('open', '');
     } else {
@@ -234,7 +240,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, context =
   }
   function flip() { play(false); S.frame ^= 1; show(); }
   function wire() {
-    const scope = mode === 'page' ? [root] : Object.values(slots);
+    const scope = mode === 'page' ? [root, head].filter(Boolean) : Object.values(slots);
     for (const el of scope) {
       el.querySelectorAll('[data-band]').forEach(btn => btn.onclick = () => { S.band = btn.dataset.band; render(); });
       el.querySelectorAll('.knob').forEach(k => k.onclick = () => play(!S.playing));
@@ -244,7 +250,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, context =
       el.querySelectorAll('.tn-seg').forEach(seg => seg.onkeydown = e => {   // tabs: the arrows move between bands
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
         const i = (ORDER.indexOf(S.band) + (e.key === 'ArrowRight' ? 1 : 2)) % 3; S.band = ORDER[i]; render();
-        (mode === 'page' ? root : slots.band).querySelector(`[data-band="${S.band}"]`)?.focus(); e.preventDefault(); e.stopPropagation();
+        (mode === 'page' ? head ?? root : slots.band).querySelector(`[data-band="${S.band}"]`)?.focus(); e.preventDefault(); e.stopPropagation();
       });
     }
   }
