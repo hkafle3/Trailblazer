@@ -31,20 +31,22 @@ const data = await fetch('data/labels.json').then(r => (r.ok ? r.json() : null))
 const PAD = 4, EDGE = 4, BAR = 8;
 
 // ---- borders and the Milky Way: paths in the map's 2000 x 1000 SVG, lifted where a piece crosses the map's seam ----
-let mwText = null, borderEl = null;
+let mwText = null, borderEl = null, borderPieces = [], borderKey = '';
 if (data) {
   const P = (lon, dec) => { const [u, v] = fwdLon(lon, dec); return (u * 2000).toFixed(1) + ' ' + (v * 1000).toFixed(1); };
-  let d = '';
+  // each piece keeps its own path and its box in map fractions: the page draws only the pieces near the view, since a
+  // path of all 10,000 points drawn at a deep zoom cost phones frames
   for (const piece of data.borders) {
-    let prev = null;
+    let prev = null, d = '', u0 = 1, v0 = 1, u1 = 0, v1 = 0;
     for (let i = 0; i < piece.length; i += 2) {
-      const lon = wrap(-piece[i]);
-      d += (prev === null || Math.abs(lon - prev) > 180 ? 'M' : 'L') + P(lon, piece[i + 1]);
-      prev = lon;
+      const lon = wrap(-piece[i]), [u, v] = fwdLon(lon, piece[i + 1]);
+      d += (prev === null || Math.abs(lon - prev) > 180 ? 'M' : 'L') + (u * 2000).toFixed(1) + ' ' + (v * 1000).toFixed(1);
+      prev = lon; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v);
     }
+    borderPieces.push({ d, box: [u0, v0, u1, v1], i: borderPieces.length });
   }
   const svg = map.querySelector('.grat'), NS = 'http://www.w3.org/2000/svg', path = document.createElementNS(NS, 'path');
-  path.setAttribute('class', 'cbound'); path.setAttribute('d', d); borderEl = path;
+  path.setAttribute('class', 'cbound'); borderEl = path;
   svg.insertBefore(path, $('ecl'));
   // the galactic equator (b = 0) across Cassiopeia, where it runs flat, as the path the name follows
   const ngpRa = 192.85948 * RAD, ngpDec = 27.12825 * RAD, lNcp = 122.93192 * RAD, pts = [];
@@ -145,7 +147,7 @@ function layout() {
   if (document.body.dataset.view === '3d') return;
   if (!sized && labels.length && document.fonts.status === 'loaded') measure();
   // ---- read (only what changed) ----
-  stats.passes++;
+  stats.passes++; lastPass = performance.now();
   const vw = innerWidth, vh = innerHeight, engine = !!wrapEl.style.width && view.A;   // the engine places the map once it has moved
   const k = (engine ? view.W : wrapEl.offsetWidth) / 360, mr = engine ? null : wrapEl.getBoundingClientRect();
   const at = (u, v) => (engine ? view.win(u, v) : [mr.left + u * mr.width, mr.top + v * mr.height]);
@@ -223,7 +225,19 @@ function layout() {
 
   // ---- write: only what changed ----
   const bound = Math.max(0, Math.min(1, (k - 4.5) / 4)).toFixed(2);   // borders fade in from 4.5 to 8.5 px per degree
-  if (borderEl && borderEl.style.opacity !== bound) borderEl.style.opacity = bound;   // on the path itself: a property on .map-wrap would restyle everything in it
+  if (borderEl) {
+    if (borderEl.style.opacity !== bound) borderEl.style.opacity = bound;   // on the path itself: a property on .map-wrap would restyle everything in it
+    // the pieces near the view (the view and as much again on every side, so a quarter second of panning stays drawn)
+    let vb = [0, 0, 1, 1];
+    if (+bound && engine) {
+      const c = [[0, top], [vw, top], [0, bot], [vw, bot]].map(([x, y]) => view.uvAt(x, y)), us = c.map(p => p[0]), vs = c.map(p => p[1]);
+      const du = Math.max(...us) - Math.min(...us), dv = Math.max(...vs) - Math.min(...vs);
+      vb = [Math.min(...us) - du, Math.min(...vs) - dv, Math.max(...us) + du, Math.max(...vs) + dv];
+    }
+    const near = +bound ? borderPieces.filter(({ box: b }) => b[0] <= vb[2] && vb[0] <= b[2] && b[1] <= vb[3] && vb[1] <= b[3]) : [];
+    const key = near.map(p => p.i).join(',');
+    if (key !== borderKey) { borderKey = key; borderEl.setAttribute('d', near.map(p => p.d).join('')); }
+  }
   for (const [el, [side, dx], spot] of cardWrites) {
     if (el.dataset.at !== spot) el.dataset.at = spot;
     el.classList.toggle('left', side === 'left'); el.classList.toggle('below', side === 'below');
@@ -249,7 +263,10 @@ const soon = () => { fresh = true; again(); };   // anything else: read everythi
 // only real changes: the phone sets the zoom note's hidden on every frame of a zoom, to the value it already has
 const changed = recs => recs.some(r => r.oldValue !== r.target.getAttribute(r.attributeName));
 const watch = { attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class', 'style', 'open', 'data-detent', 'data-view'] };
-view.onView(again);   // a pan or zoom: the controls have not moved
+// A pan or zoom: the names ride along with the map (they sit in percent of it), so they are laid out again at most every
+// quarter second while it moves, and once 150 ms after it stops. A pass on every frame cost phones frames (CPU 4x).
+let lastPass = -1e9, idle = 0;
+view.onView(() => { clearTimeout(idle); idle = setTimeout(again, 150); if (performance.now() - lastPass > 250) again(); });
 addEventListener('resize', soon);
 wrapEl.addEventListener('animationend', soon);   // the map's scale-in moves the whole sky without a view change
 document.fonts.ready.then(() => { if (labels.length) measure(); soon(); });
