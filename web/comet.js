@@ -62,7 +62,7 @@ function tab(depth, c, x) {
   $('tab-photo').setAttribute('aria-selected', !depth); $('tab-depth').setAttribute('aria-selected', depth);
   $('c-photo').hidden = depth; $('c-depth').hidden = !depth;
   if (depth && !depth3) depth3 = scene($('c-scene'), x).then(s => (window.__scene = s));   // tests: window.__scene
-  depth3?.then(s => s?.view(depth ? 'depth' : 'photo'));
+  depth3?.then(s => s?.show(depth ? 'depth' : 'photo'));
 }
 
 // The main picture: a measured comet's brightest baked photo; otherwise the clearest visit's picture (the highest SNR

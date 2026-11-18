@@ -506,8 +506,9 @@ body.sky .pv-desc { margin: 0; }
 
 /* ---------- phase 3: the time-lapse plays in Depth (phase3-mockups/phase3.css) ---------- */
 /* the flat photo, in step with the beam: a small square in the frame's lower right, Ming's straight top rule */
-.p3-inset { position: absolute; z-index: 3; right: calc(18 * var(--m)); bottom: calc(40 * var(--m)); width: calc(150 * var(--m)); margin: 0; pointer-events: none; }
-.xp-d3 .p3-inset canvas { position: static; height: auto; display: block; width: 100%; aspect-ratio: 1; border-top: max(1.5px, calc(1.5 * var(--m))) solid #fff; image-rendering: pixelated; background: #16191f; }
+.p3-inset { display: none; position: absolute; z-index: 3; right: calc(18 * var(--m)); bottom: calc(40 * var(--m)); width: calc(150 * var(--m)); margin: 0; pointer-events: none; }
+body.depth .p3-inset:not(.off) { display: block; }
+.p3-inset canvas { position: static; height: auto; display: block; width: 100%; aspect-ratio: 1; border-top: max(1.5px, calc(1.5 * var(--m))) solid #fff; image-rendering: pixelated; background: #16191f; }
 .p3-inset figcaption { display: flex; flex-direction: column; gap: calc(3 * var(--m)); margin-top: calc(7 * var(--m)); font: 400 calc(11 * var(--m)) / 1.3 var(--panel-font); color: rgba(255, 255, 255, .82); letter-spacing: .02em; }
 .p3-inset .p3-by { color: rgba(255, 255, 255, .5); }
 /* the entry on screen; the 2010 entry's stretch of axis, then a break before SPHEREx's months */

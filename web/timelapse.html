@@ -59,9 +59,9 @@
       <p class="xp-d3-nogl">This browser cannot draw the 3D view. The Distances list has every distance.</p>
       <p class="xp-d3-msg" id="depth-msg" role="status"></p>
       <button type="button" class="xp-d3-retry" id="depth-retry" hidden>Try again</button>
-      <!-- the flat photo in step with the beam (phase 3): the same frame, the target ringed -->
-      <figure class="p3-inset" aria-hidden="true"><canvas width="336" height="336"></canvas><figcaption><span class="p3-when"></span><span class="p3-by"></span></figcaption></figure>
     </div>
+    <!-- Depth's flat photo in step with the beam (phase 3): the same frame, the target ringed (outside the 3D view's box) -->
+    <figure class="p3-inset" id="p3-inset" aria-hidden="true"><canvas width="336" height="336"></canvas><figcaption><span class="p3-when"></span><span class="p3-by"></span></figcaption></figure>
     <!-- while a time-lapse builds: what it is doing and how far along (the status line in Advanced says it to screen readers) -->
     <div id="loading" aria-hidden="true"><span id="ld-text"></span><i id="ld-line"></i></div>
     <!-- Spectrum mode: while it is on, a click or tap on the photo picks that star for the Spectrum card instead of
@@ -1644,7 +1644,7 @@ function sayDepth() {
   document.getElementById('pv-say').textContent = `A star in ${ctx2.region}, about ${(Math.round(ctx2.distance_ly / 50) * 50).toLocaleString('en-US')} light-years away. At 4.6 µm it gives ${r.report.lead_ratio.toFixed(2)} times the light it did in ${r.report.old.dates[0].slice(0, 4)}.`;
 }
 const depth = depthView({
-  api: API, box: document.getElementById('depth3d'), list: document.getElementById('dist-list'), status: document.getElementById('dist-status'), region,
+  api: API, box: document.getElementById('depth3d'), inset: document.getElementById('p3-inset'), list: document.getElementById('dist-list'), status: document.getElementById('dist-status'), region,
   // where (ra, dec) is on the region, -1 to 1 across, north up; a Gaia star moved by its proper motion to the visit's year
   onScreen(m, ra, dec, pm) {
     if (pm?.pmra != null) [ra, dec] = gaiaAt({ ra, dec, pmra: pm.pmra, pmdec: pm.pmdec }, pm.year);
@@ -1693,7 +1693,7 @@ if (blinkOn) { document.getElementById('tab-tn').hidden = false; queueMicrotask(
 // every frame failed (no manifest, so no patch to place anything on): Depth says so and offers a retry; the knob is off
 function depthRetry(again) {
   const b = document.getElementById('depth-retry');
-  b.hidden = !again; document.getElementById('play').disabled = !!again; b.onclick = again;
+  b.hidden = !again; document.getElementById('play').disabled = !!again; b.onclick = again; document.getElementById('p3-inset').classList.toggle('off', !!again);
   if (again) { stop(); depth.empty('The photos did not load, so there is nothing to place yet.'); }
 }
 const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]')];

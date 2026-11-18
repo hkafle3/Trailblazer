@@ -281,13 +281,13 @@ export function comet3d(opts) {
     get shown() {
       return { i: st.i, jd: st.jd, lit: clock() >= st.arrived, playing: st.playing, view: st.view, n: N, failed: [...FAIL], pts: pathPts.length,
         strip: figs.findIndex(f => f.classList.contains('now')), dot: dots.findIndex(d => d.classList.contains('cur')), date: date.textContent,
-        tiles: shots.map(s => (s.tile.visible ? (s.tile.material.opacity >= .99 * (REDUCED ? 1 : sm((clock() - st.opened) / 1.2)) && s === shots[st.i] && clock() >= st.arrived ? 'lit' : 'faint') : 'hidden')),
+        tiles: shots.map(s => (!s.tile.visible ? 'hidden' : s === shots[st.i] && clock() >= st.arrived ? 'lit' : 'faint')),
         earth: earthAt(st.jd).toArray(), comet: cometAt(st.jd).toArray(), sky: SKY };
     },
     labels: () => [...layer.children].map(e => ({ text: e.textContent, shown: +e.style.opacity > .5, at: e.dataset.at, rect: (r => [r.left, r.top, r.right, r.bottom])(e.getBoundingClientRect()) })),
     // the scene's coordinates back to JPL's (heliocentric ecliptic AU): x, y, z = X, -Z, Y
     ecl: p => [p[0], -p[2], p[1]],
-    play, go: (k, o) => go(k, o), view, ready: loaded, rows: ROWS,
+    play, go: (k, o) => go(k, o), show: view, ready: loaded, rows: ROWS,   // show: the page's tabs (comet.js)
   };
   return api;
 }

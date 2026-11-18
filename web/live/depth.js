@@ -368,6 +368,9 @@ export function depthView(page) {
       const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
       let best = null, bd = 10;
       for (const d of scene3.dots) { const [px, py] = S.px(d.pos), dd = Math.hypot(px - x, py - y); if (dd < bd) { bd = dd; best = d; } }
+      // the name shown stays while the pointer is still within 10 px of its dot: a crowd of glowing stars does not flicker between neighbours
+      const was = box.dataset.peek && scene3.dots.find(d => d.key === box.dataset.peek);
+      if (was && best && was !== best) { const [px, py] = S.px(was.pos); if (Math.hypot(px - x, py - y) < 10) best = was; }
       if (!best) { tip.el.style.opacity = 0; box.dataset.peek = ''; return; }
       tip.el.textContent = best.text; tip.at(best.pos, [8, -6, 0, -1], 1); box.dataset.peek = best.key;
     };
@@ -382,7 +385,7 @@ export function depthView(page) {
     const all = placedHere(), { m } = data, year = data.f.year ?? 2026;
     // the scale: log10 of light-years across [lo, hi], drawn from 12% to 86% of the way to the photo
     const lg = all.map(p => Math.log10(p.ly));
-    let lo = Math.min(...lg) - .4, hi = Math.max(...lg, 3) + .3; if (hi - lo < 2) hi = lo + 2;   // the patch's own range (phase 3: no longer from 1 light-year)
+    let lo = (lg.length ? Math.min(...lg) : 0) - .4, hi = Math.max(...lg, 3) + .3; if (hi - lo < 2) hi = lo + 2;   // the patch's own range (phase 3: no longer from 1 light-year)
     scale = ly => .12 + .74 * clamp01((Math.log10(ly) - lo) / (hi - lo));
     const uv = p => page.onScreen(m, p.ra, p.dec, p.src === 'stars' ? { year, pmra: p.o.pmra, pmdec: p.o.pmdec } : null);
     const pos = [], sp = [], ss = [], sa = [], level = page.levels?.(m) ?? null; scene3.dots = []; starList = [];
@@ -453,7 +456,7 @@ export function depthView(page) {
     if (!mat.map || mat.map.image !== r.canvas) { mat.map?.dispose(); mat.map = new THREE.CanvasTexture(r.canvas); mat.map.colorSpace = THREE.SRGBColorSpace; mat.map.magFilter = THREE.NearestFilter; mat.map.minFilter = THREE.LinearFilter; mat.needsUpdate = true; }
     else mat.map.needsUpdate = true;
     // the flat photo in step: the same picture, the target ringed where the beam's ring meets the photo
-    const fig = box.querySelector('.p3-inset');
+    const fig = page.inset;
     if (fig) {
       const c = fig.querySelector('canvas'), g = c.getContext('2d'), t = scene3.beads.find(b => b.acc);
       g.imageSmoothingEnabled = false; g.fillStyle = '#16191f'; g.fillRect(0, 0, c.width, c.height); g.drawImage(r.canvas, 0, 0, c.width, c.height);
@@ -487,7 +490,7 @@ export function depthView(page) {
     const s = sm(T / 1.8);   // the swing: from through the telescope (the photo fills the view, as in Photo) out to the side
     // the side view a little from above, with a wider lens than before (phase 3): the cross-sections open up. The flat
     // photo sits bottom right on a wide frame (top right on a narrow one); the beam keeps clear of it.
-    const ins = box.querySelector('.p3-inset')?.getBoundingClientRect();
+    const ins = page.inset?.getBoundingClientRect();
     const frame = small ? [12, 56, W - 16, H - 34] : [30, 64, W - 40 - (ins?.width ? ins.width * .84 : 0), H - 46];
     const key = [V(-1.25 * CR, CR, 0), V(-1.25 * CR, -CR, 0), ...corners];
     const tilt = .85 + yaw.a, el = .5 + yaw.p;
@@ -568,7 +571,7 @@ export function depthView(page) {
     empty(t) { asked = null; ctl?.abort(); clearTimeout(retry); data = null; paintList(); clearBeam(t, true); say(''); },
     get data() { return data; }, get url() { return asked; }, get gl() { return gl; }, get shown() { return shown; },
     // for tests: the zoom and turn (and the dashed rings' fade), the camera, and the target's ring on screen ([x, y, diameter] in client px)
-    get view() { return { k: Z.k, x: Z.x, y: Z.y, a: yaw.a, p: yaw.p, unk: scene3?.unk.material.opacity }; },
+    get view() { return { k: Z.k, x: Z.x, y: Z.y, a: yaw.a, p: yaw.p, unk: scene3?.unk.material.opacity, swing: yaw.t0 ? (performance.now() - yaw.t0) / 1000 : null }; },
     get cam() { return S && [...S.camera.matrixWorld.elements, ...S.camera.projectionMatrix.elements]; },
     ringOf() {
       const b = scene3?.beads.find(x => x.acc); if (!b) return null;
