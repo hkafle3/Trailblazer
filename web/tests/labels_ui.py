@@ -19,7 +19,7 @@ Every check reads real on-screen rectangles (getBoundingClientRect), not the lay
   still       C-0176 (tagged star, 1 of 1) has no trail and no tail; C-0175 (tagged unsure) keeps both
 Overlaps between the page's own elements (a card over a marker) are not judged.
 Run: uv run -q --with playwright python web/tests/labels_ui.py [base url]   (default http://127.0.0.1:8787)"""
-import asyncio, os, random, sys
+import asyncio, math, os, random, sys
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
@@ -32,7 +32,7 @@ INIT = "localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.maphint',
 GO = """async ([ra, dec, k]) => { const v = await import('/explore-view.js');
   if (!matchMedia('(max-width: 640px)').matches) (await import('/explore-desktop.js')).flyTo(ra, dec, 1);
   v.cancel(); v.flyTo(ra, dec, k === 'max' ? v.MAXW : k * 360, 1);
-  await new Promise(r => setTimeout(r, 60)); return v.W / 360; }"""
+  await new Promise(r => setTimeout(r, 60)); return [v.W, v.X, v.Y]; }"""   # the view it reached: finite, or the check fails
 WHOLE = """async () => { const v = await import('/explore-view.js'); if (v.A) { const ph = matchMedia('(max-width: 640px)').matches;
   if (ph) v.set(v.A.min, 0, (v.A.t + v.A.b) / 2 - v.A.min / 4); else v.set(v.A.min, v.A.x0, v.A.y0); } return document.querySelector('.map-wrap').offsetWidth / 360; }"""
 # everything a name must keep clear of, as the page shows it now
@@ -87,9 +87,6 @@ def check(ok, name, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (": " + detail if detail else ""), flush=True)
     if not ok: fails.append(name)
 
-GO = """async ([ra, dec, k]) => { const v = await import('/explore-view.js');
-  if (!matchMedia('(max-width: 640px)').matches) (await import('/explore-desktop.js')).flyTo(ra, dec, 1);
-  v.cancel(); v.flyTo(ra, dec, k * 360, 1); await new Promise(r => setTimeout(r, 60)); }"""
 # put a name's sky spot at window point (x, y) at k px per degree, through the view engine
 PUT = """async ([name, k, x, y]) => { const v = await import('/explore-view.js'), s = await import('/skymap.js'), l = skyLabels.labels.find(l => l.name === name);
   if (!matchMedia('(max-width: 640px)').matches) (await import('/explore-desktop.js')).flyTo(l.ra, l.dec, 1);
@@ -138,6 +135,8 @@ async def sweep(pg, w, h, state, prepare=None, need=lambda k: True):
         for k in ZOOMS:
             if k is None and spot != "Orion": continue   # the whole sky is the same from every spot
             got = await pg.evaluate(WHOLE) if k is None else await pg.evaluate(GO, [ra, dec, k])
+            if k is not None and not all(map(math.isfinite, got)):   # a view that is not a view: nothing below would mean anything
+                bad.append(f"{spot} at {k}: the view is not finite {got}"); continue
             if prepare: await prepare(pg)
             await settle(pg)
             j = await pg.evaluate(JUDGE); n += 1
@@ -168,13 +167,15 @@ async def main():
             # zoomed in (5 to 60 px per degree), through the view engine as a search's fly-to drives it
             pts = []
             for k in (5, 3, 5, 60):
-                await pg.evaluate(GO, [84.0, -4.0, k]); await settle(pg); pts.append(await pg.evaluate(POINTS))
+                v = await pg.evaluate(GO, [84.0, -4.0, k]); assert all(map(math.isfinite, v)), f"view not finite at {k} px/deg: {v}"
+                await settle(pg); pts.append(await pg.evaluate(POINTS))
             check(pts[0] > 0 and pts[1] == 0 and pts[2] > 0, f"borders come back after zooming out and in ({w}x{h})", f"points at 5, 3, 5 px/deg: {pts[:3]}")
             check(0 < pts[3] < pts[2] / 4, f"zoomed in, fewer border points are drawn ({w}x{h})", f"points at 5 and 60 px/deg: {pts[2]}, {pts[3]}")
             # real gestures through their own handlers, then the page as it settles
             bad = []
             for what, act in GESTURES(phone, w, h):
-                await pg.evaluate(GO, [84.0, -4.0, 9]); await settle(pg)
+                v = await pg.evaluate(GO, [84.0, -4.0, 9]); assert all(map(math.isfinite, v)), f"view not finite: {v}"
+                await settle(pg)
                 await act(pg); await settle(pg)
                 j = await pg.evaluate(JUDGE)
                 if j["bad"] or not j["any"]: bad.append(f"{what}: {j['bad'][:2] or 'no name'}")
