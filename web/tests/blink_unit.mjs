@@ -130,3 +130,17 @@ test('SPHEREx saturation at the star: OVERFLOW or NONLINEAR in any contributing 
     spherex: { valid_fraction: 1, covered_weight_at_lead: 0, exposures_seeing_lead: 15, exposures_masked_at_lead: 15, exposures_saturated_at_lead: 0 } }).reason;
   assert.doesNotMatch(r, /too bright|saturated/, r); assert.match(r, /SPHEREx has unusable pixels at the star in 15 of 15 exposures/, r);
 });
+
+// Codex review 6: several saturated contributors each under 0.001 of the weight can mask the star together
+test('saturated contributors too small alone but masking the star together are counted', async () => {
+  const { readFileSync } = await import('node:fs');
+  const curves = JSON.parse(readFileSync(new URL('../data/bands.json', import.meta.url))), waves = JSON.parse(readFileSync(new URL('../data/wavemaps.json', import.meta.url)));
+  const N = B.N, w = N + 20, px = new Float64Array(N * N), py = new Float64Array(N * N);
+  for (let k = 0; k < N * N; k++) { px[k] = 1000.0006 + (k % N); py[k] = 1000.0006 + Math.floor(k / N); }   // the star at (190.0006, 190.0006)
+  const img = new Float32Array(w * w).fill(1), flg = new Int32Array(w * w);
+  for (const k of [190 * w + 191, 191 * w + 190, 191 * w + 191]) flg[k] = 1 << 1;   // weights about 0.0006, 0.0006, 0.0000004
+  const acc = B.synthStart(curves.W2, ['D6']);
+  B.synthAdd(acc, { det: 'D6', t: 61000, key: 'k', sha256: 's', img, flg, w, h: w, x0: 990, y0: 990, map: { px, py } }, waves.D6);
+  const { meta } = B.synthEnd(acc, 'W2');
+  assert.equal(meta.exposures_masked_at_lead, 1); assert.equal(meta.exposures_saturated_at_lead, 1);
+});

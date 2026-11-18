@@ -99,12 +99,12 @@ function bilin(a, w, h, x, y) {
   const v = (i, j) => (i < w && j < h ? a[j * w + i] : 0);
   return (v(xi, yi) * (1 - fx) + v(xi + 1, yi) * fx) * (1 - fy) + (v(xi, yi + 1) * (1 - fx) + v(xi + 1, yi + 1) * fx) * fy;
 }
-// the source pixels bilin draws on at (x, y) with weight 0.001 or more: any of them invalid masks the grid pixel
-function contributors(w, h, x, y) {
-  const xi = Math.min(Math.floor(x), w - 1), yi = Math.min(Math.floor(y), h - 1), fx = x - xi, fy = y - yi, out = [];
-  for (const [i, j, wt] of [[xi, yi, (1 - fx) * (1 - fy)], [xi + 1, yi, fx * (1 - fy)], [xi, yi + 1, (1 - fx) * fy], [xi + 1, yi + 1, fx * fy]])
-    if (wt >= 1e-3 && i < w && j < h) out.push(j * w + i);
-  return out;
+// would the saturated pixels alone mask the grid pixel at (x, y)? toGrid's own rule (bilin of validity > 0.999), with
+// only saturation counted as invalid, so many tiny saturated weights add up as they do there (Codex review 6)
+function saturatedAt(flg, w, h, x, y) {
+  const xi = Math.min(Math.floor(x), w - 1), yi = Math.min(Math.floor(y), h - 1), fx = x - xi, fy = y - yi;   // bilin's arithmetic
+  const v = (i, j) => (i < w && j < h && flg[j * w + i] & SAT ? 0 : 1);   // past the edge is not saturation
+  return !((v(xi, yi) * (1 - fx) + v(xi + 1, yi) * fx) * (1 - fy) + (v(xi, yi + 1) * (1 - fx) + v(xi + 1, yi + 1) * fx) * fy > 0.999);
 }
 // build_v3 to_grid: bilinear resample of img and its validity mask; a grid pixel is valid only if all its weight is
 export function toGrid(img, valid, w, h, map, x0 = 0, y0 = 0) {
@@ -329,11 +329,11 @@ export function synthAdd(acc, e, wavemap) {
   for (let k = 0; k < NN; k++) if (b[k] >= 0) { acc.S[b[k] * NN + k] += g[k] - med; acc.Cn[b[k] * NN + k]++; }
   const c = Math.round(C0) * N + Math.round(C0), lc = m[c] ? searchsorted(edges, lamAt(wavemap, e.map.px[c], e.map.py[c])) - 1 : -1;
   // the star's own pixel: exposures that see it in band, and those saturated there (a star too bright), for the page's reason
-  // masked there, and saturated if any pixel toGrid's bilinear draws on there (weight 0.001 or more, its 0.999 rule) is
+  // masked there, and saturated if the saturated pixels alone would mask it
   const lx = e.map.px[c] - e.x0, ly = e.map.py[c] - e.y0, li = searchsorted(edges, lamAt(wavemap, e.map.px[c], e.map.py[c])) - 1;
   if (lx >= 0 && ly >= 0 && lx <= e.w - 1 && ly <= e.h - 1 && li >= 0 && li < nb) {
     acc.seeLead++;
-    if (!m[c]) { acc.maskLead++; if (contributors(e.w, e.h, lx, ly).some(k => e.flg[k] & SAT)) acc.satLead++; }
+    if (!m[c]) { acc.maskLead++; if (saturatedAt(e.flg, e.w, e.h, lx, ly)) acc.satLead++; }
   }
   acc.used.push({ key: e.key, det: e.det, mjd: e.t, sha256: e.sha256, digest: CUTOUT_DIGEST, bg_median: med, grid_fraction: cnt / NN, at_lead: !!m[c] && lc >= 0 && lc < nb });
   return true;
