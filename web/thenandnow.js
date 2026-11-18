@@ -67,13 +67,14 @@ function words(band, m, context) {
 }
 // across the bands: does the change grow with wavelength?
 function trend(results, context) {
+  context ??= Object.values(results).find(m => m?.context)?.context;
   const ok = ORDER.filter(k => results[k]?.state === 'ok').map(k => [k, results[k].report]);
   if (ok.length < 3) return { text: 'Change by wavelength', detail: 'Measured in every band that has a good comparison.', pass: false };
   const [ks, w1, w2] = ok.map(([, r]) => r), sig = Math.max(ks.field_scatter_robust_sigma, w1.field_scatter_robust_sigma, w2.field_scatter_robust_sigma);
   const same = ok.every(([, r]) => Math.abs(r.lead_z_vs_field) < 3);
   if (same) return { text: 'The same at every wavelength', detail: 'Unchanged within the noise at 2.2, 3.4 and 4.6 µm.', pass: true };
   if (w2.lead_ratio - w1.lead_ratio > sig && w1.lead_ratio - ks.lead_ratio > sig)
-    return { text: 'Grows with wavelength', detail: `Brighter at longer wavelengths.${context?.dust_K ? ` That fits warm dust near the star, about ${context.dust_K} K.` : ''}`, pass: true };
+    return { text: 'Grows with wavelength', detail: `Brighter at longer wavelengths${context?.dust_K ? `. That fits warm dust near the star, about ${context.dust_K} K.` : `: ${ok.map(([k, r]) => `${r.lead_ratio.toFixed(2)}×`).join(', ')} at 2.2, 3.4 and 4.6 µm.`}`, pass: true };
   return { text: 'Differs by wavelength', detail: `${ok.map(([k, r]) => `${BAND[k].um} µm ${r.lead_ratio.toFixed(2)}×`).join(', ')}.`, pass: true };
 }
 
