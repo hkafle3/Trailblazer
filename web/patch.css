@@ -534,5 +534,6 @@ body.depth .p3-inset:not(.off) { display: block; }
    now as a third tab), the tabs not chosen keep their icon alone (the name stays for screen readers) */
 .pv-frame { container-type: inline-size; }
 @container (max-width: 540px) {
+  .pv-views [role=tab][aria-selected=false] { min-width: 44px; justify-content: center; }
   .pv-views [role=tab][aria-selected=false] .tab-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
