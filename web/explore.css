@@ -279,6 +279,13 @@ body.explore:has(.dive-frame.on) { touch-action: auto; }   /* phones: the time-l
 .map-wrap.straight #card-comet.left { transform-origin: 278px 30px; }
 .map-wrap.straight #card-patch { transform-origin: -30px 30px; }
 .map-wrap.straight #card-patch.left { transform-origin: 280px 30px; }
+.map-wrap.straight #card-cand { transform-origin: 12px -16px; }
+.map-wrap.straight #card-cand.left { transform-origin: 258px -16px; }
+/* a card that fits neither beside its marker (under the Flat / 3D switch or the search box, sky-labels.js layout()):
+   under it, --bx across, with the rule hanging from the marker */
+body.explore :is(#card-comet, #card-cand).below { margin: 24px 0 0 var(--bx, -135px); }
+body.explore #card-comet.below::before { left: calc(-1 * var(--bx, -135px)); top: -22px; width: 1px; height: 20px; }
+.map-wrap.straight :is(#card-comet, #card-cand).below { transform-origin: calc(-1 * var(--bx, -135px)) -24px; }
 
 /* the map takes over from the homepage sky oval (same view-transition-name) */
 body.explore .map { view-transition-name: sky; }

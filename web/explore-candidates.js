@@ -39,7 +39,7 @@ if (list.length) {
     e.preventDefault(); e.stopPropagation();
     const c = a.cand, d = c.detections[0], q = f => card.querySelector(`[data-f=${f}]`);
     q('id').textContent = name(c); q('what').textContent = what(c); q('facts').textContent = `${photos(c)} · ${motion(c)}`; q('go').href = a.href;
-    card.classList.toggle('left', place(card, d.ra, d.dec) > 0.75);
+    place(card, d.ra, d.dec);   // its side is sky-labels.js's layout(), clear of the controls
     if (card.hidden) hid = ['card-comet', 'card-patch'].map($).filter(o => o && !o.hidden);
     hid.forEach(o => { o.hidden = true; });   // one card open at a time
     card.hidden = false;
