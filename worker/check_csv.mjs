@@ -77,7 +77,8 @@ const stmt = (q, a = []) => ({ q, a, bind: (...b) => stmt(q, b),
   async first() { return this.exec().get(...a) ?? null; }, async all() { return { results: this.exec().all(...a) }; }, async run() { return this.exec().run(...a); } });
 const DB = { prepare: q => stmt(q), async batch(list) { sql.exec('BEGIN'); try { for (const x of list) x.exec().run(...x.a); sql.exec('COMMIT'); } catch (e) { sql.exec('ROLLBACK'); throw e; } } };
 const CORS = { 'Access-Control-Allow-Origin': '*' };
-const saved = new Function('CORS', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return { withSaved, backfill, savedKey };')(CORS);
+const { worthSaving } = await import('./src/saved.js');
+const saved = new Function('CORS', 'worthSaving', src.slice(src.indexOf("// IRSA's image search answered 502")) + 'return { withSaved, backfill, savedKey };')(CORS, worthSaving);
 const waits = [], ctx = { waitUntil: p => waits.push(p) };
 const answer = (status, body, cc = 'public, max-age=86400') => async () => new Response(JSON.stringify(body), { status, headers: { 'Cache-Control': cc } });
 const ask = async (route, q) => { const u = new URL('https://x/api/images?' + q), r = await saved.withSaved(route, u, saved.savedKey(u), { DB }, ctx); await Promise.all(waits.splice(0)); return [r.status, await r.text(), r.headers]; };
