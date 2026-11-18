@@ -11,16 +11,17 @@
 }
 
 /* borders: hairlines in the map's SVG, faded in by zoom (--bound, 0..1) */
-.map .grat .cbound { stroke: rgba(255, 255, 255, .2); stroke-width: .8; opacity: var(--bound, 0); transition: opacity .3s; }
+.map .grat .cbound { stroke: rgba(255, 255, 255, .2); stroke-width: .8; opacity: var(--bound, 0); }
 .map .grat .mw-path { stroke: none; }
-.map .grat .mw-text { font: 300 21px var(--head-font); letter-spacing: .55em; text-transform: uppercase; fill: rgba(255, 255, 255, .55); stroke: rgba(2, 3, 8, .6); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; transition: opacity .25s; }
-.map .grat .mw-text.mw-off { opacity: 0; visibility: hidden; }
+.map .grat .mw-text { font: 300 21px var(--head-font); letter-spacing: .55em; text-transform: uppercase; fill: rgba(255, 255, 255, .55); stroke: rgba(2, 3, 8, .6); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }
+.map .grat .mw-text.mw-off { visibility: hidden; }
 
-/* names take no pointer events: the map under them keeps its clicks, drags and double clicks */
+/* names take no pointer events: the map under them keeps its clicks, drags and double clicks. They show and hide at once,
+   with no fade: a fade on hundreds of names during a pan costs frames, and leaves text drawn a little differently after it */
 .skylabels { position: absolute; inset: 0; pointer-events: none; }
-.lb { position: absolute; width: 0; height: 0; pointer-events: none; transition: opacity .25s; }
+.lb { position: absolute; width: 0; height: 0; pointer-events: none; }
 .map-wrap.straight .skylabels > .lb { transform: var(--un); }
-.lb.off { opacity: 0; visibility: hidden; transition: opacity .25s, visibility 0s .25s; }
+.lb.off { visibility: hidden; }
 .lb span { position: absolute; white-space: nowrap; font: 300 11px/1 var(--head-font); text-shadow: var(--lb-halo); transition: color .2s; }
 .lb.hover span { color: var(--lb-hover); }
 .lb[data-side="mid"] span { transform: translate(-50%, -50%); }
