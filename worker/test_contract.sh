@@ -56,7 +56,11 @@ import random
 spot = f"ra={random.uniform(0, 360):.3f}&dec={random.uniform(-60, 60):.3f}"   # a fresh spot: a real miss each run (and the showcase's, a hit)
 for q in ("survey=allwise&band=W2", "survey=2mass&band=Ks"):
   for where in (spot, "ra=84.01808&dec=-6.5775"):
-    m = json.loads(get(f"{base}/api/oldsky?{q}&{where}"))
+    for step in range(4):   # a new spot comes in steps: 202 with the tiles pending, each fetched, then the manifest
+        m = json.loads(get(f"{base}/api/oldsky?{q}&{where}"))
+        if "pending" not in m: break
+        for name in m["pending"]: get(f"{base}/api/oldsky/tile?{q}&{where}&name={name}")
+    assert "tiles" in m, m
     for t in m["tiles"][:2]:
         mine = get(f"{base}/{t['path']}"); time.sleep(0.5); theirs = get(t["source"])
         assert t["source"].startswith("https://irsa.ipac.caltech.edu/"), t["source"]

@@ -29,9 +29,22 @@ async function inflate(bytes) {
 async function oldSky(base, band, ra, dec, signal, progress) {
   const [survey, b] = SURVEY[band];
   progress(`Fetching the ${survey === 'allwise' ? 'AllWISE' : '2MASS'} picture`);
-  let r;
-  try { r = await fetch(`${base}/api/oldsky?survey=${survey}&band=${b}&ra=${ra.toFixed(5)}&dec=${dec.toFixed(5)}`, { signal }); }
-  catch (e) { if (e.name === 'AbortError') throw e; throw new Unavailable('old-unavailable', 'NASA\'s image archive (IRSA) is not answering'); }
+  // a new spot is fetched in steps (the Worker's CPU budget): the plan answers 202 with the tiles still to fetch, each
+  // is asked for in turn, then the manifest
+  const q = `survey=${survey}&band=${b}&ra=${ra.toFixed(5)}&dec=${dec.toFixed(5)}`, irsaDown = new Unavailable('old-unavailable', 'NASA\'s image archive (IRSA) is not answering');
+  const get = async u => { try { return await fetch(u, { signal }); } catch (e) { if (e.name === 'AbortError') throw e; throw irsaDown; } };
+  let r = await get(`${base}/api/oldsky?${q}`);
+  for (let round = 0; round < 3 && r.status === 202; round++) {
+    const { pending } = await r.json();
+    for (const [i, name] of pending.entries()) {
+      progress(`Fetching the ${survey === 'allwise' ? 'AllWISE' : '2MASS'} picture: ${i + 1} of ${pending.length}`);
+      const t = await get(`${base}/api/oldsky/tile?${q}&name=${encodeURIComponent(name)}`);
+      if (t.status === 429) throw new Unavailable('old-unavailable', 'Too many new spots at once. Try again in a minute');
+      if (!t.ok) throw irsaDown;
+    }
+    r = await get(`${base}/api/oldsky?${q}`);
+  }
+  if (r.status === 202) throw irsaDown;
   if (r.status === 404) throw new Unavailable('comparison-unavailable', `No ${survey === 'allwise' ? 'AllWISE' : '2MASS'} picture covers this spot`);
   if (r.status === 429) throw new Unavailable('old-unavailable', 'Too many new spots at once. Try again in a minute');
   if (!r.ok) throw new Unavailable('old-unavailable', 'NASA\'s image archive (IRSA) is not answering');

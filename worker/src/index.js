@@ -10,7 +10,7 @@
 import { skyImagesJson, eclipticLat } from './sky_index.js';
 import { parseCsv, skybotRow, skybotUrl, depthAnswer, devFlags } from './depth.js';
 import { snapshot, nowRow } from './now.js';
-import { oldsky, stored, blinkBaked } from './oldsky.js';
+import { oldsky, oldskyTile, stored, blinkBaked } from './oldsky.js';
 // the clearest SPHEREx photo of each known comet without measured photos (bake/known_thumbs.py), for the Comets list
 import THUMBS from '../../web/data/comets/thumbs/index.json';
 
@@ -639,6 +639,7 @@ export default {
       if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'use GET' }, 405, { Allow: 'GET' });
       try {
         if (url.pathname === '/api/oldsky') return await oldsky(request, url, env);
+        if (url.pathname === '/api/oldsky/tile') return await oldskyTile(request, url, env);
         if (url.pathname === '/api/blink') return await blinkBaked(url, env);
         return await stored(url, env);
       } catch (e) { console.error(e); return json({ error: 'older survey unavailable', reason: 'store is not answering' }, 503, { 'Cache-Control': 'no-store' }); }

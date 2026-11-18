@@ -131,7 +131,7 @@ function csvRows(text, need) {
   return lines.slice(1).filter(l => l.includes(',')).map(l => { const v = l.replace(/\r$/, '').split(','); return Object.fromEntries(head.map((h, i) => [h, v[i]])); });
 }
 // which tiles to cut out, from IRSA's searches: [{ name, url }]
-async function plan(req, fetchFn) {
+async function plan_(req, fetchFn) {
   const { survey, band, ra, dec } = req, cut = `center=${ra},${dec}&size=${SIZE}arcsec`;
   const text = async u => new TextDecoder().decode(await tries(2, () => irsaBytes(u, MAX_TEXT, fetchFn)));
   if (survey === 'allwise') {
@@ -155,37 +155,64 @@ async function plan(req, fetchFn) {
 function bandOf(survey, h) { return survey === 'allwise' ? `W${h.BAND}` : h.FILTER === 'k' ? 'Ks' : `?${h.FILTER}`; }
 const KEEP = ['NAXIS1', 'NAXIS2', 'BAND', 'FILTER', 'DATEOBS1', 'DATEOBS2', 'MIDOBS', 'ORDATE', 'MAGZP', 'NUMFRMS', 'MEDCOV', 'COADDID'];
 
+// A cold miss is split over several requests, each a fraction of the plan's 10 ms CPU (one request doing a whole 2MASS
+// mosaic measured 17.6 ms on preview, 2026-11-18): this one searches IRSA and stores the plan (rate limited per IP);
+// then GET /api/oldsky/tile stores one tile per request (the browser asks for each, in turn); then this one again
+// writes the manifest once every tile has passed its checks. Answers: 200 manifest, or 202 { pending: [tile names] }.
+const PENDING_KEY = 'plan.json', OK = name => `ok/${name}.json`;
+const manifestOf = (req, plan, done) => ({ v: 2, survey: req.survey, band: req.band, size_arcsec: SIZE, ra: req.ra, dec: req.dec,
+  release: req.survey === 'allwise' ? 'AllWISE Atlas (p3am_cdd)' : '2MASS All-Sky Release', fetched_at: new Date().toISOString(),
+  tiles: plan.tiles.map(t => ({ name: t.name, path: `api/${req.prefix}${t.name}`, source: t.url, tile: t.tile, ...done.get(t.name) })) });
+async function readJsonObject(env, key) { const o = await env.OLDSKY.get(key); return o ? JSON.parse(await new Response(o.body).text()) : null; }
 export async function oldsky(request, url, env, deps = {}) {
   const fetchFn = deps.fetch ?? fetch, req = readRequest(url);
   if (req.error) return json({ error: req.error }, 400);
   if (!env.OLDSKY) return json({ error: 'older survey unavailable', reason: 'no store' }, 503);
   const hit = await env.OLDSKY.get(req.prefix + 'manifest.json');
   if (hit) return new Response(hit.body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400', 'X-Oldsky': 'hit' } });
-  // a miss costs IRSA requests and storage: limited per IP (misses only)
-  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
-  if (env.OLDSKY_LIMIT && !(await env.OLDSKY_LIMIT.limit({ key: `oldsky:${ip}` })).success)
-    return json({ error: 'too many new spots, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
   const down = reason => json({ error: 'older survey unavailable', reason }, 503, { 'Cache-Control': 'no-store', 'Retry-After': '30' });
-  let tiles;
-  try { tiles = await plan(req, fetchFn); } catch (e) { return down(`search: ${e.message}`); }
-  if (!tiles.length) return json({ error: 'no older survey picture of this spot', survey: req.survey, band: req.band }, 404, { 'Cache-Control': 'no-store' });
-  if (tiles.length > MAX_TILES) return down(`${tiles.length} tiles, more than ${MAX_TILES}`);
-  // one at a time: IRSA answers 503 to two cutouts of one tile at once (measured 2026-11-18)
-  const manifest = { v: 2, survey: req.survey, band: req.band, size_arcsec: SIZE, ra: req.ra, dec: req.dec,
-    release: req.survey === 'allwise' ? 'AllWISE Atlas (p3am_cdd)' : '2MASS All-Sky Release', fetched_at: new Date().toISOString(), tiles: [] };
-  try {
-    for (const t of tiles) {
-      const s = await tries(3, () => storeTile(t, req.prefix + t.name, req, env, fetchFn, deps.wrapBody));
-      manifest.tiles.push({ name: t.name, path: `api/${req.prefix}${t.name}`, source: t.url, tile: t.tile, bytes: s.bytes, gzip: s.gzip, etag: s.etag,
-        header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) });
-    }
-  } catch (e) {
-    for (const t of manifest.tiles) await env.OLDSKY.delete(req.prefix + t.name).catch(() => {});
-    return down(e.message);
+  let plan = await readJsonObject(env, req.prefix + PENDING_KEY);
+  if (!plan) {
+    // a new spot costs IRSA requests and storage: limited per IP (misses only)
+    const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+    if (env.OLDSKY_LIMIT && !(await env.OLDSKY_LIMIT.limit({ key: `oldsky:${ip}` })).success)
+      return json({ error: 'too many new spots, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
+    let tiles;
+    try { tiles = await plan_(req, fetchFn); } catch (e) { return down(`search: ${e.message}`); }
+    if (!tiles.length) return json({ error: 'no older survey picture of this spot', survey: req.survey, band: req.band }, 404, { 'Cache-Control': 'no-store' });
+    if (tiles.length > MAX_TILES) return down(`${tiles.length} tiles, more than ${MAX_TILES}`);
+    plan = { tiles };
+    await env.OLDSKY.put(req.prefix + PENDING_KEY, JSON.stringify(plan), { httpMetadata: { contentType: 'application/json' } });
   }
-  const body = JSON.stringify(manifest);
-  await env.OLDSKY.put(req.prefix + 'manifest.json', body, { httpMetadata: { contentType: 'application/json' } });   // last: a manifest means every tile is there
+  const done = new Map((await env.OLDSKY.list({ prefix: req.prefix + 'ok/' })).objects.map(o => [o.key.slice(req.prefix.length + 3, -5), o]));
+  const pending = plan.tiles.filter(t => !done.has(t.name)).map(t => t.name);
+  if (pending.length) return json({ pending, tile: `api/oldsky/tile?${url.searchParams}` }, 202, { 'Cache-Control': 'no-store', 'X-Oldsky': 'pending' });
+  // every tile passed: the manifest, from each tile's own record (last: a manifest means every tile is there)
+  const recs = new Map(await Promise.all(plan.tiles.map(async t => [t.name, await readJsonObject(env, req.prefix + OK(t.name))])));
+  const body = JSON.stringify(manifestOf(req, plan, recs));
+  await env.OLDSKY.put(req.prefix + 'manifest.json', body, { httpMetadata: { contentType: 'application/json' } });
   return new Response(body, { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400', 'X-Oldsky': 'miss' } });
+}
+// GET /api/oldsky/tile?survey=&band=&ra=&dec=&name=: one tile of the stored plan from IRSA into R2, checked; only names in
+// the plan, never a URL from the request. Rate limited per IP (OLDSKY_TILE_LIMIT). 200 { name, done } or 503 (nothing kept).
+export async function oldskyTile(request, url, env, deps = {}) {
+  const fetchFn = deps.fetch ?? fetch, req = readRequest(url), name = url.searchParams.get('name') ?? '';
+  if (req.error) return json({ error: req.error }, 400);
+  if (!env.OLDSKY) return json({ error: 'older survey unavailable', reason: 'no store' }, 503);
+  const plan = await readJsonObject(env, req.prefix + PENDING_KEY), t = plan?.tiles.find(x => x.name === name);
+  if (!t) return json({ error: 'no such tile in this spot\'s plan; ask GET /api/oldsky first' }, 404, { 'Cache-Control': 'no-store' });
+  if (await env.OLDSKY.head(req.prefix + OK(name))) return json({ name, done: true }, 200, { 'Cache-Control': 'no-store' });
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
+  if (env.OLDSKY_TILE_LIMIT && !(await env.OLDSKY_TILE_LIMIT.limit({ key: `oldsky-tile:${ip}` })).success)
+    return json({ error: 'too many tiles at once, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
+  try {
+    const s = await tries(2, () => storeTile(t, req.prefix + t.name, req, env, fetchFn, deps.wrapBody));
+    const rec = { bytes: s.bytes, gzip: s.gzip, etag: s.etag, header: Object.fromEntries(KEEP.filter(k => k in s.cards).map(k => [k, s.cards[k]])) };
+    await env.OLDSKY.put(req.prefix + OK(name), JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
+    return json({ name, done: true }, 200, { 'Cache-Control': 'no-store' });
+  } catch (e) {
+    return json({ error: 'older survey unavailable', reason: e.message }, 503, { 'Cache-Control': 'no-store', 'Retry-After': '30' });
+  }
 }
 
 // stored bytes, by canonical key only: oldsky/v1/<survey>/<band>/780/<pos>/<tile>, blink/v1/<pos>/<file>

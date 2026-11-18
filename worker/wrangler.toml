@@ -52,6 +52,13 @@ name = "OLDSKY_LIMIT"
 namespace_id = "1003"
 simple = { limit = 6, period = 60 }
 
+# Rate limit for GET /api/oldsky/tile (one tile of a new spot's plan per request, so each stays inside the CPU budget):
+# 30 a minute per IP, enough for three bands of a new spot (2MASS can need 8 tiles) with retries.
+[[ratelimits]]
+name = "OLDSKY_TILE_LIMIT"
+namespace_id = "1004"
+simple = { limit = 30, period = 60 }
+
 # Rate limit for POST /api/checks (heat map counts): each visitor's IP gets 10 a minute, counted by Cloudflare,
 # so a script cannot spend the database's daily write allowance (which comments need too).
 [[ratelimits]]

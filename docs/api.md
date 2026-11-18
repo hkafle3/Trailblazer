@@ -349,6 +349,8 @@ The older survey's picture of a spot, for "Then and now" (`worker/src/oldsky.js`
 - AllWISE: the nearest Atlas tile's intensity image and coverage map. 2MASS: every Ks atlas image overlapping the 12 arcmin field (one box search).
 - `GET /api/oldsky/v1/...` serves a stored tile as IRSA sent it (canonical keys only). The page checks it against `sha256`.
 
+A new spot comes in steps, so each request stays inside the Workers plan's CPU limit (a whole 2MASS mosaic in one request measured 17.6 ms on a 10 ms plan): the first request searches IRSA, stores the plan and answers `202 {"pending": ["2mass_Ks_001126_ki1020021.fits", ...]}`; then `GET /api/oldsky/tile?survey=&band=&ra=&dec=&name=` stores one tile of that plan per request (names from the plan only; `OLDSKY_TILE_LIMIT`, 30 a minute per IP; `404` for a name not in the plan); then `GET /api/oldsky` again writes and answers the manifest once every tile has passed its checks. A tile that fails is deleted and its request answers `503`; tiles that passed are kept, and there is no manifest until all have.
+
 ## GET /api/blink?ra=&dec= (R2 OLDSKY)
 
 A baked "Then and now" blink at this spot (`bake/blink_bake.mjs`; the showcase J053604.34-063439.0), or `404`, and the page builds it live. `result.json` holds each band's state, report and checks; `frames_path` (`GET /api/blink/v1/<pos>/frames.bin`) the calibrated frames as float32. To bake the showcase into production R2 once Ed has reported it: `node bake/blink_bake.mjs --api https://comet-hunt.comet-hunt.workers.dev --put remote --region "Orion A" --distance-ly 1250 --dust-k 680`.
