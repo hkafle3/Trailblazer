@@ -261,10 +261,12 @@ async def main():
         for when in ("1997-10-04", None):
             c = await ctx(); pg = await c.new_page()
             if when:
-                async def on_res(route, when=when):
-                    r = await route.fetch(); j = await r.json(); j["bands"]["Ks"]["report"]["old"]["dates"] = [when]
-                    await route.fulfill(response=r, body=json.dumps(j))
-                await pg.route("**/api/blink?*", on_res)
+                def dated(day):
+                    async def on_res(route):
+                        r = await route.fetch(); j = await r.json(); j["bands"]["Ks"]["report"]["old"]["dates"] = [day]
+                        await route.fulfill(response=r, body=json.dumps(j))
+                    return on_res
+                await pg.route("**/api/blink?*", dated(when))
             await pg.goto(f"{BASE}/candidate.html?id={SHOW}"); await wait_state(pg, "Ks"); await pg.click("#tn [data-band=Ks]")
             await pg.wait_for_function("window.__blink.drawn.band === 'Ks'")
             await pg.click("#tn .knob"); await pg.evaluate("document.querySelector('#tn .stop[data-to=\"0\"]').click()"); await pg.wait_for_timeout(400)
