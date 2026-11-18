@@ -18,12 +18,21 @@ function table(lengths) {
   lengths.forEach((l, s) => { if (l) sym[offs[l]++] = s; });
   return { count, sym };
 }
-export function inflateStart(input, limit) {
+// until(out, o): asked at each 2880-byte boundary of the output; true stops there (the FITS header's END card is in)
+export function inflateStart(input, limit, until = null) {
   let p = 0, bit = 0, nb = 0;
   const out = new Uint8Array(limit); let o = 0;
   const need = () => { if (p >= input.length) throw new End(); };
   const bits = n => { while (nb < n) { need(); bit |= input[p++] << nb; nb += 8; } const v = bit & ((1 << n) - 1); bit >>>= n; nb -= n; return v; };
-  const decode = t => { let code = 0, first = 0, index = 0; for (let len = 1; len < 16; len++) { code |= bits(1); const c = t.count[len]; if (code - c < first) return t.sym[index + (code - first)]; index += c; first = (first + c) << 1; code <<= 1; } throw new Error('bad Huffman code'); };
+  const decode = t => {
+    let code = 0, first = 0, index = 0;
+    for (let len = 1; len < 16; len++) {
+      if (!nb) { need(); bit = input[p++]; nb = 8; }
+      code |= bit & 1; bit >>>= 1; nb--;
+      const c = t.count[len]; if (code - c < first) return t.sym[index + (code - first)]; index += c; first = (first + c) << 1; code <<= 1;
+    }
+    throw new Error('bad Huffman code');
+  };
   // gzip header
   if (input[0] !== 0x1f || input[1] !== 0x8b || input[2] !== 8) throw new Error('not a gzip');
   const flg = input[3]; p = 10;
@@ -33,11 +42,12 @@ export function inflateStart(input, limit) {
     if (flg & 16) { while (need(), input[p++] !== 0); }
     if (flg & 2) p += 2;
     const fixedLit = table([...Array(144).fill(8), ...Array(112).fill(9), ...Array(24).fill(7), ...Array(8).fill(8)]), fixedDist = table(Array(30).fill(5));
-    for (let last = 0; !last && o < limit;) {
+    let stop = false;
+    for (let last = 0; !last && o < limit && !stop;) {
       last = bits(1); const type = bits(2);
       if (type === 0) {   // stored
         bit = 0; nb = 0; need(); const len = input[p] | (input[p + 1] << 8); p += 4;
-        for (let i = 0; i < len && o < limit; i++) { need(); out[o++] = input[p++]; }
+        for (let i = 0; i < len && o < limit; i++) { need(); out[o++] = input[p++]; if (o % 2880 === 0 && until?.(out, o)) { stop = true; break; } }
         continue;
       }
       let lit = fixedLit, dist = fixedDist;
@@ -56,12 +66,12 @@ export function inflateStart(input, limit) {
       } else if (type !== 1) throw new Error('bad deflate block');
       for (;;) {
         const s = decode(lit);
-        if (s < 256) { out[o++] = s; if (o >= limit) break; continue; }
+        if (s < 256) { out[o++] = s; if (o >= limit || (o % 2880 === 0 && until?.(out, o))) { stop = true; break; } continue; }
         if (s === 256) break;
         const li = s - 257, len = LEN_BASE[li] + bits(LEN_EXTRA[li]), di = decode(dist), d = DIST_BASE[di] + bits(DIST_EXTRA[di]);
         if (d > o) throw new Error('deflate distance past the start');
-        for (let k = 0; k < len && o < limit; k++, o++) out[o] = out[o - d];
-        if (o >= limit) break;
+        for (let k = 0; k < len && o < limit; k++, o++) { out[o] = out[o - d]; if ((o + 1) % 2880 === 0 && until?.(out, o + 1)) { o++; stop = true; break; } }
+        if (stop || o >= limit) { stop = true; break; }
       }
     }
   } catch (e) { if (!(e instanceof End)) throw e; }

@@ -72,7 +72,7 @@ export async function fitsHead(prefix) {
   let b = prefix;
   // a gzip's start, inflated in JavaScript to at most 40 blocks (inflate_start.js): bounded however compressible the tile
   // is (16 MB of zeros is 16 KB of gzip), and it yields what a cut-short start holds (Codex re-review 3)
-  if (isGzip(prefix)) b = inflateStart(prefix, 40 * BLOCK);
+  if (isGzip(prefix)) b = inflateStart(prefix, 40 * BLOCK, (out, o) => { for (let i = o - BLOCK; i < o; i += 80) if (out[i] === 69 && out[i + 1] === 78 && out[i + 2] === 68 && out[i + 3] === 32) return true; return false; });   // stops at the block holding END
   const cards = {}, dec = new TextDecoder('latin1');
   if (dec.decode(b.subarray(0, 9)) !== 'SIMPLE  =') throw new Error('not a FITS file');
   let end = -1;
