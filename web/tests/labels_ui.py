@@ -9,17 +9,22 @@ Every check reads real on-screen rectangles (getBoundingClientRect), not the lay
   bounds      no name leaves the window or crosses the top bar or the timeline
   a name      at least one place name is shown (a name, the pinned constellation, or the Milky Way at the whole sky); not
               required where an opened panel covers the names (see ZOOMED below)
+  borders     drawn again after zooming out of their range and back; fewer points zoomed in (5 to 60 px/deg)
+  gestures    after a fast pan, the wheel, the keys (desktop) or a pinch (phone), through their own handlers, the names
+              are clear once the page settles; every view is judged as the page laid it out, never by calling layout()
+  search      names clear of a search list that grows while open (one row edited to many)
   quiet       a 1.2 s zoom lays the names out at most 3 times (when it stops, not on its frames: a pass per frame cost
               phones frames) and reads the controls again at most twice
   card        the comet card never touches the Flat / 3D switch or the search box, at load and after a pan (the 881 px fix)
   still       C-0176 (tagged star, 1 of 1) has no trail and no tail; C-0175 (tagged unsure) keeps both
 Overlaps between the page's own elements (a card over a marker) are not judged.
 Run: uv run -q --with playwright python web/tests/labels_ui.py [base url]   (default http://127.0.0.1:8787)"""
-import asyncio, random, sys
+import asyncio, os, random, sys
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 SIZES = [(1440, 900, 2), (881, 872, 2), (390, 844, 3)]
+if os.environ.get("LABELS_SIZES"): SIZES = [x for x in SIZES if f"{x[0]}" in os.environ["LABELS_SIZES"].split(",")]   # e.g. LABELS_SIZES=1440,390
 ZOOMS = [None, 5, 7.5, 10, 18, 28, 40, 45, 50, 60, "max"]   # px per degree; None is the whole sky
 rng = random.Random(2026)
 SPOTS = {"Orion": (84.0, -4.0), "random": (round(rng.uniform(0, 360), 3), round(rng.uniform(-60, 60), 3)), "south pole": (30.0, -88.5)}
@@ -31,7 +36,7 @@ GO = """async ([ra, dec, k]) => { const v = await import('/explore-view.js');
 WHOLE = """async () => { const v = await import('/explore-view.js'); if (v.A) { const ph = matchMedia('(max-width: 640px)').matches;
   if (ph) v.set(v.A.min, 0, (v.A.t + v.A.b) / 2 - v.A.min / 4); else v.set(v.A.min, v.A.x0, v.A.y0); } return document.querySelector('.map-wrap').offsetWidth / 360; }"""
 # everything a name must keep clear of, as the page shows it now
-JUDGE = """() => { skyLabels.layout();
+JUDGE = """() => {
   const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
   const vis = e => !e.closest('[style*="visibility: hidden"]') && getComputedStyle(e).visibility !== 'hidden';
   const all = s => [...document.querySelectorAll(s)].filter(vis).map(e => [R(e), e]).filter(([r]) => r[2] > r[0] && r[3] > r[1]);
@@ -67,6 +72,13 @@ GLIDE = """async () => { const v = await import('/explore-view.js'); if (!matchM
   await new Promise(r => setTimeout(r, 300)); on = false;
   return { passes: skyLabels.stats.passes - s0.passes, rereads: skyLabels.stats.rereads - s0.rereads, markReads: skyLabels.stats.markReads - s0.markReads, frames }; }"""
 fails = []
+# wait until the page has laid the names out on its own: no new layout pass for 400 ms (it lays out 150 ms after the map
+# stops, and again when a marker changes); the tests never call layout() themselves
+SETTLED = """async () => { let n = skyLabels.stats.passes, t = performance.now(), t0 = t;
+  while (performance.now() - t < 400 && performance.now() - t0 < 5000) { await new Promise(r => setTimeout(r, 50)); if (skyLabels.stats.passes !== n) { n = skyLabels.stats.passes; t = performance.now(); } } }"""
+async def settle(pg): await pg.wait_for_timeout(200); await pg.evaluate(SETTLED)
+# the border path: how many points it draws (each piece is M then L steps)
+POINTS = "(() => { const d = document.querySelector('.grat .cbound')?.getAttribute('d') ?? ''; return (d.match(/[ML]/g) ?? []).length; })()"
 # a name is required in every view, except under what the person just opened: at the whole sky the pin card, the sheet
 # or the search list can cover its few names (the Milky Way, the Magellanic Clouds, Andromeda), and a phone's search list
 # covers the whole map. Overlap is judged in every view.
@@ -75,6 +87,40 @@ def check(ok, name, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (": " + detail if detail else ""), flush=True)
     if not ok: fails.append(name)
 
+GO = """async ([ra, dec, k]) => { const v = await import('/explore-view.js');
+  if (!matchMedia('(max-width: 640px)').matches) (await import('/explore-desktop.js')).flyTo(ra, dec, 1);
+  v.cancel(); v.flyTo(ra, dec, k * 360, 1); await new Promise(r => setTimeout(r, 60)); }"""
+# put a name's sky spot at window point (x, y) at k px per degree, through the view engine
+PUT = """async ([name, k, x, y]) => { const v = await import('/explore-view.js'), s = await import('/skymap.js'), l = skyLabels.labels.find(l => l.name === name);
+  if (!matchMedia('(max-width: 640px)').matches) (await import('/explore-desktop.js')).flyTo(l.ra, l.dec, 1);
+  v.cancel(); const [u, vv] = s.fwd(l.ra, l.dec); v.set(k * 360, ...v.place(u, vv, x, y, k * 360)); }"""
+async def touch(pg, kind, pts):
+    cdp = pg.cdp if hasattr(pg, "cdp") else None
+    if cdp is None: pg.cdp = cdp = await pg.context.new_cdp_session(pg)
+    await cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"id": i, "x": x, "y": y} for i, (x, y) in enumerate(pts)]})
+def GESTURES(phone, w, h):
+    cx, cy = w * .5, h * .45
+    async def fast_pan(pg):   # a quick drag one way and most of the way back
+        if phone:
+            await touch(pg, "touchStart", [(cx, cy)])
+            for i in range(1, 7): await touch(pg, "touchMove", [(cx - 30 * i, cy + 12 * i)])
+            for i in range(1, 5): await touch(pg, "touchMove", [(cx - 180 + 25 * i, cy + 72 - 10 * i)])
+            await touch(pg, "touchEnd", [])
+        else:
+            await pg.mouse.move(cx, cy); await pg.mouse.down(); await pg.mouse.move(cx - 260, cy + 90, steps=4); await pg.mouse.move(cx - 60, cy + 20, steps=3); await pg.mouse.up()
+    async def wheel(pg):   # zoom in hard, then out a little
+        await pg.mouse.move(cx, cy)
+        for _ in range(6): await pg.mouse.wheel(0, -240); await pg.wait_for_timeout(16)
+        for _ in range(3): await pg.mouse.wheel(0, 240); await pg.wait_for_timeout(16)
+    async def keys(pg):   # + + - and the arrows (the map keeps the keyboard focus)
+        await pg.focus("#map")
+        for k in ("+", "+", "-", "ArrowLeft", "ArrowUp", "ArrowRight"): await pg.keyboard.press(k); await pg.wait_for_timeout(40)
+    async def pinch(pg):   # two fingers apart, then back in part way
+        await touch(pg, "touchStart", [(cx - 40, cy), (cx + 40, cy)])
+        for i in range(1, 9): await touch(pg, "touchMove", [(cx - 40 - 15 * i, cy), (cx + 40 + 15 * i, cy)])
+        for i in range(1, 4): await touch(pg, "touchMove", [(cx - 160 + 20 * i, cy), (cx + 160 - 20 * i, cy)])
+        await touch(pg, "touchEnd", [])
+    return [("fast pan", fast_pan), ("wheel", wheel)] + ([("pinch", pinch)] if phone else [("keys", keys)])
 async def page(b, w, h, dpr, path="/explore.html?day=529"):
     phone = w <= 640
     cx = await b.new_context(viewport=dict(width=w, height=h), device_scale_factor=dpr, is_mobile=phone, has_touch=phone, reduced_motion="reduce")
@@ -93,7 +139,7 @@ async def sweep(pg, w, h, state, prepare=None, need=lambda k: True):
             if k is None and spot != "Orion": continue   # the whole sky is the same from every spot
             got = await pg.evaluate(WHOLE) if k is None else await pg.evaluate(GO, [ra, dec, k])
             if prepare: await prepare(pg)
-            await pg.wait_for_timeout(350)
+            await settle(pg)
             j = await pg.evaluate(JUDGE); n += 1
             where = f"{spot} at {'whole sky' if k is None else k} ({j['k']:.1f} px/deg)"
             if j["bad"]: bad.append(f"{where}: {j['bad'][:3]}")
@@ -118,6 +164,21 @@ async def main():
             check(g["passes"] <= 3 and g["rereads"] <= 2, f"names are laid out when a zoom stops, not on its frames ({w}x{h})", str(g))
             st = await pg.evaluate(STILL)
             check(st.get("C-0176") == {"trail": False, "tail": False} and st.get("C-0175") == {"trail": True, "tail": True}, f"C-0176 has no trail or tail ({w}x{h})", str({k: st.get(k) for k in ("C-0175", "C-0176")}))
+            # borders: drawn again after a zoom out of their range and back (5, 3, 5 px per degree), and fewer points once
+            # zoomed in (5 to 60 px per degree), through the view engine as a search's fly-to drives it
+            pts = []
+            for k in (5, 3, 5, 60):
+                await pg.evaluate(GO, [84.0, -4.0, k]); await settle(pg); pts.append(await pg.evaluate(POINTS))
+            check(pts[0] > 0 and pts[1] == 0 and pts[2] > 0, f"borders come back after zooming out and in ({w}x{h})", f"points at 5, 3, 5 px/deg: {pts[:3]}")
+            check(0 < pts[3] < pts[2] / 4, f"zoomed in, fewer border points are drawn ({w}x{h})", f"points at 5 and 60 px/deg: {pts[2]}, {pts[3]}")
+            # real gestures through their own handlers, then the page as it settles
+            bad = []
+            for what, act in GESTURES(phone, w, h):
+                await pg.evaluate(GO, [84.0, -4.0, 9]); await settle(pg)
+                await act(pg); await settle(pg)
+                j = await pg.evaluate(JUDGE)
+                if j["bad"] or not j["any"]: bad.append(f"{what}: {j['bad'][:2] or 'no name'}")
+            check(not bad, f"after fast pans, wheel, keys{', pinch' if phone else ''} the names are clear ({w}x{h})", "; ".join(bad) or f"{len(GESTURES(phone, w, h))} gestures")
             await sweep(pg, w, h, "plain")
             async def pin(pg):   # a click on bare sky near the middle (not on a marker, which would open its page)
                 xy = await pg.evaluate(FREE)
@@ -130,6 +191,17 @@ async def main():
                 await sweep(pg, w, h, "sheet up", None, ZOOMED)
                 await pg.evaluate("document.querySelector('#csheet .sheet-x').click()"); await pg.wait_for_timeout(400)
                 await pg.click("#xs-open")
+            if not phone:   # a search open with one row, edited to many: the names keep clear of the longer list
+                await pg.evaluate(PUT, ["Orion", 9, 220, 450]); await settle(pg)   # ORION's name where the longer list will reach
+                shown0 = await pg.evaluate("skyLabels.placed()")
+                # opened already short (one row), so the list's first look is its small one; then edited to many rows
+                await pg.evaluate("document.getElementById('xs-q').value = 'Orion Neb'"); await pg.focus("#xs-q"); await settle(pg)
+                h0 = await pg.evaluate("document.getElementById('xs-panel').getBoundingClientRect().height")
+                for _ in range(len("Orion Neb") - 1): await pg.keyboard.press("Backspace")
+                await settle(pg)
+                h1 = await pg.evaluate("document.getElementById('xs-panel').getBoundingClientRect().height"); j = await pg.evaluate(JUDGE)
+                check("Orion" in shown0 and h1 > h0 + 100 and not j["bad"], f"names clear of a search list that grew while open ({w}x{h})", f"ORION shown before: {'Orion' in shown0}; list {h0:.0f} to {h1:.0f} px; {j['bad'][:2]}")
+                await pg.fill("#xs-q", "")
             await pg.fill("#xs-q", "C-01"); await pg.wait_for_timeout(400)
             check(await pg.evaluate("!document.getElementById('xs-panel').hidden"), f"search list opened ({w}x{h})")
             await sweep(pg, w, h, "search list open", None, NEVER if phone else ZOOMED)
