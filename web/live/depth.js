@@ -47,8 +47,8 @@ export function placedOf(data) {
   return out.sort((a, b) => a.ly - b.ly);
 }
 
-// one stage: renderer, camera, HTML labels over the canvas, thin lines rebuilt every frame
-function stage(box) {
+// one stage: renderer, camera, HTML labels over the canvas, thin lines rebuilt every frame (also the comet page's 3D view, comet3d.js)
+export function stage(box) {
   const canvas = box.querySelector('canvas'), layer = box.querySelector('.xp-d3-lbl');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
@@ -113,7 +113,7 @@ function ringTex(color, dash) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 // SPHEREx: three nested cone shields over a telescope and a small body (the intro's simple model). Looks along +Y.
-function spherex() {
+export function spherex() {
   const craft = new THREE.Group();
   const white = new THREE.MeshStandardMaterial({ color: 0xf1eee9, metalness: .15, roughness: .55, side: THREE.DoubleSide });
   const dark = new THREE.MeshStandardMaterial({ color: 0x15171c, metalness: .4, roughness: .6 });
@@ -129,11 +129,73 @@ function spherex() {
   return craft;
 }
 
+// The 3D views' controls (this file's beam and the comet page's solar system, comet3d.js), on the element el that holds
+// the canvas. Drag turns: sideways turns, up and down tilts, within lim (yaw.a, yaw.p; sign -1 turns the other way). Two
+// fingers zoom about their midpoint and move with it (as on Explore and the photo): a second finger ends the turn, and
+// none starts until both lift. A shift- or right-drag moves the zoomed view. The wheel and a trackpad pinch (a ctrl
+// wheel: smaller steps, so stronger each; Safari's is a gesture) zoom toward the pointer, and neither the page nor the
+// browser zooms or scrolls over the view; + and - zoom about the middle, the arrows turn, Reset view undoes it all.
+// The zoom: Z.k times, 1x to 8x, the view's top-left corner at (Z.x, Z.y) CSS px of the unzoomed view (S.W x S.H).
+// hooks: peek(e) (a hover or tap), hide() (the hover name goes), turned() (a drag began), changed() (after any change).
+export function controls(el, { S, Z, yaw, render, zoomBox, lim = { a: [-1.3, 1.9], p: [-.15, .9] }, sign = 1, hooks = {} }) {
+  const { peek = () => {}, hide = () => {}, turned = () => {} } = hooks;
+  const clampA = a => Math.max(lim.a[0], Math.min(lim.a[1], a)), clampP = p => Math.max(lim.p[0], Math.min(lim.p[1], p));
+  // zoom by f about the view point (x0, y0), which lands at (x1, y1): what was under it stays under it. 1x to 8x, and
+  // never past the edges of the unzoomed view
+  function zoomAt(f, x0, y0, x1 = x0, y1 = y0) {
+    const u = Z.x + x0 / Z.k, v = Z.y + y0 / Z.k; Z.k = Math.max(1, Math.min(8, Z.k * f));
+    Z.x = Math.max(0, Math.min(S.W - S.W / Z.k, u - x1 / Z.k)); Z.y = Math.max(0, Math.min(S.H - S.H / Z.k, v - y1 / Z.k));
+    render();
+  }
+  const fingers = new Map(); let drag = null, pinch = null, pan = null;
+  const two = () => { const [a, b] = fingers.values(), r = el.getBoundingClientRect(); return { m: [(a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top], d: Math.hypot(a[0] - b[0], a[1] - b[1]) }; };
+  el.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse') fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (fingers.size === 2) { if (drag) { yaw.a = drag.a; yaw.p = drag.p; drag = null; el.classList.remove('drag'); } el.setPointerCapture(e.pointerId); pinch = two(); hide(); render(); return; }
+    if (fingers.size > 2 || pinch) return;
+    // a shift- or right-drag moves the zoomed view, as in 3D viewers (nothing to move at 1x)
+    if (e.button === 2 || (!e.button && e.shiftKey)) { pan = { x: e.clientX, y: e.clientY, zx: Z.x, zy: Z.y }; el.setPointerCapture(e.pointerId); el.classList.add('drag'); hide(); return; }
+    if (e.button) return;
+    drag = { x: e.clientX, y: e.clientY, a: yaw.a, p: yaw.p }; el.setPointerCapture(e.pointerId); el.classList.add('drag'); turned(); });
+  el.addEventListener('pointermove', e => {
+    if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch) { if (fingers.size === 2 && fingers.has(e.pointerId)) { const n = two(); if (n.d > 0 && pinch.d > 0) zoomAt(n.d / pinch.d, ...pinch.m, ...n.m); pinch = n; } return; }
+    if (pan) { Z.x = pan.zx - (e.clientX - pan.x) / Z.k; Z.y = pan.zy - (e.clientY - pan.y) / Z.k; return zoomAt(1, 0, 0); }   // zoomAt keeps it in the scene
+    if (!drag) return peek(e); hide(); yaw.a = clampA(drag.a + sign * (e.clientX - drag.x) / 260); yaw.p = clampP(drag.p + (e.clientY - drag.y) / 300); render(); });
+  const up = e => { fingers.delete(e?.pointerId); if (!fingers.size) pinch = null; if (drag && e?.type === 'pointerup' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) peek(e); drag = pan = null; el.classList.remove('drag'); };
+  el.addEventListener('contextmenu', e => e.preventDefault());   // the right button pans
+  el.addEventListener('pointerleave', () => { if (!drag) hide(); });
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  const local = e => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  el.addEventListener('wheel', e => {
+    e.preventDefault();
+    const px = e.deltaY * [1, 33, el.clientHeight][e.deltaMode];   // pixels, lines or pages
+    zoomAt(Math.exp(-Math.max(-300, Math.min(300, px)) * (e.ctrlKey ? .01 : .002)), ...local(e));
+  }, { passive: false });
+  let gs = 1;
+  el.addEventListener('gesturestart', e => { e.preventDefault(); gs = 1; });
+  el.addEventListener('gesturechange', e => { e.preventDefault(); if (!fingers.size && e.scale > 0) { zoomAt(e.scale / gs, ...local(e)); gs = e.scale; } });   // on iPhone the fingers above zoom
+  el.addEventListener('gestureend', e => e.preventDefault());
+  const mid = () => [S.W / 2, S.H / 2];
+  zoomBox?.addEventListener('click', e => {
+    const z = e.target.closest('button')?.dataset.zoom;
+    if (z === 'in') zoomAt(1.5, ...mid()); else if (z === 'out') zoomAt(1 / 1.5, ...mid());
+    else if (z === 'reset') { Object.assign(Z, { k: 1, x: 0, y: 0 }); yaw.a = yaw.p = 0; hide(); render(); }
+  });
+  el.addEventListener('keydown', e => {
+    const z = { '+': 1.5, '=': 1.5, '-': 1 / 1.5, '_': 1 / 1.5 }[e.key];   // Ctrl or Cmd with them is the browser's own zoom
+    if (z && !e.ctrlKey && !e.metaKey && !e.altKey) { zoomAt(z, ...mid()); e.preventDefault(); e.stopPropagation(); return; }
+    const k = { ArrowLeft: [-.12, 0], ArrowRight: [.12, 0], ArrowUp: [0, -.08], ArrowDown: [0, .08] }[e.key]; if (!k) return;
+    yaw.a = clampA(yaw.a + sign * k[0]); yaw.p = clampP(yaw.p + k[1]); render(); e.preventDefault(); e.stopPropagation();
+  });
+  return { zoomAt };
+}
+
 // page: { api, box, list, status, region() -> { m, f, canvas } | null, onScreen(m, ra, dec, year) -> [u, v] (-1..1 across
 // the region, north up), target(m, f, stars) -> index of the star that is the patch's own target, or -1 }
 export function depthView(page) {
   const { box, list, status } = page;
-  let S = null, gl = true, scene3 = null, data = null, asked = null, retry = 0, tries = 0, ctl = null, open = false, raf = 0;
+  let S = null, ctl3 = null, gl = true, scene3 = null, data = null, asked = null, retry = 0, tries = 0, ctl = null, open = false, raf = 0;
   const yaw = { a: 0, p: 0, t0: 0 };   // drag: the turn and tilt added to the side view; t0: when the swing out started
   const Z = { k: 1, x: 0, y: 0 };   // the zoom: k times, the view's top-left corner at (x, y) CSS px of the unzoomed view
 
@@ -267,6 +329,7 @@ export function depthView(page) {
     unk.renderOrder = 8; unk.frustumCulled = false; scene.add(unk);
     scene3 = { photo, beam, craft, cloud, unk, rW, rA, rU, rAu, guides: S.lines(400), beads: [], marks: [], dots: [], fixed: [S.label('the photo'), S.label('SPHEREx')] };
     const tip = S.label('', 'tip'); tip.el.style.opacity = 0;
+    const cv = box.querySelector('canvas');
     // the dot nearest the pointer (within 10 px): its name and distance beside it; a tap does the same on a phone
     const peek = e => {
       const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
@@ -275,61 +338,10 @@ export function depthView(page) {
       if (!best) { tip.el.style.opacity = 0; box.dataset.peek = ''; return; }
       tip.el.textContent = best.text; tip.at(best.pos, [8, -6, 0, -1], 1); box.dataset.peek = best.key;
     };
-    // drag to turn: sideways turns the beam, up and down tilts it (a little). Two fingers zoom about their midpoint and
-    // move with it (as on Explore and the photo): a second finger ends the turn, and none starts until both lift.
-    const cv = box.querySelector('canvas'), fingers = new Map(); let drag = null, pinch = null, pan = null;
-    const two = () => { const [a, b] = fingers.values(), r = cv.getBoundingClientRect(); return { m: [(a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top], d: Math.hypot(a[0] - b[0], a[1] - b[1]) }; };
-    cv.addEventListener('pointerdown', e => {
-      if (e.pointerType !== 'mouse') fingers.set(e.pointerId, [e.clientX, e.clientY]);
-      if (fingers.size === 2) { if (drag) { yaw.a = drag.a; yaw.p = drag.p; drag = null; cv.classList.remove('drag'); } cv.setPointerCapture(e.pointerId); pinch = two(); tip.el.style.opacity = 0; render(); return; }
-      if (fingers.size > 2 || pinch) return;
-      // a shift- or right-drag moves the zoomed view, as in 3D viewers (nothing to move at 1x)
-      if (e.button === 2 || (!e.button && e.shiftKey)) { pan = { x: e.clientX, y: e.clientY, zx: Z.x, zy: Z.y }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); tip.el.style.opacity = 0; return; }
-      if (e.button) return;
-      drag = { x: e.clientX, y: e.clientY, a: yaw.a, p: yaw.p }; cv.setPointerCapture(e.pointerId); cv.classList.add('drag'); box.dataset.turned = '1'; });
-    cv.addEventListener('pointermove', e => {
-      if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
-      if (pinch) { if (fingers.size === 2 && fingers.has(e.pointerId)) { const n = two(); if (n.d > 0 && pinch.d > 0) zoomAt(n.d / pinch.d, ...pinch.m, ...n.m); pinch = n; } return; }
-      if (pan) { Z.x = pan.zx - (e.clientX - pan.x) / Z.k; Z.y = pan.zy - (e.clientY - pan.y) / Z.k; return zoomAt(1, 0, 0); }   // zoomAt keeps it in the scene
-      if (!drag) return peek(e); tip.el.style.opacity = 0; yaw.a = Math.max(-1.3, Math.min(1.9, drag.a + (e.clientX - drag.x) / 260)); yaw.p = Math.max(-.15, Math.min(.9, drag.p + (e.clientY - drag.y) / 300)); render(); });
-    const up = e => { fingers.delete(e?.pointerId); if (!fingers.size) pinch = null; if (drag && e?.type === 'pointerup' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) peek(e); drag = pan = null; cv.classList.remove('drag'); };
-    cv.addEventListener('contextmenu', e => e.preventDefault());   // the right button pans
-    cv.addEventListener('pointerleave', () => { if (!drag) tip.el.style.opacity = 0; });
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    // the wheel and a trackpad pinch (a ctrl wheel: smaller steps, so stronger each) zoom toward the pointer, and neither
-    // the page nor the browser zooms or scrolls over the view. Safari's trackpad pinch is a gesture, not a ctrl wheel.
-    const local = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    cv.addEventListener('wheel', e => {
-      e.preventDefault();
-      const px = e.deltaY * [1, 33, cv.clientHeight][e.deltaMode];   // pixels, lines or pages
-      zoomAt(Math.exp(-Math.max(-300, Math.min(300, px)) * (e.ctrlKey ? .01 : .002)), ...local(e));
-    }, { passive: false });
-    let gs = 1;
-    cv.addEventListener('gesturestart', e => { e.preventDefault(); gs = 1; });
-    cv.addEventListener('gesturechange', e => { e.preventDefault(); if (!fingers.size && e.scale > 0) { zoomAt(e.scale / gs, ...local(e)); gs = e.scale; } });   // on iPhone the fingers above zoom
-    cv.addEventListener('gestureend', e => e.preventDefault());
-    const mid = () => [S.W / 2, S.H / 2];
-    box.querySelector('.xp-d3-zoom')?.addEventListener('click', e => {
-      const z = e.target.closest('button')?.dataset.zoom;
-      if (z === 'in') zoomAt(1.5, ...mid()); else if (z === 'out') zoomAt(1 / 1.5, ...mid());
-      else if (z === 'reset') { Object.assign(Z, { k: 1, x: 0, y: 0 }); yaw.a = yaw.p = 0; tip.el.style.opacity = 0; render(); }
-    });
-    cv.addEventListener('keydown', e => {
-      const z = { '+': 1.5, '=': 1.5, '-': 1 / 1.5, '_': 1 / 1.5 }[e.key];   // Ctrl or Cmd with them is the browser's own zoom
-      if (z && !e.ctrlKey && !e.metaKey && !e.altKey) { zoomAt(z, ...mid()); e.preventDefault(); e.stopPropagation(); return; }
-      const k = { ArrowLeft: [-.12, 0], ArrowRight: [.12, 0], ArrowUp: [0, -.08], ArrowDown: [0, .08] }[e.key]; if (!k) return;
-      yaw.a = Math.max(-1.3, Math.min(1.9, yaw.a + k[0])); yaw.p = Math.max(-.15, Math.min(.9, yaw.p + k[1])); render(); e.preventDefault(); e.stopPropagation();
-    });
+    ctl3 = controls(cv, { S, Z, yaw, render, zoomBox: box.querySelector('.xp-d3-zoom'),
+      hooks: { peek, hide: () => { tip.el.style.opacity = 0; }, turned: () => { box.dataset.turned = '1'; } } });
     new ResizeObserver(() => open && render()).observe(box);
     return true;
-  }
-  // zoom by f about the view point (x0, y0), which lands at (x1, y1): what was under it stays under it. 1x to 8x, and
-  // never past the edges of the unzoomed view
-  function zoomAt(f, x0, y0, x1 = x0, y1 = y0) {
-    if (!S) return;
-    const u = Z.x + x0 / Z.k, v = Z.y + y0 / Z.k; Z.k = Math.max(1, Math.min(8, Z.k * f));
-    Z.x = Math.max(0, Math.min(S.W - S.W / Z.k, u - x1 / Z.k)); Z.y = Math.max(0, Math.min(S.H - S.H / Z.k, v - y1 / Z.k));
-    render();
   }
   let scale = null, shown = { rings: [], dots: [] };   // shown: which objects the beam draws as named rings, which as dots (for tests)
   function build() {   // the objects of the answer on screen: positions, the scale, the named ones
