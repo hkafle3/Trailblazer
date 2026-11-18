@@ -5,14 +5,21 @@
 //   - WCS: every input, 100 grid pixels, within 0.05" of astropy (SPHEREx: the interpolated map the pipeline uses)
 //   - the synthesized SPHEREx image: rms difference within 2% of the reference image's p1-p99 range, masks the same
 //   - the numbers within 5% of build_v3.py, every check the same, and each mutation FAILS
-// Run: node web/tests/blink_parity.mjs [phase2-build dir]   (skipped, with a note, when the exported inputs are absent)
+// Fixtures: bake/blink_ref/make_fixtures.py makes them from scratch (IRSA, S3, SVO, then build_v3.py), or exports them from
+// inputs already on disk. Missing fixtures FAIL this test: it is the gate for the port, never skipped.
+// Run: node web/tests/blink_parity.mjs [fixtures dir]   (or BLINK_FIXTURES=<dir>; default: Ed's phase2-build folder)
 import { readFileSync, existsSync } from 'node:fs';
 import * as B from '../live/blink.js';
 import { parseCards } from '../live/fits.js';
 
-const DIR = process.argv[2] || '/Users/edkiboma/Projects/comet-hunt-work/phase2-build';
-const RAW = '/Users/edkiboma/Projects/comet-hunt-work/phase2-plan/raw_v2';
-if (!existsSync(`${DIR}/fixtures/spx/index.json`) || !existsSync(RAW)) { console.log(`SKIP blink_parity: no exported inputs in ${DIR}`); process.exit(0); }
+const DIR = process.argv[2] || process.env.BLINK_FIXTURES || '/Users/edkiboma/Projects/comet-hunt-work/phase2-build';
+const RAW = process.env.BLINK_RAW || (existsSync(`${DIR}/fixtures/source.json`) ? JSON.parse(readFileSync(`${DIR}/fixtures/source.json`)).raw : '/Users/edkiboma/Projects/comet-hunt-work/phase2-plan/raw_v2');
+const need = [`${DIR}/fixtures/spx/index.json`, `${DIR}/fixtures/wcs.json`, `${DIR}/ref/checks.json`, `${DIR}/ref/mutations.json`, `${DIR}/ref/W2/synth.f64`, `${RAW}/allwise_W2_int.fits`];
+const missing = need.filter(f => !existsSync(f));
+if (missing.length) {
+  console.log(`FAIL blink_parity: fixtures missing (${missing.join(', ')}). Make them with bake/blink_ref/make_fixtures.py --out <dir>, then BLINK_FIXTURES=<dir>.`);
+  process.exit(1);
+}
 const RA = 84.01808, DEC = -6.5775;
 const HERE = new URL('..', import.meta.url).pathname;
 const bands = JSON.parse(readFileSync(`${HERE}data/bands.json`)), waves = JSON.parse(readFileSync(`${HERE}data/wavemaps.json`));
