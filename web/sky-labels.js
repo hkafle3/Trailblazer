@@ -257,9 +257,10 @@ function borders() {
     const c = [[0, view.A.t], [view.A.w, view.A.t], [0, view.A.b], [view.A.w, view.A.b]].map(([x, y]) => view.uvAt(x, y)), us = c.map(p => p[0]), vs = c.map(p => p[1]);
     box = [Math.min(...us), Math.min(...vs), Math.max(...us), Math.max(...vs)];
   }
-  const inside = drawnBox && (+bound ? box[0] >= drawnBox[0] && box[1] >= drawnBox[1] && box[2] <= drawnBox[2] && box[3] <= drawnBox[3] : drawnBox === 'none');
+  // still inside the part drawn, and not zoomed in to under half its view's width since (then fewer pieces are drawn)
+  const inside = drawnBox && (+bound ? box[0] >= drawnBox[0] && box[1] >= drawnBox[1] && box[2] <= drawnBox[2] && box[3] <= drawnBox[3] && (box[2] - box[0]) * 6 >= drawnBox[2] - drawnBox[0] : drawnBox === 'none');
   if (inside) return;
-  if (!+bound) { drawnBox = 'none'; borderEl.setAttribute('d', ''); return; }
+  if (!+bound) { drawnBox = 'none'; borderKey = ''; borderEl.setAttribute('d', ''); return; }
   const du = box[2] - box[0], dv = box[3] - box[1];
   drawnBox = [box[0] - du, box[1] - dv, box[2] + du, box[3] + dv];
   const near = borderPieces.filter(({ box: b }) => b[0] <= drawnBox[2] && drawnBox[0] <= b[2] && b[1] <= drawnBox[3] && drawnBox[1] <= b[3]);
@@ -285,8 +286,10 @@ new MutationObserver(recs => { if (changed(recs)) marked(); }).observe(marks, { 
 const panels = recs => { if (changed(recs)) soon(); };
 for (const e of [$('csheet'), $('dive-aim'), $('maphint'), $('zoomlvl'), $('tl-line'), ...document.querySelectorAll('details.layers')]) if (e) new MutationObserver(panels).observe(e, watch);
 new MutationObserver(panels).observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['class', 'data-view'] });
+// the search list: shown or hidden (its attribute), and its height as the results change while it is open
+const resized = new ResizeObserver(soon), searchList = p => { new MutationObserver(panels).observe(p, watch); resized.observe(p); };
 const panel = $('xs-panel');   // search.js adds it; this module may run first
-if (panel) new MutationObserver(panels).observe(panel, watch); else new MutationObserver((m, o) => { const p = $('xs-panel'); if (p) { o.disconnect(); new MutationObserver(panels).observe(p, watch); soon(); } }).observe(document.body, { childList: true });
+if (panel) searchList(panel); else new MutationObserver((m, o) => { const p = $('xs-panel'); if (p) { o.disconnect(); searchList(p); soon(); } }).observe(document.body, { childList: true });
 marks.addEventListener('pointerover', marked); marks.addEventListener('pointerout', marked);   // a known comet's name shows on hover
 document.addEventListener('change', soon);   // a Layers switch shows or hides markers with :has(), which changes no attribute
 soon();
