@@ -92,7 +92,9 @@ function render() {
     // the sky's names (rows are numbered as they are drawn, so each group is drawn in the order it shows)
     const sky = () => group('PLACES', pl.map(x => row({ kind: 'place', p: x.p }, ring, x.label === x.p.name ? bold(x.label, x.s, x.e) : esc(x.p.name),
       `<span class="s">${x.label === x.p.name ? KIND_WORD[x.p.kind] ?? '' : bold(x.label, x.s, x.e)}</span>`)).join(''));
-    const exact = pl[0] && pl[0].rank < Math.min(m.targets[0]?.rank ?? 9, m.comets[0]?.rank ?? 9);   // "Ori" is Orion before any comet with ori in it
+    // a sky name typed whole comes first unless a target or comet matches as well from the start of a word: "Ori" is Orion
+    // before Borisov (ori inside a word), "atlas" stays 3I/ATLAS before the star Atlas
+    const exact = pl[0]?.rank === 0 && (m.targets[0]?.rank ?? 9) > 2 && (m.comets[0]?.rank ?? 9) > 2;
     html = exact ? sky() : '';
     html += group('TARGETS', m.targets.map(x => targetRow(x.t, x.label === x.t.name ? bold(x.label, x.s, x.e) : esc(x.t.name), x.label === x.t.name ? '' : `<span class="s">${bold(x.label, x.s, x.e)}</span>`)).join(''));
     html += group('COMETS', m.comets.map(x => cometRow(x.c, bold(x.c.id, x.s, x.e), x.c.co2 === 'detected' ? '<span class="s hot">CO2 glow</span>' : '')).join(''));
