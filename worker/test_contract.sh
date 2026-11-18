@@ -13,6 +13,7 @@ check "images for Barnard's Star" "/api/images?ra=269.4463&dec=4.7671&det=D1" 20
 check "ra out of range" "/api/images?ra=400&dec=4" 400 'ra must be 0 to 360'
 check "dec out of range" "/api/images?ra=10&dec=-95" 400 'dec must be -90 to 90'
 check "bad detector" "/api/images?ra=10&dec=4&det=D9" 400 'det must be D1 to D6'
+check "images region too wide" "/api/images?ra=10&dec=4&det=D1&r=0.5" 400 'r must be 0.001 to 0.15 degrees'
 check "missing ra" "/api/images?dec=4" 400 'ra must be 0 to 360'
 check "Gaia near Barnard's Star" "/api/gaia?ra=269.4463&dec=4.7671" 200 '"pmdec":10362'
 check "depth for the 3I/ATLAS patch" "/api/depth?ra=167.1309&dec=5.1732&t=61023.3194" 200 '"rules":"depth-v1"'

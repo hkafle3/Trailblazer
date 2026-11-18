@@ -55,15 +55,15 @@ const lists = new Map();
 async function exposures(base, det, ra, dec, signal) {
   const k = `${det} ${ra} ${dec}`;
   if (!lists.has(k)) lists.set(k, (async () => {
-    // the field's centre and corners: an exposure touching the 12 arcmin field holds at least one of them
-    const pts = [[0, 0], [-1, -1], [-1, 1], [1, -1], [1, 1]].map(([u, v]) => [((ra + u * HALF / Math.cos(dec * Math.PI / 180)) % 360 + 360) % 360, Math.max(-90, Math.min(90, dec + v * HALF))]);
-    const seen = new Map();
-    for (const res of await Promise.all(pts.map(([a, d]) => api(() => retry(async () => {
-      const r = await fetch(`${base}/api/images?ra=${a.toFixed(5)}&dec=${d.toFixed(5)}&det=${det}&v=2`, { signal });
+    // every exposure coming within the field's half diagonal of its centre (a region search, conservative); which of
+    // them truly overlap the field is decided from each one's own header (readExposure)
+    const seen = new Map(), R = +(HALF * Math.SQRT2 + 0.001).toFixed(4);
+    const res = await api(() => retry(async () => {
+      const r = await fetch(`${base}/api/images?ra=${ra.toFixed(5)}&dec=${dec.toFixed(5)}&det=${det}&r=${R}&v=2`, { signal });
       if (!r.ok) throw new Error(`images HTTP ${r.status}`);
       return r.json();
-    }, 2).catch(e => { if (e.name === 'AbortError') throw e; throw new Unavailable('spherex-unavailable', 'The SPHEREx image search is not answering'); })))))
-      for (const x of res.images) if (!seen.has(x.obs)) seen.set(x.obs, { ...x, det });
+    }, 2).catch(e => { if (e.name === 'AbortError') throw e; throw new Unavailable('spherex-unavailable', 'The SPHEREx image search is not answering'); }));
+    for (const x of res.images) if (!seen.has(x.obs)) seen.set(x.obs, { ...x, det });
     return [...seen.values()].sort((a, b) => a.t - b.t);
   })().catch(e => { lists.delete(k); throw e; }));
   return lists.get(k);

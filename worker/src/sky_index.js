@@ -89,7 +89,7 @@ const unit = (x, y, z) => { const l = Math.hypot(x, y, z); return [x / l, y / l,
 // polygon is a corner, or a point inside one edge's segment; widening each edge on its own (all n . p >= TOL) would
 // also take points diagonally off a corner, up to R * sqrt(2) away. Corners come back as the crossing of neighbouring
 // edges, the one on p's side. Only rows already within TOL of every edge get here.
-function nearOutside(f32, j, x, y, z, d) {
+function nearOutside(f32, j, x, y, z, d, near = NEAR) {
   const n = k => [f32[j + 3 * k], f32[j + 3 * k + 1], f32[j + 3 * k + 2]];
   const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], p = [x, y, z];
@@ -98,13 +98,13 @@ function nearOutside(f32, j, x, y, z, d) {
     return dot(v, p) < 0 ? v.map(c => -c) : v;
   };
   const cs = [0, 1, 2, 3].map(corner);
-  if (cs.some(v => dot(v, p) >= NEAR)) return true;
+  if (cs.some(v => dot(v, p) >= near)) return true;
   for (let k = 0; k < 4; k++) {
     if (d[k] >= 0) continue;
     const e = n(k), a = cs[k], b = cs[(k + 1) % 4];
     // p projects inside the segment a..b when it is between the planes through the edge normal and each end
     const ma = cross(e, a), mb = cross(e, b);
-    if (dot(ma, p) * dot(ma, b) >= 0 && dot(mb, p) * dot(mb, a) >= 0) return true;   // and then its distance is asin(-d) <= R
+    if (dot(ma, p) * dot(ma, b) >= 0 && dot(mb, p) * dot(mb, a) >= 0) return true;   // and then its distance is asin(-d) <= r
   }
   return false;
 }
@@ -113,11 +113,13 @@ function nearOutside(f32, j, x, y, z, d) {
 // images per collection searched. Rows are stored in time order, so the answer comes out sorted. An obs_id seen again
 // in a lower (earlier listed) collection takes the place of the first one, as /api/images keeps DR1 first; only then is
 // a re-sort needed. Plain numbers only: the two writers below turn the rows into objects or straight into JSON text.
-async function pickOnce(read, ra, dec, det, pin) {
+// r (degrees): images within r of the point instead of SIA's 0.001; cell: which cell's rows to search (default the point's)
+async function pickOnce(read, ra, dec, det, pin, r = 0.001, cell = null) {
+  const tol = r === 0.001 ? TOL : -Math.sin(r * RAD), near = r === 0.001 ? NEAR : Math.cos(r * RAD);
   const name = `d${det}.bin`, hp = skyHead(read, det, pin), h = await hp;
   if (h.etag !== pin) { if (heads.get(name) === hp) heads.delete(name); throw new Error(`${name}: head from another version`); }
   try {
-    const c = cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
+    const c = cell ?? cellAt(ra, dec), n = h.first[c + 1] - h.first[c];
     const deep = Math.abs(eclipticLat(ra, dec)) > 75;
     const collections = Object.fromEntries((deep ? COLLS : COLLS.slice(0, 2)).map(k => [k, 0]));
     // an empty cell is only an answer from the file the head came from: one small read checks it is still there, unchanged
@@ -140,13 +142,13 @@ async function pickOnce(read, ra, dec, det, pin) {
       if (!(ma * ma + mb * mb + mc * mc + me * me < 1e-8)) bad(i);   // each |n|^2 within 1e-4 of 1; NaN fails too
       if (coll >= 2 && !deep) continue;
       d[0] = a0 * x + a1 * y + a2 * z; d[1] = b0 * x + b1 * y + b2 * z; d[2] = c0 * x + c1 * y + c2 * z; d[3] = e0 * x + e1 * y + e2 * z;
-      if (d[0] < TOL || d[1] < TOL || d[2] < TOL || d[3] < TOL) continue;
+      if (d[0] < tol || d[1] < tol || d[2] < tol || d[3] < tol) continue;
       // within reach of the point: the footprint must be an image's before it is used or its corners worked out.
       // Opposite edges face each other (n . n' is -0.998 for a 3.5 degree square) and neighbours are far from parallel;
       // unit normals pointing anywhere else could cover half the sky. bake/sky_index.py checks the same at build time.
       if (!(a0 * c0 + a1 * c1 + a2 * c2 < -0.99 && b0 * e0 + b1 * e1 + b2 * e2 < -0.99 && Math.abs(a0 * b0 + a1 * b1 + a2 * b2) < 0.5 &&
         Math.abs(b0 * c0 + b1 * c1 + b2 * c2) < 0.5 && Math.abs(c0 * e0 + c1 * e1 + c2 * e2) < 0.5 && Math.abs(e0 * a0 + e1 * a1 + e2 * a2) < 0.5)) bad(i);
-      if ((d[0] < 0 || d[1] < 0 || d[2] < 0 || d[3] < 0) && !nearOutside(f32, j, x, y, z, d)) continue;
+      if ((d[0] < 0 || d[1] < 0 || d[2] < 0 || d[3] < 0) && !nearOutside(f32, j, x, y, z, d, near)) continue;
       const fo = h.folders[u16[i * 32 + 28]], seq = u16[i * 32 + 29], sub = u8[i * ROW + 60];
       collections[COLLS[coll]]++;
       const id = (fo.p * 10000 + seq) * 10 + sub, had = at.get(id);
@@ -163,8 +165,16 @@ async function pickOnce(read, ra, dec, det, pin) {
 
 // A file replaced since this instance read its head shows as a different etag (or a range past its end): one more try
 // with a fresh head. A second failure goes to the caller.
-async function pick(read, ra, dec, det, pin) {
-  try { return await pickOnce(read, ra, dec, det, pin); } catch { return await pickOnce(read, ra, dec, det, pin); }
+async function pick(read, ra, dec, det, pin, r, cell) {
+  try { return await pickOnce(read, ra, dec, det, pin, r, cell); } catch { return await pickOnce(read, ra, dec, det, pin, r, cell); }
+}
+// A region (r over 0.001 degree): every cell the circle can touch. Cells are about 3.5 degrees, far larger than any r
+// allowed (0.15), so a cell the circle's bounding box touches holds one of the box's corners; each image is stored in
+// every cell its footprint touches, so the cell holding any point it shares with the circle is among these.
+function regionCells(ra, dec, r) {
+  const dr = Math.min(180, r / Math.max(Math.cos(Math.min(89.9, Math.abs(dec) + r) * RAD), 1e-6)), cs = new Set();
+  for (const [a, d] of [[0, 0], [-dr, -r], [-dr, r], [dr, -r], [dr, r]]) cs.add(cellAt((((ra + a) % 360) + 360) % 360, Math.max(-90, Math.min(90, dec + d))));
+  return [...cs];
 }
 
 // one row's fields; t is MJD-BEG to 6 decimals, the way SIA writes t_min. The file already holds it rounded (version
@@ -174,8 +184,25 @@ function fields(p, i) {
   return [Number(p.f64[i * 8].toFixed(6)), fo.pre + rest + fo.post, `${fo.period}_${rest}`, COLLS[p.u8[i * ROW + 61]]];
 }
 
-// The images of one detector covering (ra, dec): { images: [{ t, key, obs, coll }] sorted by t, collections }
-export async function skyImages(read, ra, dec, det, pin) {
+// The images of one detector covering (ra, dec), or (r > 0.001) coming within r degrees of it:
+// { images: [{ t, key, obs, coll }] sorted by t, collections }
+export async function skyImages(read, ra, dec, det, pin, r = 0.001) {
+  if (r !== 0.001) {   // a region: rows from every cell it can touch, one per obs_id (DR1 first), counted once each
+    const best = new Map(), counted = new Map();
+    let collections = null;
+    for (const cell of regionCells(ra, dec, r)) {
+      const p = await pick(read, ra, dec, det, pin, r, cell);
+      collections ??= Object.fromEntries(Object.keys(p.collections).map(k => [k, 0]));
+      for (const i of p.rows) {
+        const [t, key, obs, coll] = fields(p, i);
+        counted.set(`${obs} ${coll}`, coll);
+        const had = best.get(obs);
+        if (!had || COLLS.indexOf(coll) < COLLS.indexOf(had.coll)) best.set(obs, { t, key, obs, coll });
+      }
+    }
+    for (const coll of counted.values()) collections[coll]++;
+    return { images: [...best.values()].sort((a, b) => a.t - b.t), collections };
+  }
   const p = await pick(read, ra, dec, det, pin);
   return { images: p.rows.map(i => { const [t, key, obs, coll] = fields(p, i); return { t, key, obs, coll }; }), collections: p.collections };
 }
@@ -184,7 +211,8 @@ export async function skyImages(read, ra, dec, det, pin) {
 // { ra, dec, det: 'D<det>', ...skyImages(), source: 'index' } (worker/sky_index.test.mjs checks it), without building
 // thousands of objects first. A deep-field answer is about 1 MB and that building took most of a request's CPU.
 // Numbers print as JSON.stringify prints them; keys, obs and collections need no escaping (head() checks the folders).
-export async function skyImagesJson(read, ra, dec, det, pin) {
+export async function skyImagesJson(read, ra, dec, det, pin, r = 0.001) {
+  if (r !== 0.001) return JSON.stringify({ ra, dec, det: `D${det}`, r, ...(await skyImages(read, ra, dec, det, pin, r)), source: 'index' });
   const p = await pick(read, ra, dec, det, pin);
   let s = `{"ra":${JSON.stringify(ra)},"dec":${JSON.stringify(dec)},"det":"D${det}","images":[`;
   for (let k = 0; k < p.rows.length; k++) {   // fields() inlined, with the constant text cut once per folder

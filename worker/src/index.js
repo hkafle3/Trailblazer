@@ -85,6 +85,9 @@ async function images(url, env) {
   if (p.error) return json(p, 400);
   const det = url.searchParams.get('det') || 'D1';
   if (!/^D[1-6]$/.test(det)) return json({ error: 'det must be D1 to D6' }, 400);
+  // r (degrees, optional): every image coming within r of the spot, for a field rather than a point ("Then and now")
+  const r = url.searchParams.has('r') ? Number(url.searchParams.get('r')) : 0.001;
+  if (!(r >= 0.001 && r <= 0.15)) return json({ error: 'r must be 0.001 to 0.15 degrees' }, 400);
   // Our own index of the level-2 images (bake/sky_index.py, in R2) answers first; IRSA's search only when it cannot
   // (no binding, a missing file, an R2 error). Same answer: checked against IRSA at 47 D1 positions, 0 differences.
   // The answer is written as JSON text straight from the index rows (the same bytes json() would give), which halves
@@ -92,7 +95,7 @@ async function images(url, env) {
   // skyImagesJson accepts only the pinned version of the file (SKY_ETAG_D1..D6 in wrangler.toml), checks every read and
   // tries once more with a fresh head; if it still cannot answer, IRSA does.
   try {
-    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`]),
+    return new Response(await skyImagesJson(r2Read(env), p.ra, p.dec, det.slice(1), env[`SKY_ETAG_${det}`], r),
       { headers: { 'Content-Type': 'application/json', ...CORS, 'Cache-Control': 'public, max-age=86400' } });
   } catch (e) { console.warn('sky index', e); }
   // the Deep Survey only covers the ecliptic poles (irsa-tutorials spherex_intro); elsewhere skip those searches
@@ -100,7 +103,7 @@ async function images(url, env) {
   // On 2026-11-15 IRSA's search failed most requests with an instant 502 and answered about one in three after ~21 s,
   // so each try waits up to 45 s and the instant failures are retried, one at a time per search. 40 tries are shared
   // out (the free plan allows 50 outside requests per visit, and D1 and the cache need a few).
-  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} 0.001`, BAND: BAND[det], RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`,
+  const search = coll => fetchRetry(`${SIA}?${new URLSearchParams({ COLLECTION: coll, POS: `CIRCLE ${p.ra} ${p.dec} ${r}`, BAND: BAND[det], RESPONSEFORMAT: 'CSV', MAXREC: '20000' })}`,
     Math.floor(40 / colls.length), 45000).then(spherexRows);
   const results = await Promise.allSettled(colls.map(search));
   if (results.slice(0, WIDE.length).some(r => r.status === 'rejected'))   // an empty answer must mean "no images", never "search failed"
@@ -118,7 +121,7 @@ async function images(url, env) {
   const partial = Object.values(counts).includes('failed');
   if (partial && !list.length)
     return json({ error: 'IRSA search is not answering, try again or pick a baked target', retry_after: 30 }, 503, { 'Retry-After': '30' });
-  return json({ ra: p.ra, dec: p.dec, det, images: list, collections: counts, source: 'IRSA' }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
+  return json({ ra: p.ra, dec: p.dec, det, ...(r !== 0.001 ? { r } : {}), images: list, collections: counts, source: 'IRSA' }, 200, { 'Cache-Control': partial ? 'no-store' : 'public, max-age=86400' });
 }
 
 // skyImagesJson reads byte ranges of d1.bin .. d6.bin from the R2 bucket bound as SKY, each with the file's etag and
@@ -662,7 +665,7 @@ const SAVED_MAX = 100e6, PART = 500000;   // bytes kept (the migration's CHECK i
 const complete = res => res.status === 200 && !/no-store/.test(res.headers.get('Cache-Control') || '');
 // keyed on the parameters the searches read, exactly as sent (a bad value misses and gets its 400), plus v, which marks a
 // new answer shape and is read by no search, cut to 8 characters. Junk parameters add no keys; save() skips long keys.
-const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 't', 'v'].filter(n => url.searchParams.has(n))
+const savedKey = url => url.pathname + '?' + new URLSearchParams(['ra', 'dec', 'det', 'r', 't', 'v'].filter(n => url.searchParams.has(n))
   .map(n => [n, n === 'v' ? url.searchParams.get(n).slice(0, 8) : url.searchParams.get(n)]));
 
 // One transaction. An answer saved less than a day before this one, or after it, is kept as it is and nothing is written:
