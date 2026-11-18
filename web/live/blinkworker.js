@@ -69,8 +69,10 @@ async function exposures(base, det, ra, dec, signal) {
   return lists.get(k);
 }
 // one exposure: header, the grid's map onto it, and (when any of the field is on the detector, in band) its rows
-async function readExposure(e, grid, bins, wave, signal) {
-  const h = await s3(() => retry(() => imageHeader(e.key, signal)));
+async function readExposure(e, grid, bins, wave, signal, stopped = () => null) {
+  if (stopped()) return null;
+  const h = await s3(() => stopped() ? null : retry(() => imageHeader(e.key, signal)));
+  if (!h) return null;
   const map = B.spherexMap(h, grid);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (let k = 0; k < map.px.length; k++) { const x = map.px[k], y = map.py[k]; if (x > -1 && x < SIZE && y > -1 && y < SIZE) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
@@ -79,6 +81,7 @@ async function readExposure(e, grid, bins, wave, signal) {
   const N = B.N, cl = v => Math.min(SIZE - 1, Math.max(0, v)), lams = [0, N - 1, (N - 1) * N, N * N - 1, (N * N - 1) / 2].map(k => B.lamAt(wave, cl(map.px[k]), cl(map.py[k])));
   if (Math.max(...lams) < bins.loS * 0.99 || Math.min(...lams) > bins.hiS * 1.01) return null;
   x0 = Math.max(0, Math.floor(x0) - 1); x1 = Math.min(SIZE - 1, Math.ceil(x1) + 1); y0 = Math.max(0, Math.floor(y0) - 1); y1 = Math.min(SIZE - 1, Math.ceil(y1) + 1);
+  if (stopped()) return null;
   const [px, fl] = await s3(() => retry(() => Promise.all([imageRows(e.key, h, y0, y1, signal), flagsHeader(e.key, h, signal).then(f => flagRows(e.key, f, y0, y1, signal))])));
   const w = x1 - x0 + 1, ht = y1 - y0 + 1, img = new Float32Array(w * ht), flg = new Int32Array(w * ht);
   for (let y = 0; y < ht; y++) { img.set(px.subarray(y * SIZE + x0, y * SIZE + x1 + 1), y * w); flg.set(fl.subarray(y * SIZE + x0, y * SIZE + x1 + 1), y * w); }
@@ -88,21 +91,28 @@ async function readExposure(e, grid, bins, wave, signal) {
 
 // ---------- one band, start to end ----------
 export async function buildBand(band, { base, ra, dec, grid, curves, waves, signal, progress = () => {} }) {
+  // the older survey and SPHEREx at once; if either fails the band stops there (queued S3 reads are skipped)
+  let failed = null;
   const oldP = oldSky(base, band, ra, dec, signal, progress);
-  oldP.catch(() => {});   // read below; a failure here must not be unhandled while SPHEREx loads
   const { dets } = B.PAIRS[band], acc = B.synthStart(curves[band], dets);
-  const all = (await Promise.all(dets.map(d => exposures(base, d, ra, dec, signal)))).flat();
-  if (!all.length) throw new Unavailable('comparison-unavailable', 'SPHEREx has no pictures of this spot in this band');
-  let done = 0;
-  progress(`Reading ${all.length} SPHEREx exposures`);
-  await Promise.all(all.map(async e => {
-    let x;
-    try { x = await readExposure(e, grid, acc.bins, waves[e.det], signal); }
-    catch (err) { if (err.name === 'AbortError') throw err; throw new Unavailable('spherex-unavailable', 'NASA\'s SPHEREx archive (S3) is not answering'); }
-    if (x) B.synthAdd(acc, x, waves[e.det]);
-    progress(`Reading SPHEREx exposures: ${++done} of ${all.length}`);
-  }));
-  const sp = B.synthEnd(acc, band), o = await oldP;
+  const spxP = (async () => {
+    const all = (await Promise.all(dets.map(d => exposures(base, d, ra, dec, signal)))).flat();
+    if (!all.length) throw new Unavailable('comparison-unavailable', 'SPHEREx has no pictures of this spot in this band');
+    let done = 0;
+    progress(`Reading ${all.length} SPHEREx exposures`);
+    await Promise.all(all.map(async e => {
+      if (failed) return;
+      let x;
+      try { x = await readExposure(e, grid, acc.bins, waves[e.det], signal, () => failed); }
+      catch (err) { if (err.name === 'AbortError' || failed) throw err; throw new Unavailable('spherex-unavailable', 'NASA\'s SPHEREx archive (S3) is not answering'); }
+      if (x) B.synthAdd(acc, x, waves[e.det]);
+      progress(`Reading SPHEREx exposures: ${++done} of ${all.length}`);
+    }));
+  })();
+  let o;
+  try { [o] = await Promise.all([oldP, spxP]); }
+  catch (e) { failed = e; oldP.catch(() => {}); spxP.catch(() => {}); throw e; }
+  const sp = B.synthEnd(acc, band);
   progress('Matching and measuring');
   const old = o.kind === 'wise' ? B.oldWise(o.int, o.cov, grid, o.inputs) : B.old2mass(o.tiles, grid, o.inputs);
   return B.pair(band, old, sp);

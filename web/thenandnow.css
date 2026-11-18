@@ -149,11 +149,17 @@
 .tn-lapse .bandsw { position: absolute; z-index: 3; right: calc(14 * var(--m)); top: calc(14 * var(--m)); }
 .tn-lapse .flabel { top: auto; bottom: calc(14 * var(--m)); left: calc(14 * var(--m)); }
 .tn-lapse .corner.l { display: none; }
-body.tn-on .pv-frame > .pv-zoom, body.tn-on #spec-mode, body.tn-on #legend, body.tn-on #one-photo, body.tn-on #loading { display: none !important; }
+body.tn-on :is(#spec-mode, #legend, #one-photo, #loading, #depth3d) { display: none !important; }
+body.tn-on .pstage > :is(.pv-report, .pv-dist, .pv-talkwrap) { display: none; }
+.pstage > .tn-go { position: absolute; top: calc(229 * var(--e) + max(var(--who-h, 0px), 252 * var(--m)) + 14 * var(--m)); }
+.pstage > .tn-go > span:first-child { flex: 1; text-align: center; }
+.pstage > .tn-go .go { width: calc(40 * var(--m)); height: calc(40 * var(--m)); }
 .pstage .tn-ltl { left: calc(675 * var(--e)); top: calc(1175 * var(--e)); width: calc(1146 * var(--e)); }
 .pstage .tn-ltl[hidden] { display: none; }
 .tn-ltl .ctl { margin-top: 0; }
-body.tn-on .pstage > .tl { visibility: hidden; }
+body.tn-on .pstage > .tl { display: none; }
+.pv-who h1.tn-name { margin: 0 0 calc(12 * var(--m)); font: 400 calc(17 * var(--m)) / 1.25 var(--panel-font); overflow-wrap: anywhere; }
+.pv-who h1.tn-name[hidden] { display: none; }
 .pv-who .tn-say b { font: 300 calc(34 * var(--m)) / 1 var(--head-font); display: block; margin-bottom: calc(6 * var(--m)); }
 .pv-who .tn-say b + .gl { font-size: calc(13 * var(--m)); }
 .pv-who .checks { margin-top: calc(14 * var(--m)); }
@@ -177,10 +183,11 @@ body.tn-on .pstage > .tl { visibility: hidden; }
   .cpage .head .byline { margin-left: 0; text-align: left; flex-basis: 100%; }
   .tn, .cpage .tn.pv-frame { padding: 16px; }
   .cpage .where-p { margin-top: 10px; }
-  .pstage .tn-ltl { order: 3; width: auto; margin: 12px 0 8px; }
-  .pstage .tn-go { order: 4; width: auto; height: 56px; margin-top: 10px; }
+  .pstage > .tn-ltl { order: 3; position: static; width: auto; margin: 12px 0 8px; }
+  .pstage > .tn-go { order: 4; position: static; width: auto; height: 56px; margin-top: 10px; }
 }
 @media (max-width: 480px) {
+  body.tn-on .pstage > .pv-frame { aspect-ratio: 1; }
   .tn-lapse .blink { left: 0; width: 100%; transform: none; border: 0; }
   .tn-lapse .flabel { bottom: auto; top: 56px; left: 8px; }
   .tn-lapse .corner.r { display: none; }

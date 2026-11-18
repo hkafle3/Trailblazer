@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="patch.css">
 <link rel="stylesheet" href="header.css">
 <link rel="stylesheet" href="discuss.css">
+<link rel="stylesheet" href="thenandnow.css">
 <link rel="icon" href="favicon.ico">
 <!-- also in header.css; Chrome only honours it reliably when it is in the page itself (as explore.html and comet.html do).
      Without it a page change into this page logs "Transition was aborted because of invalid state" on phones. -->
@@ -33,17 +34,21 @@
 <div class="pstage" id="stage">
   <!-- the name and a one-line verdict built from what the page measured (verdict() in the script) -->
   <section class="pv-card pv-who" aria-labelledby="pv-name">
-    <div class="pv-title"><a class="pv-back" href="explore.html" aria-label="Back to Explore"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4M10 6l-6 6 6 6"/></svg></a><h1 id="pv-name"></h1></div>
+    <div class="pv-title"><a class="pv-back" href="explore.html" aria-label="Back to Explore"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4M10 6l-6 6 6 6"/></svg></a><h1 id="pv-name"></h1><h1 class="tn-name" id="tn-name" hidden></h1></div>
     <p class="pv-say" id="pv-say"></p>
     <p class="pv-facts" id="pv-facts"></p>
     <p class="pv-err" id="pv-err" role="alert"></p>
+    <div id="tn-who" hidden><p class="pv-say tn-say" id="tn-say"></p><div class="pv-facts" id="tn-facts"></div></div>
   </section>
+  <a class="pv-state tn-go" id="tn-go" hidden><span>All checks</span><span class="go" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span></a>
 
   <div class="pv-frame">
     <!-- the views of this patch: Photo (the time-lapse) and Depth (how far each thing is). Colors comes later, as a third tab. -->
     <div class="pv-views" role="tablist" aria-label="View">
-      <button type="button" role="tab" id="tab-photo" data-view="photo" aria-selected="true" aria-controls="patch"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><circle cx="12" cy="12" r="2.2"/></svg>Photo</button><button type="button" role="tab" id="tab-depth" data-view="depth" aria-selected="false" aria-controls="depth3d" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="4" cy="12" r="1.6"/><path d="M5.5 11.4L21 5.5M5.5 12.6L21 18.5"/></svg>Depth</button>
+      <button type="button" role="tab" id="tab-photo" data-view="photo" aria-selected="true" aria-controls="patch"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><circle cx="12" cy="12" r="2.2"/></svg>Photo</button><button type="button" role="tab" id="tab-depth" data-view="depth" aria-selected="false" aria-controls="depth3d" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="4" cy="12" r="1.6"/><path d="M5.5 11.4L21 5.5M5.5 12.6L21 18.5"/></svg>Depth</button><button type="button" role="tab" id="tab-tn" data-view="thenandnow" aria-selected="false" aria-controls="tn-lapse" tabindex="-1" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M17 4v16"/><path d="M3 9l4-4 4 4M13 15l4 4 4-4"/></svg>Then and now</button>
     </div>
+    <!-- Then and now (a candidate's time-lapse, &blink=<id>): the older survey against SPHEREx (thenandnow.js) -->
+    <div class="tn-lapse" id="tn-lapse" role="tabpanel" aria-labelledby="tab-tn" hidden><div class="bandsw" id="tn-band"></div><div id="tn-blink"></div></div>
     <canvas id="patch" width="1146" height="902" role="img" aria-label="SPHEREx image of the target"></canvas>
     <canvas id="hold" aria-hidden="true"></canvas>   <!-- Explore's dive: the sky it showed last, until the first frame is drawn -->
     <!-- Depth: SPHEREx, the beam, the region's photo at its far end, each object at its distance (live/depth.js) -->
@@ -85,6 +90,9 @@
       </button>
     </div>
   </div>
+
+  <!-- Then and now's year axis: a stop per picture, the knob plays and pauses -->
+  <div class="tn-ltl" id="tn-ltl" hidden></div>
 
   <!-- Depth's words: every object with a distance, nearest first, its source and error; what has none; any source not answering -->
   <section class="pv-card pv-dist" id="dist" aria-labelledby="dist-h">
@@ -220,7 +228,9 @@ import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Re
 import { depthView } from './live/depth.js';
 import { middle, identify } from './live/identity.js';   // the one rule for what the dot in the middle is   // the Depth tab: the beam and the Distances list, from /api/depth
 import { MJD0 } from './skymap.js';
-import * as candTrack from './live/candtrack.js';   // &cand=: a detector candidate's track and votes
+import * as candTrack from './live/candtrack.js';
+import { thenAndNow } from './thenandnow.js';   // the third tab on a candidate's time-lapse
+import { designation } from './live/blink.js';   // &cand=: a detector candidate's track and votes
 
 const TARGETS = [
   { key: 'barnard', name: "Barnard's Star" }, { key: 'epsindib', name: 'Epsilon Indi B' }, { key: 'wise0855', name: 'WISE 0855' },
@@ -231,13 +241,15 @@ const P = new URLSearchParams(location.search);
 // ---------- the view on the photo (Photo or Depth) rides in the address: &view=depth, so a shared link reopens it ----------
 // Every place that writes the address (show, back, recenter, spSync, the Spectrum card) goes through replaceState, so the
 // view is added there once instead of in each of them.
-let pvView = P.get('view') === 'depth' ? 'depth' : 'photo';
+// Then and now is offered on a candidate's time-lapse (&blink=<candidate id>, with ra and dec): view=thenandnow
+const blinkId = P.get('blink'), blinkOn = !!blinkId && Number.isFinite(parseFloat(P.get('ra'))) && Number.isFinite(parseFloat(P.get('dec')));
+let pvView = P.get('view') === 'depth' ? 'depth' : P.get('view') === 'thenandnow' && blinkOn ? 'thenandnow' : 'photo';
 {
   const replace = history.replaceState.bind(history);
   history.replaceState = (st, title, url) => {
     // by hand, not searchParams: re-serialising would encode the rest of the address (layers=9,77 -> 9%2C77)
     const u = new URL(url ?? location.href, location.href), q = u.search.replace(/([?&])view=[^&]*&?/g, '$1').replace(/[?&]$/, '');
-    u.search = pvView === 'depth' ? `${q}${q ? '&' : '?'}view=depth` : q;
+    u.search = pvView !== 'photo' ? `${q}${q ? '&' : '?'}view=${pvView}` : q;
     replace(st, title, u.href);
   };
 }
@@ -1566,7 +1578,8 @@ const depth = depthView({
   matchKey: () => { const m = state.m, t = m && targetAt(m, m.frames[state.i]); return JSON.stringify([state.verdict?.match ?? null, t?.pos ?? null, t?.id?.pass.match?.t ?? null]); },
 });
 window.__depth = depth;   // for tests/timelapse_redesign_ui.py
-const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]')];
+if (blinkOn) document.getElementById('tab-tn').hidden = false;
+const viewTabs = [...document.querySelectorAll('.pv-views [role=tab]:not([hidden])')];
 function setView(v, user = false) {
   pvView = v;
   document.body.classList.toggle('depth', v === 'depth');
@@ -1576,9 +1589,28 @@ function setView(v, user = false) {
     if (spec.mode || spec.at) closeSpec(false);
   }
   depth.show(v === 'depth');
+  thenNow(v === 'thenandnow');
   if (user || P.has('view')) history.replaceState(history.state, '', location.href);   // the wrapper writes &view=
   if (v === 'photo') draw();
   moreBelow();
+}
+// Then and now: built the first time the tab opens; the photo's own controls step aside while it shows
+let tn = null;
+function thenNow(on) {
+  document.body.classList.toggle('tn-on', on);
+  for (const id of ['tn-lapse', 'tn-ltl', 'tn-go', 'tn-who']) document.getElementById(id).hidden = !on;
+  for (const id of ['pv-say', 'pv-facts']) document.getElementById(id).hidden = on;
+  const h1 = document.getElementById('tn-name');
+  h1.hidden = !on; document.getElementById('pv-name').hidden = on;
+  if (on) {
+    stop();
+    const ra = parseFloat(P.get('ra')), dec = parseFloat(P.get('dec'));
+    if (!tn) tn = thenAndNow(null, { ra, dec, mode: 'lapse', slots: { band: document.getElementById('tn-band'), blink: document.getElementById('tn-blink'),
+      ctl: document.getElementById('tn-ltl'), say: document.getElementById('tn-say'), facts: document.getElementById('tn-facts') } });
+    tn.setActive(true);
+    h1.textContent = designation(ra, dec);
+    document.getElementById('tn-go').href = `candidate.html?id=${encodeURIComponent(blinkId)}`;
+  } else tn?.setActive(false);
 }
 for (const t of viewTabs) t.addEventListener('click', () => setView(t.dataset.view, true));
 document.querySelector('.pv-views').addEventListener('keydown', e => {   // tabs: arrows move between them
@@ -1655,7 +1687,7 @@ for (const [id, key] of [['diff', 'diff'], ['still', 'still'], ['ly-heat', 'heat
   document.getElementById(id).onchange = e => { state[key] = e.target.checked; draw(); };
 addEventListener('keydown', e => {
   if (!state.m || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.target === playBtn) return;   // typing a comment moves the caret, not the visit
-  if (e.defaultPrevented || e.target.closest?.('.pv-views, #depth3d')) return;   // the tabs and the 3D view use the arrows themselves
+  if (e.defaultPrevented || e.target.closest?.('.pv-views, #depth3d') || pvView === 'thenandnow') return;   // the tabs and the 3D view use the arrows themselves; Then and now has no visits
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stop(); state.i = (state.i + (e.key === 'ArrowRight' ? 1 : -1) + state.m.frames.length) % state.m.frames.length; draw(); }
 });
 
@@ -1814,7 +1846,7 @@ else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends i
 } else setMode('sky');   // the whiteboard flow starts at the whole sky
 // &spec=ra,dec: the Spectrum card opens on that spot (its 2026.0 place) as soon as the page shows a patch
 { const sp = (P.get('spec') || '').split(',').map(Number); if (sp.length === 2 && sp[0] >= 0 && sp[0] < 360 && Math.abs(sp[1]) <= 90) { specMode(true); openSpec(sp[0], sp[1], 2026); } }
-if (pvView === 'depth') setView('depth');
+if (pvView !== 'photo') setView(pvView);
 tellMap({ type: 'dive-ready' });
 </script>
 <script src="ui.js"></script>

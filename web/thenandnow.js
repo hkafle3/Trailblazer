@@ -156,7 +156,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, context =
   // ---------- render ----------
   function render() {
     const m = S.results[S.band], w = m?.state === 'ok' ? words(S.band, m, context) : null;
-    const openDiff = root.querySelector?.('.diffbox:not(.credits-d)')?.open, openCred = root.querySelector?.('.credits-d')?.open;
+    const openDiff = root?.querySelector('.diffbox:not(.credits-d)')?.open, openCred = root?.querySelector('.credits-d')?.open;
     if (mode === 'page') {
       root.innerHTML = `<div class="tn-top"><h2 id="tn-h">Then and now</h2><div class="wl">${gl('Wavelength', G.micron)}${bandSwitch()}</div></div>
         <div class="tn-body"><div>${blinkBox(m)}${w ? axis(w) + '<p class="hint">Watch the marked star.</p>' : ''}</div><div>${result(m, w)}${checks(m, w)}</div></div>${diffBox(m)}${credits}`;
