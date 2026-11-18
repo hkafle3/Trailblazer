@@ -31,7 +31,7 @@ const data = await fetch('data/labels.json').then(r => (r.ok ? r.json() : null))
 const PAD = 4, EDGE = 4, BAR = 8;
 
 // ---- borders and the Milky Way: paths in the map's 2000 x 1000 SVG, lifted where a piece crosses the map's seam ----
-let mwText = null;
+let mwText = null, borderEl = null;
 if (data) {
   const P = (lon, dec) => { const [u, v] = fwdLon(lon, dec); return (u * 2000).toFixed(1) + ' ' + (v * 1000).toFixed(1); };
   let d = '';
@@ -44,7 +44,7 @@ if (data) {
     }
   }
   const svg = map.querySelector('.grat'), NS = 'http://www.w3.org/2000/svg', path = document.createElementNS(NS, 'path');
-  path.setAttribute('class', 'cbound'); path.setAttribute('d', d);
+  path.setAttribute('class', 'cbound'); path.setAttribute('d', d); borderEl = path;
   svg.insertBefore(path, $('ecl'));
   // the galactic equator (b = 0) across Cassiopeia, where it runs flat, as the path the name follows
   const ngpRa = 192.85948 * RAD, ngpDec = 27.12825 * RAD, lNcp = 122.93192 * RAD, pts = [];
@@ -76,7 +76,6 @@ for (const l of labels) {
   a.className = `lb k-${l.kind} off`; a.style.left = l.u * 100 + '%'; a.style.top = l.v * 100 + '%';
   if (l.kind === 'object') a.append(document.createElement('i'));
   a.append(Object.assign(document.createElement('span'), { textContent: l.name }));
-  layer.append(a);
   Object.assign(l, { el: a, span: a.lastChild, sides: l.kind === 'object' || l.kind === 'star' ? POINT : AREA, side: null, shown: false });
 }
 // the deep-zoom name: fixed at the top middle of the map, outside .map-wrap so the straightening never turns it
@@ -86,8 +85,14 @@ pinned.append(document.createElement('span'));
 document.body.append(pinned);
 
 let sized = false;
+// Only the names shown are in the page: hundreds more under .map-wrap would each be restyled on every frame of a pan or
+// zoom (the straightening's --un changes on .map-wrap). They are put in once to be measured.
 function measure() {   // each name's size, once (and again when the fonts arrive)
+  const out = labels.filter(l => !l.el.isConnected);
+  layer.classList.add('measuring'); layer.append(...out.map(l => l.el));
   for (const l of labels) { l.w = l.span.offsetWidth; l.h = l.span.offsetHeight; }
+  for (const l of out) l.el.remove();
+  layer.classList.remove('measuring');
   sized = labels.length > 0;
 }
 // a name's box in window px for a side, from its anchor (x, y): the offsets are sky-labels.css's
@@ -179,7 +184,7 @@ function layout() {
     const cx = view.A.w / 2, sky = view.skyAt(cx, (view.A.t + view.A.b) / 2);
     if (sky) {
       const name = constellationName(constellationAt(...sky)), s = pinned.firstChild;
-      if (s.textContent !== name) { s.textContent = name; pinned.dataset.w = s.offsetWidth; pinned.dataset.h = s.offsetHeight; }
+      if (s.textContent !== name) { s.textContent = name; pinned.classList.add('measuring'); pinned.dataset.w = s.offsetWidth; pinned.dataset.h = s.offsetHeight; pinned.classList.remove('measuring'); }
       const w = +pinned.dataset.w, h = +pinned.dataset.h;
       for (const y of [top + 14, top + 48, top + 82]) {
         const b = [cx - w / 2, y, cx + w / 2, y + h];
@@ -190,7 +195,8 @@ function layout() {
   }
 
   // ---- write: only what changed ----
-  wrapEl.style.setProperty('--bound', Math.max(0, Math.min(1, (k - 4.5) / 4)).toFixed(2));   // borders fade in from 4.5 to 8.5 px per degree
+  const bound = Math.max(0, Math.min(1, (k - 4.5) / 4)).toFixed(2);   // borders fade in from 4.5 to 8.5 px per degree
+  if (borderEl && borderEl.style.opacity !== bound) borderEl.style.opacity = bound;   // on the path itself: a property on .map-wrap would restyle everything in it
   for (const [el, [side, dx], spot] of cardWrites) {
     if (el.dataset.at !== spot) el.dataset.at = spot;
     el.classList.toggle('left', side === 'left'); el.classList.toggle('below', side === 'below');
@@ -202,10 +208,10 @@ function layout() {
     if (side === l.side) continue;
     l.side = side;
     l.el.classList.toggle('off', side === null);
-    if (side) l.el.dataset.side = side;
+    if (side) { l.el.dataset.side = side; if (!l.el.isConnected) layer.append(l.el); } else l.el.remove();
   }
   pinned.classList.toggle('off', !pin);
-  if (pin) { pinned.style.left = pin[0] + 'px'; pinned.style.top = pin[1] + 'px'; }
+  if (pin && (pinned.style.left !== pin[0] + 'px' || pinned.style.top !== pin[1] + 'px')) { pinned.style.left = pin[0] + 'px'; pinned.style.top = pin[1] + 'px'; }
 }
 
 let q = 0;
