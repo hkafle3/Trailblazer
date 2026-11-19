@@ -117,6 +117,11 @@ async def scenarios(b, check):
     await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
     check(await judge(pg), "pole: 641x640 zoomed to 3,300 px, search 0 89")
     await pg.context.close()
+    # the same from a fresh page: the search starts the map at 4 times the whole sky, so the glide may zoom in further
+    pg = await page(b, 641, 640, "/explore.html?q=0%2089")
+    await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
+    check(await judge(pg), "pole: 641x640 fresh page, ?q=0 89")
+    await pg.context.close()
     # the comet card (C-0176 from "Find on map", and the featured comet on a day link, which does not replay) shares the
     # placement: clear of the controls and the timeline, inside the window, at load and after a resize. (Where it has no
     # room at all, as for some days at 760 px, it keeps its default side: it follows its comet, so it never pans the map.)
