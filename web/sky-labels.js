@@ -186,23 +186,23 @@ function layout() {
   const cardWrites = [], walls = [...fixed, topbar], tlTop = bot + BAR;
   const fitsAt = (c, x, y, [, dx, dy]) => { const b = [x + dx, y + dy, x + dx + c.w, y + dy + c.h]; return b[0] >= 0 && b[2] <= vw && b[1] >= 0 && b[3] <= Math.min(vh, tlTop) && !walls.some(o => hit(b, o)); };
   let pinStep = null;
-  // the nearest point to glide the pin to (zoomed in by the first f of fs that has one) where its card and ring fit: [px, py, f], or null
+  // the nearest point to glide the pin to (zoomed in by the first f of fs that has one) where its card and ring fit: [px, py, width], or null
   const room = (c, x, y, fs) => {
     if (!engine && !phone.matches) desktop.begin();   // the desktop's map is the CSS oval until the first pan: hand it to the engine
     if (!view.A) return null;
     const mid = [view.A.w / 2, (view.A.t + view.A.b) / 2];
-    for (const f of fs) {
+    for (const w of new Set(fs.map(f => Math.min(view.MAXW, view.W * f)))) {   // the deepest zoom caps it
       let best = null, bd = Infinity;
       for (let py = top + 16; py <= bot - 16; py += 12) for (let px = 16; px <= vw - 16; px += 12) {
         const d = (px - x) ** 2 + (py - y) ** 2;
         if (d >= bd) continue;
         // where the pin really lands: set() keeps the oval in view, so the glide can fall short (and straighten it otherwise);
         // and the sky stays under the middle of the view, where the dive's aim and the deep-zoom name look
-        const w = view.W * f, [w2, x2, y2] = view.clamp(w, ...view.place(c.u, c.v, px, py, w)), [qx, qy] = view.winAt(w2, x2, y2, c.u, c.v);
+        const [w2, x2, y2] = view.clamp(w, ...view.place(c.u, c.v, px, py, w)), [qx, qy] = view.winAt(w2, x2, y2, c.u, c.v);
         const mu = (mid[0] - x2) / w2 * 2 - 1, mv = (mid[1] - y2) / w2 * 4 - 1;
         if (mu * mu + mv * mv > 1) continue;
         if (walls.some(o => hit([qx - 14, qy - 14, qx + 14, qy + 14], o)) || !pinTries(c, qx, fixed).some(t => fitsAt(c, qx, qy, t))) continue;
-        best = [px, py, f]; bd = d;
+        best = [px, py, w]; bd = d;
       }
       if (best) return best;
     }
@@ -221,15 +221,15 @@ function layout() {
     const pick = (same && Number.isFinite(now[1]) && fits(now) ? now : null) ?? tries.find(fits) ?? tries[0];
     // the pin's card with no room: one step per still pass, until it fits (data-fit: the spot and window, and the step).
     // A new pin or a new window size starts again with the whole card: 0 glide the map the least way that gives the card
-    // room, 1 drop its sentence (.tight), 2 glide again (zoomed in 2 or 4 times if it must: near the poles set() keeps
-    // the oval's edge from coming far into the window until the map is zoomed in), 3 leave it
+    // room, 1 drop its sentence (.tight), 2 glide again (zoomed in 2, 4, 8 or 16 times if it must: near the poles set()
+    // keeps the oval's edge from coming far into the window until the map is zoomed in), 3 leave it
     // Someone else moving the map between steps (a pan, a zoom, a fly) ends it: the card then keeps to the usual rules.
     if (isPin && !idle) {
       const key = spot + ' ' + vw + 'x' + vh, [k0, s0] = (c.el.dataset.fit ?? '').split('|'), step = k0 === key ? +s0 : -1, tight = cl.contains('tight');
       if (step >= 0 && step < 3 && fitView !== viewKey(view.W, view.X, view.Y)) pinStep = [c, key, 3];
       else if (step < 0 && tight) pinStep = [c, key, 0, 'loose'];
       else if (step < 3) {
-        const s = Math.max(step, 0), to = fits(pick) || s === 1 ? null : room(c, x, y, s === 0 ? [1] : [1, 2, 4]);
+        const s = Math.max(step, 0), to = fits(pick) || s === 1 ? null : room(c, x, y, s === 0 ? [1] : [1, 2, 4, 8, 16]);
         pinStep = fits(pick) ? [c, key, 3] : s === 0 && to ? [c, key, 1, to] : s < 2 ? [c, key, 2, 'tight'] : [c, key, 3, to];
       }
     }
@@ -295,7 +295,7 @@ function layout() {
     c.el.dataset.fit = key + '|' + step;
     fitView = viewKey(view.W, view.X, view.Y);
     if (to === 'tight' || to === 'loose') c.el.classList.toggle('tight', to === 'tight');
-    else if (to) { const w = view.W * to[2], go = view.place(c.u, c.v, to[0], to[1], w); fitView = viewKey(...view.clamp(w, ...go)); view.glide(w, ...go, 300); }
+    else if (to) { const w = to[2], go = view.place(c.u, c.v, to[0], to[1], w); fitView = viewKey(...view.clamp(w, ...go)); view.glide(w, ...go, 300); }
   }
   if (mwText) mwText.classList.toggle('mw-off', !mwOn);
   for (const [l, side] of out) {
