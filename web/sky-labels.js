@@ -194,13 +194,13 @@ function layout() {
       : cl.contains('below') ? ['below', css('--bx'), BELOW] : cl.contains('left') ? ['left', ...c.left] : ['right', ...c.right];
     const spot = c.el.style.left + c.el.style.top, same = c.el.dataset.at === spot;   // the same spot as last time (a pan or zoom, not a new comet or day)
     const pick = (same && Number.isFinite(now[1]) && fits(now) ? now : null) ?? tries.find(fits) ?? tries[0];
-    // a pin just dropped whose card fits nowhere: the nearest place for the pin where it does, its ring clear of the controls;
-    // if there is none, the card drops its sentence (.tight) and the next pass looks again
-    if (isPin && engine && !idle && c.el.dataset.fit !== spot) {
+    // a pin just dropped whose card fits nowhere: the nearest place for the pin where it does, its ring clear of the controls
+    // (once the engine has the map); if there is none, the card drops its sentence (.tight) and the next pass looks again
+    if (isPin && !idle && c.el.dataset.fit !== spot) {
       pan = [c, spot, null, false];
       if (!fits(pick)) {
         let best = Infinity;
-        for (let py = top + 16; py <= bot - 16; py += 12) for (let px = 16; px <= vw - 16; px += 12) {
+        if (engine) for (let py = top + 16; py <= bot - 16; py += 12) for (let px = 16; px <= vw - 16; px += 12) {
           const d = (px - x) ** 2 + (py - y) ** 2;
           if (d >= best || walls.some(o => hit([px - 14, py - 14, px + 14, py + 14], o))) continue;
           if (pinTries(c, px, fixed).some(t => fitsAt(c, px, py, t))) { best = d; pan[2] = [px, py]; }
