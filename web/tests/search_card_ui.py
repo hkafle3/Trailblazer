@@ -24,18 +24,18 @@ if os.environ.get("CARD_SIZES"): SIZES = [tuple(map(int, s.split("x"))) for s in
 QUERIES = ["Orion%20Nebula", "84.0181%20-6.577"]
 INIT = "localStorage.setItem('ch.tour', '1'); localStorage.setItem('ch.maphint', '1'); localStorage.setItem('ch.intro', '1');"
 CONTROLS = ".topbar, .xsearch, .viewsw, .zoomctl, .xbtns > *, #tl, #t-date, .tl-knob"
-JUDGE = """sel => { const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
-  const pin = document.getElementById('pin'), card = pin.querySelector('.pincard');
-  if (pin.hidden || !card.offsetWidth) return ['no pin card'];
+JUDGE = """([sel, which]) => { const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
+  const pin = document.getElementById('pin'), card = which ? document.querySelector(which) : pin.querySelector('.pincard');
+  if (which ? card.hidden : pin.hidden || !card.offsetWidth) return ['no card'];
   const c = R(card), bad = [], hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   for (const e of document.querySelectorAll(sel)) {
     const o = R(e);
     if (o[2] > o[0] && o[3] > o[1] && getComputedStyle(e).visibility !== 'hidden' && hit(c, o)) bad.push(`card on ${e.id || e.className}`);
   }
   if (c[0] < 0 || c[1] < 0 || c[2] > innerWidth || c[3] > innerHeight) bad.push(`card leaves the window [${c.map(Math.round)}]`);
-  for (const s of ['.btn', '.x']) {
-    const b = card.querySelector(s), r = b.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    if (r.height < 43.5 || r.width < 43.5) bad.push(`${s} is ${Math.round(r.width)} x ${Math.round(r.height)} px`);
+  for (const s of which ? [':scope'] : ['.btn', '.x']) {
+    const b = card.querySelector(s) ?? card, r = b.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!which && (r.height < 43.5 || r.width < 43.5)) bad.push(`${s} is ${Math.round(r.width)} x ${Math.round(r.height)} px`);
     if (!top || !b.contains(top)) bad.push(`${s} is covered by ${top ? top.id || top.className || top.tagName : 'nothing (off screen)'}`);
   }
   return bad; }"""
@@ -59,7 +59,7 @@ async def page(b, w, h, path):
 async def judge(pg):
     await pg.wait_for_timeout(300)
     bad = [] if await pg.evaluate(SETTLED) else ["the map or the layout never settled (8 s)"]
-    return bad + await pg.evaluate(JUDGE, CONTROLS) + [f"page error: {e}" for e in pg.errs]
+    return bad + await pg.evaluate(JUDGE, [CONTROLS, None]) + [f"page error: {e}" for e in pg.errs]
 
 
 async def one(b, w, h, q):
@@ -71,6 +71,12 @@ async def one(b, w, h, q):
         bad = [f"{type(e).__name__}: {str(e).splitlines()[0]}"]
     await pg.context.close()
     return bad
+
+
+async def judge_card(pg):
+    await pg.wait_for_timeout(300)
+    bad = [] if await pg.evaluate(SETTLED) else ["the map or the layout never settled (8 s)"]
+    return bad + await pg.evaluate(JUDGE, [CONTROLS, "#card-comet"]) + [f"page error: {e}" for e in pg.errs]
 
 
 SENTENCE = "() => getComputedStyle(document.querySelector('#pin .pincard p')).display !== 'none'"
@@ -102,6 +108,25 @@ async def scenarios(b, check):
     await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
     check(await judge(pg), "again: 360x640 closed and searched again")
     await pg.context.close()
+    # near the pole on a straightened map (zoomed to 3,300 px): the glide must predict where the straightening puts the pin
+    pg = await page(b, 641, 640, "/explore.html")
+    await pg.wait_for_timeout(2500)
+    await pg.evaluate("""async () => { (await import('/explore-desktop.js')).flyTo(0, 80, 1); const v = await import('/explore-view.js'); v.cancel(); v.flyTo(0, 80, 3300, 1); }""")
+    await pg.evaluate(SETTLED)
+    await pg.fill("#xs-q", "0 89"); await pg.wait_for_timeout(300); await pg.keyboard.press("Enter")
+    await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
+    check(await judge(pg), "pole: 641x640 zoomed to 3,300 px, search 0 89")
+    await pg.context.close()
+    # the comet card (C-0176 from "Find on map", and the featured comet on a day link, which does not replay) shares the
+    # placement: clear of the controls and the timeline, inside the window, at load and after a resize. (Where it has no
+    # room at all, as for some days at 760 px, it keeps its default side: it follows its comet, so it never pans the map.)
+    for w, h, path in [(1440, 900, "/explore.html?focus=C-0176&day=501"), (881, 872, "/explore.html?focus=C-0176&day=501"), (1024, 700, "/explore.html?day=330"), (881, 872, "/explore.html?day=330")]:
+        pg = await page(b, w, h, path)
+        await pg.wait_for_function("!document.getElementById('card-comet').hidden", timeout=15000)
+        check(await judge_card(pg), f"comet card: {w}x{h} {path}")
+        await pg.set_viewport_size({"width": 1180, "height": 790})
+        check(await judge_card(pg), f"comet card: {w}x{h} {path}, then 1180x790")
+        await pg.context.close()
 
 
 async def main():
