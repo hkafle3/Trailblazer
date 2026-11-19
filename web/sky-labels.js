@@ -17,12 +17,15 @@
 // Most important first: giant, constellation, cloud, object, star (then by rank or magnitude). A point name tries right,
 // then left; an area name tries middle, below, above, left, right, further below. A name is dropped when it comes within
 // 4 px of anything already there, leaves the window, or crosses the top bar or the timeline.
-// The two cards that hang off a marker (#card-comet, #card-cand) are placed in the same pass, before the names: where
-// the card is now while it still fits, else the default side (left near the map's right edge), then the other side,
-// then under the marker, so they never sit under the fixed controls (the Flat / 3D switch, the search box). A card that
-// fits nowhere keeps its default side.
+// The two cards that hang off a marker (#card-comet, #card-cand) and the pin's card are placed in the same pass, before
+// the names: where the card is now while it still fits, else the default side (left near the map's right edge), then the
+// other side, then under the marker (the pin's card also over it), so they never sit under the fixed controls (the
+// Flat / 3D switch, the search box, the buttons) or cross the timeline. A card that fits nowhere keeps its default side,
+// except a pin just dropped (a search or a click): once the map is still, it glides the least way that gives its card
+// room, the way map apps bring a place's card into view.
 import { fwd, fwdLon, wrap, RAD } from './skymap.js';
 import * as view from './explore-view.js';
+import * as desktop from './explore-desktop.js';
 import { constellationAt, constellationName } from './sky-place.js';
 
 const $ = id => document.getElementById(id);
@@ -119,12 +122,22 @@ const CONTROLS = '.xsearch, #xs-panel:not([hidden]), .viewsw, .zoomctl, .xbtns >
 // the cards: [right, left] as [dx, dy] from the marker (styles.css, explore.css, candidates.css); under it is BELOW px down
 const CARDS = [['card-comet', [28, -30], [-278, -30]], ['card-cand', [-12, 16], [-258, 16]]].map(([id, r, l]) => ({ id, right: r, left: l }));
 const BELOW = 24;
+// the pin's card (ui.css, explore-search.css): beside the ring 26 px out and 22 px up (or down from its bottom), or on
+// phones 30 px under or over it; written as its offset, --px and --py, on #pin.at
+const phone = matchMedia('(max-width: 640px)');
+function pinTries(c, x, fixed) {
+  const { w, h } = c, up = c.v > 0.62, right = [26, -22], left = [-26 - w, -22], ys = up ? [-30 - h, 30] : [30, -30 - h];
+  const sides = phone.matches ? [] : (c.u > 0.7 ? [left, right] : [right, left]).flatMap(([dx, dy]) => (up ? [[dx, 22 - h], [dx, dy]] : [[dx, dy], [dx, 22 - h]]));
+  return [...sides, ...ys.flatMap(dy => belowAt(x, w, fixed).map(dx => [dx, dy]))].map(([dx, dy]) => ['at', dx, dy]);
+}
 // where a card under its marker can sit across: centred, then just clear of each control's side, nearest the centre
 // first; always with the marker over the card (20 px in from either end) so the rule meets it
 const belowAt = (x, w, fixed) => [-w / 2, ...fixed.flatMap(o => [o[2] + PAD + 1 - x, o[0] - PAD - 1 - w - x])]
   .filter(dx => dx <= -20 && dx >= 20 - w).sort((a, b) => Math.abs(a + w / 2) - Math.abs(b + w / 2));
 
 let placed = [];   // [box, label] for the hover test
+let fitView = '';   // the view the pin's last fitting step left (or glided to): any other means someone else moved the map
+const viewKey = (w, x, y) => [w, x, y].map(Math.round).join();
 // Nothing is read from the page while the map only moves. The controls, the top bar and the timeline do not move with it:
 // they are read again when something else asked for this pass (a resize, a panel, the timeline's date). The markers, the
 // pin and the cards keep their size and shape at any zoom (they undo the straightening), so each is kept as a box around
@@ -137,7 +150,8 @@ function readMarks(at) {
     if (m.hidden || !m.style.left || !visible(m)) continue;
     const u = parseFloat(m.style.left) / 100, v = parseFloat(m.style.top) / 100, [x, y] = at(u, v);
     if (m.id === 'card-comet' || m.id === 'card-cand') { if (m.offsetWidth) cards[m.id] = [m.offsetWidth, m.offsetHeight]; continue; }
-    const els = m.classList.contains('mk') ? [...m.children].filter(e => e.tagName === 'I' || e.tagName === 'B') : m.id === 'pin' ? m.querySelectorAll('.pincard, .pin-ring') : [m];
+    if (m.id === 'pin') { const pc = m.querySelector('.pincard'); if (pc.offsetWidth) cards.pin = [pc.offsetWidth, pc.offsetHeight]; }
+    const els = m.classList.contains('mk') ? [...m.children].filter(e => e.tagName === 'I' || e.tagName === 'B') : m.id === 'pin' ? m.querySelectorAll('.pin-ring') : [m];
     for (const e of els) { const r = rect(e); if (r[2] > r[0] && r[3] > r[1]) parts.push([u, v, r[0] - x, r[1] - y, r[2] - x, r[3] - y]); }
   }
   return { parts, cards };
@@ -160,7 +174,7 @@ function layout() {
   fresh = marksDirty = false;
   const { top, bot, fixed: fixed0, topbar } = still, fixed = [...fixed0];
   const taken = kept.parts.map(([u, v, a, b, c, d]) => { const [x, y] = at(u, v); return [x + a, y + b, x + c, y + d]; });
-  const cards = CARDS.map(c => ({ ...c, el: $(c.id) })).filter(c => kept.cards[c.id] && !c.el.hidden)
+  const cards = [...CARDS, { id: 'pin' }].map(c => ({ ...c, el: $(c.id) })).filter(c => kept.cards[c.id] && !c.el.hidden)
     .map(c => ({ ...c, w: kept.cards[c.id][0], h: kept.cards[c.id][1], u: parseFloat(c.el.style.left) / 100, v: parseFloat(c.el.style.top) / 100 }));
   let mwBox = null;
   if (mwText && !wrapEl.classList.contains('deep-zoom')) {
@@ -168,18 +182,58 @@ function layout() {
     if (mwFrac) { const [a, b] = at(mwFrac[0], mwFrac[1]), [c, d] = at(mwFrac[2], mwFrac[3]); mwBox = [a, b, c, d]; }
   }
 
-  // ---- cards: off the controls, inside the window ----
-  const cardWrites = [];
+  // ---- cards: off the controls and the timeline, inside the window ----
+  const cardWrites = [], walls = [...fixed, topbar], tlTop = bot + BAR;
+  const fitsAt = (c, x, y, [, dx, dy]) => { const b = [x + dx, y + dy, x + dx + c.w, y + dy + c.h]; return b[0] >= 0 && b[2] <= vw && b[1] >= 0 && b[3] <= Math.min(vh, tlTop) && !walls.some(o => hit(b, o)); };
+  let pinStep = null;
+  // the nearest point to glide the pin to (zoomed in by the first f of fs that has one) where its card and ring fit: [px, py, width], or null
+  const room = (c, x, y, fs) => {
+    if (!engine && !phone.matches) desktop.begin();   // the desktop's map is the CSS oval until the first pan: hand it to the engine
+    if (!view.A) return null;
+    const mid = [view.A.w / 2, (view.A.t + view.A.b) / 2];
+    for (const w of new Set(fs.map(f => Math.min(view.MAXW, view.W * f)))) {   // the deepest zoom caps it
+      let best = null, bd = Infinity;
+      for (let py = top + 16; py <= bot - 16; py += 12) for (let px = 16; px <= vw - 16; px += 12) {
+        const d = (px - x) ** 2 + (py - y) ** 2;
+        if (d >= bd) continue;
+        // where the pin really lands: set() keeps the oval in view, so the glide can fall short (and straighten it otherwise);
+        // and the sky stays under the middle of the view, where the dive's aim and the deep-zoom name look
+        const [w2, x2, y2] = view.clamp(w, ...view.place(c.u, c.v, px, py, w)), [qx, qy] = view.winAt(w2, x2, y2, c.u, c.v);
+        const mu = (mid[0] - x2) / w2 * 2 - 1, mv = (mid[1] - y2) / w2 * 4 - 1;
+        if (mu * mu + mv * mv > 1) continue;
+        if (walls.some(o => hit([qx - 14, qy - 14, qx + 14, qy + 14], o)) || !pinTries(c, qx, fixed).some(t => fitsAt(c, qx, qy, t))) continue;
+        best = [px, py, w]; bd = d;
+      }
+      if (best) return best;
+    }
+    return null;
+  };
   for (const c of cards) {
-    const [x, y] = at(c.u, c.v), def = c.u > 0.75 ? 'left' : 'right';
-    const tries = [[def, c[def][0], c[def][1]], [def === 'left' ? 'right' : 'left', ...c[def === 'left' ? 'right' : 'left']],
+    const [x, y] = at(c.u, c.v), def = c.u > 0.75 ? 'left' : 'right', isPin = c.id === 'pin';
+    const tries = isPin ? pinTries(c, x, fixed) : [[def, c[def][0], c[def][1]], [def === 'left' ? 'right' : 'left', ...c[def === 'left' ? 'right' : 'left']],
       ...belowAt(x, c.w, fixed).map(dx => ['below', dx, BELOW])];
-    const fits = ([, dx, dy]) => { const b = [x + dx, y + dy, x + dx + c.w, y + dy + c.h]; return b[0] >= 0 && b[2] <= vw && b[3] <= vh && ![...fixed, topbar].some(o => hit(b, o)); };
+    const fits = t => fitsAt(c, x, y, t);
     // where it is now comes first while it still fits, so a pan or a timeline tick never makes it jump sides
-    const cl = c.el.classList, now = cl.contains('below') ? ['below', parseFloat(c.el.style.getPropertyValue('--bx')), BELOW] : cl.contains('left') ? ['left', ...c.left] : ['right', ...c.right];
-    const same = c.el.dataset.at === c.el.style.left + c.el.style.top;   // the same spot as last time (a pan or zoom, not a new comet or day)
+    const cl = c.el.classList, css = p => parseFloat(c.el.style.getPropertyValue(p));
+    const now = isPin ? (cl.contains('at') ? ['at', css('--px'), css('--py')] : ['at', NaN, NaN])
+      : cl.contains('below') ? ['below', css('--bx'), BELOW] : cl.contains('left') ? ['left', ...c.left] : ['right', ...c.right];
+    const spot = c.el.style.left + c.el.style.top, same = c.el.dataset.at === spot;   // the same spot as last time (a pan or zoom, not a new comet or day)
     const pick = (same && Number.isFinite(now[1]) && fits(now) ? now : null) ?? tries.find(fits) ?? tries[0];
-    cardWrites.push([c.el, pick, c.el.style.left + c.el.style.top]);
+    // the pin's card with no room: one step per still pass, until it fits (data-fit: the spot and window, and the step).
+    // A new pin or a new window size starts again with the whole card: 0 glide the map the least way that gives the card
+    // room, 1 drop its sentence (.tight), 2 glide again (zoomed in 2, 4, 8 or 16 times if it must: near the poles set()
+    // keeps the oval's edge from coming far into the window until the map is zoomed in), 3 leave it
+    // Someone else moving the map between steps (a pan, a zoom, a fly) ends it: the card then keeps to the usual rules.
+    if (isPin && !idle) {
+      const key = spot + ' ' + vw + 'x' + vh, [k0, s0] = (c.el.dataset.fit ?? '').split('|'), step = k0 === key ? +s0 : -1, tight = cl.contains('tight');
+      if (step >= 0 && step < 3 && fitView !== viewKey(view.W, view.X, view.Y)) pinStep = [c, key, 3];
+      else if (step < 0 && tight) pinStep = [c, key, 0, 'loose'];
+      else if (step < 3) {
+        const s = Math.max(step, 0), to = fits(pick) || s === 1 ? null : room(c, x, y, s === 0 ? [1] : [1, 2, 4, 8, 16]);
+        pinStep = fits(pick) ? [c, key, 3] : s === 0 && to ? [c, key, 1, to] : s < 2 ? [c, key, 2, 'tight'] : [c, key, 3, to];
+      }
+    }
+    cardWrites.push([c.el, pick, spot]);
     taken.push([x + pick[1], y + pick[2], x + pick[1] + c.w, y + pick[2] + c.h]);
   }
   taken.push(...fixed);
@@ -225,11 +279,23 @@ function layout() {
 
   // ---- write: only what changed ----
   borders();
-  for (const [el, [side, dx], spot] of cardWrites) {
+  for (const [el, [side, dx, dy], spot] of cardWrites) {
     if (el.dataset.at !== spot) el.dataset.at = spot;
+    if (el.id === 'pin') {
+      el.classList.add('at');
+      for (const [p, n] of [['--px', dx], ['--py', dy]]) if (el.style.getPropertyValue(p) !== Math.round(n) + 'px') el.style.setProperty(p, Math.round(n) + 'px');
+      continue;
+    }
     el.classList.toggle('left', side === 'left'); el.classList.toggle('below', side === 'below');
     const bx = side === 'below' ? Math.round(dx) + 'px' : '';
     if (el.style.getPropertyValue('--bx') !== bx) el.style.setProperty('--bx', bx);
+  }
+  if (pinStep) {   // the layout after the glide or the change of card looks again
+    const [c, key, step, to] = pinStep;
+    c.el.dataset.fit = key + '|' + step;
+    fitView = viewKey(view.W, view.X, view.Y);
+    if (to === 'tight' || to === 'loose') c.el.classList.toggle('tight', to === 'tight');
+    else if (to) { const w = to[2], go = view.place(c.u, c.v, to[0], to[1], w); fitView = viewKey(...view.clamp(w, ...go)); view.glide(w, ...go, 300); }
   }
   if (mwText) mwText.classList.toggle('mw-off', !mwOn);
   for (const [l, side] of out) {

@@ -10,6 +10,7 @@
 //                          min          the smallest W (the whole sky)
 //                          inset()      optional: pixels covered at the bottom right now (the phone's comet sheet)
 //   set(w, x, y)           jump to a view; it is clamped so the oval stays in view (see limits below)
+//   clamp(w, x, y)         the view set() would make of it, without going there
 //   zoomAt(f, px, py)      zoom by factor f keeping window point (px, py) still
 //   glide(w, x, y, ms)     animate to a view (no animation with reduced motion); cancel() stops a glide
 //   glideZoom(f, px, py)   glide version of zoomAt
@@ -17,6 +18,7 @@
 //   skyAt(px, py)          [ra, dec] under a window point, or null off the oval;  toScreen(ra, dec) the reverse
 //   overMap(e)             whether a wheel or gesture event is over the map (the phone and desktop files, explore-dive.js)
 //   uvAt(px, py), win(u, v) the same two for map fractions (0..1 across and down the oval's box), which is how markers are placed
+//   winAt(w, x, y, u, v)   win() at another view, as set() would straighten it
 //   place(u, v, px, py, w) the view corner [x, y] that puts map fraction (u, v) at window point (px, py) at width w
 //   move(f, x0, y0, x1, y1) the sky under (x0, y0) goes to (x1, y1), zoomed by f: a drag (f = 1) or a pinch
 //   M, straight(), plain() the straightening in force (see below), whether there is any, and take it off the page
@@ -80,6 +82,8 @@ function straighten(w, x, y) {
 const lin = (m, x, y) => [m[0] * x + m[1] * y, m[2] * x + m[3] * y];
 const unlin = (m, x, y) => { const det = m[0] * m[3] - m[1] * m[2]; return [(m[3] * x - m[1] * y) / det, (m[0] * y - m[2] * x) / det]; };
 export function win(u, v) { const [cx, cy] = pivot(), [x, y] = lin(M, X + u * W - cx, Y + v * W / 2 - cy); return [cx + x, cy + y]; }
+// win() at another view (w, x, y), straightened as set() would straighten it: where a glide will put map fraction (u, v)
+export function winAt(w, x, y, u, v) { const [cx, cy] = pivot(), [px, py] = lin(straighten(w, x, y), x + u * w - cx, y + v * w / 2 - cy); return [cx + px, cy + py]; }
 export function uvAt(px, py) { const [cx, cy] = pivot(), [x, y] = unlin(M, px - cx, py - cy); return [(cx + x - X) / W, (cy + y - Y) / (W / 2)]; }
 // the straightening depends on where the view is, so the corner is found in a few rounds against the view it leads to
 export function place(u, v, px, py, w = W) {
@@ -107,11 +111,13 @@ matchMedia('(max-width: 640px)').addEventListener('change', plain);
 // 15% of the area. The margin keeps the rule continuous, so zooming around a point never jumps where the oval
 // grows past the area. Whatever covers the bottom (the phone's comet sheet) raises the bottom edge.
 // Straightened, the margin grows to half the area, so the oval's edge and the poles can come to the middle.
+export function clamp(w, x, y) {   // the view set() would make of (w, x, y)
+  w = clampW(w);
+  const H = w / 2, bot = A.b - (A.inset?.() ?? 0), k = .15 + .35 * fade(w), mx = A.w * k, my = (bot - A.t) * k;
+  return [w, Math.min(Math.max(0, A.w - w) + mx, Math.max(Math.min(0, A.w - w) - mx, x)), Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y))];
+}
 export function set(w, x, y) {
-  W = clampW(w);
-  const H = W / 2, bot = A.b - (A.inset?.() ?? 0), k = .15 + .35 * fade(W), mx = A.w * k, my = (bot - A.t) * k;
-  X = Math.min(Math.max(0, A.w - W) + mx, Math.max(Math.min(0, A.w - W) - mx, x));
-  Y = Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y));
+  [W, X, Y] = clamp(w, x, y);
   wrap.style.width = W + 'px'; wrap.style.left = X - ox + 'px'; wrap.style.top = Y - oy + 'px';
   wrap.classList.toggle('deep-zoom', W > 1700);   // the ecliptic's label is drawn in the sky, so it grows with the zoom: hidden when close in
   M = straighten(W, X, Y); dress();
