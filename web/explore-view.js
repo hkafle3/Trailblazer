@@ -10,6 +10,7 @@
 //                          min          the smallest W (the whole sky)
 //                          inset()      optional: pixels covered at the bottom right now (the phone's comet sheet)
 //   set(w, x, y)           jump to a view; it is clamped so the oval stays in view (see limits below)
+//   clamp(w, x, y)         the view set() would make of it, without going there
 //   zoomAt(f, px, py)      zoom by factor f keeping window point (px, py) still
 //   glide(w, x, y, ms)     animate to a view (no animation with reduced motion); cancel() stops a glide
 //   glideZoom(f, px, py)   glide version of zoomAt
@@ -107,11 +108,13 @@ matchMedia('(max-width: 640px)').addEventListener('change', plain);
 // 15% of the area. The margin keeps the rule continuous, so zooming around a point never jumps where the oval
 // grows past the area. Whatever covers the bottom (the phone's comet sheet) raises the bottom edge.
 // Straightened, the margin grows to half the area, so the oval's edge and the poles can come to the middle.
+export function clamp(w, x, y) {   // the view set() would make of (w, x, y)
+  w = clampW(w);
+  const H = w / 2, bot = A.b - (A.inset?.() ?? 0), k = .15 + .35 * fade(w), mx = A.w * k, my = (bot - A.t) * k;
+  return [w, Math.min(Math.max(0, A.w - w) + mx, Math.max(Math.min(0, A.w - w) - mx, x)), Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y))];
+}
 export function set(w, x, y) {
-  W = clampW(w);
-  const H = W / 2, bot = A.b - (A.inset?.() ?? 0), k = .15 + .35 * fade(W), mx = A.w * k, my = (bot - A.t) * k;
-  X = Math.min(Math.max(0, A.w - W) + mx, Math.max(Math.min(0, A.w - W) - mx, x));
-  Y = Math.min(Math.max(A.t, bot - H) + my, Math.max(Math.min(A.t, bot - H) - my, y));
+  [W, X, Y] = clamp(w, x, y);
   wrap.style.width = W + 'px'; wrap.style.left = X - ox + 'px'; wrap.style.top = Y - oy + 'px';
   wrap.classList.toggle('deep-zoom', W > 1700);   // the ecliptic's label is drawn in the sky, so it grows with the zoom: hidden when close in
   M = straighten(W, X, Y); dress();

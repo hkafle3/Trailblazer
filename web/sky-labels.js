@@ -25,6 +25,7 @@
 // room, the way map apps bring a place's card into view.
 import { fwd, fwdLon, wrap, RAD } from './skymap.js';
 import * as view from './explore-view.js';
+import * as desktop from './explore-desktop.js';
 import { constellationAt, constellationName } from './sky-place.js';
 
 const $ = id => document.getElementById(id);
@@ -182,7 +183,25 @@ function layout() {
   // ---- cards: off the controls and the timeline, inside the window ----
   const cardWrites = [], walls = [...fixed, topbar], tlTop = bot + BAR;
   const fitsAt = (c, x, y, [, dx, dy]) => { const b = [x + dx, y + dy, x + dx + c.w, y + dy + c.h]; return b[0] >= 0 && b[2] <= vw && b[1] >= 0 && b[3] <= Math.min(vh, tlTop) && !walls.some(o => hit(b, o)); };
-  let pan = null;
+  let pinStep = null;
+  // the nearest point to glide the pin to (at this zoom, or zoomed in by f) where its card and ring fit: [px, py, f], or null
+  const room = (c, x, y, fs) => {
+    if (!engine && !phone.matches) desktop.begin();   // the desktop's map is the CSS oval until the first pan: hand it to the engine
+    if (!view.A) return null;
+    for (const f of fs) {
+      let best = null, bd = Infinity;
+      for (let py = top + 16; py <= bot - 16; py += 12) for (let px = 16; px <= vw - 16; px += 12) {
+        const d = (px - x) ** 2 + (py - y) ** 2;
+        if (d >= bd) continue;
+        // where the pin really lands: set() keeps the oval in view, so the glide can fall short
+        const w = view.W * f, [vx, vy] = view.place(c.u, c.v, px, py, w), [, cx, cy] = view.clamp(w, vx, vy), qx = px + cx - vx, qy = py + cy - vy;
+        if (walls.some(o => hit([qx - 14, qy - 14, qx + 14, qy + 14], o)) || !pinTries(c, qx, fixed).some(t => fitsAt(c, qx, qy, t))) continue;
+        best = [px, py, f]; bd = d;
+      }
+      if (best) return best;
+    }
+    return null;
+  };
   for (const c of cards) {
     const [x, y] = at(c.u, c.v), def = c.u > 0.75 ? 'left' : 'right', isPin = c.id === 'pin';
     const tries = isPin ? pinTries(c, x, fixed) : [[def, c[def][0], c[def][1]], [def === 'left' ? 'right' : 'left', ...c[def === 'left' ? 'right' : 'left']],
@@ -194,18 +213,15 @@ function layout() {
       : cl.contains('below') ? ['below', css('--bx'), BELOW] : cl.contains('left') ? ['left', ...c.left] : ['right', ...c.right];
     const spot = c.el.style.left + c.el.style.top, same = c.el.dataset.at === spot;   // the same spot as last time (a pan or zoom, not a new comet or day)
     const pick = (same && Number.isFinite(now[1]) && fits(now) ? now : null) ?? tries.find(fits) ?? tries[0];
-    // a pin just dropped whose card fits nowhere: the nearest place for the pin where it does, its ring clear of the controls
-    // (once the engine has the map); if there is none, the card drops its sentence (.tight) and the next pass looks again
-    if (isPin && !idle && c.el.dataset.fit !== spot) {
-      pan = [c, spot, null, false];
-      if (!fits(pick)) {
-        let best = Infinity;
-        if (engine) for (let py = top + 16; py <= bot - 16; py += 12) for (let px = 16; px <= vw - 16; px += 12) {
-          const d = (px - x) ** 2 + (py - y) ** 2;
-          if (d >= best || walls.some(o => hit([px - 14, py - 14, px + 14, py + 14], o))) continue;
-          if (pinTries(c, px, fixed).some(t => fitsAt(c, px, py, t))) { best = d; pan[2] = [px, py]; }
-        }
-        pan[3] = !pan[2] && !cl.contains('tight');
+    // the pin's card with no room: one step per still pass, until it fits (data-fit: the spot and window, and the step).
+    // A new pin or a new window size starts again with the whole card: 0 glide the map the least way that gives the card
+    // room, 1 drop its sentence (.tight), 2 glide again (zoomed in once if it must), 3 leave it
+    if (isPin && !idle) {
+      const key = spot + ' ' + vw + 'x' + vh, [k0, s0] = (c.el.dataset.fit ?? '').split('|'), step = k0 === key ? +s0 : -1, tight = cl.contains('tight');
+      if (step < 0 && tight) pinStep = [c, key, 0, 'loose'];
+      else if (step < 3) {
+        const s = Math.max(step, 0), to = fits(pick) || s === 1 ? null : room(c, x, y, s === 0 ? [1] : [1, 2]);
+        pinStep = fits(pick) ? [c, key, 3] : s === 0 && to ? [c, key, 1, to] : s < 2 ? [c, key, 2, 'tight'] : [c, key, 3, to];
       }
     }
     cardWrites.push([c.el, pick, spot]);
@@ -265,10 +281,11 @@ function layout() {
     const bx = side === 'below' ? Math.round(dx) + 'px' : '';
     if (el.style.getPropertyValue('--bx') !== bx) el.style.setProperty('--bx', bx);
   }
-  if (pan) {   // once per pin; the layout after the glide (or after .tight) places the card
-    const [c, spot, to, tight] = pan;
-    if (tight) c.el.classList.add('tight');
-    else { c.el.dataset.fit = spot; if (to) view.glide(view.W, ...view.place(c.u, c.v, ...to), 300); }
+  if (pinStep) {   // the layout after the glide or the change of card looks again
+    const [c, key, step, to] = pinStep;
+    c.el.dataset.fit = key + '|' + step;
+    if (to === 'tight' || to === 'loose') c.el.classList.toggle('tight', to === 'tight');
+    else if (to) { const w = view.W * to[2]; view.glide(w, ...view.place(c.u, c.v, to[0], to[1], w), 300); }
   }
   if (mwText) mwText.classList.toggle('mw-off', !mwOn);
   for (const [l, side] of out) {

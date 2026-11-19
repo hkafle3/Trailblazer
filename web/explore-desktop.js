@@ -21,7 +21,7 @@ function area() {
   return { w: innerWidth, t: document.querySelector('.topbar').getBoundingClientRect().bottom, b: s.top + $('tl').offsetTop,
     min: wrap.offsetWidth, x0: s.left + wrap.offsetLeft, y0: s.top + wrap.offsetTop };
 }
-function begin() {   // before the first pan or zoom: start from the oval the CSS placed
+export function begin() {   // before the first pan or zoom: start from the oval the CSS placed (also sky-labels.js, to make room for the pin's card)
   if (!on) { for (const p of ['width', 'left', 'top']) wrap.style[p] = ''; measure(area()); set(A.min, A.x0, A.y0); on = true; }
   cancel();   // the replay keeps playing while you look around (explore.js pauses it on a single click)
 }
