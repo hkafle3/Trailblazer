@@ -7,6 +7,10 @@ rectangles (getBoundingClientRect):
   window      the card is all inside the window
   tappable    "Look closer" and the close button are 44 px or more, and the page's top element at the middle of each is
               that button (nothing drawn over it)
+  settled     the view and the layout come to rest (a glide that never stops fails)
+Then the cases a fresh search does not reach: an open pin through a resize to 641 x 640 and back (the whole card again),
+a click on the desktop's whole sky before any pan, and a pin closed and searched again at the same spot on a phone.
+The comet cards and the names that share the placement pass are judged by labels_ui.py.
 Run: uv run -q --with playwright python web/tests/search_card_ui.py [base url]   (default http://127.0.0.1:8787)
      CARD_SIZES=750x790,390x844 runs only those windows."""
 import asyncio, os, sys
@@ -35,27 +39,69 @@ JUDGE = """sel => { const R = e => { const r = e.getBoundingClientRect(); return
     if (!top || !b.contains(top)) bad.push(`${s} is covered by ${top ? top.id || top.className || top.tagName : 'nothing (off screen)'}`);
   }
   return bad; }"""
-# wait until the view and the labels' layout have both been still for 400 ms
+# wait until the view and the labels' layout have both been still for 400 ms; false if they never are (a glide loop)
 SETTLED = """async () => { const v = await import('/explore-view.js'); const key = () => [v.W, v.X, v.Y, window.skyLabels?.stats.passes].join();
   let k = key(), t = performance.now(), t0 = t;
-  while (performance.now() - t < 400 && performance.now() - t0 < 8000) { await new Promise(r => setTimeout(r, 50)); if (key() !== k) { k = key(); t = performance.now(); } } }"""
+  while (performance.now() - t < 400) { if (performance.now() - t0 > 8000) return false; await new Promise(r => setTimeout(r, 50)); if (key() !== k) { k = key(); t = performance.now(); } }
+  return true; }"""
 
 
-async def one(b, w, h, q):
+async def page(b, w, h, path):
     phone = w <= 640
     ctx = await b.new_context(viewport={"width": w, "height": h}, has_touch=phone, is_mobile=phone)
     await ctx.add_init_script(INIT)
     pg = await ctx.new_page()
-    errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.errs = []; pg.on("pageerror", lambda e: pg.errs.append(str(e)))
+    await pg.goto(f"{BASE}{path}")
+    return pg
+
+
+async def judge(pg):
+    await pg.wait_for_timeout(300)
+    bad = [] if await pg.evaluate(SETTLED) else ["the map or the layout never settled (8 s)"]
+    return bad + await pg.evaluate(JUDGE, CONTROLS) + [f"page error: {e}" for e in pg.errs]
+
+
+async def one(b, w, h, q):
+    pg = await page(b, w, h, f"/explore.html?q={q}")
     try:
-        await pg.goto(f"{BASE}/explore.html?q={q}")
         await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
-        await pg.wait_for_timeout(300); await pg.evaluate(SETTLED)
-        bad = await pg.evaluate(JUDGE, CONTROLS) + [f"page error: {e}" for e in errs]
+        bad = await judge(pg)
     except Exception as e:
         bad = [f"{type(e).__name__}: {str(e).splitlines()[0]}"]
-    await ctx.close()
+    await pg.context.close()
     return bad
+
+
+SENTENCE = "() => getComputedStyle(document.querySelector('#pin .pincard p')).display !== 'none'"
+async def scenarios(b, check):
+    # an open pin, the window made small then large again: the card finds room at each size, and gets its sentence back
+    pg = await page(b, 1440, 1000, "/explore.html?q=84.0181%20-6.577")
+    await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
+    check(await judge(pg), "resize: 1440x1000 first")
+    await pg.set_viewport_size({"width": 641, "height": 640})
+    check(await judge(pg), "resize: the open pin, window made 641x640")
+    await pg.set_viewport_size({"width": 1440, "height": 1000})
+    bad = await judge(pg)
+    check(bad + ([] if await pg.evaluate(SENTENCE) else ["the card did not get its sentence back"]), "resize: back to 1440x1000, the whole card")
+    await pg.context.close()
+    # a click on the desktop's whole sky before any pan or zoom (the engine not started yet), near the search box
+    pg = await page(b, 641, 640, "/explore.html")
+    await pg.wait_for_timeout(2500)
+    at = await pg.evaluate("""() => { for (let y = 176; y <= 240; y += 8) for (let x = 440; x >= 200; x -= 12) {
+      const e = document.elementFromPoint(x, y); if (e?.closest('#map') && !e.closest('a, .mk')) return [x, y]; } return null; }""")
+    if at: await pg.mouse.click(*at)
+    check(([] if at else ["no bare sky under the search box"]) + await judge(pg), f"click: 641x640 whole sky, at {at} under the search box")
+    await pg.context.close()
+    # the same spot again: close the pin, search the same name; the fly puts it back in the middle, the card finds room again
+    pg = await page(b, 360, 640, "/explore.html?q=Orion%20Nebula")
+    await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
+    check(await judge(pg), "again: 360x640 first search")
+    await pg.tap("#pin-x"); await pg.wait_for_timeout(200)
+    await pg.tap("#xs-q"); await pg.fill("#xs-q", "Orion Nebula"); await pg.wait_for_timeout(300); await pg.keyboard.press("Enter")
+    await pg.wait_for_function("!document.getElementById('pin').hidden", timeout=15000)
+    check(await judge(pg), "again: 360x640 closed and searched again")
+    await pg.context.close()
 
 
 async def main():
@@ -63,15 +109,16 @@ async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
         gate = asyncio.Semaphore(6)
+        def check(bad, name):
+            print(("PASS " if not bad else "FAIL ") + name + ("" if not bad else ": " + "; ".join(bad)), flush=True)
+            if bad: fails.append(name)
         async def run(w, h, q):
             async with gate:
                 bad = await one(b, w, h, q)
-            name = f"{w}x{h} ?q={q.replace('%20', ' ')}"
-            print(("PASS " if not bad else "FAIL ") + name + ("" if not bad else ": " + "; ".join(bad)), flush=True)
-            if bad: fails.append(name)
+            check(bad, f"{w}x{h} ?q={q.replace('%20', ' ')}")
         await asyncio.gather(*(run(w, h, q) for w, h in SIZES for q in QUERIES))
+        if not os.environ.get("CARD_SIZES"): await scenarios(b, check)
         await b.close()
-    n = len(SIZES) * len(QUERIES)
-    print(f"ALL PASS ({n} windows)" if not fails else f"{len(fails)} of {n} FAILED: {sorted(fails)}"); sys.exit(1 if fails else 0)
+    print("ALL PASS" if not fails else f"{len(fails)} FAILED: {sorted(fails)}"); sys.exit(1 if fails else 0)
 
 asyncio.run(main())
