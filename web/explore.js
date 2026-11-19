@@ -50,6 +50,7 @@ function showPin(ra, dec, name = 'Patch of sky', href = patchUrl(ra, dec)) {
   const f2 = x => (Math.abs(x) + 1e-9).toFixed(2);   // halves round away from zero (133.795 reads 133.80)
   pin.querySelector('[data-f=where]').textContent = `RA ${f2(ra)}\u00b0 Dec ${dec < 0 ? '-' : '+'}${f2(dec)}\u00b0`;
   pin.querySelector('[data-f=open]').href = href;
+  pin.classList.remove('at', 'tight'); delete pin.dataset.fit;   // a new pin: sky-labels.js places its card again, gliding the map if it has no room
   pin.hidden = false;
   pin.querySelector('.pin-ring').style.animation = 'none'; void pin.offsetWidth; pin.querySelector('.pin-ring').style.animation = '';   // replay the drop
 }

@@ -89,6 +89,9 @@ body.explore .pincard .x { top: 2px; right: 2px; width: 44px; height: 44px; padd
   body.explore .pin.left .pincard { left: -120px; right: auto; }
   body.explore .pin.up .pincard { top: auto; bottom: 30px; }
 }
+/* where sky-labels.js placed the card: clear of the controls and the timeline */
+body.explore .pin.at .pincard { left: var(--px); top: var(--py); right: auto; bottom: auto; }
+body.explore .pin.tight .pincard p { display: none; }   /* no room for it anywhere: name, place and Look closer only */
 /* 360 px phones: the four buttons still fit in one row */
 @media (max-width: 380px) {
   .xbtns { gap: 8px; }
