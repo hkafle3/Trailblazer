@@ -18,6 +18,7 @@
 //   skyAt(px, py)          [ra, dec] under a window point, or null off the oval;  toScreen(ra, dec) the reverse
 //   overMap(e)             whether a wheel or gesture event is over the map (the phone and desktop files, explore-dive.js)
 //   uvAt(px, py), win(u, v) the same two for map fractions (0..1 across and down the oval's box), which is how markers are placed
+//   winAt(w, x, y, u, v)   win() at another view, as set() would straighten it
 //   place(u, v, px, py, w) the view corner [x, y] that puts map fraction (u, v) at window point (px, py) at width w
 //   move(f, x0, y0, x1, y1) the sky under (x0, y0) goes to (x1, y1), zoomed by f: a drag (f = 1) or a pinch
 //   M, straight(), plain() the straightening in force (see below), whether there is any, and take it off the page
@@ -81,6 +82,8 @@ function straighten(w, x, y) {
 const lin = (m, x, y) => [m[0] * x + m[1] * y, m[2] * x + m[3] * y];
 const unlin = (m, x, y) => { const det = m[0] * m[3] - m[1] * m[2]; return [(m[3] * x - m[1] * y) / det, (m[0] * y - m[2] * x) / det]; };
 export function win(u, v) { const [cx, cy] = pivot(), [x, y] = lin(M, X + u * W - cx, Y + v * W / 2 - cy); return [cx + x, cy + y]; }
+// win() at another view (w, x, y), straightened as set() would straighten it: where a glide will put map fraction (u, v)
+export function winAt(w, x, y, u, v) { const [cx, cy] = pivot(), [px, py] = lin(straighten(w, x, y), x + u * w - cx, y + v * w / 2 - cy); return [cx + px, cy + py]; }
 export function uvAt(px, py) { const [cx, cy] = pivot(), [x, y] = unlin(M, px - cx, py - cy); return [(cx + x - X) / W, (cy + y - Y) / (W / 2)]; }
 // the straightening depends on where the view is, so the corner is found in a few rounds against the view it leads to
 export function place(u, v, px, py, w = W) {
