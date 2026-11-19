@@ -1,0 +1,140 @@
+{
+ "LMC": {
+  "ra": 80.89416666666668,
+  "dec": -69.75611111111111,
+  "simbad_main_id": "NAME LMC",
+  "simbad_type": "G"
+ },
+ "SMC": {
+  "ra": 13.158333333333333,
+  "dec": -72.80027777777778,
+  "simbad_main_id": "NAME SMC",
+  "simbad_type": "G"
+ },
+ "M31": {
+  "ra": 10.684708333333331,
+  "dec": 41.26875,
+  "simbad_main_id": "M 31",
+  "simbad_type": "AGN"
+ },
+ "M42": {
+  "ra": 83.82000000000001,
+  "dec": -5.3875,
+  "simbad_main_id": "M 42",
+  "simbad_type": "HII"
+ },
+ "M45": {
+  "ra": 56.600833333333334,
+  "dec": 24.11388888888889,
+  "simbad_main_id": "Cl Melotte 22",
+  "simbad_type": "OpC"
+ },
+ "Barnard 33": {
+  "ra": 85.24583333333334,
+  "dec": -2.4583333333333335,
+  "simbad_main_id": "NAME Horsehead Nebula",
+  "simbad_type": "DNe"
+ },
+ "NAME Ori A": {
+  "ra": 84.55916666666666,
+  "dec": -7.118888888888889,
+  "simbad_main_id": "NAME Ori A",
+  "simbad_type": "MoC"
+ },
+ "NAME Ori B": {
+  "ra": 85.42916666666667,
+  "dec": -1.912222222222222,
+  "simbad_main_id": "NAME Ori B",
+  "simbad_type": "MoC"
+ },
+ "NAME Perseus Cloud": {
+  "ra": 53.75,
+  "dec": 31.216666666666665,
+  "simbad_main_id": "NAME Perseus Cloud",
+  "simbad_type": "SFR"
+ },
+ "NAME Taurus Complex": {
+  "ra": 70.25,
+  "dec": 25.866666666666667,
+  "simbad_main_id": "NAME Taurus Complex",
+  "simbad_type": "SFR"
+ },
+ "NAME Ophiuchus Molecular Cloud": {
+  "ra": 247.02499999999995,
+  "dec": -24.541666666666668,
+  "simbad_main_id": "NAME Ophiuchus Molecular Cloud",
+  "simbad_type": "SFR"
+ },
+ "NAME Serpens Main Cloud": {
+  "ra": 277.3,
+  "dec": 0.6,
+  "simbad_main_id": "NAME Serpens Main Cloud",
+  "simbad_type": "MoC"
+ },
+ "alf Ori": {
+  "ra": 88.792939,
+  "dec": 7.407064,
+  "simbad_main_id": "* alf Ori",
+  "simbad_type": "s*r"
+ },
+ "bet Ori": {
+  "ra": 78.63446708333333,
+  "dec": -8.20163836111111,
+  "simbad_main_id": "* bet Ori",
+  "simbad_type": "s*b"
+ },
+ "gam Ori": {
+  "ra": 81.28276354166667,
+  "dec": 6.3497032777777775,
+  "simbad_main_id": "* gam Ori",
+  "simbad_type": "*"
+ },
+ "del Ori": {
+  "ra": 83.00166704166666,
+  "dec": -0.2990951111111111,
+  "simbad_main_id": "* del Ori",
+  "simbad_type": "**"
+ },
+ "eps Ori": {
+  "ra": 84.05338895833333,
+  "dec": -1.2019191388888888,
+  "simbad_main_id": "* eps Ori",
+  "simbad_type": "s*b"
+ },
+ "zet Ori": {
+  "ra": 85.18969441666667,
+  "dec": -1.9425735833333333,
+  "simbad_main_id": "* zet Ori",
+  "simbad_type": "**"
+ },
+ "kap Ori": {
+  "ra": 86.93912016833333,
+  "dec": -9.66960491861111,
+  "simbad_main_id": "* kap Ori",
+  "simbad_type": "s*b"
+ },
+ "lam Ori": {
+  "ra": 83.78449004166666,
+  "dec": 9.934155861111112,
+  "simbad_main_id": "* lam Ori",
+  "simbad_type": "**"
+ },
+ "iot Ori": {
+  "ra": 83.85827580502624,
+  "dec": -5.909888523506667,
+  "simbad_main_id": "* iot Ori",
+  "simbad_type": "SB*"
+ },
+ "alf Tau": {
+  "ra": 68.98016279166666,
+  "dec": 16.50930236111111,
+  "simbad_main_id": "* alf Tau",
+  "simbad_type": "LP?"
+ },
+ "tet01 Ori C": {
+  "ra": 83.8186095697,
+  "dec": -5.3897005033,
+  "simbad_main_id": "* tet01 Ori C",
+  "simbad_type": "SB*"
+ }
+}

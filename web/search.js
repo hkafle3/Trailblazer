@@ -10,7 +10,7 @@
 import { trackAt } from './skymap.js';
 import { flyTo as viewFly, W, A, hooks as view } from './explore-view.js';
 import { flyTo as deskFly } from './explore-desktop.js';
-import { TARGETS, parse, matchLocal, sep, sesameRaDec } from './search-core.js';
+import { TARGETS, parse, matchLocal, matchPlaces, sep, sesameRaDec } from './search-core.js';
 
 const phone = matchMedia('(max-width: 640px)');
 const $ = id => document.getElementById(id);
@@ -41,6 +41,17 @@ $('whole').before(opener);
 let hooks = { showPin() {}, feature() {} }, rows = [], active = -1, look = null;   // look: the Sesame state for the text in the box
 const markers = () => [...document.querySelectorAll('#marks .mk')].filter(m => m.comet);
 const where = c => (trackAt(c.track, day()) ?? [c.ra, c.dec]).slice(0, 2);   // trackAt adds the magnitude
+// the sky's own names (data/labels.json, as sky-labels.js shows them): the 88 constellations by name or abbreviation, then
+// famous objects and clouds, then named stars, brightest first. A pick flies to a zoom where that name shows on the map.
+let places = [];
+const placesIn = fetch('data/labels.json').then(r => (r.ok ? r.json() : null)).then(d => {
+  if (!d) return;
+  const seen = new Set(), CMIN = { 1: 5, 2: 7.5, 3: 10 };
+  places = [...d.constellations.map(c => ({ ...c, kind: 'constellation', aka: [c.id], min: CMIN[c.rank], max: 45 })), ...d.objects.filter(o => o.kind !== 'star'), ...d.objects.filter(o => o.kind === 'star').map(o => ({ ...o, min: 60 }))]
+    .filter(p => !seen.has(p.name) && seen.add(p.name));   // one row per name
+  if (!panel.hidden) render();
+}).catch(() => {});
+const KIND_WORD = { constellation: 'constellation', star: 'star', cloud: 'cloud' };
 
 // ---- the suggestions ----
 // rows: what Enter or a click can pick. { kind: 'coord' | 'target' | 'comet' | 'sesame', ... }
@@ -59,7 +70,8 @@ function render() {
   const targetRow = (t, label, side) => row({ kind: 'target', t }, ring, label, side);
   const cometRow = (c, label, side) => row({ kind: 'comet', c }, dot(c), label, side);
   const hint = `<div class="xs-row quiet">${cross}<span class="t">Or type RA Dec, like 269.45 4.69</span></div>`;
-  const local = m.targets.length + m.comets.length;
+  const pl = p?.ra != null ? [] : matchPlaces(q, places);
+  const local = m.targets.length + m.comets.length + pl.length;
 
   if (look?.q === q && look.state !== 'done') note = look.state === 'looking' ? '<p>Looking in star catalogs…</p>'
     : look.state === 'none' ? `<p>Nothing called "${esc(q)}".</p><p class="help">We checked our comets, the five example targets and the SIMBAD star catalog. Try a name like <code>3I/ATLAS</code>, or RA and Dec like <code>269.45 4.69</code>.</p>`
@@ -77,8 +89,16 @@ function render() {
     // letters too: it may be a catalog name that reads like numbers ("1H 0323+342"), so the star catalogs stay one Enter away
     if (p.error && /[a-z]/i.test(q)) html = group('STAR CATALOGS', row({ kind: 'sesame', q }, ring, `Look up "${esc(q)}"`, '<span class="s">SIMBAD</span>', true));
   } else {   // a name: our targets and comets, the matched part in bold; else the star catalogs on Enter
-    html = group('TARGETS', m.targets.map(x => targetRow(x.t, x.label === x.t.name ? bold(x.label, x.s, x.e) : esc(x.t.name), x.label === x.t.name ? '' : `<span class="s">${bold(x.label, x.s, x.e)}</span>`)).join(''));
+    // the sky's names (rows are numbered as they are drawn, so each group is drawn in the order it shows)
+    const sky = () => group('PLACES', pl.map(x => row({ kind: 'place', p: x.p }, ring, x.label === x.p.name ? bold(x.label, x.s, x.e) : esc(x.p.name),
+      `<span class="s">${x.label === x.p.name ? KIND_WORD[x.p.kind] ?? '' : bold(x.label, x.s, x.e)}</span>`)).join(''));
+    // a sky name typed whole comes first unless a target or comet matches as well from the start of a word: "Ori" is Orion
+    // before Borisov (ori inside a word), "atlas" stays 3I/ATLAS before the star Atlas
+    const exact = pl[0]?.rank === 0 && (m.targets[0]?.rank ?? 9) > 2 && (m.comets[0]?.rank ?? 9) > 2;
+    html = exact ? sky() : '';
+    html += group('TARGETS', m.targets.map(x => targetRow(x.t, x.label === x.t.name ? bold(x.label, x.s, x.e) : esc(x.t.name), x.label === x.t.name ? '' : `<span class="s">${bold(x.label, x.s, x.e)}</span>`)).join(''));
     html += group('COMETS', m.comets.map(x => cometRow(x.c, bold(x.c.id, x.s, x.e), x.c.co2 === 'detected' ? '<span class="s hot">CO2 glow</span>' : '')).join(''));
+    if (!exact) html += sky();
     if (!local) html += group('STAR CATALOGS', row({ kind: 'sesame', q }, ring, `Look up "${esc(q)}"`, '<span class="s">SIMBAD</span>', true));
     html += group('COORDINATES', hint);
   }
@@ -118,6 +138,13 @@ function pick(r) {
     text = r.c.id;
     if (phone.matches) mk?.click();   // explore-phone.js opens its sheet and glides it into view
     else { hooks.feature(r.c, mk); fly(...where(r.c)); }
+  } else if (r.kind === 'place') {   // fly to a zoom where its name shows
+    const k = Math.min(Math.max(8, r.p.min * 1.15), (r.p.max ?? Infinity) * 0.9), w = k * 360;
+    text = r.p.name;
+    if (phone.matches && !$('csheet').hidden) $('csheet').querySelector('.sheet-x').click();
+    if (!phone.matches) deskFly(r.p.ra, r.p.dec, 1);   // starts the desktop engine; its own flyTo never zooms out
+    if (A) viewFly(r.p.ra, r.p.dec, w, 600);
+    if (r.p.kind !== 'constellation') hooks.showPin(r.p.ra, r.p.dec, r.p.name);   // a star or an object: its pin card opens the time-lapse there
   } else if (r.kind === 'target') {
     text = r.t.name;
     pin(r.t.ra, r.t.dec, r.t.name, `timelapse.html?target=${r.t.key}`);
@@ -219,7 +246,7 @@ addEventListener('keydown', e => {
 export function init(h) {
   hooks = h;
   const q = new URLSearchParams(location.search).get('q')?.trim();
-  if (q) h.ready.then(() => {
+  if (q) Promise.all([h.ready, placesIn]).then(() => {
     input.value = q;
     if (phone.matches) document.body.classList.add('xs-on');
     render(); show(false);

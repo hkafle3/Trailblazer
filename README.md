@@ -61,6 +61,11 @@ Downloaded photo cutouts (`bake/cache/`) and the raw coverage list (`bake/covera
 - Known comets and asteroids per image: IMCCE SkyBoT.
 - Comet paths and predicted brightness: NASA JPL Horizons and the Small-Body Database.
 - Galaxy redshifts for the depth data: SIMBAD, operated at CDS, Strasbourg, France (Harvard mirror). Star distances: ESA/Gaia/DPAC. Small-body distances: IMCCE SkyBoT (Berthier et al. 2006).
+- Sky labels on the Explore map (`bake/sky_labels.py`, `web/data/labels.json`):
+  - Constellation borders: Davenhall, A. C. & Leggett, S. K. 1989, *Catalogue of Constellation Boundary Data*, VizieR VI/49. Which constellation a position is in: Roman, N. G. 1987, PASP 99, 695, VizieR VI/42. This research has made use of the VizieR catalogue access tool, CDS, Strasbourg, France (DOI 10.26093/cds/vizier).
+  - Constellation name positions and ranks: d3-celestial, © 2015 Olaf Frohn, BSD 3-Clause (full text in `web/data/labels-LICENSE.txt`).
+  - Object positions: this research has made use of the SIMBAD database, operated at CDS, Strasbourg, France.
+  - Star names: the IAU Working Group on Star Names (WGSN), from the IAU Catalog of Star Names (IAU-CSN, E. Mamajek).
 
 ## Deploying
 

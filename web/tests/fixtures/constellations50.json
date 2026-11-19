@@ -1,0 +1,310 @@
+{
+ "note": "astropy get_constellation (Roman 1987) on 50 fixed positions; written by bake/sky_labels.py",
+ "points": [
+  {
+   "what": "Large Magellanic Cloud",
+   "ra": 80.8942,
+   "dec": -69.7561,
+   "con": "Dor"
+  },
+  {
+   "what": "Small Magellanic Cloud",
+   "ra": 13.1583,
+   "dec": -72.8003,
+   "con": "Tuc"
+  },
+  {
+   "what": "Andromeda Galaxy",
+   "ra": 10.6847,
+   "dec": 41.2687,
+   "con": "And"
+  },
+  {
+   "what": "Orion Nebula",
+   "ra": 83.82,
+   "dec": -5.3875,
+   "con": "Ori"
+  },
+  {
+   "what": "Pleiades",
+   "ra": 56.6008,
+   "dec": 24.1139,
+   "con": "Tau"
+  },
+  {
+   "what": "Horsehead Nebula",
+   "ra": 85.2458,
+   "dec": -2.4583,
+   "con": "Ori"
+  },
+  {
+   "what": "Orion A",
+   "ra": 84.5592,
+   "dec": -7.1189,
+   "con": "Ori"
+  },
+  {
+   "what": "Orion B",
+   "ra": 85.4292,
+   "dec": -1.9122,
+   "con": "Ori"
+  },
+  {
+   "what": "Perseus cloud",
+   "ra": 53.75,
+   "dec": 31.2167,
+   "con": "Per"
+  },
+  {
+   "what": "Taurus cloud",
+   "ra": 70.25,
+   "dec": 25.8667,
+   "con": "Tau"
+  },
+  {
+   "what": "Ophiuchus cloud",
+   "ra": 247.025,
+   "dec": -24.5417,
+   "con": "Oph"
+  },
+  {
+   "what": "Serpens cloud",
+   "ra": 277.3,
+   "dec": 0.6,
+   "con": "Ser"
+  },
+  {
+   "what": "C-0175",
+   "ra": 76.9563,
+   "dec": 30.4013,
+   "con": "Aur"
+  },
+  {
+   "what": "C-0176",
+   "ra": 84.0181,
+   "dec": -6.577,
+   "con": "Ori"
+  },
+  {
+   "what": "north pole",
+   "ra": 0.0,
+   "dec": 90.0,
+   "con": "UMi"
+  },
+  {
+   "what": "south pole",
+   "ra": 0.0,
+   "dec": -90.0,
+   "con": "Oct"
+  },
+  {
+   "what": "+2.4 arcmin off a border",
+   "ra": 133.27424,
+   "dec": -56.21956,
+   "con": "Car"
+  },
+  {
+   "what": "+2.8 arcmin off a border",
+   "ra": 321.75754,
+   "dec": -25.21,
+   "con": "Cap"
+  },
+  {
+   "what": "+2.6 arcmin off a border",
+   "ra": 90.09876,
+   "dec": 23.07583,
+   "con": "Tau"
+  },
+  {
+   "what": "-1.7 arcmin off a border",
+   "ra": 282.99438,
+   "dec": -3.82609,
+   "con": "Aql"
+  },
+  {
+   "what": "-1.2 arcmin off a border",
+   "ra": 180.355,
+   "dec": 28.27983,
+   "con": "Com"
+  },
+  {
+   "what": "-1.7 arcmin off a border",
+   "ra": 306.81956,
+   "dec": 63.16079,
+   "con": "Cep"
+  },
+  {
+   "what": "random",
+   "ra": 334.4438,
+   "dec": -54.19024,
+   "con": "Gru"
+  },
+  {
+   "what": "random",
+   "ra": 196.78436,
+   "dec": 42.03504,
+   "con": "CVn"
+  },
+  {
+   "what": "random",
+   "ra": 212.90194,
+   "dec": 59.26623,
+   "con": "UMa"
+  },
+  {
+   "what": "random",
+   "ra": 203.84997,
+   "dec": -30.18631,
+   "con": "Cen"
+  },
+  {
+   "what": "random",
+   "ra": 206.08724,
+   "dec": 45.86504,
+   "con": "CVn"
+  },
+  {
+   "what": "random",
+   "ra": 343.69592,
+   "dec": -65.61633,
+   "con": "Tuc"
+  },
+  {
+   "what": "random",
+   "ra": 357.26432,
+   "dec": -66.91914,
+   "con": "Tuc"
+  },
+  {
+   "what": "random",
+   "ra": 11.40723,
+   "dec": -33.36403,
+   "con": "Scl"
+  },
+  {
+   "what": "random",
+   "ra": 44.68872,
+   "dec": -16.46955,
+   "con": "Eri"
+  },
+  {
+   "what": "random",
+   "ra": 7.79836,
+   "dec": 50.27028,
+   "con": "Cas"
+  },
+  {
+   "what": "random",
+   "ra": 304.94016,
+   "dec": -21.30626,
+   "con": "Cap"
+  },
+  {
+   "what": "random",
+   "ra": 325.64356,
+   "dec": -2.16184,
+   "con": "Aqr"
+  },
+  {
+   "what": "random",
+   "ra": 45.05479,
+   "dec": -71.15224,
+   "con": "Hyi"
+  },
+  {
+   "what": "random",
+   "ra": 145.81434,
+   "dec": 24.4084,
+   "con": "Leo"
+  },
+  {
+   "what": "random",
+   "ra": 87.97236,
+   "dec": 16.99398,
+   "con": "Tau"
+  },
+  {
+   "what": "random",
+   "ra": 312.10603,
+   "dec": 21.33101,
+   "con": "Vul"
+  },
+  {
+   "what": "random",
+   "ra": 128.10132,
+   "dec": 9.42686,
+   "con": "Cnc"
+  },
+  {
+   "what": "random",
+   "ra": 140.77835,
+   "dec": 11.40925,
+   "con": "Leo"
+  },
+  {
+   "what": "random",
+   "ra": 306.99532,
+   "dec": 28.29245,
+   "con": "Vul"
+  },
+  {
+   "what": "random",
+   "ra": 20.53898,
+   "dec": -13.50525,
+   "con": "Cet"
+  },
+  {
+   "what": "random",
+   "ra": 233.74271,
+   "dec": -52.95395,
+   "con": "Nor"
+  },
+  {
+   "what": "random",
+   "ra": 242.323,
+   "dec": 4.5105,
+   "con": "Ser"
+  },
+  {
+   "what": "random",
+   "ra": 306.70392,
+   "dec": 71.50462,
+   "con": "Dra"
+  },
+  {
+   "what": "random",
+   "ra": 270.12478,
+   "dec": -33.22233,
+   "con": "Sgr"
+  },
+  {
+   "what": "random",
+   "ra": 338.10245,
+   "dec": -2.04823,
+   "con": "Aqr"
+  },
+  {
+   "what": "random",
+   "ra": 77.41063,
+   "dec": 7.85307,
+   "con": "Ori"
+  },
+  {
+   "what": "random",
+   "ra": 334.12277,
+   "dec": 27.57637,
+   "con": "Peg"
+  },
+  {
+   "what": "random",
+   "ra": 236.52443,
+   "dec": -10.70609,
+   "con": "Lib"
+  }
+ ],
+ "c0176": {
+  "ra": 84.0181,
+  "dec": -6.577,
+  "line": "In Orion, 1.2° from the Orion Nebula"
+ }
+}

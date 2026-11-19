@@ -60,11 +60,12 @@ export function parse(q) {
 // Lowercase letters and digits only, so "3i atlas", "wise0855" and "WISE 0855-0714" all match. A hit is ranked: the whole
 // name 0, its start 1, the start of a word 2, anywhere 3 (only from 3 letters typed, so "r" does not list half the sky).
 // s and e mark the matched part in the original name, for bold.
-export const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+const fold = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();   // accents off: "bootes" finds Boötes
+export const norm = s => fold(s).replace(/[^a-z0-9]/g, '');
 export function hit(name, nq) {
   const idx = [];
   let n = '';
-  for (let i = 0; i < name.length; i++) { const c = name[i].toLowerCase(); if (/[a-z0-9]/.test(c)) { idx.push(i); n += c; } }
+  for (let i = 0; i < name.length; i++) { const c = fold(name[i]); if (/[a-z0-9]/.test(c)) { idx.push(i); n += c; } }
   let best = null;
   for (let p = n.indexOf(nq); nq && p >= 0; p = n.indexOf(nq, p + 1)) {
     const s = idx[p], rank = n === nq ? 0 : p === 0 ? 1 : !/[a-z0-9]/i.test(name[s - 1]) ? 2 : 3;
@@ -86,6 +87,18 @@ export function matchLocal(q, comets, max = 6) {
   const score = c => (c.co2 === 'detected' ? 1e6 : 0) + (c.photos ?? 0);
   const cs = comets.map(c => { const h = hit(c.id, nq); return h && { c, ...h }; }).filter(Boolean).sort((a, b) => by(a, b) || score(b.c) - score(a.c)).slice(0, max);
   return { targets, comets: cs };
+}
+
+// places: the sky labels (labels.json: constellations, objects, named stars), [{ name, aka: [...], ... }] in order of
+// importance. Matched like the targets, by name or an alias (a constellation's abbreviation, "Ori"). [{ p, label, s, e, rank }]
+export function matchPlaces(q, places, max = 4) {
+  const nq = norm(q);
+  if (!nq) return [];
+  return places.map((p, i) => {
+    let b = null;
+    for (const label of [p.name, ...(p.aka ?? [])]) { const h = hit(label, nq); if (h && (!b || h.rank < b.rank)) b = { p, label, i, ...h }; }
+    return b;
+  }).filter(Boolean).sort((a, b) => a.rank - b.rank || a.i - b.i).slice(0, max);
 }
 
 // angle between two sky positions, in degrees

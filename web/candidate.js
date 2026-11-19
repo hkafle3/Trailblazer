@@ -2,6 +2,7 @@
 // The frames are built here the way the time-lapse builds them (live/pipeline.js), cut to the middle 2 arcmin.
 // Everything from the API is set with textContent.
 import { fwd } from './skymap.js';
+import { placeLine } from './sky-place.js';   // "In Orion, 1.2° from the Orion Nebula" (labels.json names)
 import { userName } from './discuss.js';
 import { CHANNELS } from './live/spectral.js';
 import { candidateBox } from './colors.js';
@@ -54,9 +55,15 @@ function status(c) {
   wrap.classList.toggle('has-dot', st !== 'Candidate');
   wrap.style.setProperty('--c', st === 'Star' ? '#e3d58f' : 'var(--comet)');   // the star tag's colour (styles.css; ui.css reuses --star for white)
 }
+// the place in words beside the coordinates, never instead of them; drawn again with the names once labels.json is in
+// (each call draws it all, so the later call, with the distance, keeps the place)
+let skyNames = null;
 function where(c) {
-  $('c-radec').replaceChildren('RA ', el('b', null, c.ra.toFixed(4)), ' Dec ', el('b', null, `${c.dec >= 0 ? '+' : '−'}${Math.abs(c.dec).toFixed(4)}`),
+  const draw = names => $('c-radec').replaceChildren(...(names ? [placeLine(c, names), el('span', 'sep', ' \u00b7 ')] : []),
+    'RA ', el('b', null, `${c.ra.toFixed(4)}\u00b0`), ' Dec ', el('b', null, `${c.dec >= 0 ? '+' : '−'}${Math.abs(c.dec).toFixed(4)}\u00b0`),
     ...(context?.distance_ly ? [el('br'), `About ${context.distance_ly.toLocaleString('en-US')} light-years away`] : []));
+  skyNames ??= fetch('data/labels.json').then(r => (r.ok ? r.json() : null)).then(d => d?.objects ?? null).catch(() => null);
+  draw(null); skyNames.then(names => { if (names) draw(names); });
 }
 
 function talk(c) {

@@ -1,0 +1,51 @@
+/* Sky labels on the Explore map (sky-labels.js). Faint by default so they never compete with the sky; a little brighter
+   under the pointer. Sansation (the header and timeline font) for names. One knob per kind below. */
+:root {
+  --lb-con: rgba(255, 255, 255, .62);     /* constellations */
+  --lb-giant: rgba(255, 255, 255, .62);   /* Magellanic Clouds, Andromeda */
+  --lb-cloud: rgba(186, 212, 255, .62);   /* star-forming clouds: a hint of the map's blue, like water names on a map */
+  --lb-obj: rgba(255, 255, 255, .72);     /* famous objects */
+  --lb-star: rgba(255, 255, 255, .62);    /* named stars */
+  --lb-hover: rgba(255, 255, 255, .95);
+  --lb-halo: 0 0 2px rgba(2, 3, 8, .95), 0 0 5px rgba(2, 3, 8, .8), 0 0 10px rgba(2, 3, 8, .5);
+}
+
+/* borders: hairlines in the map's SVG, faded in by zoom (--bound, 0..1) */
+.map .grat .cbound { stroke: rgba(255, 255, 255, .2); stroke-width: .8; opacity: 0; }   /* faded in by zoom (sky-labels.js) */
+.map .grat .mw-path { stroke: none; }
+.map .grat .mw-text { font: 300 21px var(--head-font); letter-spacing: .55em; text-transform: uppercase; fill: rgba(255, 255, 255, .55); stroke: rgba(2, 3, 8, .6); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }
+.map .grat .mw-text.mw-off { visibility: hidden; }
+
+/* names take no pointer events: the map under them keeps its clicks, drags and double clicks. They show and hide at once,
+   with no fade: a fade on hundreds of names during a pan costs frames, and leaves text drawn a little differently after it.
+   A hidden name is taken out of the page (sky-labels.js), so the hundreds not in view cost nothing as the map moves */
+.skylabels { position: absolute; inset: 0; pointer-events: none; }
+.lb { position: absolute; width: 0; height: 0; pointer-events: none; }
+.map-wrap.straight .skylabels > .lb { transform: var(--un); }
+.lb.off { display: none; }
+.measuring .lb.off, .lb.off.measuring { display: block; visibility: hidden; }
+.lb span { position: absolute; white-space: nowrap; font: 300 11px/1 var(--head-font); text-shadow: var(--lb-halo); transition: color .2s; }
+.lb.hover span { color: var(--lb-hover); }
+.lb[data-side="mid"] span { transform: translate(-50%, -50%); }
+.lb[data-side="below"] span { top: 7px; transform: translateX(-50%); }
+.lb[data-side="above"] span { bottom: 7px; transform: translateX(-50%); }
+.lb[data-side="below2"] span { top: 21px; transform: translateX(-50%); }
+.lb[data-side="right"] span { left: 9px; top: 0; transform: translateY(-50%); }
+.lb[data-side="left"] span { right: 9px; top: 0; transform: translateY(-50%); }
+
+.k-constellation span { color: var(--lb-con); font-weight: 400; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; }
+.k-giant span { color: var(--lb-giant); font-weight: 400; font-size: 11.5px; letter-spacing: .04em; }
+.k-cloud span { color: var(--lb-cloud); font-weight: 400; font-size: 11.5px; letter-spacing: .14em; }
+.k-object span { color: var(--lb-obj); font-weight: 400; font-size: 12px; letter-spacing: .02em; }
+.k-star span { color: var(--lb-star); font-weight: 400; font-size: 11px; letter-spacing: .03em; }
+/* a famous object's spot: a small faint ring, so the name can sit beside it without covering it */
+.k-object i { position: absolute; left: -3.5px; top: -3.5px; width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55); }
+.lb.k-object.hover i { box-shadow: inset 0 0 0 1px var(--lb-hover); }
+
+/* zoomed in with no name in view: the constellation under the middle of the view, at the top middle of the map */
+.skypin { position: fixed; z-index: 3; }
+.skypin span { transform: translateX(-50%); }
+body[data-view="3d"] .skypin { visibility: hidden; }
+
+/* the credit line at the foot of the Layers panel */
+body.explore .layers .credit { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .08); font: 400 10.5px/1.45 var(--panel-font); color: #8d8d8d; }

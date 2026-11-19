@@ -1,6 +1,7 @@
 // Checks the Explore search's RA and Dec reader and name matching (web/search-core.js). Run: node web/tests/search_core.mjs
 import assert from 'node:assert/strict';
-import { parse, matchLocal, sesameRaDec, sep } from '../search-core.js';
+import { parse, matchLocal, matchPlaces, sesameRaDec, sep } from '../search-core.js';
+import { readFileSync } from 'node:fs';
 
 const near = (got, ra, dec, why) => {
   assert.ok(got && 'ra' in got, `${why}: ${JSON.stringify(got)}`);
@@ -56,4 +57,14 @@ assert.equal(sesameRaDec('#! *** Nothing found *** \n'), null);
   const j = sesameRaDec("%J 269.45207696 +04.69339088\n%P -801.551 +10362.394\n", 2000);
   assert.ok(Math.abs(j.ra - 269.45207696) < 1e-9 && Math.abs(j.dec - 4.69339088) < 1e-9, 'year 2000 is the catalog place'); }
 assert.ok(Math.abs(sep(0, 0, 90, 0) - 90) < 1e-9 && sep(10, 20, 10, 20) === 0);
-console.log('PASS search_core: RA and Dec reader, name matching, Sesame answer');
+// the sky's names (labels.json, the order search.js gives them): a constellation by name or abbreviation, objects, stars
+{ const d = JSON.parse(readFileSync(new URL('../data/labels.json', import.meta.url), 'utf8'));
+  const places = [...d.constellations.map(c => ({ ...c, aka: [c.id] })), ...d.objects.filter(o => o.kind !== 'star'), ...d.objects.filter(o => o.kind === 'star')];
+  const first = q => matchPlaces(q, places)[0]?.p.name;
+  assert.equal(first('orion'), 'Orion'); assert.equal(first('Ori'), 'Orion'); assert.equal(first('UMa'), 'Ursa Major');
+  assert.equal(first('orion neb'), 'Orion Nebula'); assert.equal(first('pleiades'), 'Pleiades'); assert.equal(first('betelgeuse'), 'Betelgeuse');
+  assert.equal(first('andromeda'), 'Andromeda', 'the constellation before the galaxy');
+  assert.ok(matchPlaces('andromeda', places).some(x => x.p.name === 'Andromeda Galaxy'));
+  assert.equal(new Set(d.constellations.map(c => c.id)).size, 88, 'all 88 constellations (Serpens in two parts)');
+  assert.equal(first('bootes'), 'Boötes', 'accents folded'); assert.deepEqual(matchPlaces('', places), []); assert.deepEqual(matchPlaces('zzzq', places), []); }
+console.log('PASS search_core: RA and Dec reader, name matching, sky names, Sesame answer');

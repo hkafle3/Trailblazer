@@ -191,6 +191,7 @@ body.explore { overflow: hidden; background: radial-gradient(70% 60% at 50% 46%,
 .mk.comet b { color: #ffd2b0; }
 .mk.comet.open i { background: rgba(4, 6, 11, .6); box-shadow: inset 0 0 0 1.5px var(--comet); }
 .mk.comet.open::before { opacity: .45; }
+.mk.comet.still::before { content: none; }   /* tagged mostly a star: it does not move (explore.js) */
 .mk.comet.sel i { box-shadow: 0 0 0 3px rgba(255, 154, 77, .25), 0 0 0 9px rgba(255, 154, 77, .12), 0 0 18px var(--comet); }
 .mk.known i { left: -3px; top: -3px; width: 6px; height: 6px; background: var(--known); box-shadow: 0 0 8px rgba(127, 184, 255, .8); }
 .mk.known b { color: #c4dcff; font-weight: 400; }

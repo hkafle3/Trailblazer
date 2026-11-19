@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="explore-search.css">
 <link rel="stylesheet" href="explore-3d.css">
 <link rel="stylesheet" href="candidates.css">   <!-- the Investigate layer's markers -->
+<link rel="stylesheet" href="sky-labels.css">   <!-- constellation, object and star names (sky-labels.js) -->
 <link rel="preload" as="image" href="data/sky.jpg" fetchpriority="high">
 <link rel="preload" as="image" href="data/visits.png">
 <link rel="preload" as="fetch" href="data/coverage.json" crossorigin>
@@ -123,6 +124,7 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
     <label class="layer" style="--c:var(--comet)"><input class="cbx" type="checkbox" id="ly-paths" checked><span>Comet paths</span></label>
     <label class="layer" style="--c:var(--known)"><input class="cbx" type="checkbox" id="ly-known" checked><span>Known objects</span></label>
     <label class="layer" style="--c:var(--known)"><input class="cbx" type="checkbox" id="ly-faint"><span>Faint comets</span></label>
+    <p class="credit">Labels: d3-celestial © 2015 Olaf Frohn (BSD 3-Clause); borders IAU via VizieR VI/49 and VI/42; objects SIMBAD, CDS Strasbourg; star names IAU WGSN</p>
   </div>
 </details>
 <button class="whole" id="whole" type="button" aria-label="Whole sky"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><path d="M12 6.5v11M2.5 12h19"/></svg></button>
@@ -177,6 +179,7 @@ try { var s = location.search; if (/[?&]intro=/.test(s) || (!/[?&](day|focus|q|s
 
 <script type="module" src="explore.js"></script>
 <script type="module" src="explore-candidates.js"></script>
+<script type="module" src="sky-labels.js"></script>
 <script src="ui.js"></script>
 </body>
 </html>

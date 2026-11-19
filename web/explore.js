@@ -109,7 +109,7 @@ let cardTrack = null;   // the featured known comet's JPL path: its card follows
 function followTracks(day) {
   if (cardTrack) {
     const card = $('card-comet'), [ra, dec] = trackAt(cardTrack, day);
-    card.classList.toggle('left', place(card, ra, dec) > 0.75);   // near the map's right edge the card sits to the left
+    place(card, ra, dec);   // its side (left near the map's right edge, or under its comet) is sky-labels.js's layout()
     card.querySelector('[data-f=when]').textContent = `Position on ${dayDate(day, { month: 'short', day: 'numeric', year: 'numeric' })}`;
   }
   // a known comet's page opens on the same date; a found comet opens the patch where it is on that date, as Discovered
@@ -137,6 +137,8 @@ faintOn.addEventListener('change', () => {
 });
 let trailN = 0;
 const votes = c => Object.values(c.tags || {}).reduce((a, b) => a + b, 0);
+// tagged mostly a star (at least one tag, and star at least half of them): a fixed source, so no trail and no tail
+const still = c => votes(c) > 0 && (c.tags.star ?? 0) / votes(c) >= 0.5;
 // the featured card shows comet c: a measured comet on the map that day (pickFeatured), a candidate opened with "Where it is", or a comet picked in the search
 // (`marker`: its dot, whose name hides while the card shows)
 let cardLink = null;
@@ -158,7 +160,7 @@ function feature(c, marker) {
     what.classList.add(c.co2 === 'detected' ? 'comet' : 'unsure');
     cardTrack = c.track?.length ? c.track : null;   // no path (or an empty one): its fixed place, no date
   }
-  if (!cardTrack) card.classList.toggle('left', place(card, c.ra, c.dec) > 0.75);
+  if (!cardTrack) place(card, c.ra, c.dec);
   card.hidden = false;
   if (marker) { followTracks(+$('time').value); card.style.visibility = +card.dataset.day <= +$('time').value ? '' : 'hidden'; }
 }
@@ -186,6 +188,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
       a.style.setProperty('--tail', `${c.tail ?? -150}deg`);
       if (c.tags.comet / Math.max(1, votes(c)) < 0.6) a.classList.add('open');   // not settled yet: hollow marker
       if (c.candidate && votes(c) < 5) a.classList.add('open');   // a reported dot also needs 5 tags before it reads as likely
+      if (still(c)) a.classList.add('still');
       if (c.candidate) a.setAttribute('aria-label', `${c.id} (${a.classList.contains('open') ? 'candidate' : 'likely comet'})`);
     } else a.setAttribute('aria-label', `${c.id} (known comet)`);
     if (c === featured) a.classList.add('sel');   // its name label is hidden while its card shows (styles.css)
@@ -195,7 +198,7 @@ const cometsLoaded = getJson('/api/comets').then(({ comets }) => {
     if (c.kind === 'known' && c.id !== '3I/ATLAS') a.classList.add('peek');   // other known comets: name on hover
     if (c.track?.length) movers.push({ el: a, track: c.track });   // no path, or an empty one: it stays at its fixed place
     if (c.track?.length && (c.detail?.photos || c.id === '3I/ATLAS' || c.id === focus || c === featured)) a.dataset.always = '1';
-    if (c.kind === 'comet') {   // where it has been: a dotted trail behind the head, on the tail's side (the heading is illustrative)
+    if (c.kind === 'comet' && !still(c)) {   // where it has been: a dotted trail behind the head, on the tail's side (the heading is illustrative)
       const ang = (c.tail ?? -150) * RAD, L = 70 + (c.id.charCodeAt(c.id.length - 1) % 5) * 14, bend = (c.id.charCodeAt(c.id.length - 2) % 2 ? 1 : -1) * .45;
       const ex = Math.cos(ang) * L, ey = Math.sin(ang) * L, cx = Math.cos(ang + bend) * L * .6, cy = Math.sin(ang + bend) * L * .6, gid = 'tg' + (trailN++);
       a.insertAdjacentHTML('beforeend', `<svg class="trail" aria-hidden="true"><defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}"><stop offset="0" stop-color="#ff9a4d" stop-opacity="1"/><stop offset="1" stop-color="#ff9a4d" stop-opacity="0"/></linearGradient></defs><path d="M0 0Q${cx.toFixed(1)} ${cy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}" stroke="url(#${gid})"/></svg>`);
