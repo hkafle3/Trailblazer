@@ -6,6 +6,7 @@ Every check reads real on-screen rectangles (getBoundingClientRect), not the lay
   overlap     no shown name touches another name or anything it must avoid: marker dots and names, the famous-object
               rings, cards, the pin, the controls (search box and list, Flat / 3D, zoom buttons, the button row, open
               panels, the phone sheet, the dive's aim) and the Milky Way text
+  view        every judgment first checks the live W, X and Y are finite, after the view settles (whole sky included)
   bounds      no name leaves the window or crosses the top bar or the timeline
   a name      at least one place name is shown (a name, the pinned constellation, or the Milky Way at the whole sky); not
               required where an opened panel covers the names (see ZOOMED below)
@@ -36,7 +37,7 @@ GO = """async ([ra, dec, k]) => { const v = await import('/explore-view.js');
 WHOLE = """async () => { const v = await import('/explore-view.js'); if (v.A) { const ph = matchMedia('(max-width: 640px)').matches;
   if (ph) v.set(v.A.min, 0, (v.A.t + v.A.b) / 2 - v.A.min / 4); else v.set(v.A.min, v.A.x0, v.A.y0); } return document.querySelector('.map-wrap').offsetWidth / 360; }"""
 # everything a name must keep clear of, as the page shows it now
-JUDGE = """() => {
+JUDGE = """async () => { const view = await import('/explore-view.js');
   const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
   const vis = e => !e.closest('[style*="visibility: hidden"]') && getComputedStyle(e).visibility !== 'hidden';
   const all = s => [...document.querySelectorAll(s)].filter(vis).map(e => [R(e), e]).filter(([r]) => r[2] > r[0] && r[3] > r[1]);
@@ -47,6 +48,7 @@ JUDGE = """() => {
   const top = document.querySelector('.topbar').getBoundingClientRect().bottom, bot = document.getElementById('tl').getBoundingClientRect().top;
   const hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   const bad = [];
+  if (![view.W, view.X, view.Y].every(Number.isFinite)) bad.push(`the view is not finite: W ${view.W} X ${view.X} Y ${view.Y}`);   // checked live, right before judging
   names.forEach(([r, n], i) => {
     names.forEach(([r2, n2], j) => { if (j > i && hit(r, r2)) bad.push(`${n} on ${n2}`); });
     for (const [o, what] of obst) if (hit(r, o)) bad.push(`${n} on ${what}`);
