@@ -1682,7 +1682,9 @@ function brightChart() {
   add('text', { x: X0 + 6, y: Y0 + 13 }).textContent = '↑ brighter';
   if (peak != null) {
     add('line', { class: 'peak', x1: X0, x2: X1, y1: ty(peak), y2: ty(peak) }, `NEOWISE's brightest visit: ${peak.toFixed(2)} mag`);
-    add('text', { class: 'lab', x: X0 + 6, y: ty(peak) - 6 }).textContent = 'NEOWISE brightest';
+    // the label sits over the line, or under it when the WISE ring is there (a star brighter in 2010 than since)
+    const under = wise.some(p => tx(p.t) < X0 + 130 && Math.abs(ty(p.m) - (ty(peak) - 9)) < 12);
+    add('text', { class: 'lab', x: X0 + 6, y: ty(peak) + (under ? 13 : -6) }).textContent = 'NEOWISE brightest';
   }
   add('line', { class: 'axis', x1: X0, x2: X1, y1: Y1, y2: Y1 });
   const dots = (pts, cls, rad, by, stroke) => { for (const p of pts) {
