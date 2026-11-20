@@ -35,11 +35,13 @@ export async function catalogues(base, ra, dec, signal, optional = [], cats = CA
   await Promise.all(cats.map(c => api(async () => {
     let r;
     let text;
-    try { r = await retry(async () => { const x = await fetch(`${base}/api/cat?cat=${API_CAT[c] ?? c}&ra=${deg(ra)}&dec=${deg(dec)}`, { signal: within(signal) }); if (x.ok) text = await x.text(); return x; }, 2, signal); }
+    // an optional list gets one try of 20 s: a stored one answers at once, and a down archive (CDS) must not hold the build
+    const opt = optional.includes(c), sig = () => (opt ? AbortSignal.any([within(signal), AbortSignal.timeout(20000)]) : within(signal));
+    try { r = await retry(async () => { const x = await fetch(`${base}/api/cat?cat=${API_CAT[c] ?? c}&ra=${deg(ra)}&dec=${deg(dec)}`, { signal: sig() }); if (x.ok) text = await x.text(); return x; }, opt ? 1 : 2, signal); }
     catch (e) { if (e.name === 'AbortError' && signal?.aborted) throw e; r = null; }
     const who = c === 'simbad' ? 'SIMBAD' : c === 'vsx' ? 'VSX (AAVSO, through VizieR)' : 'NASA\'s catalogue service (IRSA)';
     if (r?.status === 429) throw new Unavailable('unavailable', 'Too many new spots at once. Try again in a minute');
-    if (!r?.ok && optional.includes(c)) { out[c] = []; out.missing.push(c); return; }
+    if (!r?.ok && opt) { out[c] = []; out.missing.push(c); return; }
     if (!r?.ok) throw new Unavailable('unavailable', `${who} is not answering`);
     try { out[c] = c === 'vsx' ? parseVsx(text) : parseCsv(text); if (c !== 'vsx') checkColumns(c, out[c], text.split(/\r?\n/)[0]); }
     catch (e) { if (e instanceof Refused) throw new Unavailable('inconclusive', `the stored catalogue of this spot is damaged (${e.message})`); throw new Unavailable('inconclusive', `the stored ${c} catalogue of this spot is damaged`); }
