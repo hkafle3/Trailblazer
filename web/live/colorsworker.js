@@ -86,9 +86,10 @@ async function readExposure(ctx, x, ra, dec, signal, count, want = () => true) {
 const BRIGHT_DETS = ['D4', 'D5', 'D6'], MJD_NEO = 58665;
 const inBand = (lam, b) => { const [lo, hi] = parity.bandLimits(b); return lam >= lo - 0.15 && lam <= hi + 0.15; };
 export async function buildBright({ base, ra, dec, at = null, signal, progress = () => {} }) {
+  const t0 = performance.now(), timing = {}, mark = k => { timing[k] = +((performance.now() - t0) / 1000).toFixed(2); };
   try {
     progress({ text: 'Fetching the star catalogues' });
-    const [cats, list] = await Promise.all([catalogues(base, ra, dec, signal, ['simbad', 'vsx']), exposureList(base, ra, dec, signal, BRIGHT_DETS)]);
+    const [cats, list] = await Promise.all([catalogues(base, ra, dec, signal, ['simbad', 'vsx']).finally(() => mark('catalogues')), exposureList(base, ra, dec, signal, BRIGHT_DETS).finally(() => mark('image list'))]);
     if (!cats.catwise.length && !cats.allwise.some(r => Number(r.w1mpro) < 10)) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
     const ctx = catalogueStep(cats, ra, dec, at, 3);
     if (ctx.result) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
@@ -118,13 +119,16 @@ export async function buildBright({ base, ra, dec, at = null, signal, progress =
       return r;
     }));
     const kept = out.filter(Boolean);
+    mark('pictures read');
     if (!kept.length) return { v: 1, state: 'no-coverage', reason: 'SPHEREx has no pictures of this star at 3 to 5 µm', star, neowise: neoOut(await neo, star, pos) };
     progress({ text: 'Measuring the star and its calibration stars', done: total, total, bytes });
     const num = v => (v === '' || v == null ? NaN : Number(v));
     const vars = [...cats.gaia.filter(r => r.phot_variable_flag === 'VARIABLE'), ...cats.simbad.filter(r => P.VAR_OTYPE.test(r.otype || '')), ...cats.vsx.map(r => ({ ra: r.RAJ2000, dec: r.DEJ2000 }))]
       .map(r => [num(r.ra), num(r.dec)]).filter(([a, d]) => Number.isFinite(a) && Number.isFinite(d));
     const cal = calibrators(K, T, vars), X = kept.map(k => k.prepared), psf = P.psfs(X, K), rows = [];
+    mark('psf built');
     for (const a of X) if (psf[a.det]) rows.push(...P.stampFit(a, K, psf[a.det], [T, ...cal]));
+    mark('photometry');
     // passes: the star's exposure times split at 60 days, shared by every star (as colors.js perSource does)
     const times = [...new Set(X.map(a => a.t))].sort((a, b) => a - b), g = P.passGroups(times), passes = [...new Set(g)].map(k => times.filter((_, i) => g[i] === k)).map(v => v.reduce((s, t) => s + t, 0) / v.length);
     const passOf = t => passes.reduce((b, p, k) => (Math.abs(t - p) < Math.abs(t - passes[b]) ? k : b), 0);
@@ -144,7 +148,7 @@ export async function buildBright({ base, ra, dec, at = null, signal, progress =
     const sat = kept.filter(x => x.sat).length, allBright = ['W1', 'W2'].every(b => spherex[b].every(p => /^too bright/.test(p.why ?? '')));
     return { v: 1, state: allBright ? 'too-bright' : 'ok', reason: allBright ? `SPHEREx saturates on this star in ${sat} of ${kept.length} pictures: it is too bright to measure cleanly. Fainter stars work.` : '',
       star, spherex, calibrators: cal.length, screened: cats.missing.length ? `${cats.missing.map(c => c === 'vsx' ? 'VSX' : 'SIMBAD').join(' and ')} did not answer, so calibration stars were screened for variables by Gaia only` : '',
-      neowise: neoOut(await neo, star, pos), download: { exposures: kept.length, listed: total, bytes } };
+      neowise: neoOut(await neo, star, pos), download: { exposures: kept.length, listed: total, bytes }, timing: (mark('done'), timing) };
   } catch (e) {
     if ((e.name === 'AbortError' && signal?.aborted) || !(e instanceof Unavailable)) throw e;
     return { v: 1, state: e.state === 'inconclusive' ? 'unavailable' : e.state, reason: e.message, input_failure: true };
