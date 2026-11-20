@@ -162,6 +162,31 @@ export async function varianceHeader(key, f, signal) {
   return p.h;
 }
 
+// ---------- EPSF: the file's own PSF models (the HDU after ZODI; SPHEREx L2 since DR1) ----------
+// A table of 441 rows, a 21 x 21 grid over the detector (BINX, BINY; row BINY * 21 + BINX, cells 2040 / 21 pixels wide),
+// each a 33 x 33 model 5 times oversampled and pixel-convolved, summing to 1 (EPSF, from byte 40 of the row). Where it
+// starts is learned once per detector by reading the VARIANCE, ZODI and EPSF headers (their sizes do not change between
+// files); after that one read per file, checked against the row's own BINX and BINY.
+const EPSF_ROW = 8752, PLANE = n => Math.ceil(n / 2880) * 2880, epsfGap = {};
+export async function epsfRow(key, h, f, x, y, signal) {
+  const bx = Math.max(0, Math.min(20, Math.floor(x / (2040 / 21)))), by = Math.max(0, Math.min(20, Math.floor(y / (2040 / 21)))), j = by * 21 + bx;
+  const flagsEnd = f._dataOffset + PLANE(f.NAXIS1 * f.NAXIS2 + (f.PCOUNT || 0)), det = h.DETECTOR ?? 'all';
+  const at = async data => {
+    const b = await range(key, data + j * EPSF_ROW, data + (j + 1) * EPSF_ROW - 1, signal), dv = new DataView(b.buffer, b.byteOffset);
+    if (dv.getInt32(0, false) !== bx || dv.getInt32(4, false) !== by) return null;
+    return Float64Array.from({ length: 1089 }, (_, i) => dv.getFloat64(40 + 8 * i, false));
+  };
+  if (epsfGap[det] != null) { const p = await at(flagsEnd + epsfGap[det]); if (p) return p; }
+  const hdr = async off => { const q = parseCards(await range(key, off, off + 14399, signal)); if (q.end < 0) throw new Error(`no header at ${off} of ${key}`); return { h: q.h, data: off + PLANE(q.end) }; };
+  const v = await varianceHeader(key, f, signal), z = await hdr(v._dataOffset + PLANE(4 * v.NAXIS1 * v.NAXIS2));
+  const e = await hdr(z.data + PLANE(Math.abs(z.h.BITPIX) / 8 * z.h.NAXIS1 * z.h.NAXIS2));
+  if (z.h.EXTNAME !== 'ZODI' || e.h.EXTNAME !== 'EPSF' || e.h.NAXIS1 !== EPSF_ROW || e.h.NAXIS2 !== 441) throw new Error(`no EPSF table where expected in ${key}`);
+  epsfGap[det] = e.data - flagsEnd;
+  const p = await at(e.data);
+  if (!p) throw new Error(`EPSF row ${j} of ${key} is not cell ${bx}, ${by}`);
+  return p;
+}
+
 // cfitsio's fits_rdecomp for 4-byte pixels: per block of `nblock` pixels a 5-bit code (fs + 1), then the pixel
 // differences, zigzag mapped: Rice codes (a run of zeros, a 1, fs low bits), or raw 32-bit values when fs is 25.
 // As cfitsio, b holds the nbits bits read but not yet used (under 32), so a run of zeros is found a byte at a time.
