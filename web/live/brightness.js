@@ -89,4 +89,11 @@ export function neowiseVisits(rows, band, at) {
   });
 }
 
+// the NEOWISE request for a place: RA and Dec rounded once to the route's 0.0001 degree, RA then wrapped into [0, 360),
+// so the caller asks for exactly the cone the route stores (worker/src/cat.js readCat), never 360.0000
+export function neoQuery(ra, dec, r) {
+  const q = v => Math.round(v * 1e4) / 1e4, a = (q(ra) % 360 + 360) % 360;
+  return `cat=neowise&ra=${(a >= 360 ? 0 : a).toFixed(4)}&dec=${q(dec).toFixed(4)}&r=${r}`;
+}
+
 export const yearOf = mjd => 2000 + (mjd - 51544.5) / 365.25;

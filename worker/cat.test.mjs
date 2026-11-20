@@ -143,3 +143,11 @@ test('neowise: a Gator table cut short (mid-row, or fewer rows than it says) is 
     assert.equal((await cat(...req('cat=neowise&ra=85.62757&dec=-8.54869'), env, { fetch: g.f })).status, 503); assert.equal(env.store.size, 0);
   }
 });
+test('neowise: the card asks for exactly the cone the route stores, RA rounded once then wrapped (never 360)', async () => {
+  const { neoQuery } = await import('../web/live/brightness.js');
+  for (const a of [0.000345, 0.000545, 0.0013449999999999998, 359.999949, 359.99996, -0.000001, 360.00014, 10.00005, 123.45675]) {
+    const q = neoQuery(a, -8.54869, 5), got = readCat(new URL(`https://x/api/cat?${q}`));
+    assert.ok(!got.error, `${a}: ${q}`); assert.match(q, /ra=\d+\.\d{4}&/);
+    assert.equal(+new URL(`https://x/?${q}`).searchParams.get('ra'), got.ra, `${a}: the route rounds nothing more`);
+  }
+});
