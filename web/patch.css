@@ -188,15 +188,17 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 .pv-specbtn[aria-pressed=true] { background: #fff; color: #000; }
 .pv-specbtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 #patch.picking { cursor: crosshair; }
-@media (min-width: 901px) { body:is(.speccing, .talking) .pstage > :is(.pv-who, .pv-report, .pv-dist) { display: none; } }
+@media (min-width: 901px) { body:is(.speccing, .talking, .brighting) .pstage > :is(.pv-who, .pv-report, .pv-dist) { display: none; } }
 body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { display: none; }
-.pv-spec { left: calc(1880 * var(--e)); top: calc(229 * var(--e)); width: calc(500 * var(--e)); box-sizing: border-box; padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }
-.pv-spec h2 { display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(18 * var(--e)); }
-.pv-spec .pv-scroll { max-height: calc(830 * var(--e)); padding: 0 calc(20 * var(--e)) 0 calc(8 * var(--e)); }
-.pv-spec .close { display: grid; place-items: center; padding: 0; margin-right: calc(20 * var(--e)); border: 0; background: none; color: #fff; cursor: pointer; }
-.pv-spec .close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.pv-spec .chev { width: calc(30 * var(--e)); height: calc(30 * var(--e)); min-width: 16px; min-height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
-.pv-spec .pv-info:first-child { margin-top: 0; }
+body:not(.brighting) .pstage > .pv-bright, body.talking .pstage > .pv-bright { display: none; }
+/* the Spectrum card and the Brightness change card: one box, in the right column's place while open */
+:is(.pv-spec, .pv-bright) { left: calc(1880 * var(--e)); top: calc(229 * var(--e)); width: calc(500 * var(--e)); box-sizing: border-box; padding: calc(26 * var(--e)) 0 calc(22 * var(--e)) calc(21 * var(--e)); }
+:is(.pv-spec, .pv-bright) h2 { display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(18 * var(--e)); }
+:is(.pv-spec, .pv-bright) .pv-scroll { max-height: calc(830 * var(--e)); padding: 0 calc(20 * var(--e)) 0 calc(8 * var(--e)); }
+:is(.pv-spec, .pv-bright) .close { display: grid; place-items: center; padding: 0; margin-right: calc(20 * var(--e)); border: 0; background: none; color: #fff; cursor: pointer; }
+:is(.pv-spec, .pv-bright) .close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+:is(.pv-spec, .pv-bright) .chev { width: calc(30 * var(--e)); height: calc(30 * var(--e)); min-width: 16px; min-height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+:is(.pv-spec, .pv-bright) .pv-info:first-child { margin-top: 0; }
 .spec-line { display: block; height: max(1.5px, calc(3 * var(--e))); margin-top: calc(10 * var(--e)); background: linear-gradient(#fff, #fff) 0 0 / var(--p, 0%) 100% no-repeat, rgba(255, 255, 255, .25); transition: background-size .3s; }
 .spec-line[hidden] { display: none; }
 #spec-chart { display: block; width: 100%; height: auto; margin-top: calc(16 * var(--e)); overflow: visible; }
@@ -210,8 +212,8 @@ body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { displa
 #spec-chart .pt.doubt { fill: #000; stroke-width: 1.4; }
 #spec-chart.greyed :is(.pt, .err) { fill: #000; stroke: #6b6b6b; opacity: .5; }   /* too bright: what is left is not a spectrum */
 #spec-chart .why { font-size: 12px; fill: #fff; }
-.pv-spec .warn { color: var(--comet); }
-.pv-spec [hidden] { display: none; }
+:is(.pv-spec, .pv-bright) .warn { color: var(--comet); }
+:is(.pv-spec, .pv-bright) [hidden] { display: none; }
 .spec-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: calc(10 * var(--e)); font: 400 max(10px, calc(17 * var(--e))) / 1.2 var(--panel-font); color: #cfd6e4; }
 .spec-key i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
 .spec-key i.hollow { box-sizing: border-box; border: 1.5px solid #fff; }
@@ -413,7 +415,7 @@ body.sky .pv-desc { margin: 0; }
   .pstage > .pv-who { order: 1; padding: 0; border-top: 0; background: none; }
   .pstage > .pv-frame { order: 2; margin-top: 14px; border-width: 1.5px; border-radius: 6px; }
   .pstage > .tl { order: 3; }
-  .pstage > .pv-spec { order: 4; }
+  .pstage > :is(.pv-spec, .pv-bright) { order: 4; }
   .pstage > .pv-dist { order: 5; margin-top: 0; padding-left: 0; }
   .pstage > .pv-adv { order: 6; margin-top: 22px; padding-left: 0; }
   .pstage > .pv-report { order: 7; margin-top: 22px; }
@@ -491,10 +493,10 @@ body.sky .pv-desc { margin: 0; }
   body.lapse:not(.sky) .pv-talkwrap .pv-post { margin-top: 10px; height: 56px; }
 
   /* Spectrum: the card under the timeline while it is open; the close button floats at its top right */
-  body.lapse:not(.sky) .pv-spec { padding: 14px 0 0; }
-  body.lapse:not(.sky) .pv-spec .close { width: 44px; height: 44px; margin-right: 0; }
-  body.lapse:not(.sky) .pv-spec .pv-scroll { padding: 4px 0 12px 0; }
-  body.lapse:not(.sky) .pv-spec .pv-info { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: #e8e8e8; }
+  body.lapse:not(.sky) :is(.pv-spec, .pv-bright) { padding: 14px 0 0; }
+  body.lapse:not(.sky) :is(.pv-spec, .pv-bright) .close { width: 44px; height: 44px; margin-right: 0; }
+  body.lapse:not(.sky) :is(.pv-spec, .pv-bright) .pv-scroll { padding: 4px 0 12px 0; }
+  body.lapse:not(.sky) :is(.pv-spec, .pv-bright) .pv-info { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: #e8e8e8; }
   body.lapse:not(.sky) .spec-key { font-size: 11px; }
   body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; }
   body.lapse:not(.sky) .spec-csv { height: 44px; padding: 0 16px; border-width: 1.5px; font-size: 12.5px; }
@@ -536,4 +538,62 @@ body.depth .p3-inset:not(.off) { display: block; }
 @container (max-width: 540px) {
   .pv-views [role=tab][aria-selected=false] { min-width: 44px; justify-content: center; }
   .pv-views [role=tab][aria-selected=false] .tab-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* ---------- Brightness change: the button at the end of Advanced, and its card (brightness-card-mockup, approved) ----------
+   The button is the Spectrum toggle's pill in the drawer's flow; pressed, it fills white. The card is the Spectrum
+   card's box (above); a table of the two bands, then the W1 light curve drawn as the spectrum's chart is. */
+.adv-pill { display: flex; align-items: center; gap: calc(10 * var(--e)); height: calc(46 * var(--e)); min-height: 28px; box-sizing: border-box;
+  padding: 0 calc(20 * var(--e)) 0 calc(14 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 999px; background: none; color: #fff;
+  font: 400 max(11px, calc(20 * var(--e))) / 1 var(--panel-font); white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
+.adv-pill svg { width: max(14px, calc(24 * var(--e))); height: max(14px, calc(24 * var(--e))); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.adv-pill svg circle { fill: currentColor; stroke: none; }
+.adv-pill:hover { background: rgba(255, 255, 255, .14); }
+.adv-pill[aria-pressed=true] { background: #fff; color: #000; }
+.adv-pill:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* the table: a row per band, hairlines between rows as in Distances */
+.br-tab { width: 100%; margin-top: calc(14 * var(--m)); border-collapse: collapse; font: 400 max(11px, calc(12 * var(--m))) / 1.3 var(--panel-font); color: #fff; }
+.br-tab th, .br-tab td { padding: calc(8 * var(--m)) calc(7 * var(--m)) calc(7 * var(--m)) 0; font-weight: 400; text-align: left; vertical-align: top; white-space: nowrap; }
+.br-tab :is(th, td):last-child { padding-right: 0; text-align: right; }
+.br-tab td:last-child { white-space: normal; }   /* the words may wrap in a narrow card (a scrollbar that takes room), never push the table past it */
+.br-tab td:last-child small span { white-space: nowrap; }   /* in a narrow card the magnitude line breaks only before ± (laptop windows: the type has a floor, the card does not) */
+.pv-bright .pv-scroll { container: br-card / inline-size; }
+@container br-card (max-width: 230px) { .br-tab tbody th { white-space: normal; } .br-tab :is(th, td):not(:last-child) { padding-right: 3px; } }   /* the narrowest desktop cards (an iPad on its side): 3.4 over µm, as the headers stack */
+.br-tab thead th { padding-top: 0; color: rgba(255, 255, 255, .62); font-size: max(10px, calc(11 * var(--m))); }
+.br-tab small { display: block; margin-top: calc(2 * var(--m)); color: rgba(255, 255, 255, .62); font-size: max(10px, calc(10.5 * var(--m))); }
+.br-tab thead small { color: rgba(255, 255, 255, .45); }
+.br-tab tbody tr { border-top: 1px solid rgba(255, 255, 255, .1); }
+.br-tab .now { color: var(--comet); }
+.br-tab .none { color: rgba(255, 255, 255, .62); white-space: normal; }
+.pv-bright .br-note { margin-top: calc(14 * var(--e)); color: rgba(255, 255, 255, .62); font-size: max(10px, calc(17 * var(--e))); }
+/* the light curve: the Spectrum chart's frame and type */
+#br-chart { display: block; width: 100%; height: auto; margin-top: calc(10 * var(--e)); overflow: visible; }
+#br-chart text { font: 400 10px var(--panel-font); fill: #aeb6c6; }
+#br-chart .lab { fill: #fff; }
+#br-chart .grid { stroke: rgba(255, 255, 255, .12); }
+#br-chart .axis { stroke: #c9c9c9; }
+#br-chart .beyond { fill: var(--comet); fill-opacity: .07; }   /* brighter than anything NEOWISE saw */
+#br-chart .peak { stroke: #fff; stroke-dasharray: 3 3; opacity: .6; }   /* NEOWISE's brightest visit */
+#br-chart .err { stroke-width: 1; opacity: .5; }
+#br-chart .neo { fill: #aeb6c6; }
+#br-chart .wise { stroke: #fff; stroke-width: 2; }   /* the table's WISE value over the years its images span */
+/* the band switch (Then and now's .tn-seg, Ming's tab box) beside the key; the table's row not charted is dimmed */
+.br-keyrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: calc(10 * var(--e)); }
+.br-keyrow #br-key { margin-top: 0; }
+.br-bands[hidden] { display: none; }
+.br-bands button { height: max(26px, calc(30 * var(--m))); min-height: 0; padding: 0 max(8px, calc(11 * var(--m))); font-size: max(10px, calc(12 * var(--m))); }
+.br-bands button[aria-pressed=true] { background: #fff; color: #000; }
+.pv-bright:has(#br-chart:not([hidden])) .br-tab tbody tr:not(.charted) th { color: rgba(255, 255, 255, .5); }
+#br-key i.seg { width: 12px; height: 2px; padding: 0; border: 0; border-radius: 0; background: #fff; vertical-align: 3px; }
+#br-chart .sx { fill: var(--comet); }
+#br-chart .ring { fill: none; stroke: #fff; stroke-width: 1.5; }
+#br-chart[hidden] { display: none; }
+@media (max-width: 900px) {
+  .pv-bright .br-spot { display: none; }   /* the name is the page's title, just above */
+  .adv-pill { height: 44px; padding: 0 16px 0 12px; border-width: 1.5px; font-size: 12.5px; gap: 8px; }
+}
+@media (max-width: 640px) {
+  .br-bands button { height: 36px; padding: 0 12px; font-size: 12.5px; }
+  .br-tab { font-size: 13px; } .br-tab thead th { font-size: 11.5px; } .br-tab small { font-size: 11px; }
+  body.lapse:not(.sky) .pv-bright .br-note { margin-top: 10px; font-size: 11px; color: rgba(255, 255, 255, .62); }
 }

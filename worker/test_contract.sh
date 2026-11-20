@@ -44,6 +44,9 @@ case "$BASE" in *127.0.0.1*|*localhost*|*\[::1\]*) bad_id='"error":"comet id is 
 check "malformed comet id" "/api/comets/%ZZ" 400 "$bad_id"
 # "Then and now": the older survey's tiles (worker/src/oldsky.js). Refusals, then a real spot: a stored tile's bytes are
 # IRSA's own (sha256 of the FITS, gzip or not, against a direct download) and its checksum is the manifest's
+# the Brightness change card's NEOWISE single exposures (worker/src/cat.js, cat=neowise)
+check "neowise radius out of range" "/api/cat?cat=neowise&ra=85.62757&dec=-8.54869&r=2" 400 'r must be a whole number of arcsec'
+check "neowise for a known changer" "/api/cat?cat=neowise&ra=85.62757&dec=-8.54869" 200 '^ra,dec,mjd,w1mpro,w1sigmpro'
 check "oldsky unlisted survey" "/api/oldsky?survey=neowise&band=W2&ra=84&dec=-6" 400 'survey must be allwise or 2mass'
 check "oldsky band not of the survey" "/api/oldsky?survey=2mass&band=W2&ra=84&dec=-6" 400 'band must be Ks'
 check "oldsky non-finite ra" "/api/oldsky?survey=allwise&band=W2&ra=Infinity&dec=-6" 400 'ra must be 0 to 360'

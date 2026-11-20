@@ -134,7 +134,7 @@ async def main():
         # shut, Advanced's controls are skipped
         await pg.set_viewport_size({"width": 390, "height": 844})
         await pg.goto(f"{BASE}/timelapse.html?target=barnard"); await pg.wait_for_function(ready)
-        async def tab_order(n=14):
+        async def tab_order(n=15):
             await pg.focus("#play"); order = ["play"]
             for _ in range(n):
                 await pg.keyboard.press("Tab"); order.append(await pg.evaluate("document.activeElement.id || document.activeElement.className"))
@@ -142,7 +142,7 @@ async def main():
         # a region that scrolls is itself a Tab stop by design (timelapse.html moreBelow); whether it scrolls depends on the
         # spot's data, so that stop is not part of the order checked here
         order = [x for x in await tab_order() if "pv-scroll" not in x]
-        want = ["play", "adv-btn", "sp-dial", "sp-on", "still", "diff", "ly-heat", "split", "fov", "coords", "det", "state", "share"]
+        want = ["play", "adv-btn", "sp-dial", "sp-on", "still", "diff", "ly-heat", "split", "fov", "coords", "det", "bright-btn", "state", "share"]   # Brightness change ends Advanced
         assert order[:len(want)] == want, f"Tab order on a phone, Advanced open: {order}"
         await pg.click("#adv-btn")
         order = [x for x in await tab_order(4) if "pv-scroll" not in x]

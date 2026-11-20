@@ -5,8 +5,13 @@
 export const S3 = 'https://nasa-irsa-spherex.s3.amazonaws.com/';
 const D2R = Math.PI / 180;
 
+// The same public bucket answers at several host names (CORS open on each). A browser keeps at most 6 connections to one
+// host over HTTP/1.1, and a page that reads a few hundred small ranges waits on that limit, not on bandwidth: each file is
+// read from one of four names (always the same one for the same file), so up to 24 reads run at once.
+const HOSTS = [S3, 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/', 'https://nasa-irsa-spherex.s3.dualstack.us-east-1.amazonaws.com/', 'https://s3.us-east-1.amazonaws.com/nasa-irsa-spherex/'];
+export const hostOf = key => { let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0; return HOSTS[h % HOSTS.length]; };
 async function range(key, start, end, signal) {
-  const r = await fetch(S3 + key, { headers: { Range: `bytes=${start}-${end}` }, signal });
+  const r = await fetch(hostOf(key) + key, { headers: { Range: `bytes=${start}-${end}` }, signal });
   if (r.status !== 206) throw new Error(`S3 range ${start}-${end} of ${key}: HTTP ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
 }
@@ -160,6 +165,36 @@ export async function varianceHeader(key, f, signal) {
   if (p.end < 0 || p.h.EXTNAME !== 'VARIANCE' || p.h.BITPIX !== -32) throw new Error(`no VARIANCE after FLAGS in ${key}`);
   p.h._dataOffset = off + Math.ceil(p.end / 2880) * 2880;
   return p.h;
+}
+
+// ---------- EPSF: the file's own PSF models (the HDU after ZODI; SPHEREx L2 since DR1) ----------
+// A table of 441 rows, a 21 x 21 grid over the detector (BINX, BINY; row BINY * 21 + BINX, cells 2040 / 21 pixels wide),
+// each a 33 x 33 model 5 times oversampled and pixel-convolved, summing to 1 (EPSF, from byte 40 of the row). Where it
+// starts is learned once per detector by reading the VARIANCE, ZODI and EPSF headers (their sizes do not change between
+// files); after that one read per file, checked against the row's own BINX and BINY.
+const EPSF_ROW = 8752, PLANE = n => Math.ceil(n / 2880) * 2880, epsfGap = {};
+export async function epsfRow(key, h, f, x, y, signal) {
+  const bx = Math.max(0, Math.min(20, Math.floor(x / (2040 / 21)))), by = Math.max(0, Math.min(20, Math.floor(y / (2040 / 21)))), j = by * 21 + bx;
+  const flagsEnd = f._dataOffset + PLANE(f.NAXIS1 * f.NAXIS2 + (f.PCOUNT || 0)), det = h.DETECTOR ?? 'all';
+  const at = async data => {
+    const b = await range(key, data + j * EPSF_ROW, data + (j + 1) * EPSF_ROW - 1, signal), dv = new DataView(b.buffer, b.byteOffset);
+    if (dv.getInt32(0, false) !== bx || dv.getInt32(4, false) !== by) return null;
+    return Float64Array.from({ length: 1089 }, (_, i) => dv.getFloat64(40 + 8 * i, false));
+  };
+  const hdr = async off => { const q = parseCards(await range(key, off, off + 14399, signal)); if (q.end < 0) throw new Error(`no header at ${off} of ${key}`); return { h: q.h, data: off + PLANE(q.end) }; };
+  const learn = async () => {   // this file's EPSF data offset, from its VARIANCE, ZODI and EPSF headers
+    const v = await varianceHeader(key, f, signal), z = await hdr(v._dataOffset + PLANE(4 * v.NAXIS1 * v.NAXIS2));
+    const e = await hdr(z.data + PLANE(Math.abs(z.h.BITPIX) / 8 * z.h.NAXIS1 * z.h.NAXIS2));
+    if (z.h.EXTNAME !== 'ZODI' || e.h.EXTNAME !== 'EPSF' || e.h.NAXIS1 !== EPSF_ROW || e.h.NAXIS2 !== 441) throw new Error(`no EPSF table where expected in ${key}`);
+    return e.data - flagsEnd;
+  };
+  // the first file of a detector learns its offset; the files read meanwhile wait for it rather than each learning it
+  epsfGap[det] ??= learn().catch(err => { delete epsfGap[det]; throw err; });
+  const p = await at(flagsEnd + await epsfGap[det]);
+  if (p) return p;
+  const q = await at(flagsEnd + await learn());   // a file laid out otherwise: its own offset
+  if (!q) throw new Error(`EPSF row ${j} of ${key} is not cell ${bx}, ${by}`);
+  return q;
 }
 
 // cfitsio's fits_rdecomp for 4-byte pixels: per block of `nblock` pixels a 5-bit code (fs + 1), then the pixel
