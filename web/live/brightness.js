@@ -65,7 +65,7 @@ export function calibrate(t, comps, band, prior = PRIOR) {
 // without an error leaves the change's error unknown (NaN): no "about the same" then, and no +/- in magText
 export function change(m, e, ref, refErr) {
   const d = m - ref, de = Math.hypot(e, refErr), x = 10 ** (0.4 * Math.abs(d));
-  const f = x < 1.995 ? x.toFixed(2) : x.toPrecision(2);   // 1.25x, 3.5x, 12x
+  const f = x < 1.995 ? x.toFixed(2) : x < 99.5 ? x.toPrecision(2) : String(Math.round(x));   // 1.25x, 3.5x, 12x, 100x (never 1.0e+2)
   const words = Math.abs(d) < 2 * de ? 'about the same' : `${f}× ${d < 0 ? 'brighter' : 'dimmer'}`;
   return { d, e: de, words };
 }

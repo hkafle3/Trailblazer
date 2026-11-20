@@ -67,6 +67,8 @@ test('the change in words and in magnitudes', () => {
   assert.equal(change(11, 0.05, 10.2, 0.03).words, '2.1× dimmer');
   assert.equal(change(10.75, 0.03, 10.5, 0.02).words, '1.26× dimmer');
   assert.equal(change(10.05, 0.03, 10, 0.02).words, 'about the same');   // under 2 sigma
+  assert.equal(change(12, 0.05, 17, 0.03).words, '100× brighter');   // not 1.0e+2
+  assert.equal(change(10, 0.05, 17.6, 0.03).words, '1096× brighter');
   assert.equal(magText(0.04, 0.03), '+0.04 ± 0.03 mag');
   const u = change(10.05, 0.03, 10, NaN);   // a catalogue value without an error: the change's error is unknown, never zero
   assert.ok(Number.isNaN(u.e)); assert.equal(u.words, '1.05× dimmer'); assert.equal(magText(u.d, u.e), '+0.05 mag');
