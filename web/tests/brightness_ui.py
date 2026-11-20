@@ -11,7 +11,7 @@ At 1440 x 900 and 390 x 844 (touch):
 - one card at a time: Brightness closes Spectrum and Discuss, and each of them closes Brightness; Depth closes it;
 - the table's "now" follows the visit on screen (the timeline's arrow keys), and the chart rings that pass;
 - each state says what happened: no WISE source, too bright, SPHEREx has no pictures, a pass without enough
-  wavelengths, a blend, NEOWISE with too few visits or not answering, the catalogue service not answering."""
+  wavelengths, a star not detected (its limit), a blend, NEOWISE with too few visits or not answering, the catalogue service not answering."""
 import asyncio, json, sys
 from playwright.async_api import async_playwright
 
@@ -155,6 +155,8 @@ async def run(p, w, h, phone):
     await state("no SPHEREx pictures", {"v": 1, "state": "no-coverage", "reason": "SPHEREx has no pictures of this star at 3 to 5 µm"}, lambda s: "no pictures" in s["status"] and not s["tab"])
     part = canned(frames); part["spherex"]["W2"][0] = {"mjd": frames[0], "why": "not enough of the band measured"}
     await state("a pass without enough wavelengths", part, lambda s: "not enough of the band measured" in s["rows"][1] and "brighter" in s["rows"][0])
+    faint = canned(frames); faint["spherex"]["W1"][0] = {"mjd": frames[0], "why": "not detected", "limit": 17.9}
+    await state("not detected: a 3-sigma limit", faint, lambda s: s["rows"][0].startswith("3.4 µm 12.00 >17.90 not detected"))
     await state("blend", canned(frames, star={**res["star"], "blend": 2, "aw": None}, neowise={"state": "blend", "W1": []}), lambda s: s["warn"].startswith("2 WISE sources within 6″") and s["tab"] and s["wise"] == 0 and s["neo"] == 0)
     few = canned(frames, neowise={"state": "few", "W1": res["neowise"]["W1"][:2]})
     await state("too few NEOWISE visits", few, lambda s: "NEOWISE saw it on 2 visits only" in s["note"] and s["neo"] == 2 and s["peak"] == 0)

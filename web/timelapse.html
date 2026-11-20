@@ -1644,6 +1644,7 @@ function brightDraw() {
       const [mw, ew] = r.star.ref_mag[b], p = r.spherex[b][k], tr = document.createElement('tr');
       const cells = [`<th scope="row">${um}</th>`, `<td>${Number.isFinite(mw) ? mw.toFixed(2) : '–'}</td>`];
       if (k < 0) cells.push('<td class="none" colspan="2">no SPHEREx pass near this visit</td>');
+      else if (p.limit != null) cells.push(`<td class="now">&gt;${p.limit.toFixed(2)}</td><td class="none">not detected</td>`);   // fainter than its 3-sigma limit
       else if (p.m == null) cells.push(`<td class="none" colspan="2">${p.why}</td>`);
       else if (!Number.isFinite(mw)) cells.push(`<td class="now">${p.m.toFixed(2)}</td><td class="none">no WISE value</td>`);
       else { const c = brChange(p.m, p.e, mw, ew); cells.push(`<td class="now">${p.m.toFixed(2)}</td><td>${c.words}<small>${magText(c.d, c.e)}</small></td>`); }

@@ -35,7 +35,7 @@ export function calibrators(K, T, vars = []) {
 }
 
 // t: the target's pass ({ f, err, sys, ok } in mJy, or null); comps: [{ p (their pass, same shape), m (CatWISE mag) }].
-// -> { m, e, n } or { why }. The error, in relative flux, adds in quadrature: s, the calibration stars' scatter about the
+// -> { m, e, n } or { why } (with limit, the 3-sigma magnitude, when the star is not detected). The error, in relative flux, adds in quadrature: s, the calibration stars' scatter about the
 // median (each star's measuring floor: PSF mismatch, catalogue errors, noise; s / sqrt(n) x 1.2533 is the median's
 // error), and the star's own statistical and W2-tail errors.
 export function calibrate(t, comps, band) {
@@ -43,8 +43,9 @@ export function calibrate(t, comps, band) {
   if (!t.ok) return { why: 'not enough of the band measured' };
   const r = comps.filter(c => c.p?.ok && c.p.f > 0 && Number.isFinite(c.m)).map(c => c.p.f / (ZP[band] * 10 ** (-0.4 * c.m)));
   if (r.length < MIN_COMP) return { why: `${r.length} calibration stars measured, ${MIN_COMP} needed` };
-  if (!(t.f > 0)) return { why: 'not detected' };
   const k = median(r), s = 1.4826 * median(r.map(v => Math.abs(v / k - 1)));
+  // under 3 sigma of its own noise it is not detected: a limit (3 sigma), not a magnitude
+  if (!(t.f > 3 * t.err)) return { why: 'not detected', limit: -2.5 * Math.log10(3 * t.err / (k * ZP[band])) };
   const rel = Math.hypot(s, (t.err ?? 0) / t.f, (t.sys ?? 0) / t.f, 1.2533 * s / Math.sqrt(r.length));
   return { m: -2.5 * Math.log10(t.f / (k * ZP[band])), e: 2.5 / Math.LN10 * rel, n: r.length };
 }

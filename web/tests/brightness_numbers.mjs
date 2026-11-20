@@ -43,6 +43,8 @@ for (const s of stars) {
     for (const q of pipe) if (!fine && !used.has(q)) { fails++; out.push(`${q.year} no pass here FAIL`); }
     for (const [i, p] of mine.entries()) {
       const y = yearOf(p.mjd), q = match[i];
+      // not detected: right if the pipeline's value is fainter than the card's 3-sigma limit (within 0.15)
+      if (p.limit != null) { const bad = !!q && !fine && ref + q.delta_mag < p.limit - 0.15; if (bad) fails++; out.push(`${y.toFixed(2)} not detected, fainter than ${p.limit.toFixed(2)}${q ? ` pipe ${(ref + q.delta_mag).toFixed(2)}` : ''}${bad ? ' FAIL' : ''}`); continue; }
       if (p.m == null) { const bad = !!q && !fine; if (bad) fails++; out.push(`${y.toFixed(2)} ${p.why}${bad ? ' FAIL' : ''}`); continue; }
       const c = change(p.m, p.e, ref, refE);
       let ok;

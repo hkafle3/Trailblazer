@@ -45,12 +45,15 @@ test('calibration: the median ratio of the calibration stars puts the star on th
   const r2 = calibrate({ ...t, err: 0.01 * t.f }, noisy, 'W1');
   assert.ok(r2.e > 0.05 && r2.e < 0.1, String(r2.e));
 });
-test('calibration refusals: too few stars, a pass not covered, not detected', () => {
+test('calibration refusals: too few stars, a pass not covered, not detected (under 3 sigma: a limit)', () => {
   const comps = [10, 11, 12, 13].map(m => cal(m, ZP.W1 * 10 ** (-0.4 * m)));
   assert.match(calibrate({ f: 1, ok: true }, comps, 'W1').why, /4 calibration stars measured, 5 needed/);
   assert.match(calibrate({ f: 1, ok: false }, comps, 'W1').why, /not enough of the band/);
   assert.match(calibrate(null, comps, 'W1').why, /too few wavelengths/);
-  assert.match(calibrate({ f: -0.1, ok: true }, [...comps, cal(12, ZP.W1 * 10 ** (-4.8))], 'W1').why, /not detected/);
+  const five = [...comps, cal(12, ZP.W1 * 10 ** (-4.8))], nd = calibrate({ f: -0.1, err: 0.2, ok: true }, five, 'W1');
+  assert.match(nd.why, /not detected/); assert.ok(Math.abs(nd.limit - -2.5 * Math.log10(0.6 / ZP.W1)) < 1e-9);   // 3 sigma
+  assert.match(calibrate({ f: 0.5, err: 0.2, ok: true }, five, 'W1').why, /not detected/);   // 2.5 sigma
+  assert.ok(calibrate({ f: 0.7, err: 0.2, ok: true }, five, 'W1').m > 0);
 });
 test('the change in words and in magnitudes', () => {
   assert.equal(change(12.30, 0.05, 13.65, 0.03).words, '3.5× brighter');
