@@ -11,9 +11,9 @@ At 1440 x 900 and 390 x 844 (touch):
 - one card at a time: Brightness closes Spectrum and Discuss, and each of them closes Brightness; Depth closes it;
 - the table's "now" follows the visit on screen (the timeline's arrow keys), and the chart rings that pass;
 - each state says what happened: no WISE source, too bright, SPHEREx has no pictures, a pass without enough
-  wavelengths, a star not detected (its limit), a blend, NEOWISE with too few visits or not answering, the catalogue service not answering;
+  wavelengths (the band's latest measured pass instead, dated), a star not detected (its limit), a blend, NEOWISE with too few visits or not answering, the catalogue service not answering;
 - on laptop windows (1024 x 768, 1280 x 800, 1366 x 768) the table fits the card with no sideways scroll."""
-import asyncio, json, sys
+import asyncio, json, re, sys
 from playwright.async_api import async_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
@@ -156,14 +156,17 @@ async def run(p, w, h, phone):
     await state("too bright", bright_, lambda s: "too bright to measure cleanly" in s["status"] and not s["tab"] and s["chart"] and s["sx"] == 0 and s["neo"] == 20)
     await state("no SPHEREx pictures", {"v": 1, "state": "no-coverage", "reason": "SPHEREx has no pictures of this star at 3 to 5 µm"}, lambda s: "no pictures" in s["status"] and not s["tab"])
     part = canned(frames); part["spherex"]["W2"][0] = {"mjd": frames[0], "why": "not enough of the band measured"}
-    await state("a pass without enough wavelengths", part, lambda s: "not enough of the band measured" in s["rows"][1] and "brighter" in s["rows"][0])
+    # the visit on screen lacks a band: the table shows that band's most recent pass, with its month; the chart rings the table's pass
+    await state("a pass without enough wavelengths: the band's latest pass, dated", part, lambda s: re.match(r"4\.6 µm 11\.80 \d+\.\d\d [A-Z][a-z]{2} 20\d\d ", s["rows"][1]) and "brighter" in s["rows"][0] and not re.search(r"[A-Z][a-z]{2} 20\d\d", s["rows"][0]))
+    none = canned(frames); none["spherex"]["W2"] = [{"mjd": f, "why": "not enough of the band measured"} for f in frames]
+    await state("a band no pass measured says why", none, lambda s: "not enough of the band measured" in s["rows"][1] and "brighter" in s["rows"][0])
     faint = canned(frames); faint["spherex"]["W1"][0] = {"mjd": frames[0], "why": "not detected", "limit": 17.9}
     await state("not detected: a 3-sigma limit", faint, lambda s: s["rows"][0].startswith("3.4 µm 12.00 >17.90 not detected"))
     await state("blend", canned(frames, star={**res["star"], "blend": 2}, neowise={"state": "blend", "W1": []}), lambda s: s["warn"].startswith("2 WISE sources within 6″") and s["tab"] and s["wise"] == 1 and s["neo"] == 0)
     few = canned(frames, neowise={"state": "few", "W1": res["neowise"]["W1"][:2]})
     await state("too few NEOWISE visits", few, lambda s: "NEOWISE saw it on 2 visits only" in s["note"] and s["neo"] == 2 and s["peak"] == 0)
     await state("NEOWISE not answering", canned(frames, neowise={"state": "unavailable", "W1": []}), lambda s: "NEOWISE (IRSA) did not answer" in s["note"] and s["neo"] == 0 and s["tab"])
-    await state("no pass near this visit", canned(frames, spherex={"W1": [{"mjd": 50000, "m": 11, "e": 0.03}], "W2": [{"mjd": 50000, "m": 11, "e": 0.03}]}), lambda s: "no SPHEREx pass near this visit" in s["rows"][0])
+    await state("no pass near this visit: the latest pass, dated", canned(frames, spherex={"W1": [{"mjd": 50000, "m": 11, "e": 0.03}], "W2": [{"mjd": 50000, "m": 11, "e": 0.03}]}), lambda s: s["rows"][0].startswith("3.4 µm 12.00 11.00 Oct 1995") and s["ring"] == 1)   # no pass near this visit: the latest, dated and ringed
 
     # laptop windows: the card narrows with the window but the type has a floor; the table must still fit, no sideways scroll
     if not phone:

@@ -1620,6 +1620,17 @@ function brStatus(text, p = null) {
   brEl('br-line').hidden = p == null;
   moreBelow();
 }
+// the pass the table shows in a band: the visit on screen's (k), or, when it has no value in that band (or there is no
+// pass near this visit), the most recent pass that has one, then labelled with its month -> { i, p, at } or null.
+// The chart rings the same pass, so a dot is never one the table calls unmeasured.
+function brShown(r, b, k) {
+  const ps = r.spherex?.[b] ?? [], p = ps[k];
+  if (p && (p.m != null || p.limit != null || p.pending)) return { i: k, p, at: null };
+  let j = -1;
+  ps.forEach((q, i) => { if (q.m != null && (j < 0 || q.mjd > ps[j].mjd)) j = i; });
+  return j < 0 ? null : { i: j, p: ps[j], at: ps[j].mjd };
+}
+const brMonth = mjd => new Date((mjd - 40587) * 864e5).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 // NEOWISE's visit count when it saw the star on under 3 visits (too few to show its range), else null
 const neoFew = r => { const n = r?.neowise?.W1?.length ?? 0; return ['ok', 'few'].includes(r?.neowise?.state) && n < 3 ? n : null; };
 // the table, the notes and the chart, for the result and the visit on screen
@@ -1647,14 +1658,14 @@ function brightDraw() {
     const k = f && r.spherex ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
     brEl('br-rows').innerHTML = '';
     for (const [b, um] of [['W1', '3.4 µm'], ['W2', '4.6 µm']]) {
-      const [mw, ew] = r.star.ref_mag[b], p = r.spherex?.[b][k], tr = document.createElement('tr');
+      const [mw, ew] = r.star.ref_mag[b], s = brShown(r, b, k), p = s?.p, tr = document.createElement('tr');
       const cells = [`<th scope="row">${um}</th>`, `<td>${Number.isFinite(mw) ? mw.toFixed(2) : '–'}</td>`];
-      if (!r.spherex || p?.pending) cells.push('<td class="none" colspan="2">measuring…</td>');   // still coming
-      else if (k < 0) cells.push('<td class="none" colspan="2">no SPHEREx pass near this visit</td>');
+      const now = p?.m != null ? `<td class="now">${p.m.toFixed(2)}${s.at ? `<small>${brMonth(s.at)}</small>` : ''}</td>` : '';   // another pass's value says when
+      if (!r.spherex || r.spherex[b][k]?.pending || (!s && r.spherex[b].some(q => q.pending))) cells.push('<td class="none" colspan="2">measuring…</td>');   // still coming
+      else if (!s) cells.push(`<td class="none" colspan="2">${k < 0 ? 'no SPHEREx pass near this visit' : r.spherex[b][k]?.why ?? 'not measured'}</td>`);   // no pass has it
       else if (p.limit != null) cells.push(`<td class="now">&gt;${p.limit.toFixed(2)}</td><td class="none">not detected</td>`);   // fainter than its 3-sigma limit
-      else if (p.m == null) cells.push(`<td class="none" colspan="2">${p.why}</td>`);
-      else if (!Number.isFinite(mw)) cells.push(`<td class="now">${p.m.toFixed(2)}</td><td class="none">no WISE value</td>`);
-      else { const c = brChange(p.m, p.e, mw, ew); cells.push(`<td class="now">${p.m.toFixed(2)}</td><td>${c.words}<small><span>${magText(c.d, c.e).replace(' ± ', '</span> <span>± ')}</span></small></td>`); }
+      else if (!Number.isFinite(mw)) cells.push(`${now}<td class="none">no WISE value</td>`);
+      else { const c = brChange(p.m, p.e, mw, ew); cells.push(`${now}<td>${c.words}<small><span>${magText(c.d, c.e).replace(' ± ', '</span> <span>± ')}</span></small></td>`); }
       tr.innerHTML = cells.join(''); brEl('br-rows').append(tr);
     }
   }
@@ -1672,8 +1683,8 @@ function brightChart() {
   const wise = Number.isFinite(rm) ? [{ t: span[0], t1: span[1], m: rm, e: Number.isFinite(re) ? re : 0 }] : [];
   const years = r?.star?.ref === 'AllWISE' ? '2010–11' : '2010–18';
   const neo = (r?.neowise?.W1 ?? []).map(v => ({ t: brYear(v.mjd), m: v.m, e: v.e, n: v.n }));
-  const k = r?.spherex && f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
-  const sx = (r?.spherex?.W1 ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === k })).filter(p => p.m != null);
+  const k = r?.spherex && f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1, ring = r?.spherex ? brShown(r, 'W1', k)?.i : -1;   // the table's pass
+  const sx = (r?.spherex?.W1 ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === ring })).filter(p => p.m != null);
   const all = [...wise, ...neo, ...sx];
   svg.toggleAttribute('hidden', !all.length); brEl('br-key').innerHTML = '';
   if (!all.length) return;
