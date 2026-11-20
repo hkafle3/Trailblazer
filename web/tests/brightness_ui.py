@@ -107,10 +107,13 @@ async def run(p, w, h, phone):
     await pg.click("#bright-btn"); await pg.click("#bright-btn")
     s = await read(pg)
     check(not s["on"] and s["focus"] == "bright-btn", f"{tag}: the button again closes it")
+    await pg.click("#bright-btn"); await pg.keyboard.press("Escape")
+    s = await read(pg)
+    check(not s["on"] and s["focus"] == "bright-btn", f"{tag}: Escape right after opening (focus still on the button) closes it")
     await pg.click("#bright-btn")
     await pg.focus("#bright-close"); await pg.keyboard.press("Escape")
     s = await read(pg)
-    check(not s["on"] and s["focus"] == "bright-btn", f"{tag}: Escape closes it, focus on the button")
+    check(not s["on"] and s["focus"] == "bright-btn", f"{tag}: Escape inside the card closes it, focus on the button")
 
     # one card at a time
     await pg.click("#bright-btn")
@@ -166,6 +169,18 @@ async def run(p, w, h, phone):
     s = await read(pg)
     check("NASA's catalogue service (IRSA) is not answering" in s["status"] and not s["tab"], f"{tag}: IRSA down, said by the worker ({s['status']})")
     await pg.unroute("**/api/cat?*")
+    await pg.evaluate("() => __bright.close(false)")
+    check(await pg.evaluate("() => __bright.bright.res === null && __bright.bright.key === null"), f"{tag}: an archive failure is not kept: reopening measures again")
+
+    # a stale answer: a build starts here, then the card moves to a result it already has; the old build's answer arrives
+    # late and must be dropped, not shown or stored under the new spot
+    await pg.evaluate("() => { __bright.bright.cache.clear(); __bright.bright.key = null; __bright.open(); }")
+    old = await pg.evaluate("__bright.bright.id")
+    await pg.evaluate("res => { const b = __bright.bright, m = __lapse.state.m; b.cache.set(`${m.ra.toFixed(4)},${m.dec.toFixed(4)}`, res); b.key = null; __bright.open(); }", res)
+    await pg.evaluate("old => __bright.bright.worker.onmessage({ data: { id: old, type: 'result', result: { v: 1, state: 'no-star', reason: 'late' } } })", old)
+    s = await read(pg)
+    kept = await pg.evaluate("() => [...__bright.bright.cache.values()].every(r => r.state === 'ok')")
+    check(s["tab"] and "late" not in s["status"] and kept, f"{tag}: a late answer from an earlier build is dropped")
 
     # &bright=1 reopens it
     await pg.evaluate("() => __bright.close(false)")

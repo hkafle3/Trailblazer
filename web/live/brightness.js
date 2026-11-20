@@ -15,8 +15,9 @@ const median = a => { const s = [...a].sort((x, y) => x - y), n = s.length; retu
 // Gaia, SIMBAD, VSX) within 5", and a W1 - W2 colour within tol of the star's (the synthesis's colour term), tol widening
 // from 0.2 to 1.6 mag until there are 20; the 60 nearest the star. -> component indices.
 export function calibrators(K, T, vars = []) {
-  const n = K.ra.length, cd = Math.cos(K.dec[T] * D2R), xy = i => [K.ra[i] * cd * 3600, K.dec[i] * 3600];
-  const P = Array.from({ length: n }, (_, i) => xy(i)), V = vars.map(([a, d]) => [a * cd * 3600, d * 3600]);
+  // arcsec east and north of the star, RA wrapped (a field across RA 0)
+  const n = K.ra.length, cd = Math.cos(K.dec[T] * D2R), xy = (a, d) => [((a - K.ra[T] + 540) % 360 - 180) * cd * 3600, (d - K.dec[T]) * 3600];
+  const P = Array.from({ length: n }, (_, i) => xy(K.ra[i], K.dec[i])), V = vars.map(([a, d]) => xy(a, d));
   const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
   const base = [];
   for (let i = 0; i < n; i++) {
@@ -48,14 +49,15 @@ export function calibrate(t, comps, band) {
   return { m: -2.5 * Math.log10(t.f / (k * ZP[band])), e: 2.5 / Math.LN10 * rel, n: r.length };
 }
 
-// the change from the WISE value: d in magnitudes (negative: brighter), its error, and in words
+// the change from the WISE value: d in magnitudes (negative: brighter), its error, and in words. A catalogue value
+// without an error leaves the change's error unknown (NaN): no "about the same" then, and no +/- in magText
 export function change(m, e, ref, refErr) {
-  const d = m - ref, de = Math.hypot(e, refErr || 0), x = 10 ** (0.4 * Math.abs(d));
+  const d = m - ref, de = Math.hypot(e, refErr), x = 10 ** (0.4 * Math.abs(d));
   const f = x < 1.995 ? x.toFixed(2) : x.toPrecision(2);   // 1.25x, 3.5x, 12x
   const words = Math.abs(d) < 2 * de ? 'about the same' : `${f}× ${d < 0 ? 'brighter' : 'dimmer'}`;
   return { d, e: de, words };
 }
-export const magText = (d, e) => `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(2)} ± ${e.toFixed(2)} mag`;
+export const magText = (d, e) => `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(2)}${Number.isFinite(e) ? ` ± ${e.toFixed(2)}` : ''} mag`;
 
 // the pass nearest an MJD, if within 60 days (passes: [mjd, ...])
 export function nearestPass(passes, mjd) {

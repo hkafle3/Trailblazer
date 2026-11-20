@@ -54,11 +54,12 @@ export function readCat(url) {
 // for, in their order. Any other answer (an error page, a message) is returned as it is and fails the header check.
 export function ipacToCsv(bytes, cols) {
   const text = new TextDecoder().decode(bytes), lines = text.split('\n'), h = lines.findIndex(l => l.startsWith('|'));
-  if (!text.startsWith('\\') || h < 0) return bytes;
+  if (!text.startsWith('\\') || h < 0 || !text.endsWith('\n')) return bytes;   // cut short: refused by the header check as it is
   const names = lines[h].split('|').map(c => c.trim()).filter(Boolean), at = cols.map(c => names.indexOf(c));
   if (at.some(i => i < 0)) return bytes;
   const rows = lines.slice(h + 1).filter(l => l.trim() && !l.startsWith('|') && !l.startsWith('\\')).map(l => l.trim().split(/\s+/));
-  if (rows.some(v => v.length !== names.length)) return bytes;
+  const said = /\\RowsRetrieved\s*=\s*(\d+)/.exec(text);   // Gator says how many rows it sent: all of them must be here
+  if (rows.some(v => v.length !== names.length) || (said && +said[1] !== rows.length)) return bytes;
   return new TextEncoder().encode([cols.join(','), ...rows.map(v => at.map(i => (v[i] === 'null' ? '' : v[i])).join(','))].join('\n') + '\n');
 }
 

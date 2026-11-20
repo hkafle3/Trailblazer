@@ -1568,9 +1568,9 @@ window.__spec = { spec, open: openSpec, csv: () => spectrumCsv(spec.res.points),
 // something is kept per spot, so closing and opening again does not read it all again. "now" is the visit on screen.
 const brEl = id => document.getElementById(id), brBtn = brEl('bright-btn');
 function openBright() {
-  if (spec.at || spec.mode) closeSpec(false);
-  if (document.body.classList.contains('talking')) document.querySelector('#talk .close')?.click();
-  const was = bright.on;
+  const was = bright.on;   // already open: a new spot on screen (show), the other cards stay as the person left them
+  if (!was && (spec.at || spec.mode)) closeSpec(false);
+  if (!was && document.body.classList.contains('talking')) document.querySelector('#talk .close')?.click();
   bright.on = true;
   document.body.classList.add('brighting'); brBtn.setAttribute('aria-pressed', 'true');
   if (!was) { history.replaceState(history.state, '', location.href); if (matchMedia('(max-width: 900px)').matches) requestAnimationFrame(() => brEl('bright').scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }
@@ -1578,21 +1578,23 @@ function openBright() {
   if (!m) { bright.res = null; brStatus('Waiting for the photo', null); return brightDraw(); }
   const key = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`;
   if (key === bright.key && (bright.res || bright.busy)) return brightDraw();
+  if (bright.busy) bright.worker?.postMessage({ mode: 'stop-bright' });   // another spot: the old answer is dropped (its id)
+  bright.id++;
   bright.key = key; bright.res = bright.cache.get(key) ?? null; bright.busy = !bright.res;
   if (bright.busy) {
     bright.worker ??= brightWorker();
-    bright.id++;
-    bright.worker.postMessage({ id: bright.id, mode: 'bright', ra: m.ra, dec: m.dec, at: m.frames[state.i].mjd, api: API });
+    bright.worker.postMessage({ id: bright.id, key, mode: 'bright', ra: m.ra, dec: m.dec, at: m.frames[state.i].mjd, api: API });
     brStatus('Fetching the star catalogues', 0);
   }
   brightDraw();
 }
 function brightWorker() {
   const w = new Worker(new URL('./live/colorsworker.js', import.meta.url), { type: 'module' });
-  const done = res => { bright.busy = false; bright.res = res; if (res.state === 'ok' || res.state === 'too-bright' || res.state === 'no-star' || res.state === 'no-coverage') bright.cache.set(bright.key, res); brightDraw(); };
+  // only answers about the sky are kept; an archive that did not answer is asked again next time
+  const done = res => { bright.busy = false; bright.res = res; if (['ok', 'too-bright', 'no-star', 'no-coverage'].includes(res.state)) bright.cache.set(bright.key, res); brightDraw(); };
   w.onmessage = ({ data: d }) => {
     if (d.id !== bright.id || !bright.on) return;   // a closed card or another spot: an old answer
-    if (d.type === 'progress') brStatus(d.total ? `${d.text}` : d.text, d.total ? 0.1 + 0.85 * d.done / d.total : 0.05);
+    if (d.type === 'progress') brStatus(d.text, d.total ? 0.1 + 0.85 * d.done / d.total : 0.05);
     else if (d.type === 'result') done(d.result);
   };
   w.onerror = e => { e.preventDefault(); if (bright.on && bright.busy) done({ state: 'unavailable', reason: 'The measurement could not run in this browser' }); };
@@ -1600,14 +1602,16 @@ function brightWorker() {
 }
 function closeBright(focus = true) {
   bright.on = false; bright.id++;
-  if (bright.busy) { bright.worker?.postMessage({ mode: 'stop-bright' }); bright.busy = false; bright.key = null; }
+  if (bright.busy) bright.worker?.postMessage({ mode: 'stop-bright' });
+  if (bright.busy || !bright.cache.has(bright.key)) { bright.busy = false; bright.key = null; bright.res = null; }   // not kept: measured again on reopening
   document.body.classList.remove('brighting'); brBtn.setAttribute('aria-pressed', 'false');
   history.replaceState(history.state, '', location.href);
   if (focus) brBtn.focus();
 }
 brBtn.onclick = () => (bright.on ? closeBright() : openBright());
 brEl('bright-close').onclick = () => closeBright();
-brEl('bright').addEventListener('keydown', e => { if (e.key === 'Escape') closeBright(); });
+// Escape closes it wherever focus is (the button that opened it keeps focus), unless Spectrum or Discuss takes it first
+addEventListener('keydown', e => { if (e.key === 'Escape' && bright.on && !e.defaultPrevented && !e.target.closest?.('#spec, #talk')) closeBright(); });
 function brStatus(text, p = null) {
   brEl('br-status').textContent = text; brEl('br-status').hidden = !text;
   brEl('br-line').style.setProperty('--p', p == null ? '' : `${Math.round(100 * p)}%`);
@@ -1655,7 +1659,7 @@ function brightDraw() {
 function brightChart() {
   const svg = brEl('br-chart'), NS = 'http://www.w3.org/2000/svg', r = bright.res, f = state.m?.frames[state.i];
   svg.replaceChildren();
-  const wise = r?.star?.aw ? [{ t: brYear(r.star.aw.mjd), m: r.star.aw.W1[0], e: r.star.aw.W1[1] || 0 }] : [];
+  const wise = r?.star?.aw ? [{ t: brYear(r.star.aw.mjd), m: r.star.aw.W1[0], e: r.star.aw.W1[1] }] : [];
   const neo = (r?.neowise?.W1 ?? []).map(v => ({ t: brYear(v.mjd), m: v.m, e: v.e, n: v.n }));
   const k = r?.spherex && f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
   const sx = (r?.spherex?.W1 ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === k })).filter(p => p.m != null);

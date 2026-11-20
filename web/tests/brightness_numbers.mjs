@@ -1,8 +1,9 @@
 // The Brightness change card's numbers against the frozen detector pipeline. Runs the card's own build
 // (live/colorsworker.js buildBright, what the page's Web Worker runs) on a test set and compares each SPHEREx pass:
 // - changers: Delta W1 and W2 (SPHEREx minus CatWISE) within 0.15 mag of the pipeline's, pass by pass;
-// - steady stars: |Delta| < 0.1 mag, or a too-bright or blended state; also the spread of Delta / error (should be
-//   about 1 if the errors are honest).
+// - steady stars: |Delta| < 0.1 mag, or a too-bright or blended state; and the median |Delta / error| within a factor
+//   of 2 of 0.67, its value for honest Gaussian errors;
+// - every pass the pipeline measured is measured here too.
 // The test set is a JSON file kept outside this public repo (it holds sealed AI-review truth):
 //   { "stars": [{ "name", "kind": "changer" | "steady", "ra", "dec", "pipeline": { "W1": { "per_pass": [{ "year", "delta_mag" }] }, "W2": ... } }] }
 // Run with the app up:  node web/tests/brightness_numbers.mjs <testset.json> [base url] [results dir]
@@ -32,13 +33,15 @@ for (const s of stars) {
   const fine = s.kind === 'steady' && (res.state === 'too-bright' || res.star?.blend > 1);
   if (res.state !== 'ok' && !fine) { fails++; console.log('   FAIL no measurement'); continue; }
   for (const b of ['W1', 'W2']) {
-    const [ref, refE] = res.star.ref_mag[b], pipe = s.pipeline[b].per_pass, out = [];
-    for (const p of res.spherex?.[b] ?? []) {
+    const [ref, refE] = res.star.ref_mag[b], pipe = s.pipeline[b].per_pass, out = [], mine = res.spherex?.[b] ?? [];
+    // every pass the pipeline measured must be measured here too (a changer), or measured or explained (a steady star)
+    for (const q of pipe) if (!fine && !mine.some(p => Math.abs(yearOf(p.mjd) - q.year) < 0.1)) { fails++; out.push(`${q.year} no pass here FAIL`); }
+    for (const p of mine) {
       const y = yearOf(p.mjd), q = pipe.find(x => Math.abs(x.year - y) < 0.1);
-      if (p.m == null) { out.push(`${y.toFixed(2)} ${p.why}`); if (s.kind === 'changer' && q) { fails++; out.push('FAIL'); } continue; }
+      if (p.m == null) { const bad = !!q && !fine; if (bad) fails++; out.push(`${y.toFixed(2)} ${p.why}${bad ? ' FAIL' : ''}`); continue; }
       const c = change(p.m, p.e, ref, refE);
       let ok;
-      if (s.kind === 'changer') ok = !q || Math.abs(c.d - q.delta_mag) <= 0.15;
+      if (s.kind === 'changer') ok = !q || Math.abs(c.d - q.delta_mag) <= 0.15;   // a pass the pipeline did not use: shown, not compared
       else { ok = fine || Math.abs(c.d) < 0.1; zs.push(c.d / c.e); }
       if (!ok) fails++;
       rows.push({ name: s.name, kind: s.kind, band: b, year: +y.toFixed(2), d: +c.d.toFixed(3), e: +c.e.toFixed(3), pipe: q?.delta_mag ?? null, ok });
@@ -47,9 +50,11 @@ for (const s of stars) {
     console.log(`   ${b} ${out.join(' | ')}`);
   }
 }
+// honest errors: on steady stars |Delta / error| has a median of 0.67 for Gaussian errors; within a factor of 2 passes
 if (zs.length) {
-  const a = zs.map(Math.abs).sort((x, y) => x - y);
-  console.log(`steady stars: ${zs.length} pass-band values, median |Delta / error| ${a[a.length >> 1].toFixed(2)} (0.67 if the errors are honest), ${a.filter(v => v > 2).length} beyond 2 (about 5% expected)`);
+  const a = zs.map(Math.abs).sort((x, y) => x - y), med = a[a.length >> 1], ok = med >= 0.33 && med <= 1.33;
+  if (!ok) fails++;
+  console.log(`steady stars: ${zs.length} pass-band values, median |Delta / error| ${med.toFixed(2)} (0.67 if the errors are honest; pass 0.33 to 1.33)${ok ? '' : ' FAIL'}, ${a.filter(v => v > 2).length} beyond 2 (about 5% expected)`);
 }
 if (OUT) fs.writeFileSync(path.join(OUT, 'table.json'), JSON.stringify(rows, null, 1));
 console.log(fails ? `FAIL ${fails} pass-band values off` : 'PASS every changer within 0.15 mag of the pipeline and every steady star within 0.1 mag (or too bright / blended)');

@@ -137,3 +137,9 @@ test('neowise: a spot NEOWISE never detected is a header-only table, stored', as
   const r = await cat(...req('cat=neowise&ra=10&dec=-89'), env, { fetch: g.f });
   assert.equal(r.status, 200); assert.equal(await text(r), `${NEO}\n`);
 });
+test('neowise: a Gator table cut short (mid-row, or fewer rows than it says) is never stored', async () => {
+  for (const cut of [GATOR.slice(0, -40), GATOR.replace('RowsRetrieved = 2', 'RowsRetrieved = 3')]) {
+    const g = archive(u => (u.includes('/TAP/') ? new Response('err', { status: 502 }) : new Response(cut, { headers: { 'Content-Type': 'text/plain' } }))), env = fakeEnv();
+    assert.equal((await cat(...req('cat=neowise&ra=85.62757&dec=-8.54869'), env, { fetch: g.f })).status, 503); assert.equal(env.store.size, 0);
+  }
+});

@@ -59,6 +59,8 @@ test('the change in words and in magnitudes', () => {
   assert.equal(change(10.75, 0.03, 10.5, 0.02).words, '1.26× dimmer');
   assert.equal(change(10.05, 0.03, 10, 0.02).words, 'about the same');   // under 2 sigma
   assert.equal(magText(0.04, 0.03), '+0.04 ± 0.03 mag');
+  const u = change(10.05, 0.03, 10, NaN);   // a catalogue value without an error: the change's error is unknown, never zero
+  assert.ok(Number.isNaN(u.e)); assert.equal(u.words, '1.05× dimmer'); assert.equal(magText(u.d, u.e), '+0.05 mag');
 });
 test('the visit on screen picks the pass within 60 days, else none', () => {
   assert.equal(nearestPass([60930, 61110, 61297], 61100), 1);
@@ -86,6 +88,11 @@ test('NEOWISE quality cuts, per band, and the 2.5 arcsec match', () => {
     assert.equal(neowiseVisits([...ok, row(57004, 12, fine)], 'W1', here).length, 1, JSON.stringify(fine));
 });
 
+test('calibration stars across RA 0: a variable 1.4" away on the other side of 0 h still excludes its star', () => {
+  const K = { ra: [359.9999, 0.0001, 0.01], dec: [0, 0, 0], w1: [17, 12, 12], w2: [16.6, 11.6, 11.6], nmem: [1, 1, 1], src: ['cw', 'cw', 'cw'], ab: ['00', '00', '00'], cc: ['00', '00', '00'], nb: [1, 1, 1] };
+  assert.deepEqual(calibrators(K, 0, [[0.0005, 0]]), [2]);
+  assert.deepEqual(calibrators(K, 0, []), [1, 2]);   // nearest first, across 0 h
+});
 test('calibration stars: single, clean, bright, isolated, not variable, colour-matched first', () => {
   const at = (dx, dy) => [10 + dx / 3600 / Math.cos(20 * Math.PI / 180), 20 + dy / 3600];
   const K = { ra: [], dec: [], w1: [], w2: [], nmem: [], src: [], ab: [], cc: [], nb: [] };

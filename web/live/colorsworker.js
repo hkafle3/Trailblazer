@@ -81,13 +81,13 @@ async function readExposure(ctx, x, ra, dec, signal, count, want = () => true) {
 // then per SPHEREx pass the WISE-band synthesis of the star and of its calibration stars, calibrated offset-only on them
 // (live/brightness.js). NEOWISE single exposures come from GET /api/cat?cat=neowise. SIMBAD and VSX only screen the
 // calibration stars for variables: when they do not answer, the build goes on without them and says so.
-const BRIGHT_DETS = ['D4', 'D5', 'D6'], MJD_CW = 57170, MJD_AW = 55400;
+const BRIGHT_DETS = ['D4', 'D5', 'D6'], MJD_NEO = 58665, MJD_AW = 55400;
 const inBand = (lam, b) => { const [lo, hi] = parity.bandLimits(b); return lam >= lo - 0.15 && lam <= hi + 0.15; };
 export async function buildBright({ base, ra, dec, at = null, signal, progress = () => {} }) {
   try {
     progress({ text: 'Fetching the star catalogues' });
     const [cats, list] = await Promise.all([catalogues(base, ra, dec, signal, ['simbad', 'vsx']), exposureList(base, ra, dec, signal, BRIGHT_DETS)]);
-    if (!cats.catwise.length && !cats.allwise.length) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
+    if (!cats.catwise.length && !cats.allwise.some(r => Number(r.w1mpro) < 10)) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
     const ctx = catalogueStep(cats, ra, dec, at, 3);
     if (ctx.result) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
     const { K, T } = ctx, P = parity, blend = K.nmem[T], src = K.src[T];
@@ -95,7 +95,9 @@ export async function buildBright({ base, ra, dec, at = null, signal, progress =
     const pos = mjd => P.skyPos(K, mjd, T), pm = Math.hypot(K.pme[T], K.pmn[T]);
     // NEOWISE: a cone about the star's CatWISE-epoch place wide enough for its motion over 2014 to 2024
     const neo = blend > 1 ? Promise.resolve(null) : api(() => retry(async () => {
-      const [r0, d0] = pos(MJD_CW), r = Math.min(30, Math.ceil(3 + pm * 6.5));
+      // ponytail: one cone, centred mid-NEOWISE (2019.5), reaches 2013.9 and 2024.6 for motions up to 4.8"/yr; faster
+      // stars lose their earliest and latest visits (split the cone if that ever matters: they are few, and bright)
+      const [r0, d0] = pos(MJD_NEO), r = Math.min(30, Math.ceil(3 + pm * 5.6));
       const x = await fetch(`${base}/api/cat?cat=neowise&ra=${r0.toFixed(5)}&dec=${d0.toFixed(5)}&r=${r}`, { signal: within(signal) });
       if (x.status === 429 || x.status >= 500) return { status: x.status };
       if (!x.ok) throw new Error(`neowise HTTP ${x.status}`);
@@ -104,7 +106,7 @@ export async function buildBright({ base, ra, dec, at = null, signal, progress =
     if (blend === 1) {   // the WISE ring: AllWISE (2010-11), the row within 3" of the star's place then
       const near = cats.allwise.map(r => [r, P.sep(Number(r.ra), Number(r.dec), ...pos(MJD_AW))]).filter(([, d]) => d <= 3).sort((a, b) => a[1] - b[1])[0]?.[0];
       const num = v => (v === '' || v == null ? NaN : Number(v));
-      if (near && Number.isFinite(num(near.w1mpro))) star.aw = { mjd: num(near.w1mjdmean), W1: [num(near.w1mpro), num(near.w1sigmpro)] };
+      if (near && Number.isFinite(num(near.w1mpro)) && Number.isFinite(num(near.w1sigmpro))) star.aw = { mjd: num(near.w1mjdmean), W1: [num(near.w1mpro), num(near.w1sigmpro)] };   // no error: an upper limit, not a detection
     }
     if (!list.length) return { v: 1, state: 'no-coverage', reason: 'SPHEREx has no pictures of this spot at 2.4 to 5 µm', star, neowise: neoOut(await neo, star, pos) };
     let bytes = 0, done = 0;
