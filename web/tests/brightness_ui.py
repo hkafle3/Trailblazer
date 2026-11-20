@@ -10,6 +10,7 @@ At 1440 x 900 and 390 x 844 (touch):
 - it closes with its chevron, with the button again, and with Escape, and focus goes back to the button;
 - one card at a time: Brightness closes Spectrum and Discuss, and each of them closes Brightness; Depth closes it;
 - the table's "now" follows the visit on screen (the timeline's arrow keys), and the chart rings that pass;
+- the chart shows the band that changed most, or the one the switch picks; the table's row, the axis label and the switch agree;
 - each state says what happened: no WISE source, too bright, SPHEREx has no pictures, a pass without enough
   wavelengths (the band's latest measured pass instead, dated), a star not detected (its limit), a blend, NEOWISE with too few visits or not answering, the catalogue service not answering;
 - on laptop windows (1024 x 768, 1280 x 800, 1366 x 768) the table fits the card with no sideways scroll."""
@@ -55,6 +56,8 @@ async def read(pg):
       neo: document.querySelectorAll('#br-chart circle.neo').length, wise: document.querySelectorAll('#br-chart line.wise').length, wiseM: document.querySelector('#br-chart line.wise')?.dataset.m ?? null,
       ring: document.querySelectorAll('#br-chart circle.ring').length, peak: document.querySelectorAll('#br-chart line.peak').length,
       key: document.getElementById('br-key').innerText.replace(/\\s+/g, ' ').trim(),
+      band: document.querySelector('#br-bands [aria-pressed=true]')?.dataset.b ?? null, bands: !document.getElementById('br-bands').hidden,
+      axis: document.querySelector('#br-chart text.lab')?.textContent ?? null, charted: [...document.querySelectorAll('#br-rows tr')].findIndex(t => t.classList.contains('charted')),
       who: getComputedStyle(document.querySelector('.pv-who')).display, spec: document.body.classList.contains('speccing'), talk: document.body.classList.contains('talking') })""")
 
 
@@ -167,6 +170,19 @@ async def run(p, w, h, phone):
     await state("too few NEOWISE visits", few, lambda s: "NEOWISE saw it on 2 visits only" in s["note"] and s["neo"] == 2 and s["peak"] == 0)
     await state("NEOWISE not answering", canned(frames, neowise={"state": "unavailable", "W1": []}), lambda s: "NEOWISE (IRSA) did not answer" in s["note"] and s["neo"] == 0 and s["tab"])
     await state("no pass near this visit: the latest pass, dated", canned(frames, spherex={"W1": [{"mjd": 50000, "m": 11, "e": 0.03}], "W2": [{"mjd": 50000, "m": 11, "e": 0.03}]}), lambda s: s["rows"][0].startswith("3.4 µm 12.00 11.00 Oct 1995") and s["ring"] == 1)   # no pass near this visit: the latest, dated and ringed
+
+    # the band charted: the one that changed most, until the switch picks the other; table row, axis label and switch agree
+    w2big = canned(frames, star={**res["star"], "ref_mag": {"W1": [12.0, 0.02], "W2": [13.5, 0.02]}}, neowise={"state": "ok", "W1": res["neowise"]["W1"], "W2": res["neowise"]["W1"][:5]})
+    await give(pg, w2big)
+    st = await read(pg)
+    check(st["bands"] and st["band"] == "W2" and st["axis"] == "4.6 µm" and st["charted"] == 1 and st["neo"] == 5 and st["wiseM"] == "13.50", f"{tag}: the band that changed most is charted (4.6 µm: row, axis, switch, its NEOWISE and WISE)")
+    await pg.click("#br-bands button[data-b=W1]")
+    st = await read(pg)
+    check(st["band"] == "W1" and st["axis"] == "3.4 µm" and st["charted"] == 0 and st["neo"] == 20 and st["wiseM"] == "12.00", f"{tag}: the switch charts 3.4 µm (row, axis, its NEOWISE and WISE)")
+    await give(pg, canned(frames, neowise={"state": "ok", "W1": res["neowise"]["W1"], "W2": []}))
+    await pg.click("#br-bands button[data-b=W2]")
+    st = await read(pg)
+    check(st["band"] == "W2" and "NEOWISE has no usable visits at 4.6 µm" in st["note"] and st["neo"] == 0 and st["peak"] == 0, f"{tag}: a band NEOWISE has no visits in says so ({st['note']})")
 
     # laptop windows: the card narrows with the window but the type has a floor; the table must still fit, no sideways scroll
     if not phone:

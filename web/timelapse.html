@@ -230,7 +230,7 @@
         <tbody id="br-rows"></tbody>
       </table>
       <svg id="br-chart" role="img" hidden></svg>
-      <div class="spec-key" id="br-key" aria-hidden="true"></div>
+      <div class="br-keyrow"><div class="tn-seg br-bands" id="br-bands" role="group" aria-label="Band in the chart" hidden><button type="button" data-b="W1" aria-pressed="true">3.4 µm</button><button type="button" data-b="W2" aria-pressed="false">4.6 µm</button></div><div class="spec-key" id="br-key" aria-hidden="true"></div></div>
       <p class="pv-info br-note" id="br-note" hidden></p>
     </div>
   </section>
@@ -276,7 +276,7 @@ const sameSpot = u => { const ra = parseFloat(u.searchParams.get('ra')), dec = p
   return Number.isFinite(ra) && Number.isFinite(dec) && Math.abs(dec - blinkDec) < 5.6e-4 && Math.abs(((ra - blinkRa + 540) % 360 - 180) * Math.cos(dec * Math.PI / 180)) < 5.6e-4; };
 let pvView = P.get('view') === 'depth' ? 'depth' : P.get('view') === 'thenandnow' && blinkOn ? 'thenandnow' : 'photo';
 // the Brightness change card (its block is below the Spectrum card's): on rides in the address as &bright=1
-const bright = { on: false, res: null, key: null, id: 0, cache: new Map(), worker: null, drawnAt: null };
+const bright = { on: false, res: null, key: null, id: 0, cache: new Map(), worker: null, drawnAt: null, band: null };   // band: chosen in the card, null: the one that changed most
 {
   const replace = history.replaceState.bind(history);
   history.replaceState = (st, title, url) => {
@@ -1580,7 +1580,7 @@ function openBright() {
   if (key === bright.key && (bright.res || bright.busy)) return brightDraw();
   if (bright.busy) bright.worker?.postMessage({ mode: 'stop-bright' });   // another spot: the old answer is dropped (its id)
   bright.id++;
-  bright.key = key; bright.res = bright.cache.get(key) ?? null; bright.busy = !bright.res;
+  bright.key = key; bright.res = bright.cache.get(key) ?? null; bright.busy = !bright.res; bright.band = null;
   if (bright.busy) {
     bright.worker ??= brightWorker();
     bright.worker.postMessage({ id: bright.id, key, mode: 'bright', ra: m.ra, dec: m.dec, at: m.frames[state.i].mjd, api: API });
@@ -1632,7 +1632,15 @@ function brShown(r, b, k) {
 }
 const brMonth = mjd => new Date((mjd - 40587) * 864e5).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 // NEOWISE's visit count when it saw the star on under 3 visits (too few to show its range), else null
-const neoFew = r => { const n = r?.neowise?.W1?.length ?? 0; return ['ok', 'few'].includes(r?.neowise?.state) && n < 3 ? n : null; };
+const neoFew = (r, b) => { const n = r?.neowise?.[b]?.length ?? 0; return ['ok', 'few'].includes(r?.neowise?.state) && n < 3 ? n : null; };
+// the band charted: the one chosen, else the one whose change in the table is largest (3.4 µm when neither has a value)
+function brBand(r, k) {
+  if (bright.band) return bright.band;
+  let best = 'W1', d = -1;
+  for (const b of ['W1', 'W2']) { const p = brShown(r, b, k)?.p, ref = r?.star?.ref_mag?.[b]?.[0]; if (p?.m != null && Number.isFinite(ref) && Math.abs(p.m - ref) > d) { d = Math.abs(p.m - ref); best = b; } }
+  return best;
+}
+brEl('br-bands').onclick = e => { const b = e.target.closest('button')?.dataset.b; if (b) { bright.band = b; brightDraw(); } };
 // the table, the notes and the chart, for the result and the visit on screen
 function brightDraw() {
   const r = bright.res, m = state.m, f = m?.frames[state.i];
@@ -1641,9 +1649,9 @@ function brightDraw() {
   const warn = r?.star?.blend > 1 ? `${r.star.blend} WISE sources within 6″ are measured together here: the change can belong to any of them.` : '';
   brEl('br-warn').textContent = warn; brEl('br-warn').hidden = !warn;
   const tab = brEl('br-tab'), chart = brEl('br-chart');
-  if (!r) { tab.hidden = true; chart.toggleAttribute('hidden', true); brEl('br-key').innerHTML = ''; brEl('br-note').hidden = true; return moreBelow(); }
-  const nv = neoFew(r);
-  const notes = [nv != null ? `NEOWISE saw it on ${nv} visit${nv === 1 ? '' : 's'} only, too few to show its range.` : '',
+  if (!r) { tab.hidden = true; chart.toggleAttribute('hidden', true); brEl('br-key').innerHTML = ''; brEl('br-bands').hidden = true; brEl('br-note').hidden = true; return moreBelow(); }
+  const kk = f && r.spherex ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1, band = brBand(r, kk), nv = neoFew(r, band);
+  const notes = [nv === 0 ? `NEOWISE has no usable visits at ${band === 'W1' ? '3.4' : '4.6'} µm.` : nv != null ? `NEOWISE saw it on ${nv} visit${nv === 1 ? '' : 's'} only, too few to show its range.` : '',
     r.neowise?.state === 'unavailable' ? 'NEOWISE (IRSA) did not answer, so its 2014 to 2024 visits are not shown.' : r.neowise?.state === 'busy' ? 'Too many new spots at once: NEOWISE\'s visits are not shown. Try again in a minute.' : '',
     r.screened ? `${r.screened}.` : ''].filter(Boolean);
   if (!bright.busy) brStatus(r.state !== 'ok' ? r.reason : '', null);
@@ -1666,27 +1674,30 @@ function brightDraw() {
       else if (p.limit != null) cells.push(`<td class="now">&gt;${p.limit.toFixed(2)}</td><td class="none">not detected</td>`);   // fainter than its 3-sigma limit
       else if (!Number.isFinite(mw)) cells.push(`${now}<td class="none">no WISE value</td>`);
       else { const c = brChange(p.m, p.e, mw, ew); cells.push(`${now}<td>${c.words}<small><span>${magText(c.d, c.e).replace(' ± ', '</span> <span>± ')}</span></small></td>`); }
-      tr.innerHTML = cells.join(''); brEl('br-rows').append(tr);
+      tr.innerHTML = cells.join(''); tr.classList.toggle('charted', b === band); brEl('br-rows').append(tr);
     }
   }
-  brightChart();
+  brightChart(band);
   moreBelow();
 }
-// the 3.4 µm light curve, brighter up: WISE 2010-18 (a segment at the table's reference), NEOWISE's visits (grey), SPHEREx's passes (orange, the
-// visit on screen ringed), and a dashed line at NEOWISE's brightest visit with a faint orange tint above it.
+// the light curve in one band (3.4 or 4.6 µm, the switch beside the key), brighter up: WISE 2010-18 (a segment at the table's reference),
+// NEOWISE's visits (grey), SPHEREx's passes (orange, the table's pass ringed), and a dashed line at NEOWISE's brightest visit with a
+// faint orange tint above it.
 // Drawn as specChart draws the spectrum (the approved mockup's brightChart).
-function brightChart() {
-  const svg = brEl('br-chart'), NS = 'http://www.w3.org/2000/svg', r = bright.res, f = state.m?.frames[state.i];
+function brightChart(band = 'W1') {
+  const svg = brEl('br-chart'), NS = 'http://www.w3.org/2000/svg', r = bright.res, f = state.m?.frames[state.i], um = band === 'W1' ? '3.4 µm' : '4.6 µm';
   svg.replaceChildren();
   // the table's own reference, drawn over the years its images span: CatWISE2020 2010 to 2018, AllWISE 2010 to 2011
-  const [rm, re] = r?.star?.ref_mag?.W1 ?? [], span = r?.star?.ref === 'AllWISE' ? [2010.0, 2011.1] : [2010.0, 2018.95];
+  const [rm, re] = r?.star?.ref_mag?.[band] ?? [], span = r?.star?.ref === 'AllWISE' ? [2010.0, 2011.1] : [2010.0, 2018.95];
   const wise = Number.isFinite(rm) ? [{ t: span[0], t1: span[1], m: rm, e: Number.isFinite(re) ? re : 0 }] : [];
   const years = r?.star?.ref === 'AllWISE' ? '2010–11' : '2010–18';
-  const neo = (r?.neowise?.W1 ?? []).map(v => ({ t: brYear(v.mjd), m: v.m, e: v.e, n: v.n }));
-  const k = r?.spherex && f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1, ring = r?.spherex ? brShown(r, 'W1', k)?.i : -1;   // the table's pass
-  const sx = (r?.spherex?.W1 ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === ring })).filter(p => p.m != null);
+  const neo = (r?.neowise?.[band] ?? []).map(v => ({ t: brYear(v.mjd), m: v.m, e: v.e, n: v.n }));
+  const k = r?.spherex && f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1, ring = r?.spherex ? brShown(r, band, k)?.i : -1;   // the table's pass
+  const sx = (r?.spherex?.[band] ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === ring })).filter(p => p.m != null);
   const all = [...wise, ...neo, ...sx];
   svg.toggleAttribute('hidden', !all.length); brEl('br-key').innerHTML = '';
+  brEl('br-bands').hidden = !all.length;
+  for (const x of brEl('br-bands').children) x.setAttribute('aria-pressed', String(x.dataset.b === band));
   if (!all.length) return;
   const add = (tag, attrs, title) => { const e = document.createElementNS(NS, tag); for (const a in attrs) e.setAttribute(a, attrs[a]); if (title) e.append(Object.assign(document.createElementNS(NS, 'title'), { textContent: title })); svg.append(e); return e; };
   const W = Math.max(240, Math.round(svg.clientWidth || 300)), H = Math.round(Math.min(260, Math.max(150, W * (innerWidth <= 640 ? 0.52 : 0.8))));
@@ -1694,13 +1705,13 @@ function brightChart() {
   const X0 = 30, X1 = W - 8, Y0 = 16, Y1 = H - 22, T0 = 2009.2, T1 = 2027.3;
   const hi = Math.floor(Math.min(...all.map(p => p.m - p.e)) * 2 - 0.4) / 2, lo = Math.ceil(Math.max(...all.map(p => p.m + p.e)) * 2 + 0.4) / 2;
   const tx = t => X0 + (t - T0) / (T1 - T0) * (X1 - X0), ty = m => Y0 + (m - hi) / (lo - hi) * (Y1 - Y0);   // magnitudes run backwards: brighter is up
-  const peak = r.neowise?.state === 'ok' && neoFew(r) == null ? Math.min(...neo.map(p => p.m)) : null;
+  const peak = r.neowise?.state === 'ok' && neoFew(r, band) == null ? Math.min(...neo.map(p => p.m)) : null;
   if (peak != null) add('rect', { class: 'beyond', x: X0, y: Y0, width: X1 - X0, height: Math.max(0, ty(peak) - Y0) });
   for (const t of [2010, 2014, 2018, 2022, 2026]) { add('line', { class: 'grid', x1: tx(t), x2: tx(t), y1: Y0, y2: Y1 }); add('text', { x: tx(t), y: Y1 + 15, 'text-anchor': 'middle' }).textContent = t; }
   const step = lo - hi > 4 ? 1 : 0.5;
   for (let mg = Math.ceil(hi / step) * step; mg <= lo + 1e-9; mg += step) { add('line', { class: 'grid', x1: X0, x2: X1, y1: ty(mg), y2: ty(mg) }); if (Number.isInteger(mg) && ty(mg) > Y0 + 8) add('text', { x: X0 - 5, y: ty(mg) + 3.5, 'text-anchor': 'end' }).textContent = mg; }   // not under 'mag'
   add('text', { x: 2, y: Y0 - 5 }).textContent = 'mag';
-  add('text', { class: 'lab', x: X1, y: Y0 - 5, 'text-anchor': 'end' }).textContent = '3.4 µm';
+  add('text', { class: 'lab', x: X1, y: Y0 - 5, 'text-anchor': 'end' }).textContent = um;
   add('text', { x: X0 + 6, y: Y0 + 13 }).textContent = '↑ brighter';
   if (peak != null) {
     add('line', { class: 'peak', x1: X0, x2: X1, y1: ty(peak), y2: ty(peak) }, `NEOWISE's brightest visit: ${peak.toFixed(2)} mag`);
@@ -1716,10 +1727,10 @@ function brightChart() {
   } };
   for (const p of wise) add('line', { class: 'wise', x1: tx(p.t), x2: tx(p.t1), y1: ty(p.m), y2: ty(p.m), 'data-m': p.m.toFixed(2) }, `WISE ${years} (${r.star.ref}): ${p.m.toFixed(2)}${Number.isFinite(re) ? ` ± ${re.toFixed(2)}` : ''} mag, the table's reference`);
   dots(neo, 'neo', 2.4, 'NEOWISE', '#aeb6c6'); dots(sx, 'sx', 3, 'SPHEREx', '#ff9a4d');
-  svg.setAttribute('aria-label', `Brightness at 3.4 micrometres, 2010 to now: ${[wise.length ? `WISE ${wise[0].m.toFixed(2)}` : '', neo.length ? `NEOWISE ${Math.min(...neo.map(p => p.m)).toFixed(2)} to ${Math.max(...neo.map(p => p.m)).toFixed(2)}` : '', sx.length ? `SPHEREx ${sx.map(p => p.m.toFixed(2)).join(', ')}` : ''].filter(Boolean).join('; ')} magnitudes`);
+  svg.setAttribute('aria-label', `Brightness at ${um.replace(' µm', ' micrometres')}, 2010 to now: ${[wise.length ? `WISE ${wise[0].m.toFixed(2)}` : '', neo.length ? `NEOWISE ${Math.min(...neo.map(p => p.m)).toFixed(2)} to ${Math.max(...neo.map(p => p.m)).toFixed(2)}` : '', sx.length ? `SPHEREx ${sx.map(p => p.m.toFixed(2)).join(', ')}` : ''].filter(Boolean).join('; ')} magnitudes`);
   brEl('br-key').innerHTML = [wise.length ? `<span><i class="seg"></i>WISE ${years}</span>` : '', neo.length ? '<span><i style="background:#aeb6c6"></i>NEOWISE</span>' : '', sx.length ? '<span><i style="background:var(--comet)"></i>SPHEREx</span>' : ''].join('');
 }
-addEventListener('resize', () => { if (bright.on && bright.res) brightChart(); });
+addEventListener('resize', () => { if (bright.on && bright.res) brightDraw(); });
 window.__bright = { bright, open: openBright, close: closeBright };   // for tests/brightness_ui.py
 
 document.getElementById('search').onsubmit = e => {
