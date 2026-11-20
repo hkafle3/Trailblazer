@@ -178,6 +178,10 @@ async def run(p, w, h, phone):
     # progressive: the WISE column and NEOWISE first ('partial', no SPHEREx yet), then a pass at a time
     await pg.evaluate("() => { __bright.bright.cache.clear(); __bright.bright.key = null; __bright.open(); }")
     cur = await pg.evaluate("__bright.bright.id")
+    loading = {**res, "state": "partial", "spherex": None, "neowise": {"state": "loading", "W1": []}}
+    await pg.evaluate("([id, r]) => __bright.bright.worker.onmessage({ data: { id, type: 'partial', result: r } })", [cur, loading])
+    s = await read(pg)
+    check(s["tab"] and s["rows"][0].startswith("3.4 µm 12.00 measuring") and s["neo"] == 0 and not s["note"], f"{tag}: the WISE column before NEOWISE answers, with no note about it")
     first = {**res, "state": "partial", "spherex": None}
     await pg.evaluate("([id, r]) => __bright.bright.worker.onmessage({ data: { id, type: 'partial', result: r } })", [cur, first])
     s = await read(pg)

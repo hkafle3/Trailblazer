@@ -1594,6 +1594,7 @@ function brightWorker() {
   const done = res => { bright.busy = false; bright.res = res; if (['ok', 'too-bright', 'no-star', 'no-coverage'].includes(res.state)) bright.cache.set(bright.key, res); brightDraw(); };
   w.onmessage = ({ data: d }) => {
     if (d.id !== bright.id || !bright.on) return;   // a closed card or another spot: an old answer
+    if (!bright.busy) return;   // a finished build: nothing it says now replaces its result
     if (d.type === 'progress') brStatus(d.text, d.total ? 0.1 + 0.85 * d.done / d.total : 0.05);
     else if (d.type === 'partial') { bright.res = d.result; brightDraw(); }   // the WISE column and NEOWISE first, then each pass
     else if (d.type === 'result') done(d.result);
