@@ -82,21 +82,24 @@ test('the visit on screen picks the pass within 60 days, else none', () => {
 // NEOWISE rows as the CSV parser gives them (strings)
 const row = (mjd, w1, o = {}) => ({ ra: '10', dec: '20', mjd: String(mjd), w1mpro: String(w1), w1sigmpro: '0.03', w1snr: '30', w2mpro: '12', w2sigmpro: '0.04', w2snr: '20', qual_frame: '10', qi_fact: '1.0', saa_sep: '90', moon_masked: '00', cc_flags: '0000', ...o });
 const here = () => [10, 20];
-test('NEOWISE visits: 30-day gaps, 5 good exposures, median, 1.253 std / sqrt(n) with a 0.02 floor', () => {
-  const v1 = [12.0, 12.1, 12.2, 12.3, 12.4].map((m, i) => row(57000 + i, m)), v2 = [13, 13, 13, 13].map((m, i) => row(57100 + i, m));
-  const v3 = [13, 13, 13, 13, 13, 13].map((m, i) => row(57120 + 7 * i, m));   // 7 days apart: one visit, joined to v2 (gaps under 30)
-  const V = neowiseVisits([...v1, ...v2, ...v3], 'W1', here);
+test('NEOWISE visits: 30-day gaps, 3 exposures or more, median, 1.253 std / sqrt(n) with a 0.02 floor', () => {
+  const v1 = [12.0, 12.1, 12.2, 12.3, 12.4].map((m, i) => row(57000 + i, m)), v2 = [13, 13].map((m, i) => row(57100 + i, m));
+  const v3 = [13, 13, 13].map((m, i) => row(57200 + 7 * i, m)), v4 = [14, 14].map((m, i) => row(57300 + i, m));   // v4: 2 only, no scatter
+  const V = neowiseVisits([...v1, ...v2, ...v3, ...v4], 'W1', here);   // v2 and v3 are 100 days apart: two visits, v2 too small
   assert.equal(V.length, 2);
   assert.equal(V[0].m, 12.2); assert.equal(V[0].n, 5);
   assert.ok(Math.abs(V[0].e - 1.253 * Math.sqrt(0.025) / Math.sqrt(5)) < 1e-9);
-  assert.equal(V[1].n, 10); assert.equal(V[1].e, 0.02);
+  assert.equal(V[1].n, 3); assert.equal(V[1].e, 0.02);
 });
-test('NEOWISE quality cuts, per band, and the 2.5 arcsec match', () => {
-  const ok = [0, 1, 2, 3].map(i => row(57000 + i, 12));
-  for (const bad of [{ w1snr: '4.9' }, { w1sigmpro: '' }, { qual_frame: '0' }, { qi_fact: '0' }, { saa_sep: '5' }, { moon_masked: '10' }, { cc_flags: 'd000' }, { w1mpro: '7.9' }, { dec: String(20 + 3 / 3600) }])
-    assert.equal(neowiseVisits([...ok, row(57004, 12, bad)], 'W1', here).length, 0, JSON.stringify(bad));
-  for (const fine of [{ moon_masked: '01' }, { cc_flags: '0h00' }, { dec: String(20 + 2 / 3600) }])
-    assert.equal(neowiseVisits([...ok, row(57004, 12, fine)], 'W1', here).length, 1, JSON.stringify(fine));
+test('NEOWISE: every quality-masked exposure, faint ones too (no SNR cut), and the 2.5 arcsec match', () => {
+  const ok = [0, 1].map(i => row(57000 + i, 12));
+  for (const bad of [{ qual_frame: '0' }, { saa_sep: '5' }, { moon_masked: '10' }, { cc_flags: 'd000' }, { cc_flags: '0h00' }, { w1mpro: '' }, { w1mpro: '7.9' }, { dec: String(20 + 3 / 3600) }])
+    assert.equal(neowiseVisits([...ok, row(57002, 12, bad)], 'W1', here).length, 0, JSON.stringify(bad));
+  for (const fine of [{ w1snr: '2.1' }, { w1sigmpro: '' }, { qi_fact: '0' }, { moon_masked: '01' }, { cc_flags: '0011' }, { dec: String(20 + 2 / 3600) }])
+    assert.equal(neowiseVisits([...ok, row(57002, 12, fine)], 'W1', here).length, 1, JSON.stringify(fine));
+  const faint = [16.9, 17.2, 17.0, 16.8].map((m, i) => row(57400 + i, m, { w1snr: '3', w1sigmpro: '' }));   // a faint flat star still has its visit
+  assert.deepEqual(neowiseVisits(faint, 'W1', here).map(v => v.n), [4]);
+  assert.equal(neowiseVisits(faint, 'W2', here).length, 1);   // both bands
 });
 
 test('calibration stars across RA 0: a variable 1.4" away on the other side of 0 h still excludes its star', () => {

@@ -1620,6 +1620,8 @@ function brStatus(text, p = null) {
   brEl('br-line').hidden = p == null;
   moreBelow();
 }
+// NEOWISE's visit count when it saw the star on under 3 visits (too few to show its range), else null
+const neoFew = r => { const n = r?.neowise?.W1?.length ?? 0; return ['ok', 'few'].includes(r?.neowise?.state) && n < 3 ? n : null; };
 // the table, the notes and the chart, for the result and the visit on screen
 function brightDraw() {
   const r = bright.res, m = state.m, f = m?.frames[state.i];
@@ -1629,7 +1631,8 @@ function brightDraw() {
   brEl('br-warn').textContent = warn; brEl('br-warn').hidden = !warn;
   const tab = brEl('br-tab'), chart = brEl('br-chart');
   if (!r) { tab.hidden = true; chart.toggleAttribute('hidden', true); brEl('br-key').innerHTML = ''; brEl('br-note').hidden = true; return moreBelow(); }
-  const notes = [r.neowise?.state === 'few' ? `NEOWISE saw it on ${r.neowise.W1.length} visit${r.neowise.W1.length === 1 ? '' : 's'} only, too few to show its range.` : '',
+  const nv = neoFew(r);
+  const notes = [nv != null ? `NEOWISE saw it on ${nv} visit${nv === 1 ? '' : 's'} only, too few to show its range.` : '',
     r.neowise?.state === 'unavailable' ? 'NEOWISE (IRSA) did not answer, so its 2014 to 2024 visits are not shown.' : r.neowise?.state === 'busy' ? 'Too many new spots at once: NEOWISE\'s visits are not shown. Try again in a minute.' : '',
     r.screened ? `${r.screened}.` : ''].filter(Boolean);
   if (!bright.busy) brStatus(r.state !== 'ok' ? r.reason : '', null);
@@ -1680,7 +1683,7 @@ function brightChart() {
   const X0 = 30, X1 = W - 8, Y0 = 16, Y1 = H - 22, T0 = 2009.2, T1 = 2027.3;
   const hi = Math.floor(Math.min(...all.map(p => p.m - p.e)) * 2 - 0.4) / 2, lo = Math.ceil(Math.max(...all.map(p => p.m + p.e)) * 2 + 0.4) / 2;
   const tx = t => X0 + (t - T0) / (T1 - T0) * (X1 - X0), ty = m => Y0 + (m - hi) / (lo - hi) * (Y1 - Y0);   // magnitudes run backwards: brighter is up
-  const peak = r.neowise?.state === 'ok' ? Math.min(...neo.map(p => p.m)) : null;
+  const peak = r.neowise?.state === 'ok' && neoFew(r) == null ? Math.min(...neo.map(p => p.m)) : null;
   if (peak != null) add('rect', { class: 'beyond', x: X0, y: Y0, width: X1 - X0, height: Math.max(0, ty(peak) - Y0) });
   for (const t of [2010, 2014, 2018, 2022, 2026]) { add('line', { class: 'grid', x1: tx(t), x2: tx(t), y1: Y0, y2: Y1 }); add('text', { x: tx(t), y: Y1 + 15, 'text-anchor': 'middle' }).textContent = t; }
   const step = lo - hi > 4 ? 1 : 0.5;

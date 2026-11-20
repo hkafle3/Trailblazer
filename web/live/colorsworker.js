@@ -164,7 +164,7 @@ export async function buildBright({ base, ra, dec, at = 61100, signal: outer, pr
     };
     const P = parity;
     // the card's partial view: the star, NEOWISE once it is in ('loading' until then), the passes measured so far
-    const view = { star: star0, neowise: { state: 'loading', W1: [] }, spherex: null };
+    const view = { star: star0, neowise: { state: 'loading', W1: [], W2: [] }, spherex: null };
     const show = () => partial({ v: 1, state: 'partial', ...view, spherex: view.spherex && JSON.parse(JSON.stringify(view.spherex)) });
     let neoP = null;
     if (star0) {
@@ -286,18 +286,17 @@ export async function buildBright({ base, ra, dec, at = 61100, signal: outer, pr
     mark('done');
     return { v: 1, state: allBright ? 'too-bright' : 'ok', reason: allBright ? `SPHEREx saturates on this star in ${sat} of ${total} pictures: it is too bright to measure cleanly. Fainter stars work.` : '',
       star, spherex, calibrators: pool.length, screened: missing.length ? `${missing.join(' and ')} did not answer, so calibration stars were screened for variables by Gaia only` : '',
-      neowise: await Promise.race([neoFinal, new Promise(ok => setTimeout(() => ok({ state: 'unavailable', W1: [] }), 15000))]), download: { exposures: total, listed: list.length, bytes }, timing };
+      neowise: await Promise.race([neoFinal, new Promise(ok => setTimeout(() => ok({ state: 'unavailable', W1: [], W2: [] }), 15000))]), download: { exposures: total, listed: list.length, bytes }, timing };
   } catch (e) {
     if ((e.name === 'AbortError' && outer?.aborted) || !(e instanceof Unavailable)) throw e;
     return { v: 1, state: e.state === 'inconclusive' ? 'unavailable' : e.state, reason: e.message, input_failure: true };
   } finally { over = true; stop.abort(); }
 }
-// NEOWISE's W1 visits, or why there are none to show
+// NEOWISE's visits in both bands, or why there are none to show ('few': under 3 visits in the band charted, judged by the card)
 function neoOut(n, star, pos) {
-  if (star.blend > 1) return { state: 'blend', W1: [] };
-  if (!n?.rows) return { state: n?.status === 429 ? 'busy' : 'unavailable', W1: [] };
-  const W1 = neowiseVisits(n.rows, 'W1', pos);
-  return { state: W1.length >= 3 ? 'ok' : 'few', W1 };
+  if (star.blend > 1) return { state: 'blend', W1: [], W2: [] };
+  if (!n?.rows) return { state: n?.status === 429 ? 'busy' : 'unavailable', W1: [], W2: [] };
+  return { state: 'ok', W1: neowiseVisits(n.rows, 'W1', pos), W2: neowiseVisits(n.rows, 'W2', pos) };
 }
 
 // the whole build, live: -> the result (an inconclusive one when an input is unavailable or damaged)

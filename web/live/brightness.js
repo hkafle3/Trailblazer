@@ -78,24 +78,26 @@ export function nearestPass(passes, mjd) {
   return k;
 }
 
-// NEOWISE-R visits in a band (the frozen truth rule, decade_truth.visits): a good exposure has a detection with SNR >= 5,
-// qual_frame > 0, qi_fact > 0, saa_sep > 5, the band's moon_masked and cc_flags characters 0, is fainter than WISE's
-// saturation (W1 8.0, W2 7.0) and lies within 2.5" of the star where it was then (at(mjd) -> [ra, dec]). Visits split at
-// 30-day gaps; one counts with 5 good exposures or more: the median, error 1.253 std / sqrt(n), at least 0.02 mag.
+// NEOWISE-R visits in a band, for the card (not the research truth rule, decade_truth.visits, which keeps only SNR >= 5
+// detections and so loses a faint star's history): every quality-masked single exposure, qual_frame > 0, cc_flags of
+// both bands '00', moon_masked's first character 0, saa_sep > 5 (as relay/neowise-a2/pull.py's "all" columns), with a
+// magnitude in the band, fainter than WISE's saturation (W1 8.0, W2 7.0) and within 2.5" of the star where it was then
+// (at(mjd) -> [ra, dec]). Visits split at 30-day gaps; one counts with 3 exposures or more (a scatter to give its error):
+// the median, error 1.253 std / sqrt(n), at least 0.02 mag.
 const SATURATES = { W1: 8.0, W2: 7.0 };
 export function neowiseVisits(rows, band, at) {
-  const b = band === 'W1' ? 1 : 2, k = b - 1, num = v => (v === '' || v == null ? NaN : Number(v));
+  const b = band === 'W1' ? 1 : 2, num = v => (v === '' || v == null ? NaN : Number(v));
   const good = rows.filter(r => {
     const m = num(r[`w${b}mpro`]), [ra, dec] = at(num(r.mjd));
     const sep = Math.hypot(((num(r.ra) - ra + 540) % 360 - 180) * Math.cos(dec * D2R), num(r.dec) - dec) * 3600;
-    return Number.isFinite(num(r[`w${b}sigmpro`])) && num(r[`w${b}snr`]) >= 5 && num(r.qual_frame) > 0 && num(r.qi_fact) > 0 && num(r.saa_sep) > 5
-      && (r.moon_masked || '00')[k] === '0' && (r.cc_flags || '0000')[k] === '0' && m > SATURATES[band] && sep <= 2.5;
+    return num(r.qual_frame) > 0 && num(r.saa_sep) > 5 && (r.moon_masked || '0')[0] === '0' && (r.cc_flags || '00').slice(0, 2) === '00'
+      && m > SATURATES[band] && sep <= 2.5;
   }).map(r => [num(r.mjd), num(r[`w${b}mpro`])]).sort((x, y) => x[0] - y[0]);
   const visits = [];
   good.forEach((g, i) => { if (!i || g[0] - good[i - 1][0] > 30) visits.push([]); visits.at(-1).push(g); });
-  return visits.filter(v => v.length >= 5).map(v => {
+  return visits.filter(v => v.length >= 3).map(v => {
     const m = v.map(g => g[1]), mean = m.reduce((s, x) => s + x, 0) / m.length;
-    const sd = Math.sqrt(m.reduce((s, x) => s + (x - mean) ** 2, 0) / (m.length - 1));   // ddof 1, as the rule
+    const sd = Math.sqrt(m.reduce((s, x) => s + (x - mean) ** 2, 0) / (m.length - 1));
     return { mjd: v.reduce((s, g) => s + g[0], 0) / v.length, m: median(m), e: Math.max(0.02, 1.253 * sd / Math.sqrt(m.length)), n: m.length };
   });
 }
