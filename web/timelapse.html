@@ -168,6 +168,8 @@
         <p class="pv-info"><b>Known comets and asteroids</b><span id="vKnown" aria-live="polite"></span></p>
         </div>
       </section>
+      <!-- Brightness change: opens its card (pressed while it is open), as the Spectrum toggle on the photo does -->
+      <div class="adv-grp"><button class="adv-pill" id="bright-btn" type="button" aria-pressed="false" aria-controls="bright"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h8l5.6-7.4"/><circle cx="18.4" cy="6.4" r="2.6"/></svg><span>Brightness change</span></button></div>
       <!-- "View in 3D": the same spot on Explore's 3D sky (explore-3d.js flies to it). Desktop only; needs ra/dec in the address -->
       <a class="adv-link" id="view3d" hidden>View this spot on Explore's 3D sky</a>
     </div>
@@ -213,6 +215,26 @@
     </div>
   </section>
 
+  <!-- the star in the middle: its WISE brightness, SPHEREx's in the same two bands at the visit on screen, and the change;
+       then its 3.4 µm light curve since 2010. The Spectrum card's box, in the right column's place while open; on phones
+       under the timeline. live/colorsworker.js (mode 'bright') measures it, the "Brightness change card" block draws it. -->
+  <section class="pv-card pv-bright" id="bright" aria-labelledby="bright-h">
+    <h2 id="bright-h">Brightness change<button class="close" id="bright-close" type="button" aria-label="Close brightness change"><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button></h2>
+    <div class="pv-scroll" role="region" aria-label="Brightness change">
+      <p class="pv-info br-spot"><b id="br-spot"></b></p>
+      <p class="pv-info warn" id="br-warn" hidden></p>
+      <p class="pv-info" id="br-status" role="status" aria-live="polite"></p>
+      <i class="spec-line" id="br-line" aria-hidden="true" hidden></i>
+      <table class="br-tab" id="br-tab" hidden>
+        <thead><tr><th scope="col"><span class="sr-only">Band</span></th><th scope="col" id="br-ref"></th><th scope="col">now<small>SPHEREx</small></th><th scope="col"><span class="sr-only">Change</span></th></tr></thead>
+        <tbody id="br-rows"></tbody>
+      </table>
+      <svg id="br-chart" role="img" hidden></svg>
+      <div class="spec-key" id="br-key" aria-hidden="true"></div>
+      <p class="pv-info br-note" id="br-note" hidden></p>
+    </div>
+  </section>
+
 </div>
 <div id="skyui">
   <div id="hint" class="glass"><b>Click any spot</b> to see how it changes over time. Drag to look around, scroll to zoom.</div>
@@ -227,6 +249,7 @@ import { createWorld, dirRaDec, D2R, HIPS, radec2tile, radecFromDir, tileUV } fr
 import { recenterable, panToSky, heatCell } from './live/recenter.js';
 import { CHANNELS, SP_BANDS, colourOf, align, mix } from './live/spectral.js';
 import { spectrum as measureSpectrum, csv as spectrumCsv } from './live/spectrum.js';
+import { change as brChange, magText, nearestPass, yearOf as brYear } from './live/brightness.js';   // the Brightness change card's arithmetic
 import { discuss } from './discuss.js';   // "Discuss this": the sheet behind Report a new find, and Discovered for reported dots
 import { depthView } from './live/depth.js';
 import { middle, identify } from './live/identity.js';   // the one rule for what the dot in the middle is   // the Depth tab: the beam and the Distances list, from /api/depth
@@ -252,13 +275,15 @@ let blinkOn = !!blinkId && Number.isFinite(blinkRa) && Number.isFinite(blinkDec)
 const sameSpot = u => { const ra = parseFloat(u.searchParams.get('ra')), dec = parseFloat(u.searchParams.get('dec'));
   return Number.isFinite(ra) && Number.isFinite(dec) && Math.abs(dec - blinkDec) < 5.6e-4 && Math.abs(((ra - blinkRa + 540) % 360 - 180) * Math.cos(dec * Math.PI / 180)) < 5.6e-4; };
 let pvView = P.get('view') === 'depth' ? 'depth' : P.get('view') === 'thenandnow' && blinkOn ? 'thenandnow' : 'photo';
+// the Brightness change card (its block is below the Spectrum card's): on rides in the address as &bright=1
+const bright = { on: false, res: null, key: null, id: 0, cache: new Map(), worker: null, drawnAt: null };
 {
   const replace = history.replaceState.bind(history);
   history.replaceState = (st, title, url) => {
     // by hand, not searchParams: re-serialising would encode the rest of the address (layers=9,77 -> 9%2C77)
-    const u = new URL(url ?? location.href, location.href), q = u.search.replace(/([?&])(view|blink)=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+    const u = new URL(url ?? location.href, location.href), q = u.search.replace(/([?&])(view|blink|bright)=[^&]*&?/g, '$1').replace(/[?&]$/, '');
     if (blinkOn && !sameSpot(u)) { blinkOn = false; if (pvView === 'thenandnow') pvView = 'photo'; queueMicrotask(dropBlink); }
-    const add = [...(blinkOn ? [`blink=${encodeURIComponent(blinkId)}`] : []), ...(pvView !== 'photo' ? [`view=${pvView}`] : [])].join('&');
+    const add = [...(blinkOn ? [`blink=${encodeURIComponent(blinkId)}`] : []), ...(pvView !== 'photo' ? [`view=${pvView}`] : []), ...(bright.on ? ['bright=1'] : [])].join('&');
     u.search = add ? `${q}${q ? '&' : '?'}${add}` : q;
     replace(st, title, u.href);
   };
@@ -693,6 +718,7 @@ function draw() {
   showVisit(m, f);
   moreBelow();
   talk?.frame();
+  if (bright.on && bright.drawnAt !== f.mjd) brightDraw();   // "now" is the visit on screen
   patch.setAttribute('aria-label', `SPHEREx image of ${tg.name ?? 'a sky spot'}, ${monthYear(f.start)}${state.diff && state.i > 0 ? ', difference from the first visit: orange brighter, blue dimmer' : ''}`);
 }
 
@@ -1035,6 +1061,7 @@ function show(m, query, opts = {}) {
   history.replaceState(null, '', query + (found ? `&found=${encodeURIComponent(found)}` : '') + specQ());
   knownFor(m);
   spSync();
+  if (bright.on) openBright();   // a new spot: the card follows it
 }
 
 // Known comets and asteroids that passed through the patch during each visit (GET /api/known, IMCCE SkyBoT; idea and
@@ -1279,7 +1306,7 @@ const rc = recenterable(patch, {
   moved: () => draw(), commit: recenter, zoom: zoomBy, idle: () => { if (owed) { owed = false; back(); } }, tap: to => specTap(to) });
 talk = discuss({ state, api: API, setFound, found: () => found, spot, stop, status: text => setStatus(text), middle: f => targetAt(state.m, f).id?.pass.match ?? null,
   place: f => { const t = targetAt(state.m, f); return { ...t, px: t.pos && canvasOf(state.m, t.pos) }; },
-  opening: () => { if (spec.at || spec.mode) closeSpec(false); } });   // one card in the right column: the sheet closes the Spectrum card
+  opening: () => { if (spec.at || spec.mode) closeSpec(false); if (bright.on) closeBright(false); } });   // one card in the right column: the sheet closes the Spectrum and Brightness cards
 window.__lapse = { state, recenter, verdict, targetAt, view: () => view(state.m), get talk() { return talk; }, get pan() { return rc.pan; }, get cached() { return live.size; } };   // for tests/recenter_ui.py
 
 // ---------- Spectral, wired: the dial picks the channel the time-lapse is built at; active layers make a colour composite ----------
@@ -1387,6 +1414,7 @@ async function openSpec(ra, dec, year = 2026) {
   spec.ctl?.abort();
   const ctl = spec.ctl = new AbortController(), n = ++spec.n, mine = () => n === spec.n;
   if (document.body.classList.contains('talking')) document.querySelector('#talk .close')?.click();   // one card in the right column
+  if (bright.on) closeBright(false);
   spec.at = { ra, dec }; spec.gaia = null; spec.res = null; spec.bright = false; specEl('spec-warn').hidden = true;
   document.body.classList.add('speccing');
   if (matchMedia('(max-width: 900px)').matches) requestAnimationFrame(() => specEl('spec').scrollIntoView({ block: 'nearest', behavior: 'smooth' }));   // phones: the card sits under the timeline
@@ -1533,6 +1561,137 @@ addEventListener('resize', () => { if (spec.at) specChart(); });
 const screenOfPix = (x, y) => { const m = state.m, G = m.grid, v = view(m), r = patch.getBoundingClientRect(); return [r.left + (x - v.ox + 0.5) / v.cw * r.width, r.top + (G - 1 - y - v.oy + 0.5) / v.ch * r.height]; };
 window.__spec = { spec, open: openSpec, csv: () => spectrumCsv(spec.res.points), screenOfPix,
   screenOf: (ra, dec) => { const m = state.m, [e, n] = offset(m, ra, dec); return screenOfPix((m.grid - 1) / 2 - e / m.arcsec_per_pixel, (m.grid - 1) / 2 + n / m.arcsec_per_pixel); } };
+
+// ---------- Brightness change card: the star in the middle, WISE then and SPHEREx now (live/colorsworker.js, mode 'bright') ----------
+// The button at the end of Advanced opens it in the right column's place, as Spectrum and Discuss open theirs: one card at
+// a time. The build (catalogues, NEOWISE, about 150 SPHEREx pictures) runs in a Web Worker; a result that measured
+// something is kept per spot, so closing and opening again does not read it all again. "now" is the visit on screen.
+const brEl = id => document.getElementById(id), brBtn = brEl('bright-btn');
+function openBright() {
+  if (spec.at || spec.mode) closeSpec(false);
+  if (document.body.classList.contains('talking')) document.querySelector('#talk .close')?.click();
+  const was = bright.on;
+  bright.on = true;
+  document.body.classList.add('brighting'); brBtn.setAttribute('aria-pressed', 'true');
+  if (!was) { history.replaceState(history.state, '', location.href); if (matchMedia('(max-width: 900px)').matches) requestAnimationFrame(() => brEl('bright').scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }
+  const m = state.m;
+  if (!m) { bright.res = null; brStatus('Waiting for the photo', null); return brightDraw(); }
+  const key = `${m.ra.toFixed(4)},${m.dec.toFixed(4)}`;
+  if (key === bright.key && (bright.res || bright.busy)) return brightDraw();
+  bright.key = key; bright.res = bright.cache.get(key) ?? null; bright.busy = !bright.res;
+  if (bright.busy) {
+    bright.worker ??= brightWorker();
+    bright.id++;
+    bright.worker.postMessage({ id: bright.id, mode: 'bright', ra: m.ra, dec: m.dec, at: m.frames[state.i].mjd, api: API });
+    brStatus('Fetching the star catalogues', 0);
+  }
+  brightDraw();
+}
+function brightWorker() {
+  const w = new Worker(new URL('./live/colorsworker.js', import.meta.url), { type: 'module' });
+  const done = res => { bright.busy = false; bright.res = res; if (res.state === 'ok' || res.state === 'too-bright' || res.state === 'no-star' || res.state === 'no-coverage') bright.cache.set(bright.key, res); brightDraw(); };
+  w.onmessage = ({ data: d }) => {
+    if (d.id !== bright.id || !bright.on) return;   // a closed card or another spot: an old answer
+    if (d.type === 'progress') brStatus(d.total ? `${d.text}` : d.text, d.total ? 0.1 + 0.85 * d.done / d.total : 0.05);
+    else if (d.type === 'result') done(d.result);
+  };
+  w.onerror = e => { e.preventDefault(); if (bright.on && bright.busy) done({ state: 'unavailable', reason: 'The measurement could not run in this browser' }); };
+  return w;
+}
+function closeBright(focus = true) {
+  bright.on = false; bright.id++;
+  if (bright.busy) { bright.worker?.postMessage({ mode: 'stop-bright' }); bright.busy = false; bright.key = null; }
+  document.body.classList.remove('brighting'); brBtn.setAttribute('aria-pressed', 'false');
+  history.replaceState(history.state, '', location.href);
+  if (focus) brBtn.focus();
+}
+brBtn.onclick = () => (bright.on ? closeBright() : openBright());
+brEl('bright-close').onclick = () => closeBright();
+brEl('bright').addEventListener('keydown', e => { if (e.key === 'Escape') closeBright(); });
+function brStatus(text, p = null) {
+  brEl('br-status').textContent = text; brEl('br-status').hidden = !text;
+  brEl('br-line').style.setProperty('--p', p == null ? '' : `${Math.round(100 * p)}%`);
+  brEl('br-line').hidden = p == null;
+  moreBelow();
+}
+// the table, the notes and the chart, for the result and the visit on screen
+function brightDraw() {
+  const r = bright.res, m = state.m, f = m?.frames[state.i];
+  bright.drawnAt = f?.mjd ?? null;
+  brEl('br-spot').textContent = brEl('pv-name').textContent || 'Sky spot';
+  const warn = r?.star?.blend > 1 ? `${r.star.blend} WISE sources within 6″ are measured together here: the change can belong to any of them.` : '';
+  brEl('br-warn').textContent = warn; brEl('br-warn').hidden = !warn;
+  const tab = brEl('br-tab'), chart = brEl('br-chart');
+  if (!r) { tab.hidden = true; chart.toggleAttribute('hidden', true); brEl('br-key').innerHTML = ''; brEl('br-note').hidden = true; return moreBelow(); }
+  const notes = [r.neowise?.state === 'few' ? `NEOWISE saw it on ${r.neowise.W1.length} visit${r.neowise.W1.length === 1 ? '' : 's'} only, too few to show its range.` : '',
+    r.neowise?.state === 'unavailable' ? 'NEOWISE (IRSA) did not answer, so its 2014 to 2024 visits are not shown.' : r.neowise?.state === 'busy' ? 'Too many new spots at once: NEOWISE\'s visits are not shown. Try again in a minute.' : '',
+    r.screened ? `${r.screened}.` : ''].filter(Boolean);
+  if (!bright.busy) brStatus(r.state !== 'ok' ? r.reason : '', null);
+  brEl('br-note').textContent = notes.join(' '); brEl('br-note').hidden = !notes.length;
+  tab.hidden = r.state !== 'ok';
+  if (r.state !== 'ok') brEl('br-rows').innerHTML = '';
+  if (r.state === 'ok') {
+    const ref = r.star.ref === 'AllWISE' ? '2010<small>AllWISE</small>' : '2010–18<small>WISE</small>';
+    brEl('br-ref').innerHTML = ref;
+    brEl('br-ref').title = r.star.ref === 'AllWISE' ? 'AllWISE: WISE images of 2010 and 2011' : 'CatWISE2020: WISE and NEOWISE images from 2010 to 2018, combined';
+    const k = f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
+    brEl('br-rows').innerHTML = '';
+    for (const [b, um] of [['W1', '3.4 µm'], ['W2', '4.6 µm']]) {
+      const [mw, ew] = r.star.ref_mag[b], p = r.spherex[b][k], tr = document.createElement('tr');
+      const cells = [`<th scope="row">${um}</th>`, `<td>${Number.isFinite(mw) ? mw.toFixed(2) : '–'}</td>`];
+      if (k < 0) cells.push('<td class="none" colspan="2">no SPHEREx pass near this visit</td>');
+      else if (p.m == null) cells.push(`<td class="none" colspan="2">${p.why}</td>`);
+      else if (!Number.isFinite(mw)) cells.push(`<td class="now">${p.m.toFixed(2)}</td><td class="none">no WISE value</td>`);
+      else { const c = brChange(p.m, p.e, mw, ew); cells.push(`<td class="now">${p.m.toFixed(2)}</td><td>${c.words}<small>${magText(c.d, c.e)}</small></td>`); }
+      tr.innerHTML = cells.join(''); brEl('br-rows').append(tr);
+    }
+  }
+  brightChart();
+  moreBelow();
+}
+// the 3.4 µm light curve, brighter up: WISE 2010-11 (a ring), NEOWISE's visits (grey), SPHEREx's passes (orange, the
+// visit on screen ringed), and a dashed line at NEOWISE's brightest visit with a faint orange tint above it.
+// Drawn as specChart draws the spectrum (the approved mockup's brightChart).
+function brightChart() {
+  const svg = brEl('br-chart'), NS = 'http://www.w3.org/2000/svg', r = bright.res, f = state.m?.frames[state.i];
+  svg.replaceChildren();
+  const wise = r?.star?.aw ? [{ t: brYear(r.star.aw.mjd), m: r.star.aw.W1[0], e: r.star.aw.W1[1] || 0 }] : [];
+  const neo = (r?.neowise?.W1 ?? []).map(v => ({ t: brYear(v.mjd), m: v.m, e: v.e, n: v.n }));
+  const k = r?.spherex && f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
+  const sx = (r?.spherex?.W1 ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === k })).filter(p => p.m != null);
+  const all = [...wise, ...neo, ...sx];
+  svg.toggleAttribute('hidden', !all.length); brEl('br-key').innerHTML = '';
+  if (!all.length) return;
+  const add = (tag, attrs, title) => { const e = document.createElementNS(NS, tag); for (const a in attrs) e.setAttribute(a, attrs[a]); if (title) e.append(Object.assign(document.createElementNS(NS, 'title'), { textContent: title })); svg.append(e); return e; };
+  const W = Math.max(240, Math.round(svg.clientWidth || 300)), H = Math.round(Math.min(260, Math.max(150, W * (innerWidth <= 640 ? 0.52 : 0.8))));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.style.aspectRatio = `${W} / ${H}`;
+  const X0 = 30, X1 = W - 8, Y0 = 16, Y1 = H - 22, T0 = 2009.2, T1 = 2027.3;
+  const hi = Math.floor(Math.min(...all.map(p => p.m - p.e)) * 2 - 0.4) / 2, lo = Math.ceil(Math.max(...all.map(p => p.m + p.e)) * 2 + 0.4) / 2;
+  const tx = t => X0 + (t - T0) / (T1 - T0) * (X1 - X0), ty = m => Y0 + (m - hi) / (lo - hi) * (Y1 - Y0);   // magnitudes run backwards: brighter is up
+  const peak = r.neowise?.state === 'ok' ? Math.min(...neo.map(p => p.m)) : null;
+  if (peak != null) add('rect', { class: 'beyond', x: X0, y: Y0, width: X1 - X0, height: Math.max(0, ty(peak) - Y0) });
+  for (const t of [2010, 2014, 2018, 2022, 2026]) { add('line', { class: 'grid', x1: tx(t), x2: tx(t), y1: Y0, y2: Y1 }); add('text', { x: tx(t), y: Y1 + 15, 'text-anchor': 'middle' }).textContent = t; }
+  const step = lo - hi > 4 ? 1 : 0.5;
+  for (let mg = Math.ceil(hi / step) * step; mg <= lo + 1e-9; mg += step) { add('line', { class: 'grid', x1: X0, x2: X1, y1: ty(mg), y2: ty(mg) }); if (Number.isInteger(mg) && ty(mg) > Y0 + 8) add('text', { x: X0 - 5, y: ty(mg) + 3.5, 'text-anchor': 'end' }).textContent = mg; }   // not under 'mag'
+  add('text', { x: 2, y: Y0 - 5 }).textContent = 'mag';
+  add('text', { class: 'lab', x: X1, y: Y0 - 5, 'text-anchor': 'end' }).textContent = '3.4 µm';
+  add('text', { x: X0 + 6, y: Y0 + 13 }).textContent = '↑ brighter';
+  if (peak != null) {
+    add('line', { class: 'peak', x1: X0, x2: X1, y1: ty(peak), y2: ty(peak) }, `NEOWISE's brightest visit: ${peak.toFixed(2)} mag`);
+    add('text', { class: 'lab', x: X0 + 6, y: ty(peak) - 6 }).textContent = 'NEOWISE brightest';
+  }
+  add('line', { class: 'axis', x1: X0, x2: X1, y1: Y1, y2: Y1 });
+  const dots = (pts, cls, rad, by, stroke) => { for (const p of pts) {
+    add('line', { class: 'err', x1: tx(p.t), x2: tx(p.t), y1: ty(p.m - p.e), y2: ty(p.m + p.e), stroke });
+    add('circle', { class: cls, cx: tx(p.t), cy: ty(p.m), r: rad }, `${p.t.toFixed(1)} ${by}: ${p.m.toFixed(2)} ± ${p.e.toFixed(2)} mag${p.n ? `, median of ${p.n} exposures` : ''}`);
+    if (p.now) add('circle', { class: 'ring', cx: tx(p.t), cy: ty(p.m), r: rad + 3.5 });   // the visit on screen
+  } };
+  dots(neo, 'neo', 2.4, 'NEOWISE', '#aeb6c6'); dots(wise, 'wise', 3, 'WISE (2010-11 images)', '#fff'); dots(sx, 'sx', 3, 'SPHEREx', '#ff9a4d');
+  svg.setAttribute('aria-label', `Brightness at 3.4 micrometres, 2010 to now: ${[wise.length ? `WISE ${wise[0].m.toFixed(2)}` : '', neo.length ? `NEOWISE ${Math.min(...neo.map(p => p.m)).toFixed(2)} to ${Math.max(...neo.map(p => p.m)).toFixed(2)}` : '', sx.length ? `SPHEREx ${sx.map(p => p.m.toFixed(2)).join(', ')}` : ''].filter(Boolean).join('; ')} magnitudes`);
+  brEl('br-key').innerHTML = [wise.length ? '<span><i class="hollow"></i>WISE</span>' : '', neo.length ? '<span><i style="background:#aeb6c6"></i>NEOWISE</span>' : '', sx.length ? '<span><i style="background:var(--comet)"></i>SPHEREx</span>' : ''].join('');
+}
+addEventListener('resize', () => { if (bright.on && bright.res) brightChart(); });
+window.__bright = { bright, open: openBright, close: closeBright };   // for tests/brightness_ui.py
 
 document.getElementById('search').onsubmit = e => {
   e.preventDefault();
@@ -1711,6 +1870,7 @@ function setView(v, user = false) {
   if (v === 'depth') {   // the Discuss sheet and picking a star and its card are Photo things: in Depth the right column is Distances (playing carries on)
     talk?.close();
     if (spec.mode || spec.at) closeSpec(false);
+    if (bright.on) closeBright(false);
   }
   depth.show(v === 'depth');
   thenNow(v === 'thenandnow');
@@ -1976,6 +2136,8 @@ else if (EMBED) {   // loaded ahead of a dive, with no spot yet: Explore sends i
 } else setMode('sky');   // the whiteboard flow starts at the whole sky
 // &spec=ra,dec: the Spectrum card opens on that spot (its 2026.0 place) as soon as the page shows a patch
 { const sp = (P.get('spec') || '').split(',').map(Number); if (sp.length === 2 && sp[0] >= 0 && sp[0] < 360 && Math.abs(sp[1]) <= 90) { specMode(true); openSpec(sp[0], sp[1], 2026); } }
+// &bright=1: the Brightness change card opens on the spot as soon as the page shows a patch (Spectrum wins when both are there)
+if (P.get('bright') === '1' && !spec.at) openBright();
 if (pvView !== 'photo') setView(pvView);
 tellMap({ type: 'dive-ready' });
 </script>

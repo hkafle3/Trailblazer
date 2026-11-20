@@ -7,7 +7,8 @@
 //      | { id, type: 'progress', text, done, total, bytes } | { id, type: 'result', result, source: 'live' }
 import { imagesOf } from './images.js';
 import { imageHeader, imageRows, flagsHeader, flagRows } from './fits.js';
-import { parseCsv, parseVsx, checkColumns, catalogueStep, footprint, starOn, prepExposure, finish, Refused } from './colors.js';
+import { parseCsv, parseVsx, checkColumns, catalogueStep, footprint, starOn, prepExposure, finish, Refused, parity } from './colors.js';
+import { calibrate, calibrators, neowiseVisits } from './brightness.js';
 
 export class Unavailable extends Error { constructor(state, reason, detail = null) { super(reason); this.state = state; this.detail = detail; } }
 const CATS = ['twomass', 'catwise', 'allwise', 'gaia', 'simbad', 'vsx'], API_CAT = { twomass: '2mass' };
@@ -28,15 +29,17 @@ const deg = v => v.toFixed(5);
 const DEADLINE = 90000, within = signal => (signal ? AbortSignal.any([signal, AbortSignal.timeout(DEADLINE)]) : AbortSignal.timeout(DEADLINE));
 
 // the six catalogues: parsed and checked here (the Worker stores them unread); a damaged one makes the result inconclusive
-export async function catalogues(base, ra, dec, signal) {
-  const out = {};
-  await Promise.all(CATS.map(c => api(async () => {
+// optional: catalogues that may be missing (an empty list then, and their names in out.missing)
+export async function catalogues(base, ra, dec, signal, optional = [], cats = CATS) {
+  const out = { missing: [] };
+  await Promise.all(cats.map(c => api(async () => {
     let r;
     let text;
     try { r = await retry(async () => { const x = await fetch(`${base}/api/cat?cat=${API_CAT[c] ?? c}&ra=${deg(ra)}&dec=${deg(dec)}`, { signal: within(signal) }); if (x.ok) text = await x.text(); return x; }, 2, signal); }
     catch (e) { if (e.name === 'AbortError' && signal?.aborted) throw e; r = null; }
     const who = c === 'simbad' ? 'SIMBAD' : c === 'vsx' ? 'VSX (AAVSO, through VizieR)' : 'NASA\'s catalogue service (IRSA)';
     if (r?.status === 429) throw new Unavailable('unavailable', 'Too many new spots at once. Try again in a minute');
+    if (!r?.ok && optional.includes(c)) { out[c] = []; out.missing.push(c); return; }
     if (!r?.ok) throw new Unavailable('unavailable', `${who} is not answering`);
     try { out[c] = c === 'vsx' ? parseVsx(text) : parseCsv(text); if (c !== 'vsx') checkColumns(c, out[c], text.split(/\r?\n/)[0]); }
     catch (e) { if (e instanceof Refused) throw new Unavailable('inconclusive', `the stored catalogue of this spot is damaged (${e.message})`); throw new Unavailable('inconclusive', `the stored ${c} catalogue of this spot is damaged`); }
@@ -44,8 +47,8 @@ export async function catalogues(base, ra, dec, signal) {
   return out;
 }
 // every exposure the reference's search would list, per detector, oldest first
-export async function exposureList(base, ra, dec, signal) {
-  const all = await Promise.all(DETS.map(det => api(() => retry(async () => {
+export async function exposureList(base, ra, dec, signal, dets = DETS) {
+  const all = await Promise.all(dets.map(det => api(() => retry(async () => {
     const sig = within(signal), r = await fetch(`${base}/api/images?ra=${deg(ra)}&dec=${deg(dec)}&det=${det}&r=${R_LIST}&fmt=2&v=2`, { signal: sig });
     if (!r.ok) throw new Error(`images HTTP ${r.status}`);
     const seen = new Map();
@@ -55,14 +58,15 @@ export async function exposureList(base, ra, dec, signal) {
   return all.flat().sort((a, b) => a.t - b.t);
 }
 // one exposure: its header, the reference footprint, and its rows when the star is on it -> prepared, or null
-async function readExposure(ctx, x, ra, dec, signal, count) {   // ra, dec: the footprint's centre
+// want(e, on): whether to read its rows, once the header says where the star is (the Brightness card's band filter)
+async function readExposure(ctx, x, ra, dec, signal, count, want = () => true) {   // ra, dec: the footprint's centre
   const h = await s3(() => retry(() => imageHeader(x.key, within(signal)), 5, signal));
   count(32768);
   const fp = footprint(h, ra, dec);
   if (!fp) return null;
   const w = fp.x1 - fp.x0, ht = fp.y1 - fp.y0, e = { obs: x.obs, det: x.det, key: x.key, t: h['MJD-AVG'], x0: fp.x0, y0: fp.y0, w, h: ht, hdr: h };
   const on = starOn(ctx, e);
-  if (!on) return null;
+  if (!on || !want(e, on)) return null;
   const [px, fl] = await s3(() => retry(() => { const sig = within(signal); return Promise.all([imageRows(x.key, h, fp.y0, fp.y1 - 1, sig), flagsHeader(x.key, h, sig).then(f => flagRows(x.key, f, fp.y0, fp.y1 - 1, sig))]); }, 5, signal));   // S3 drops a socket now and then under 12 reads at once
   count(px.length * 4 + fl.length / 8);
   const W = h.NAXIS1, img = new Float32Array(w * ht), flg = new Int32Array(w * ht);
@@ -70,6 +74,89 @@ async function readExposure(ctx, x, ra, dec, signal, count) {   // ra, dec: the 
   let sat = false;
   for (let y = on.yi - 1; y <= on.yi + 1; y++) for (let k = on.xi - 1; k <= on.xi + 1; k++) sat ||= (flg[y * w + k] & SAT) !== 0;
   return { prepared: prepExposure(ctx, { ...e, img, flg }), sat };
+}
+
+// ---------- Brightness change (timelapse.html): the star's W1 and W2 now, against WISE and NEOWISE ----------
+// Colors' measurement on D4 to D6 only, and only exposures that see the star inside (or within 0.15 um of) W1 or W2;
+// then per SPHEREx pass the WISE-band synthesis of the star and of its calibration stars, calibrated offset-only on them
+// (live/brightness.js). NEOWISE single exposures come from GET /api/cat?cat=neowise. SIMBAD and VSX only screen the
+// calibration stars for variables: when they do not answer, the build goes on without them and says so.
+const BRIGHT_DETS = ['D4', 'D5', 'D6'], MJD_CW = 57170, MJD_AW = 55400;
+const inBand = (lam, b) => { const [lo, hi] = parity.bandLimits(b); return lam >= lo - 0.15 && lam <= hi + 0.15; };
+export async function buildBright({ base, ra, dec, at = null, signal, progress = () => {} }) {
+  try {
+    progress({ text: 'Fetching the star catalogues' });
+    const [cats, list] = await Promise.all([catalogues(base, ra, dec, signal, ['simbad', 'vsx']), exposureList(base, ra, dec, signal, BRIGHT_DETS)]);
+    if (!cats.catwise.length && !cats.allwise.length) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
+    const ctx = catalogueStep(cats, ra, dec, at, 3);
+    if (ctx.result) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
+    const { K, T } = ctx, P = parity, blend = K.nmem[T], src = K.src[T];
+    const star = { name: K.name[T], ra: K.ra[T], dec: K.dec[T], blend, ref: src === 'cw' ? 'CatWISE2020' : 'AllWISE', ref_mag: { W1: [K.w1[T], K.e1[T]], W2: [K.w2[T], K.e2[T]] }, aw: null };
+    const pos = mjd => P.skyPos(K, mjd, T), pm = Math.hypot(K.pme[T], K.pmn[T]);
+    // NEOWISE: a cone about the star's CatWISE-epoch place wide enough for its motion over 2014 to 2024
+    const neo = blend > 1 ? Promise.resolve(null) : api(() => retry(async () => {
+      const [r0, d0] = pos(MJD_CW), r = Math.min(30, Math.ceil(3 + pm * 6.5));
+      const x = await fetch(`${base}/api/cat?cat=neowise&ra=${r0.toFixed(5)}&dec=${d0.toFixed(5)}&r=${r}`, { signal: within(signal) });
+      if (x.status === 429 || x.status >= 500) return { status: x.status };
+      if (!x.ok) throw new Error(`neowise HTTP ${x.status}`);
+      return { rows: parseCsv(await x.text()) };
+    }, 2, signal)).catch(e => { if (e.name === 'AbortError' && signal?.aborted) throw e; return { status: 0 }; });
+    if (blend === 1) {   // the WISE ring: AllWISE (2010-11), the row within 3" of the star's place then
+      const near = cats.allwise.map(r => [r, P.sep(Number(r.ra), Number(r.dec), ...pos(MJD_AW))]).filter(([, d]) => d <= 3).sort((a, b) => a[1] - b[1])[0]?.[0];
+      const num = v => (v === '' || v == null ? NaN : Number(v));
+      if (near && Number.isFinite(num(near.w1mpro))) star.aw = { mjd: num(near.w1mjdmean), W1: [num(near.w1mpro), num(near.w1sigmpro)] };
+    }
+    if (!list.length) return { v: 1, state: 'no-coverage', reason: 'SPHEREx has no pictures of this spot at 2.4 to 5 µm', star, neowise: neoOut(await neo, star, pos) };
+    let bytes = 0, done = 0;
+    const total = list.length, count = n => { bytes += n; };
+    const want = (e, on) => { const l = P.wave(e.det, on.yi + e.y0, on.xi + e.x0); e.lam = l; return inBand(l, 'W1') || inBand(l, 'W2'); };
+    const out = await Promise.all(list.map(async x => {
+      let r;
+      try { r = await readExposure(ctx, x, ra, dec, signal, count, want); }
+      catch (e) { if (e.name === 'AbortError' && signal?.aborted) throw e; throw new Unavailable('unavailable', 'NASA\'s SPHEREx archive (S3) is not answering', `${x.obs}: ${e.message}`); }
+      done++;
+      progress({ text: `Reading SPHEREx pictures: ${done} of ${total}, ${Math.round(bytes / 1e6)} MB`, done, total, bytes });
+      return r;
+    }));
+    const kept = out.filter(Boolean);
+    if (!kept.length) return { v: 1, state: 'no-coverage', reason: 'SPHEREx has no pictures of this star at 3 to 5 µm', star, neowise: neoOut(await neo, star, pos) };
+    progress({ text: 'Measuring the star and its calibration stars', done: total, total, bytes });
+    const num = v => (v === '' || v == null ? NaN : Number(v));
+    const vars = [...cats.gaia.filter(r => r.phot_variable_flag === 'VARIABLE'), ...cats.simbad.filter(r => P.VAR_OTYPE.test(r.otype || '')), ...cats.vsx.map(r => ({ ra: r.RAJ2000, dec: r.DEJ2000 }))]
+      .map(r => [num(r.ra), num(r.dec)]).filter(([a, d]) => Number.isFinite(a) && Number.isFinite(d));
+    const cal = calibrators(K, T, vars), X = kept.map(k => k.prepared), psf = P.psfs(X, K), rows = [];
+    for (const a of X) if (psf[a.det]) rows.push(...P.stampFit(a, K, psf[a.det], [T, ...cal]));
+    // passes: the star's exposure times split at 60 days, shared by every star (as colors.js perSource does)
+    const times = [...new Set(X.map(a => a.t))].sort((a, b) => a - b), g = P.passGroups(times), passes = [...new Set(g)].map(k => times.filter((_, i) => g[i] === k)).map(v => v.reduce((s, t) => s + t, 0) / v.length);
+    const passOf = t => passes.reduce((b, p, k) => (Math.abs(t - p) < Math.abs(t - passes[b]) ? k : b), 0);
+    const raw = i => rows.filter(r => r[0] === i).map(r => r.slice(1));
+    const spherex = {};
+    for (const b of ['W1', 'W2']) {
+      const mine = raw(T), cm = cal.map(i => ({ i, rows: raw(i), m: b === 'W1' ? K.w1[i] : K.w2[i] })), dets = b === 'W1' ? ['D4'] : ['D5', 'D6'];
+      spherex[b] = passes.map((mjd, k) => {
+        const inPass = rs => rs.filter(r => passOf(r[3]) === k), here = kept.filter(x => passOf(x.prepared.t) === k && inBand(x.prepared.lam, b));
+        const sat = here.filter(x => x.sat).length;
+        if (here.length && 2 * sat >= here.length) return { mjd, why: `too bright: SPHEREx saturates on it in ${sat} of ${here.length} pictures` };
+        if (dets.some(d => !psf[d] && X.some(a => a.det === d))) return { mjd, why: 'too few stars here to model SPHEREx\'s image' };
+        const c = calibrate(P.wisePass(inPass(mine), b, true), cm.map(x => ({ p: P.wisePass(inPass(x.rows), b), m: x.m })), b);
+        return { mjd, ...c };
+      });
+    }
+    const sat = kept.filter(x => x.sat).length, allBright = ['W1', 'W2'].every(b => spherex[b].every(p => /^too bright/.test(p.why ?? '')));
+    return { v: 1, state: allBright ? 'too-bright' : 'ok', reason: allBright ? `SPHEREx saturates on this star in ${sat} of ${kept.length} pictures: it is too bright to measure cleanly. Fainter stars work.` : '',
+      star, spherex, calibrators: cal.length, screened: cats.missing.length ? `${cats.missing.map(c => c === 'vsx' ? 'VSX' : 'SIMBAD').join(' and ')} did not answer, so calibration stars were screened for variables by Gaia only` : '',
+      neowise: neoOut(await neo, star, pos), download: { exposures: kept.length, listed: total, bytes } };
+  } catch (e) {
+    if ((e.name === 'AbortError' && signal?.aborted) || !(e instanceof Unavailable)) throw e;
+    return { v: 1, state: e.state === 'inconclusive' ? 'unavailable' : e.state, reason: e.message, input_failure: true };
+  }
+}
+// NEOWISE's W1 visits, or why there are none to show
+function neoOut(n, star, pos) {
+  if (star.blend > 1) return { state: 'blend', W1: [] };
+  if (!n?.rows) return { state: n?.status === 429 ? 'busy' : 'unavailable', W1: [] };
+  const W1 = neowiseVisits(n.rows, 'W1', pos);
+  return { state: W1.length >= 3 ? 'ok' : 'few', W1 };
 }
 
 // the whole build, live: -> the result (an inconclusive one when an input is unavailable or damaged)
@@ -114,11 +201,13 @@ export async function estimate(base, ra, dec, signal) {
   return { exposures: list.length, bytes: list.length * PER_EXPOSURE };
 }
 
-let stop = null;
-async function run({ id, ra, dec, api: base = '', mode }, post) {
+let stop = null, stopBright = null;
+async function run({ id, ra, dec, at, api: base = '', mode }, post) {
   const ac = new AbortController(), signal = ac.signal;
   if (mode === 'live') stop = ac;
+  if (mode === 'bright') stopBright = ac;
   try {
+    if (mode === 'bright') { post({ type: 'result', result: await buildBright({ base, ra, dec, at, signal, progress: p => post({ type: 'progress', ...p }) }) }); return; }
     if (mode === 'baked') { const b = await baked(base, ra, dec, signal).catch(e => { if (e.name === 'AbortError' && signal.aborted) throw e; return null; }); post(b ? { type: 'baked', result: b } : { type: 'none' }); return; }
     if (mode === 'estimate') { try { post({ type: 'estimate', ...(await estimate(base, ra, dec, signal)) }); } catch (e) { if (e.name === 'AbortError') return; post({ type: 'result', source: 'live', result: { v: 1, state: e.state ?? 'unavailable', reason: e.message } }); } return; }
     const result = await buildLive({ base, ra, dec, signal, progress: p => post({ type: 'progress', ...p }) });
@@ -132,6 +221,7 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
   // a new live build stops the one before; the page drops answers for any id but its current one
   self.onmessage = ({ data }) => {
     if (data.mode === 'live') stop?.abort();
+    if (data.mode === 'bright' || data.mode === 'stop-bright') { stopBright?.abort(); if (data.mode === 'stop-bright') return; }
     run(data, m => self.postMessage({ ...m, id: data.id }));
   };
 }

@@ -2,6 +2,9 @@
 //   GET /api/cat?cat=2mass|catwise|allwise|gaia|simbad|vsx&ra=&dec=   the catalogue's rows in a 0.275 degree cone, as the
 //     archive sent them (CSV; VSX as VizieR's tab-separated text), from R2 (OLDSKY) or, on a rate-limited miss, from the
 //     archive: IRSA's TAP for the first four, SIMBAD's TAP at CDS (else its CfA mirror), VSX from VizieR at CDS (else CfA)
+//   GET /api/cat?cat=neowise&ra=&dec=&r=   NEOWISE-R single exposures (neowiser_p1bs_psd) within r arcsec (3 to 30,
+//     default 5) of a spot rounded to 0.0001 degree, for the Brightness change card: IRSA's TAP, else IRSA's Gator, whose
+//     IPAC table is rewritten here to TAP's CSV columns so the store holds one format
 //   GET /api/colors?ra=&dec=   the baked Colors result at this spot (bake/colors_bake.mjs), or 404
 // Only fetching here (the plan's 10 ms CPU): the browser parses and checks every row. What is stored must look like the
 // table asked for (its header first, a complete last line) and come from a listed host, with no redirect; an error, an
@@ -14,6 +17,9 @@ const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(bod
 const cone = (ra, dec) => `CONTAINS(POINT('ICRS',ra,dec),CIRCLE('ICRS',${ra},${dec},${R}))=1`;
 const irsa = q => [`https://irsa.ipac.caltech.edu/TAP/sync?FORMAT=csv&QUERY=${encodeURIComponent(q)}`];
 const simbad = q => ['simbad.cds.unistra.fr', 'simbad.harvard.edu'].map(h => `https://${h}/simbad/sim-tap/sync?REQUEST=doQuery&LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(q)}`);
+const NEO_COLS = 'ra,dec,mjd,w1mpro,w1sigmpro,w1snr,w2mpro,w2sigmpro,w2snr,qual_frame,qi_fact,saa_sep,moon_masked,cc_flags';
+const neowise = (ra, dec, r) => [`https://irsa.ipac.caltech.edu/TAP/sync?FORMAT=csv&QUERY=${encodeURIComponent(`SELECT ${NEO_COLS} FROM neowiser_p1bs_psd WHERE CONTAINS(POINT('ICRS',ra,dec),CIRCLE('ICRS',${ra},${dec},${+(r / 3600).toFixed(6)}))=1`)}`,
+  `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?${new URLSearchParams({ catalog: 'neowiser_p1bs_psd', spatial: 'cone', objstr: `${ra} ${dec}`, radius: r, radunits: 'arcsec', outfmt: 1, selcols: NEO_COLS })}`];
 const vizier = (ra, dec) => ['vizier.cds.unistra.fr', 'vizier.cfa.harvard.edu'].map(h => `https://${h}/viz-bin/asu-tsv?-source=B/vsx/vsx&-c=${ra}%20${dec}&-c.rd=${R}&-out=OID,Name,Type,RAJ2000,DEJ2000&-out.max=unlimited&-oc.form=dec`);
 // each catalogue: where it comes from (tried in order), its first column (the answer must start with it), its file type
 export const CATS = {
@@ -23,6 +29,7 @@ export const CATS = {
   gaia: { need: ['source_id', 'ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag', 'phot_variable_flag'], first: 'source_id', type: 'text/csv', urls: (ra, dec) => irsa(`SELECT source_id,ra,dec,pmra,pmdec,pmra_error,pmdec_error,parallax,phot_g_mean_mag,bp_rp,ruwe,phot_variable_flag FROM gaia_dr3_source WHERE phot_g_mean_mag < 20 AND pmra IS NOT NULL AND ${cone(ra, dec)}`) },
   simbad: { need: ['main_id', 'otype', 'ra', 'dec'], first: 'main_id', type: 'text/csv', urls: (ra, dec) => simbad(`SELECT main_id,otype,ra,dec FROM basic WHERE ${cone(ra, dec)}`) },
   vsx: { need: ['OID', 'Name', 'Type', 'RAJ2000', 'DEJ2000'], first: 'OID', type: 'text/tab-separated-values', urls: vizier },
+  neowise: { need: NEO_COLS.split(','), first: 'ra', type: 'text/csv', urls: neowise },
 };
 const HOSTS = new Set(['irsa.ipac.caltech.edu', 'simbad.cds.unistra.fr', 'simbad.harvard.edu', 'vizier.cds.unistra.fr', 'vizier.cfa.harvard.edu']);
 
@@ -33,8 +40,26 @@ export function readCat(url) {
   const ra = Number(q.get('ra')), dec = Number(q.get('dec'));
   if (!q.get('ra')?.trim() || !Number.isFinite(ra) || ra < 0 || ra >= 360) return { error: 'ra must be 0 to 360' };
   if (!q.get('dec')?.trim() || !Number.isFinite(dec) || dec < -90 || dec > 90) return { error: 'dec must be -90 to 90' };
+  if (cat === 'neowise') {   // a cone of a few arcsec: 0.001 degree (3.6") would be too coarse a key
+    const rad = q.has('r') ? Number(q.get('r')) : 5;
+    if (!Number.isInteger(rad) || rad < 3 || rad > 30) return { error: 'r must be a whole number of arcsec, 3 to 30' };
+    const r4 = v => Math.sign(v) * Math.round(Math.abs(v) * 1e4) / 1e4, r = r4(ra) % 360, d = r4(dec);
+    return { cat, ra: r, dec: d, r: rad, key: `cat/v1/neowise/${r.toFixed(4)}${d < 0 ? '-' : '+'}${Math.abs(d).toFixed(4)}_${rad}.csv` };
+  }
   const r = round3(ra) % 360, d = round3(dec);
   return { cat, ra: r, dec: d, key: `cat/v1/${cat}/${posKey(r, d)}.${cat === 'vsx' ? 'tsv' : 'csv'}` };
+}
+
+// Gator's IPAC table (|name|name| header, then whitespace-separated rows, "null" when empty) -> CSV of the columns asked
+// for, in their order. Any other answer (an error page, a message) is returned as it is and fails the header check.
+export function ipacToCsv(bytes, cols) {
+  const text = new TextDecoder().decode(bytes), lines = text.split('\n'), h = lines.findIndex(l => l.startsWith('|'));
+  if (!text.startsWith('\\') || h < 0) return bytes;
+  const names = lines[h].split('|').map(c => c.trim()).filter(Boolean), at = cols.map(c => names.indexOf(c));
+  if (at.some(i => i < 0)) return bytes;
+  const rows = lines.slice(h + 1).filter(l => l.trim() && !l.startsWith('|') && !l.startsWith('\\')).map(l => l.trim().split(/\s+/));
+  if (rows.some(v => v.length !== names.length)) return bytes;
+  return new TextEncoder().encode([cols.join(','), ...rows.map(v => at.map(i => (v[i] === 'null' ? '' : v[i])).join(','))].join('\n') + '\n');
 }
 
 // one archive answer: listed host, no redirect, 200, not HTML, at most MAX bytes, the table's header first, complete
@@ -57,6 +82,10 @@ export async function fetchTable(u, first, need, fetchFn = fetch) {
   const out = new Uint8Array(n); let at = 0;
   for (const p of parts) { out.set(p, at); at += p.byteLength; }
   if (r.headers.get('Content-Length') && Number(r.headers.get('Content-Length')) !== n) throw new Error(`${url.host} sent a short table`);
+  return checkHead(url.pathname.includes('/Gator/') ? ipacToCsv(out, need) : out, url, first, need);
+}
+function checkHead(out, url, first, need) {
+  const n = out.length;
   // the header: CSV's first line, or for VizieR the first line that is not a comment; and a complete last line
   const head = new TextDecoder().decode(out.subarray(0, Math.min(n, 8192)));
   const line = first === 'OID' ? head.split('\n').find(l => l && !l.startsWith('#')) ?? '' : head.split('\n')[0];
@@ -77,7 +106,7 @@ export async function cat(request, url, env, deps = {}) {
   if (env.CAT_LIMIT && !(await env.CAT_LIMIT.limit({ key: `cat:${ip}` })).success)
     return json({ error: 'too many new spots, wait a minute', retry_after: 60 }, 429, { 'Retry-After': '60' });
   const errors = [];
-  for (const u of C.urls(req.ra, req.dec)) {
+  for (const u of C.urls(req.ra, req.dec, req.r)) {
     let bytes;
     try { bytes = await fetchTable(u, C.first, C.need, fetchFn); } catch (e) { errors.push(e.message); continue; }
     await env.OLDSKY.put(req.key, bytes, { httpMetadata: { contentType: C.type }, customMetadata: { source: new URL(u).host, fetched: new Date().toISOString() } });

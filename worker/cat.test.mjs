@@ -102,3 +102,38 @@ test('a partial (206) answer with a whole header and whole rows is never stored'
   const r = await cat(...req('cat=2mass&ra=84&dec=-6'), env, { fetch: f });
   assert.equal(r.status, 503); assert.equal(env.store.size, 0);
 });
+// The Brightness change card's NEOWISE single exposures: a cone of r arcsec about a spot rounded to 0.0001 degree, TAP
+// first, Gator when TAP fails (its IPAC table stored as TAP's CSV), refusals before any archive call.
+const NEO = CATS.neowise.need.join(',');
+const GATOR = `\\fixlen = T\n\\RowsRetrieved = 2\n|          ra|         dec|          clon|            mjd|  w1mpro| w1sigmpro|   w1snr|  w2mpro| w2sigmpro|   w2snr| qual_frame| qi_fact| saa_sep| moon_masked| cc_flags|  dist|\n|      double|      double|          char|         double|  double|    double|  double|  double|    double|  double|        int|  double|  double|        char|     char|double|\n`
+  + '   85.6275860   -8.5486080   05h42m30.62s  57089.39936119   10.150      0.021     52.1    9.968      0.021     51.7          10      1.0   99.878           00      0000   0.4\n'
+  + '   85.6275650   -8.5486637   05h42m30.62s  57089.20236935   10.124       null     67.3   10.082      0.017     64.1          10      1.0   73.957           01      0000   0.5\n';
+test('neowise: a 0.0001 degree key with the radius; refusals before any archive call', async () => {
+  assert.deepEqual(readCat(new URL('https://x/api/cat?cat=neowise&ra=85.627573&dec=-8.548694')), { cat: 'neowise', ra: 85.6276, dec: -8.5487, r: 5, key: 'cat/v1/neowise/85.6276-8.5487_5.csv' });
+  assert.equal(readCat(new URL('https://x/api/cat?cat=neowise&ra=10&dec=4&r=12')).key, 'cat/v1/neowise/10.0000+4.0000_12.csv');
+  assert.notEqual(readCat(new URL('https://x/api/cat?cat=neowise&ra=10.0001&dec=4')).key, readCat(new URL('https://x/api/cat?cat=neowise&ra=10.0004&dec=4')).key);
+  assert.equal(readCat(new URL('https://x/api/cat?cat=catwise&ra=10.0001&dec=4')).key, readCat(new URL('https://x/api/cat?cat=catwise&ra=10.0004&dec=4')).key);   // the others keep 0.001
+  const { f, calls } = archive(), env = fakeEnv();
+  for (const q of ['cat=neowise&ra=10&dec=4&r=2', 'cat=neowise&ra=10&dec=4&r=31', 'cat=neowise&ra=10&dec=4&r=4.5', 'cat=neowise&ra=361&dec=4'])
+    assert.equal((await cat(...req(q), env, { fetch: f })).status, 400, q);
+  assert.equal(calls.length, 0);
+});
+test('neowise: TAP answers; when it fails, Gator\'s table is stored as the same CSV (null as empty)', async () => {
+  const { f, calls } = archive(), env = fakeEnv();
+  let r = await cat(...req('cat=neowise&ra=85.62757&dec=-8.54869&r=6'), env, { fetch: f });
+  assert.equal(r.status, 200); assert.match(new URL(calls[0].url).searchParams.get('QUERY'), /FROM neowiser_p1bs_psd WHERE CONTAINS\(POINT\('ICRS',ra,dec\),CIRCLE\('ICRS',85.6276,-8.5487,0.001667\)\)=1/);
+  const g = archive(u => (u.includes('/TAP/') ? new Response('err', { status: 502 }) : new Response(GATOR, { headers: { 'Content-Type': 'text/plain' } }))), env2 = fakeEnv();
+  r = await cat(...req('cat=neowise&ra=85.62757&dec=-8.54869'), env2, { fetch: g.f });
+  assert.equal(r.status, 200); assert.equal(g.calls.length, 2); assert.match(g.calls[1].url, /Gator\/nph-query\?catalog=neowiser_p1bs_psd&spatial=cone&objstr=85.6276\+-8.5487&radius=5/);
+  const body = await text(r);
+  assert.equal(body, `${NEO}\n85.6275860,-8.5486080,57089.39936119,10.150,0.021,52.1,9.968,0.021,51.7,10,1.0,99.878,00,0000\n85.6275650,-8.5486637,57089.20236935,10.124,,67.3,10.082,0.017,64.1,10,1.0,73.957,01,0000\n`);
+  assert.equal(new TextDecoder().decode(env2.store.get('cat/v1/neowise/85.6276-8.5487_5.csv')), body);
+  const none = archive(u => (u.includes('/TAP/') ? new Response('err', { status: 502 }) : new Response('[struct stat="ERROR", msg="busy"]\n', { headers: { 'Content-Type': 'text/plain' } }))), env3 = fakeEnv();
+  assert.equal((await cat(...req('cat=neowise&ra=85.62757&dec=-8.54869'), env3, { fetch: none.f })).status, 503); assert.equal(env3.store.size, 0);
+});
+test('neowise: a spot NEOWISE never detected is a header-only table, stored', async () => {
+  const empty = `\\fixlen = T\n\\RowsRetrieved = 0\n|          ra|         dec|          clon|            mjd|  w1mpro| w1sigmpro|   w1snr|  w2mpro| w2sigmpro|   w2snr| qual_frame| qi_fact| saa_sep| moon_masked| cc_flags|\n`;
+  const g = archive(u => (u.includes('/TAP/') ? new Response('err', { status: 503 }) : new Response(empty, { headers: { 'Content-Type': 'text/plain' } }))), env = fakeEnv();
+  const r = await cat(...req('cat=neowise&ra=10&dec=-89'), env, { fetch: g.f });
+  assert.equal(r.status, 200); assert.equal(await text(r), `${NEO}\n`);
+});
