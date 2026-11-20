@@ -21,7 +21,7 @@ function limiter(n) {
   const next = () => { if (busy >= n || !wait.length) return; busy++; const [fn, ok, no] = wait.shift(); Promise.resolve().then(fn).then(ok, no).finally(() => { busy--; next(); }); };
   return fn => new Promise((ok, no) => { wait.push([fn, ok, no]); next(); });
 }
-const s3 = limiter(12), api = limiter(6);
+const s3 = limiter(24), api = limiter(6);   // s3: four host names of six connections each (fits.js hostOf)
 async function retry(fn, n = 3, signal) { let last; for (let i = 0; i < n; i++) { try { return await fn(); } catch (e) { last = e; if (e instanceof Unavailable || (e.name === 'AbortError' && signal?.aborted)) throw e; await new Promise(r => setTimeout(r, 500 * 2 ** i)); } } throw last; }
 const deg = v => v.toFixed(5);
 // every request has a deadline, so a stalled archive ends as "not answering" rather than a page that waits for ever;
@@ -204,7 +204,8 @@ export async function buildBright({ base, ra, dec, at = 61100, signal, progress 
     let done = 0;
     const one = async e => {   // one exposure: its strip, FLAGS and ePSF -> the star's and its calibration stars' fluxes
       const h = e.h, W = h.NAXIS1, x0 = Math.max(0, Math.round(e.q[0]) - STRIP_X), x1 = Math.min(W, Math.round(e.q[0]) + STRIP_X + 1), y0 = Math.max(0, Math.round(e.q[1]) - stripH), y1 = Math.min(h.NAXIS2, Math.round(e.q[1]) + stripH + 1);
-      const [px, fl, ep] = await s3(() => retry(async () => { const sig = within(signal), f = await flagsHeader(e.x.key, h, sig); return Promise.all([imageRows(e.x.key, h, y0, y1 - 1, sig), flagRows(e.x.key, f, y0, y1 - 1, sig), epsfRow(e.x.key, h, f, e.q[0], e.q[1], sig)]); }, 5, signal));
+      const [px, [fl, ep]] = await s3(() => retry(() => { const sig = within(signal);   // the rows need only the header: asked with FLAGS's header
+        return Promise.all([imageRows(e.x.key, h, y0, y1 - 1, sig), flagsHeader(e.x.key, h, sig).then(f => Promise.all([flagRows(e.x.key, f, y0, y1 - 1, sig), epsfRow(e.x.key, h, f, e.q[0], e.q[1], sig)]))]); }, 5, signal));
       bytes += px.length * 4 + 40000 + 8752;
       const w = x1 - x0, ht = y1 - y0, img = new Float32Array(w * ht), flg = new Int32Array(w * ht);
       for (let y = 0; y < ht; y++) { img.set(px.subarray(y * W + x0, y * W + x1), y * w); flg.set(fl.subarray(y * W + x0, y * W + x1), y * w); }
@@ -212,7 +213,18 @@ export async function buildBright({ base, ra, dec, at = 61100, signal, progress 
       let sat = false;
       for (let y = yi - 1; y <= yi + 1; y++) for (let k = xi - 1; k <= xi + 1; k++) sat ||= (flg[y * w + k] & SAT) !== 0;
       const a = prepExposure(ctx, { obs: e.x.obs, det: e.x.det, key: e.x.key, t: e.t, x0, y0, w, h: ht, hdr: h, img, flg });
-      rows.push(...P.stampFit(a, K, nativePsf(ep), [T, ...pool]));
+      // only the components near the strip go to stampFit (it places every component it is given in every picture):
+      // their pixels from the picture's local linear map about the star, a box 20 pixels wider than the strip
+      const c0 = worldToPix(h, K.ra[T], K.dec[T]), cE = worldToPix(h, K.ra[T] + 0.01 / Math.cos(K.dec[T] * Math.PI / 180), K.dec[T]), cN = worldToPix(h, K.ra[T], K.dec[T] + 0.01);
+      const near = [];
+      for (let i = 0; i < K.ra.length; i++) {
+        const dE = ((K.ra[i] - K.ra[T] + 540) % 360 - 180) * Math.cos(K.dec[T] * Math.PI / 180) / 0.01, dN = (K.dec[i] - K.dec[T]) / 0.01;
+        const px = c0[0] + dE * (cE[0] - c0[0]) + dN * (cN[0] - c0[0]), py = c0[1] + dE * (cE[1] - c0[1]) + dN * (cN[1] - c0[1]);
+        if (px > x0 - 20 && px < x1 + 20 && py > y0 - 20 && py < y1 + 20) near.push(i);
+      }
+      const sub = Object.fromEntries(Object.entries(K).map(([k, v]) => [k, near.map(i => v[i])])), at = new Map(near.map((i, j) => [i, j]));
+      const meas = [T, ...pool].filter(i => at.has(i)).map(i => at.get(i));
+      for (const r of P.stampFit(a, sub, nativePsf(ep), meas)) rows.push([near[r[0]], ...r.slice(1)]);
       return { sat, lam: e.lam };
     };
     const raw = (i, k) => rows.filter(r => r[0] === i && Math.abs(r[4] - mids[k]) < 60).map(r => r.slice(1));
@@ -225,17 +237,19 @@ export async function buildBright({ base, ra, dec, at = 61100, signal, progress 
       }
     };
     const total = passes.reduce((a, v) => a + v.length, 0);
-    for (const k of order) {
-      await Promise.all(passes[k].map(async e => {
+    // every picture is queued now, the visit on screen's pass first (the S3 limiter is first come, first served), so the
+    // next pass is read while one finishes; each pass is computed and posted as soon as its own pictures are in
+    let posted = 0;
+    await Promise.all(order.map(k => Promise.all(passes[k].map(async e => {
         let r;
         try { r = await one(e); } catch (err) { if (err.name === 'AbortError' && signal?.aborted) throw err; throw new Unavailable('unavailable', 'NASA\'s SPHEREx archive (S3) is not answering', `${e.x.obs}: ${err.message}`); }
         sats[k].push(r);
         progress({ text: `Measuring SPHEREx pictures: ${++done} of ${total}, ${Math.round(bytes / 1e6)} MB`, done, total, bytes });
-      }));
-      finishPass(k, gaiaVars);
-      mark(`pass ${order.indexOf(k) + 1}`);
-      partial({ v: 1, state: 'partial', star, neowise: neo, spherex: JSON.parse(JSON.stringify(spherex)) });
-    }
+      })).then(() => {
+        finishPass(k, gaiaVars);
+        mark(`pass ${++posted}`);
+        partial({ v: 1, state: 'partial', star, neowise: neo, spherex: JSON.parse(JSON.stringify(spherex)) });
+      })));
     mark('photometry');
     // SIMBAD and VSX, if they have answered by now: their variables leave the calibration stars, and every pass is redone
     const sim = screened.simbad, vsx = screened.vsx, missing = [sim ? '' : 'SIMBAD', vsx ? '' : 'VSX'].filter(Boolean);

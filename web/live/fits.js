@@ -5,8 +5,13 @@
 export const S3 = 'https://nasa-irsa-spherex.s3.amazonaws.com/';
 const D2R = Math.PI / 180;
 
+// The same public bucket answers at several host names (CORS open on each). A browser keeps at most 6 connections to one
+// host over HTTP/1.1, and a page that reads a few hundred small ranges waits on that limit, not on bandwidth: each file is
+// read from one of four names (always the same one for the same file), so up to 24 reads run at once.
+const HOSTS = [S3, 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/', 'https://nasa-irsa-spherex.s3.dualstack.us-east-1.amazonaws.com/', 'https://s3.us-east-1.amazonaws.com/nasa-irsa-spherex/'];
+export const hostOf = key => { let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0; return HOSTS[h % HOSTS.length]; };
 async function range(key, start, end, signal) {
-  const r = await fetch(S3 + key, { headers: { Range: `bytes=${start}-${end}` }, signal });
+  const r = await fetch(hostOf(key) + key, { headers: { Range: `bytes=${start}-${end}` }, signal });
   if (r.status !== 206) throw new Error(`S3 range ${start}-${end} of ${key}: HTTP ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
 }
@@ -176,15 +181,20 @@ export async function epsfRow(key, h, f, x, y, signal) {
     if (dv.getInt32(0, false) !== bx || dv.getInt32(4, false) !== by) return null;
     return Float64Array.from({ length: 1089 }, (_, i) => dv.getFloat64(40 + 8 * i, false));
   };
-  if (epsfGap[det] != null) { const p = await at(flagsEnd + epsfGap[det]); if (p) return p; }
   const hdr = async off => { const q = parseCards(await range(key, off, off + 14399, signal)); if (q.end < 0) throw new Error(`no header at ${off} of ${key}`); return { h: q.h, data: off + PLANE(q.end) }; };
-  const v = await varianceHeader(key, f, signal), z = await hdr(v._dataOffset + PLANE(4 * v.NAXIS1 * v.NAXIS2));
-  const e = await hdr(z.data + PLANE(Math.abs(z.h.BITPIX) / 8 * z.h.NAXIS1 * z.h.NAXIS2));
-  if (z.h.EXTNAME !== 'ZODI' || e.h.EXTNAME !== 'EPSF' || e.h.NAXIS1 !== EPSF_ROW || e.h.NAXIS2 !== 441) throw new Error(`no EPSF table where expected in ${key}`);
-  epsfGap[det] = e.data - flagsEnd;
-  const p = await at(e.data);
-  if (!p) throw new Error(`EPSF row ${j} of ${key} is not cell ${bx}, ${by}`);
-  return p;
+  const learn = async () => {   // this file's EPSF data offset, from its VARIANCE, ZODI and EPSF headers
+    const v = await varianceHeader(key, f, signal), z = await hdr(v._dataOffset + PLANE(4 * v.NAXIS1 * v.NAXIS2));
+    const e = await hdr(z.data + PLANE(Math.abs(z.h.BITPIX) / 8 * z.h.NAXIS1 * z.h.NAXIS2));
+    if (z.h.EXTNAME !== 'ZODI' || e.h.EXTNAME !== 'EPSF' || e.h.NAXIS1 !== EPSF_ROW || e.h.NAXIS2 !== 441) throw new Error(`no EPSF table where expected in ${key}`);
+    return e.data - flagsEnd;
+  };
+  // the first file of a detector learns its offset; the files read meanwhile wait for it rather than each learning it
+  epsfGap[det] ??= learn().catch(err => { delete epsfGap[det]; throw err; });
+  const p = await at(flagsEnd + await epsfGap[det]);
+  if (p) return p;
+  const q = await at(flagsEnd + await learn());   // a file laid out otherwise: its own offset
+  if (!q) throw new Error(`EPSF row ${j} of ${key} is not cell ${bx}, ${by}`);
+  return q;
 }
 
 // cfitsio's fits_rdecomp for 4-byte pixels: per block of `nblock` pixels a 5-bit code (fs + 1), then the pixel
