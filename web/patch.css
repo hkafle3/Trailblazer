@@ -572,7 +572,8 @@ body.depth .p3-inset:not(.off) { display: block; }
 #br-chart .peak { stroke: #fff; stroke-dasharray: 3 3; opacity: .6; }   /* NEOWISE's brightest visit */
 #br-chart .err { stroke-width: 1; opacity: .5; }
 #br-chart .neo { fill: #aeb6c6; }
-#br-chart .wise { fill: #000; stroke: #fff; stroke-width: 1.5; }
+#br-chart .wise { stroke: #fff; stroke-width: 2; }   /* the table's WISE value over the years its images span */
+.pv-bright .spec-key i.seg { width: 12px; height: 2px; border-radius: 0; background: #fff; vertical-align: 3px; }
 #br-chart .sx { fill: var(--comet); }
 #br-chart .ring { fill: none; stroke: #fff; stroke-width: 1.5; }
 #br-chart[hidden] { display: none; }

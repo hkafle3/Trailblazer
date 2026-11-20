@@ -29,7 +29,7 @@ def canned(frames, **over):
     """A made-up result with one SPHEREx pass per visit of the patch (the numbers are not any real star's)."""
     sx = lambda m0: [{"mjd": f, "m": m0 - 0.1 * i, "e": 0.03, "n": 20} for i, f in enumerate(frames)]
     r = {"v": 1, "state": "ok", "reason": "", "star": {"name": "J000000.00+000000.0", "blend": 1, "ref": "CatWISE2020",
-         "ref_mag": {"W1": [12.0, 0.02], "W2": [11.8, 0.02]}, "aw": {"mjd": 55400, "W1": [12.02, 0.03]}},
+         "ref_mag": {"W1": [12.0, 0.02], "W2": [11.8, 0.02]}},
          "spherex": {"W1": sx(11.0), "W2": sx(11.5)},
          "neowise": {"state": "ok", "W1": [{"mjd": 56700 + 180 * k, "m": 12.0 + 0.02 * (k % 3), "e": 0.02, "n": 12} for k in range(20)]},
          "calibrators": 30, "screened": ""}
@@ -51,7 +51,7 @@ async def read(pg):
       status: document.getElementById('br-status').textContent, warn: document.getElementById('br-warn').hidden ? '' : document.getElementById('br-warn').textContent,
       note: document.getElementById('br-note').hidden ? '' : document.getElementById('br-note').textContent,
       chart: !document.getElementById('br-chart').hasAttribute('hidden'), sx: document.querySelectorAll('#br-chart circle.sx').length,
-      neo: document.querySelectorAll('#br-chart circle.neo').length, wise: document.querySelectorAll('#br-chart circle.wise').length,
+      neo: document.querySelectorAll('#br-chart circle.neo').length, wise: document.querySelectorAll('#br-chart line.wise').length, wiseM: document.querySelector('#br-chart line.wise')?.dataset.m ?? null,
       ring: document.querySelectorAll('#br-chart circle.ring').length, peak: document.querySelectorAll('#br-chart line.peak').length,
       key: document.getElementById('br-key').innerText.replace(/\\s+/g, ' ').trim(),
       who: getComputedStyle(document.querySelector('.pv-who')).display, spec: document.body.classList.contains('speccing'), talk: document.body.classList.contains('talking') })""")
@@ -78,8 +78,9 @@ async def run(p, w, h, phone):
     check(s["on"] and s["shown"] and s["pressed"] == "true" and "bright=1" in s["url"], f"{tag}: the button opens the card, pressed, &bright=1 in the address")
     check(s["rows"][0].startswith("3.4 µm 12.00 11.00") and "2.5× brighter" in s["rows"][0] and "−1.00 ± 0.04 mag" in s["rows"][0], f"{tag}: W1 row: WISE, now, the change in words and magnitudes ({s['rows'][0]})")
     check(s["rows"][1].startswith("4.6 µm 11.80 11.50") and "1.32× brighter" in s["rows"][1], f"{tag}: W2 row ({s['rows'][1]})")
-    check(s["chart"] and s["sx"] == len(frames) and s["neo"] == 20 and s["wise"] == 1 and s["ring"] == 1 and s["peak"] == 1, f"{tag}: chart: WISE ring, 20 NEOWISE visits, {len(frames)} SPHEREx passes, the visit ringed, NEOWISE's brightest line")
-    check(s["key"] == "WISE NEOWISE SPHEREx" and not s["status"] and not s["note"], f"{tag}: three-item key, no sentence under it")
+    check(s["chart"] and s["sx"] == len(frames) and s["neo"] == 20 and s["wise"] == 1 and s["ring"] == 1 and s["peak"] == 1, f"{tag}: chart: the WISE segment, 20 NEOWISE visits, {len(frames)} SPHEREx passes, the visit ringed, NEOWISE's brightest line")
+    check(s["wiseM"] == s["rows"][0].split()[2], f"{tag}: the chart's WISE segment is the table's 3.4 µm reference ({s['wiseM']})")
+    check(s["key"] == "WISE 2010–18 NEOWISE SPHEREx" and not s["status"] and not s["note"], f"{tag}: three-item key, no sentence under it ({s['key']})")
     if phone:
         box = await pg.evaluate("() => ['tl', 'bright', 'adv-btn'].map(id => document.getElementById(id).getBoundingClientRect().top + scrollY)")
         check(box[0] < box[1] < box[2], f"phone: the card sits under the timeline, above Advanced ({box})")
@@ -157,7 +158,7 @@ async def run(p, w, h, phone):
     await state("a pass without enough wavelengths", part, lambda s: "not enough of the band measured" in s["rows"][1] and "brighter" in s["rows"][0])
     faint = canned(frames); faint["spherex"]["W1"][0] = {"mjd": frames[0], "why": "not detected", "limit": 17.9}
     await state("not detected: a 3-sigma limit", faint, lambda s: s["rows"][0].startswith("3.4 µm 12.00 >17.90 not detected"))
-    await state("blend", canned(frames, star={**res["star"], "blend": 2, "aw": None}, neowise={"state": "blend", "W1": []}), lambda s: s["warn"].startswith("2 WISE sources within 6″") and s["tab"] and s["wise"] == 0 and s["neo"] == 0)
+    await state("blend", canned(frames, star={**res["star"], "blend": 2}, neowise={"state": "blend", "W1": []}), lambda s: s["warn"].startswith("2 WISE sources within 6″") and s["tab"] and s["wise"] == 1 and s["neo"] == 0)
     few = canned(frames, neowise={"state": "few", "W1": res["neowise"]["W1"][:2]})
     await state("too few NEOWISE visits", few, lambda s: "NEOWISE saw it on 2 visits only" in s["note"] and s["neo"] == 2 and s["peak"] == 0)
     await state("NEOWISE not answering", canned(frames, neowise={"state": "unavailable", "W1": []}), lambda s: "NEOWISE (IRSA) did not answer" in s["note"] and s["neo"] == 0 and s["tab"])

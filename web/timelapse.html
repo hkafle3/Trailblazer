@@ -1654,13 +1654,16 @@ function brightDraw() {
   brightChart();
   moreBelow();
 }
-// the 3.4 µm light curve, brighter up: WISE 2010-11 (a ring), NEOWISE's visits (grey), SPHEREx's passes (orange, the
+// the 3.4 µm light curve, brighter up: WISE 2010-18 (a segment at the table's reference), NEOWISE's visits (grey), SPHEREx's passes (orange, the
 // visit on screen ringed), and a dashed line at NEOWISE's brightest visit with a faint orange tint above it.
 // Drawn as specChart draws the spectrum (the approved mockup's brightChart).
 function brightChart() {
   const svg = brEl('br-chart'), NS = 'http://www.w3.org/2000/svg', r = bright.res, f = state.m?.frames[state.i];
   svg.replaceChildren();
-  const wise = r?.star?.aw ? [{ t: brYear(r.star.aw.mjd), m: r.star.aw.W1[0], e: r.star.aw.W1[1] }] : [];
+  // the table's own reference, drawn over the years its images span: CatWISE2020 2010 to 2018, AllWISE 2010 to 2011
+  const [rm, re] = r?.star?.ref_mag?.W1 ?? [], span = r?.star?.ref === 'AllWISE' ? [2010.0, 2011.1] : [2010.0, 2018.95];
+  const wise = Number.isFinite(rm) ? [{ t: span[0], t1: span[1], m: rm, e: Number.isFinite(re) ? re : 0 }] : [];
+  const years = r?.star?.ref === 'AllWISE' ? '2010–11' : '2010–18';
   const neo = (r?.neowise?.W1 ?? []).map(v => ({ t: brYear(v.mjd), m: v.m, e: v.e, n: v.n }));
   const k = r?.spherex && f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
   const sx = (r?.spherex?.W1 ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === k })).filter(p => p.m != null);
@@ -1684,7 +1687,7 @@ function brightChart() {
   if (peak != null) {
     add('line', { class: 'peak', x1: X0, x2: X1, y1: ty(peak), y2: ty(peak) }, `NEOWISE's brightest visit: ${peak.toFixed(2)} mag`);
     // the label sits over the line, or under it when the WISE ring is there (a star brighter in 2010 than since)
-    const under = wise.some(p => tx(p.t) < X0 + 130 && Math.abs(ty(p.m) - (ty(peak) - 9)) < 12);
+    const under = wise.some(p => tx(p.t) < X0 + 130 && Math.abs(ty(p.m) - (ty(peak) - 9)) < 12);   // (the WISE segment)
     add('text', { class: 'lab', x: X0 + 6, y: ty(peak) + (under ? 13 : -6) }).textContent = 'NEOWISE brightest';
   }
   add('line', { class: 'axis', x1: X0, x2: X1, y1: Y1, y2: Y1 });
@@ -1693,9 +1696,10 @@ function brightChart() {
     add('circle', { class: cls, cx: tx(p.t), cy: ty(p.m), r: rad }, `${p.t.toFixed(1)} ${by}: ${p.m.toFixed(2)} ± ${p.e.toFixed(2)} mag${p.n ? `, median of ${p.n} exposures` : ''}`);
     if (p.now) add('circle', { class: 'ring', cx: tx(p.t), cy: ty(p.m), r: rad + 3.5 });   // the visit on screen
   } };
-  dots(neo, 'neo', 2.4, 'NEOWISE', '#aeb6c6'); dots(wise, 'wise', 3, 'WISE (2010-11 images)', '#fff'); dots(sx, 'sx', 3, 'SPHEREx', '#ff9a4d');
+  for (const p of wise) add('line', { class: 'wise', x1: tx(p.t), x2: tx(p.t1), y1: ty(p.m), y2: ty(p.m), 'data-m': p.m.toFixed(2) }, `WISE ${years} (${r.star.ref}): ${p.m.toFixed(2)}${Number.isFinite(re) ? ` ± ${re.toFixed(2)}` : ''} mag, the table's reference`);
+  dots(neo, 'neo', 2.4, 'NEOWISE', '#aeb6c6'); dots(sx, 'sx', 3, 'SPHEREx', '#ff9a4d');
   svg.setAttribute('aria-label', `Brightness at 3.4 micrometres, 2010 to now: ${[wise.length ? `WISE ${wise[0].m.toFixed(2)}` : '', neo.length ? `NEOWISE ${Math.min(...neo.map(p => p.m)).toFixed(2)} to ${Math.max(...neo.map(p => p.m)).toFixed(2)}` : '', sx.length ? `SPHEREx ${sx.map(p => p.m.toFixed(2)).join(', ')}` : ''].filter(Boolean).join('; ')} magnitudes`);
-  brEl('br-key').innerHTML = [wise.length ? '<span><i class="hollow"></i>WISE</span>' : '', neo.length ? '<span><i style="background:#aeb6c6"></i>NEOWISE</span>' : '', sx.length ? '<span><i style="background:var(--comet)"></i>SPHEREx</span>' : ''].join('');
+  brEl('br-key').innerHTML = [wise.length ? `<span><i class="seg"></i>WISE ${years}</span>` : '', neo.length ? '<span><i style="background:#aeb6c6"></i>NEOWISE</span>' : '', sx.length ? '<span><i style="background:var(--comet)"></i>SPHEREx</span>' : ''].join('');
 }
 addEventListener('resize', () => { if (bright.on && bright.res) brightChart(); });
 window.__bright = { bright, open: openBright, close: closeBright };   // for tests/brightness_ui.py
