@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parity, mulberry32 } from '../live/colors.js';
-import { calibrate, calibrators, change, magText, nearestPass, neowiseVisits, ZP } from '../live/brightness.js';
+import { calibrate, calibrators, change, magText, nearestPass, neowiseVisits, ZP, PRIOR } from '../live/brightness.js';
 
 const { wisePass } = parity;
 // one measurement per lambda/45 bin from 2.62 um to 5 um, flux f(lam), error e
@@ -36,24 +36,30 @@ test('a gap in the band is refused', () => {
 });
 
 const cal = (m, f, ok = true) => ({ m, p: { f, ok } });
-test('calibration: the median ratio of the calibration stars puts the star on their scale', () => {
+test('calibration: many calibration stars set the scale; a prior from elsewhere barely moves it', () => {
   const k = 1.1, comps = [10, 11, 12, 12.5, 13, 9.5].map(m => cal(m, k * ZP.W1 * 10 ** (-0.4 * m)));
   const t = { f: k * ZP.W1 * 10 ** (-0.4 * 14.2), err: 0, sys: 0, ok: true }, r = calibrate(t, comps, 'W1');
-  assert.ok(Math.abs(r.m - 14.2) < 1e-9); assert.equal(r.n, 6); assert.ok(r.e < 1e-9);
-  // a scatter of 5% among them becomes the floor, plus the median's own error
+  assert.ok(Math.abs(r.m - 14.2) < 1e-3, String(r.m)); assert.equal(r.n, 6); assert.ok(r.e < 0.002);
+  // a scatter of 5% among them becomes the floor; the median's error and the prior's combine
   const noisy = comps.map((c, i) => cal(c.m, c.p.f * (1 + 0.05 * [1, -1, 1, -1, 0.5, -0.5][i])));
   const r2 = calibrate({ ...t, err: 0.01 * t.f }, noisy, 'W1');
   assert.ok(r2.e > 0.05 && r2.e < 0.1, String(r2.e));
+  assert.ok(r2.k < 1.1 && r2.k > PRIOR.W1, 'between the prior and the field, nearer the field');
 });
-test('calibration refusals: too few stars, a pass not covered, not detected (under 3 sigma: a limit)', () => {
-  const comps = [10, 11, 12, 13].map(m => cal(m, ZP.W1 * 10 ** (-0.4 * m)));
-  assert.match(calibrate({ f: 1, ok: true }, comps, 'W1').why, /4 calibration stars measured, 5 needed/);
+test('calibration with too few stars: the prior scale, its error and the floor', () => {
+  const comps = [10, 11, 12, 13].map(m => cal(m, 1.3 * ZP.W1 * 10 ** (-0.4 * m)));   // 4: not used
+  const t = { f: PRIOR.W1 * ZP.W1 * 10 ** (-0.4 * 12), err: 0, sys: 0, ok: true }, r = calibrate(t, comps, 'W1');
+  assert.ok(Math.abs(r.m - 12) < 1e-9); assert.equal(r.n, 4); assert.equal(r.k, PRIOR.W1);
+  assert.ok(Math.abs(r.e - 2.5 / Math.LN10 * Math.hypot(PRIOR.floor, PRIOR.rel)) < 1e-9);
+});
+test('calibration refusals: a pass not covered, not detected (under 3 sigma: a limit)', () => {
+  const unit = { W1: 1, W2: 1, rel: 0.016, floor: 0.04 }, comps = [];
   assert.match(calibrate({ f: 1, ok: false }, comps, 'W1').why, /not enough of the band/);
   assert.match(calibrate(null, comps, 'W1').why, /too few wavelengths/);
-  const five = [...comps, cal(12, ZP.W1 * 10 ** (-4.8))], nd = calibrate({ f: -0.1, err: 0.2, ok: true }, five, 'W1');
+  const nd = calibrate({ f: -0.1, err: 0.2, ok: true }, comps, 'W1', unit);
   assert.match(nd.why, /not detected/); assert.ok(Math.abs(nd.limit - -2.5 * Math.log10(0.6 / ZP.W1)) < 1e-9);   // 3 sigma
-  assert.match(calibrate({ f: 0.5, err: 0.2, ok: true }, five, 'W1').why, /not detected/);   // 2.5 sigma
-  assert.ok(calibrate({ f: 0.7, err: 0.2, ok: true }, five, 'W1').m > 0);
+  assert.match(calibrate({ f: 0.5, err: 0.2, ok: true }, comps, 'W1', unit).why, /not detected/);   // 2.5 sigma
+  assert.ok(calibrate({ f: 0.7, err: 0.2, ok: true }, comps, 'W1', unit).m > 0);
 });
 test('the change in words and in magnitudes', () => {
   assert.equal(change(12.30, 0.05, 13.65, 0.03).words, '3.5× brighter');

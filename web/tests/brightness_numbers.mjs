@@ -16,6 +16,8 @@ import { change, yearOf } from '../live/brightness.js';
 const [setFile, BASE = 'http://127.0.0.1:8787', OUT = null] = process.argv.slice(2);
 if (!setFile) { console.error('usage: node web/tests/brightness_numbers.mjs <testset.json> [base url] [results dir]'); process.exit(2); }
 const stars = JSON.parse(fs.readFileSync(setFile, 'utf8')).stars;
+// BRIGHT_STRIP_H, BRIGHT_CAP: try other strip heights and picture caps than the card's (comparisons only)
+const OPTS = Object.fromEntries([['stripH', process.env.BRIGHT_STRIP_H], ['cap', process.env.BRIGHT_CAP]].filter(([, v]) => v != null).map(([k, v]) => [k, +v]));
 if (OUT) fs.mkdirSync(OUT, { recursive: true });
 let fails = 0;
 const zs = [], rows = [];
@@ -24,7 +26,7 @@ for (const s of stars) {
   let res = file && fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
   if (!res || res.input_failure) {
     const t0 = Date.now();
-    res = await buildBright({ base: BASE, ra: s.ra, dec: s.dec, at: 61100 }).catch(e => ({ state: 'error', reason: String(e.message || e) }));
+    res = await buildBright({ base: BASE, ra: s.ra, dec: s.dec, at: 61100, ...OPTS }).catch(e => ({ state: 'error', reason: String(e.message || e) }));
     res.secs = (Date.now() - t0) / 1000;
     if (file) fs.writeFileSync(file, JSON.stringify(res));
   }

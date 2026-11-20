@@ -175,6 +175,20 @@ async def run(p, w, h, phone):
     await pg.evaluate("() => __bright.close(false)")
     check(await pg.evaluate("() => __bright.bright.res === null && __bright.bright.key === null"), f"{tag}: an archive failure is not kept: reopening measures again")
 
+    # progressive: the WISE column and NEOWISE first ('partial', no SPHEREx yet), then a pass at a time
+    await pg.evaluate("() => { __bright.bright.cache.clear(); __bright.bright.key = null; __bright.open(); }")
+    cur = await pg.evaluate("__bright.bright.id")
+    first = {**res, "state": "partial", "spherex": None}
+    await pg.evaluate("([id, r]) => __bright.bright.worker.onmessage({ data: { id, type: 'partial', result: r } })", [cur, first])
+    s = await read(pg)
+    check(s["tab"] and s["rows"][0].startswith("3.4 µm 12.00 measuring") and s["neo"] == 20 and s["wise"] == 1 and s["sx"] == 0, f"{tag}: first content: the WISE column and NEOWISE's history, SPHEREx measuring ({s['rows'][0]})")
+    one = json.loads(json.dumps(res)); one["state"] = "partial"
+    for band in ("W1", "W2"): one["spherex"][band] = [p if i == 0 else {"mjd": p["mjd"], "pending": True} for i, p in enumerate(one["spherex"][band])]
+    await pg.evaluate("([id, r]) => __bright.bright.worker.onmessage({ data: { id, type: 'partial', result: r } })", [cur, one])
+    s = await read(pg)
+    check("2.5× brighter" in s["rows"][0] and s["sx"] == 1, f"{tag}: the visit on screen's pass fills in first ({s['rows'][0]})")
+    await pg.evaluate("() => __bright.close(false)")
+
     # a stale answer: a build starts here, then the card moves to a result it already has; the old build's answer arrives
     # late and must be dropped, not shown or stored under the new spot
     await pg.evaluate("() => { __bright.bright.cache.clear(); __bright.bright.key = null; __bright.open(); }")

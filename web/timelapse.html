@@ -1595,6 +1595,7 @@ function brightWorker() {
   w.onmessage = ({ data: d }) => {
     if (d.id !== bright.id || !bright.on) return;   // a closed card or another spot: an old answer
     if (d.type === 'progress') brStatus(d.text, d.total ? 0.1 + 0.85 * d.done / d.total : 0.05);
+    else if (d.type === 'partial') { bright.res = d.result; brightDraw(); }   // the WISE column and NEOWISE first, then each pass
     else if (d.type === 'result') done(d.result);
   };
   w.onerror = e => { e.preventDefault(); if (bright.on && bright.busy) done({ state: 'unavailable', reason: 'The measurement could not run in this browser' }); };
@@ -1632,18 +1633,20 @@ function brightDraw() {
     r.screened ? `${r.screened}.` : ''].filter(Boolean);
   if (!bright.busy) brStatus(r.state !== 'ok' ? r.reason : '', null);
   brEl('br-note').textContent = notes.join(' '); brEl('br-note').hidden = !notes.length;
-  tab.hidden = r.state !== 'ok';
-  if (r.state !== 'ok') brEl('br-rows').innerHTML = '';
-  if (r.state === 'ok') {
+  const shown = r.state === 'ok' || r.state === 'partial';
+  tab.hidden = !shown;
+  if (!shown) brEl('br-rows').innerHTML = '';
+  if (shown) {
     const ref = r.star.ref === 'AllWISE' ? '2010<small>AllWISE</small>' : '2010–18<small>WISE</small>';
     brEl('br-ref').innerHTML = ref;
     brEl('br-ref').title = r.star.ref === 'AllWISE' ? 'AllWISE: WISE images of 2010 and 2011' : 'CatWISE2020: WISE and NEOWISE images from 2010 to 2018, combined';
-    const k = f ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
+    const k = f && r.spherex ? nearestPass(r.spherex.W1.map(p => p.mjd), f.mjd) : -1;
     brEl('br-rows').innerHTML = '';
     for (const [b, um] of [['W1', '3.4 µm'], ['W2', '4.6 µm']]) {
-      const [mw, ew] = r.star.ref_mag[b], p = r.spherex[b][k], tr = document.createElement('tr');
+      const [mw, ew] = r.star.ref_mag[b], p = r.spherex?.[b][k], tr = document.createElement('tr');
       const cells = [`<th scope="row">${um}</th>`, `<td>${Number.isFinite(mw) ? mw.toFixed(2) : '–'}</td>`];
-      if (k < 0) cells.push('<td class="none" colspan="2">no SPHEREx pass near this visit</td>');
+      if (!r.spherex || p?.pending) cells.push('<td class="none" colspan="2">measuring…</td>');   // still coming
+      else if (k < 0) cells.push('<td class="none" colspan="2">no SPHEREx pass near this visit</td>');
       else if (p.limit != null) cells.push(`<td class="now">&gt;${p.limit.toFixed(2)}</td><td class="none">not detected</td>`);   // fainter than its 3-sigma limit
       else if (p.m == null) cells.push(`<td class="none" colspan="2">${p.why}</td>`);
       else if (!Number.isFinite(mw)) cells.push(`<td class="now">${p.m.toFixed(2)}</td><td class="none">no WISE value</td>`);

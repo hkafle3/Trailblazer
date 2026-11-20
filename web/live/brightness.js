@@ -13,8 +13,8 @@ const median = a => { const s = [...a].sort((x, y) => x - y), n = s.length; retu
 // Calibration stars among the components K (colors.js components): single, clean CatWISE sources with W1 9 to 14 (bright,
 // short of WISE's saturation), no other component within 15" brighter than their W1 + 2.5, no variable (vars: [[ra, dec]],
 // Gaia, SIMBAD, VSX) within 5", and a W1 - W2 colour within tol of the star's (the synthesis's colour term), tol widening
-// from 0.2 to 1.6 mag until there are 20; the 60 nearest the star. -> component indices.
-export function calibrators(K, T, vars = []) {
+// from 0.2 to 1.6 mag until there are 20; the `most` nearest the star. -> component indices.
+export function calibrators(K, T, vars = [], most = 60) {
   // arcsec east and north of the star, RA wrapped (a field across RA 0)
   const n = K.ra.length, cd = Math.cos(K.dec[T] * D2R), xy = (a, d) => [((a - K.ra[T] + 540) % 360 - 180) * cd * 3600, (d - K.dec[T]) * 3600];
   const P = Array.from({ length: n }, (_, i) => xy(K.ra[i], K.dec[i])), V = vars.map(([a, d]) => xy(a, d));
@@ -30,24 +30,35 @@ export function calibrators(K, T, vars = []) {
   }
   const ct = K.w1[T] - K.w2[T], c0 = Number.isFinite(ct) ? ct : 0;
   let pick = [];
-  for (const tol of [0.2, 0.4, 0.8, 1.6]) { pick = base.filter(i => Math.abs(K.w1[i] - K.w2[i] - c0) <= tol); if (pick.length >= 20) break; }
-  return pick.sort((a, b) => near(P[a], P[T]) - near(P[b], P[T])).slice(0, 60);
+  for (const tol of [0.2, 0.4, 0.8, 1.6, Infinity]) { pick = base.filter(i => Math.abs(K.w1[i] - K.w2[i] - c0) <= tol); if (pick.length >= 20) break; }
+  return pick.sort((a, b) => near(P[a], P[T]) - near(P[b], P[T])).slice(0, most);
 }
 
+// The scale (k: SPHEREx's synthesized flux over CatWISE's, for the same star) is nearly the same everywhere: with the
+// file's own ePSF and a strip of 15 rows each side it was 0.929 (W1) and 0.969 (W2), 1.6% from field to field and pass to
+// pass (measured on the calibration stars of the 12 Orion changer fields, 2026-11-20; the stars measured were not used).
+// A strip that narrow holds few calibration stars, so their median and this prior are combined by their weights: with
+// many stars the field's own scale leads, with few (under MIN_COMP) the prior alone sets it.
+export const PRIOR = { W1: 0.929, W2: 0.969, rel: 0.016, floor: 0.04 };   // floor: a star's own scatter where too few calibrate
 // t: the target's pass ({ f, err, sys, ok } in mJy, or null); comps: [{ p (their pass, same shape), m (CatWISE mag) }].
-// -> { m, e, n } or { why } (with limit, the 3-sigma magnitude, when the star is not detected). The error, in relative flux, adds in quadrature: s, the calibration stars' scatter about the
-// median (each star's measuring floor: PSF mismatch, catalogue errors, noise; s / sqrt(n) x 1.2533 is the median's
-// error), and the star's own statistical and W2-tail errors.
-export function calibrate(t, comps, band) {
+// -> { m, e, n, k, s } or { why } (with limit, the 3-sigma magnitude, when the star is not detected). The error, in
+// relative flux, adds in quadrature: the floor s (the calibration stars' scatter about their median: PSF mismatch,
+// catalogue errors, noise; PRIOR.floor when they are too few), the scale's error, and the star's own statistical and
+// W2-tail errors.
+export function calibrate(t, comps, band, prior = PRIOR) {
   if (!t) return { why: 'too few wavelengths measured' };
   if (!t.ok) return { why: 'not enough of the band measured' };
   const r = comps.filter(c => c.p?.ok && c.p.f > 0 && Number.isFinite(c.m)).map(c => c.p.f / (ZP[band] * 10 ** (-0.4 * c.m)));
-  if (r.length < MIN_COMP) return { why: `${r.length} calibration stars measured, ${MIN_COMP} needed` };
-  const k = median(r), s = 1.4826 * median(r.map(v => Math.abs(v / k - 1)));
+  let k = prior[band], relK = prior.rel, s = prior.floor;
+  if (r.length >= MIN_COMP) {
+    const km = median(r), sm = 1.4826 * median(r.map(v => Math.abs(v / km - 1))), rm = Math.max(1.2533 * sm / Math.sqrt(r.length), 1e-4);
+    const w0 = 1 / relK ** 2, w1 = 1 / rm ** 2;
+    k = Math.exp((w0 * Math.log(k) + w1 * Math.log(km)) / (w0 + w1)); relK = 1 / Math.sqrt(w0 + w1); s = sm;
+  }
   // under 3 sigma of its own noise it is not detected: a limit (3 sigma), not a magnitude
   if (!(t.f > 3 * t.err)) return { why: 'not detected', limit: -2.5 * Math.log10(3 * t.err / (k * ZP[band])) };
-  const rel = Math.hypot(s, (t.err ?? 0) / t.f, (t.sys ?? 0) / t.f, 1.2533 * s / Math.sqrt(r.length));
-  return { m: -2.5 * Math.log10(t.f / (k * ZP[band])), e: 2.5 / Math.LN10 * rel, n: r.length };
+  const rel = Math.hypot(s, (t.err ?? 0) / t.f, (t.sys ?? 0) / t.f, relK);
+  return { m: -2.5 * Math.log10(t.f / (k * ZP[band])), e: 2.5 / Math.LN10 * rel, n: r.length, k: +k.toFixed(4), s: +s.toFixed(4) };
 }
 
 // the change from the WISE value: d in magnitudes (negative: brighter), its error, and in words. A catalogue value
