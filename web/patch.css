@@ -563,6 +563,8 @@ body.depth .p3-inset:not(.off) { display: block; }
 .br-tab .none { color: rgba(255, 255, 255, .62); white-space: normal; }
 .pv-bright .br-note { margin-top: calc(14 * var(--e)); color: rgba(255, 255, 255, .62); font-size: max(10px, calc(17 * var(--e))); }
 /* the light curve: the Spectrum chart's frame and type */
+/* the chart's "now" ring reaches a few pixels past its box (overflow visible): no sideways scrollbar for that */
+.pv-bright .pv-scroll { overflow-x: hidden; }
 #br-chart { display: block; width: 100%; height: auto; margin-top: calc(10 * var(--e)); overflow: visible; }
 #br-chart text { font: 400 10px var(--panel-font); fill: #aeb6c6; }
 #br-chart .lab { fill: #fff; }
