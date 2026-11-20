@@ -34,15 +34,20 @@ for (const s of stars) {
   if (res.state !== 'ok' && !fine) { fails++; console.log('   FAIL no measurement'); continue; }
   for (const b of ['W1', 'W2']) {
     const [ref, refE] = res.star.ref_mag[b], pipe = s.pipeline[b].per_pass, out = [], mine = res.spherex?.[b] ?? [];
-    // every pass the pipeline measured must be measured here too (a changer), or measured or explained (a steady star)
-    for (const q of pipe) if (!fine && !mine.some(p => Math.abs(yearOf(p.mjd) - q.year) < 0.1)) { fails++; out.push(`${q.year} no pass here FAIL`); }
-    for (const p of mine) {
-      const y = yearOf(p.mjd), q = pipe.find(x => Math.abs(x.year - y) < 0.1);
+    // passes matched one to one, nearest first within 0.1 year; every pass the pipeline measured must be matched here
+    const used = new Set(), match = mine.map(p => {
+      const y = yearOf(p.mjd), q = pipe.filter(x => !used.has(x) && Math.abs(x.year - y) < 0.1).sort((a, c) => Math.abs(a.year - y) - Math.abs(c.year - y))[0];
+      if (q) used.add(q);
+      return q;
+    });
+    for (const q of pipe) if (!fine && !used.has(q)) { fails++; out.push(`${q.year} no pass here FAIL`); }
+    for (const [i, p] of mine.entries()) {
+      const y = yearOf(p.mjd), q = match[i];
       if (p.m == null) { const bad = !!q && !fine; if (bad) fails++; out.push(`${y.toFixed(2)} ${p.why}${bad ? ' FAIL' : ''}`); continue; }
       const c = change(p.m, p.e, ref, refE);
       let ok;
       if (s.kind === 'changer') ok = !q || Math.abs(c.d - q.delta_mag) <= 0.15;   // a pass the pipeline did not use: shown, not compared
-      else { ok = fine || Math.abs(c.d) < 0.1; zs.push(c.d / c.e); }
+      else { ok = fine || Math.abs(c.d) < 0.1; if (!fine) zs.push(c.d / c.e); }   // the error spread: measured steady stars only
       if (!ok) fails++;
       rows.push({ name: s.name, kind: s.kind, band: b, year: +y.toFixed(2), d: +c.d.toFixed(3), e: +c.e.toFixed(3), pipe: q?.delta_mag ?? null, ok });
       out.push(`${y.toFixed(2)} ${c.d >= 0 ? '+' : ''}${c.d.toFixed(3)}±${c.e.toFixed(3)}${q ? ` pipe ${q.delta_mag >= 0 ? '+' : ''}${q.delta_mag.toFixed(3)} diff ${(c.d - q.delta_mag).toFixed(3)}` : ''}${ok ? '' : ' FAIL'}`);
