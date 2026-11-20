@@ -155,11 +155,12 @@ export async function buildBright({ base, ra, dec, at = 61100, signal: outer, pr
     const mine = await getCat(`cat=catwise&ra=${q4(ra)}&dec=${q4(dec)}&r=10`);
     const star0 = mine && starOf(mine, ra, dec, at);
     const pos0 = mjd => { const dt = (mjd - at) / 365.25; return [star0.ra + star0.pm[0] * dt / 3600 / Math.cos(star0.dec * Math.PI / 180), star0.dec + star0.pm[1] * dt / 3600]; };
+    const neoAsked = {};
     const neoFor = async (s, posAt, pm) => {   // the visits of star s: the spot's cone when it holds the whole track, else a cone of its own
       if (s.blend > 1) return null;
       if (P.sep(...posAt(MJD_NEO), ra, dec) + Math.hypot(...pm) * 5.6 + 2.5 <= 8) return neoSpot;
-      const [a0, d0] = posAt(MJD_NEO), rows = await getCat(neoQuery(a0, d0, Math.min(30, Math.ceil(3 + Math.hypot(...pm) * 5.6)))).catch(() => null);
-      return rows ? { rows } : { status: 0 };
+      const [a0, d0] = posAt(MJD_NEO), q = neoQuery(a0, d0, Math.min(30, Math.ceil(3 + Math.hypot(...pm) * 5.6)));
+      return (neoAsked[q] ??= getCat(q).then(rows => (rows ? { rows } : { status: 0 }), () => ({ status: 0 })));   // one request per cone
     };
     const P = parity;
     // the card's partial view: the star, NEOWISE once it is in ('loading' until then), the passes measured so far
@@ -220,7 +221,7 @@ export async function buildBright({ base, ra, dec, at = 61100, signal: outer, pr
       const xi = Math.round(e.q[0]) - x0, yi = Math.round(e.q[1]) - y0;
       let sat = false;
       for (let y = yi - 1; y <= yi + 1; y++) for (let k = xi - 1; k <= xi + 1; k++) sat ||= (flg[y * w + k] & SAT) !== 0;
-      progress({ text: `Reading SPHEREx pictures: ${++got} of ${total}, ${Math.round(bytes / 1e6)} MB`, done: got, total, bytes });
+      progress({ text: `Reading SPHEREx pictures: ${++got} of ${total}`, done: got, total, bytes });   // (bytes: image rows and headers only; FLAGS is compressed)
       return { e, x0, x1, y0, y1, w, ht, img, flg, ep, sat };
     };
     // every picture is queued now, the visit on screen's pass first (the S3 limiter is first come, first served)

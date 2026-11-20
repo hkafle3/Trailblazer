@@ -22,7 +22,7 @@ if (OUT) fs.mkdirSync(OUT, { recursive: true });
 let fails = 0;
 const zs = [], rows = [];
 for (const s of stars) {
-  const file = OUT && path.join(OUT, `${s.name}${Object.entries(OPTS).map(([k, v]) => `_${k}${v}`).join('')}.json`);   // other options: other files
+  const file = OUT && path.join(OUT, `${s.name}.${Object.entries(OPTS).map(([k, v]) => `${k}${v}`).join('_') || 'card'}.json`);   // the card's own settings, or others: never mixed
   let res = file && fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
   if (!res || res.input_failure) {
     const t0 = Date.now();
