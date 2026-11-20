@@ -555,7 +555,8 @@ body.depth .p3-inset:not(.off) { display: block; }
 .br-tab { width: 100%; margin-top: calc(14 * var(--m)); border-collapse: collapse; font: 400 max(11px, calc(12 * var(--m))) / 1.3 var(--panel-font); color: #fff; }
 .br-tab th, .br-tab td { padding: calc(8 * var(--m)) calc(10 * var(--m)) calc(7 * var(--m)) 0; font-weight: 400; text-align: left; vertical-align: top; white-space: nowrap; }
 .br-tab :is(th, td):last-child { padding-right: 0; text-align: right; }
-.br-tab td:last-child { white-space: normal; }   /* the change may wrap in a narrow card, never push the table past it */
+.br-tab td:last-child { white-space: normal; }   /* the words may wrap in a narrow card (a scrollbar that takes room), never push the table past it */
+.br-tab td:last-child small { white-space: nowrap; }
 .br-tab thead th { padding-top: 0; color: rgba(255, 255, 255, .62); font-size: max(10px, calc(11 * var(--m))); }
 .br-tab small { display: block; margin-top: calc(2 * var(--m)); color: rgba(255, 255, 255, .62); font-size: max(10px, calc(10.5 * var(--m))); }
 .br-tab thead small { color: rgba(255, 255, 255, .45); }
