@@ -11,7 +11,8 @@ At 1440 x 900 and 390 x 844 (touch):
 - one card at a time: Brightness closes Spectrum and Discuss, and each of them closes Brightness; Depth closes it;
 - the table's "now" follows the visit on screen (the timeline's arrow keys), and the chart rings that pass;
 - each state says what happened: no WISE source, too bright, SPHEREx has no pictures, a pass without enough
-  wavelengths, a star not detected (its limit), a blend, NEOWISE with too few visits or not answering, the catalogue service not answering."""
+  wavelengths, a star not detected (its limit), a blend, NEOWISE with too few visits or not answering, the catalogue service not answering;
+- on laptop windows (1024 x 768, 1280 x 800, 1366 x 768) the table fits the card with no sideways scroll."""
 import asyncio, json, sys
 from playwright.async_api import async_playwright
 
@@ -163,6 +164,15 @@ async def run(p, w, h, phone):
     await state("too few NEOWISE visits", few, lambda s: "NEOWISE saw it on 2 visits only" in s["note"] and s["neo"] == 2 and s["peak"] == 0)
     await state("NEOWISE not answering", canned(frames, neowise={"state": "unavailable", "W1": []}), lambda s: "NEOWISE (IRSA) did not answer" in s["note"] and s["neo"] == 0 and s["tab"])
     await state("no pass near this visit", canned(frames, spherex={"W1": [{"mjd": 50000, "m": 11, "e": 0.03}], "W2": [{"mjd": 50000, "m": 11, "e": 0.03}]}), lambda s: "no SPHEREx pass near this visit" in s["rows"][0])
+
+    # laptop windows: the card narrows with the window but the type has a floor; the table must still fit, no sideways scroll
+    if not phone:
+        for lw, lh in ((1024, 768), (1280, 800), (1366, 768)):
+            await pg.set_viewport_size({"width": lw, "height": lh})
+            await give(pg, canned(frames))
+            fit = await pg.evaluate("() => { const s = document.querySelector('#bright .pv-scroll'); return [s.scrollWidth, s.clientWidth]; }")
+            check(fit[0] <= fit[1], f"{tag}: at {lw} x {lh} the table fits the card (content {fit[0]} px, card {fit[1]} px)")
+        await pg.set_viewport_size({"width": w, "height": h})
 
     # the real build, with the catalogue service down: the worker's own words
     await pg.evaluate("() => __bright.close(false)")

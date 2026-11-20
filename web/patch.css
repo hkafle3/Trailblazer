@@ -556,7 +556,9 @@ body.depth .p3-inset:not(.off) { display: block; }
 .br-tab th, .br-tab td { padding: calc(8 * var(--m)) calc(7 * var(--m)) calc(7 * var(--m)) 0; font-weight: 400; text-align: left; vertical-align: top; white-space: nowrap; }
 .br-tab :is(th, td):last-child { padding-right: 0; text-align: right; }
 .br-tab td:last-child { white-space: normal; }   /* the words may wrap in a narrow card (a scrollbar that takes room), never push the table past it */
-.br-tab td:last-child small { white-space: nowrap; }
+.br-tab td:last-child small span { white-space: nowrap; }   /* in a narrow card the magnitude line breaks only before ± (laptop windows: the type has a floor, the card does not) */
+.pv-bright .pv-scroll { container: br-card / inline-size; }
+@container br-card (max-width: 230px) { .br-tab tbody th { white-space: normal; } .br-tab :is(th, td):not(:last-child) { padding-right: 3px; } }   /* the narrowest desktop cards (an iPad on its side): 3.4 over µm, as the headers stack */
 .br-tab thead th { padding-top: 0; color: rgba(255, 255, 255, .62); font-size: max(10px, calc(11 * var(--m))); }
 .br-tab small { display: block; margin-top: calc(2 * var(--m)); color: rgba(255, 255, 255, .62); font-size: max(10px, calc(10.5 * var(--m))); }
 .br-tab thead small { color: rgba(255, 255, 255, .45); }
