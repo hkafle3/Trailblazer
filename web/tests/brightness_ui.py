@@ -184,6 +184,16 @@ async def run(p, w, h, phone):
     st = await read(pg)
     check(st["band"] == "W2" and "NEOWISE has no usable visits at 4.6 µm" in st["note"] and st["neo"] == 0 and st["peak"] == 0, f"{tag}: a band NEOWISE has no visits in says so ({st['note']})")
 
+    empty = canned(frames, star={**res["star"], "ref_mag": {"W1": [12.0, 0.02], "W2": [float("nan"), float("nan")]}}, neowise={"state": "ok", "W1": res["neowise"]["W1"], "W2": []})
+    empty["spherex"]["W2"] = [{"mjd": f, "why": "not enough of the band measured"} for f in frames]
+    await give(pg, empty)
+    await pg.click("#br-bands button[data-b=W2]")
+    st = await read(pg)
+    check(st["bands"] and not st["chart"] and "Nothing to chart at 4.6 µm" in st["key"], f"{tag}: a band with nothing to chart keeps the switch ({st['key']})")
+    await pg.click("#br-bands button[data-b=W1]")
+    st = await read(pg)
+    check(st["chart"] and st["band"] == "W1", f"{tag}: and the switch goes back to 3.4 µm")
+
     # laptop windows: the card narrows with the window but the type has a floor; the table must still fit, no sideways scroll
     if not phone:
         for lw, lh in ((1024, 768), (1280, 800), (1366, 768)):

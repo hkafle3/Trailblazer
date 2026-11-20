@@ -1696,7 +1696,9 @@ function brightChart(band = 'W1') {
   const sx = (r?.spherex?.[band] ?? []).map((p, i) => ({ t: brYear(p.mjd), m: p.m, e: p.e, now: i === ring })).filter(p => p.m != null);
   const all = [...wise, ...neo, ...sx];
   svg.toggleAttribute('hidden', !all.length); brEl('br-key').innerHTML = '';
-  brEl('br-bands').hidden = !all.length;
+  const some = b => Number.isFinite(r?.star?.ref_mag?.[b]?.[0]) || (r?.neowise?.[b]?.length ?? 0) > 0 || (r?.spherex?.[b] ?? []).some(p => p.m != null);
+  brEl('br-bands').hidden = !some('W1') && !some('W2');   // a band with nothing to draw keeps the switch, to go back
+  if (!all.length && some(band === 'W1' ? 'W2' : 'W1')) brEl('br-key').innerHTML = `<span>Nothing to chart at ${um}</span>`;
   for (const x of brEl('br-bands').children) x.setAttribute('aria-pressed', String(x.dataset.b === band));
   if (!all.length) return;
   const add = (tag, attrs, title) => { const e = document.createElementNS(NS, tag); for (const a in attrs) e.setAttribute(a, attrs[a]); if (title) e.append(Object.assign(document.createElementNS(NS, 'title'), { textContent: title })); svg.append(e); return e; };
