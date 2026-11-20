@@ -170,6 +170,7 @@ export async function buildBright({ base, ra, dec, at = 61100, signal: outer, pr
     if (star0) {
       mark('first content');
       show();
+      progress({ text: 'Reading the SPHEREx pictures' });   // the WISE column is up: the line says what is still coming
       neoP = neoFor(star0, pos0, star0.pm).then(n => { if (view.star === star0) { view.neowise = neoOut(n, star0, pos0); mark('neowise'); show(); } return n; });
       neoP.catch(() => {});
     }
@@ -187,7 +188,7 @@ export async function buildBright({ base, ra, dec, at = 61100, signal: outer, pr
     if (!where) return { v: 1, state: 'no-star', reason: 'No WISE source within 3 arcsec of the middle of the photo' };
     const list = await listP;
     let bytes = 0;
-    progress({ text: `Reading ${list.length} SPHEREx picture headers` });
+    progress({ text: `Reading the SPHEREx pictures (${list.length} listed)` });
     const heads = (await Promise.all(list.map(x => s3(() => retry(() => imageHeader(x.key, within(signal)), 5, signal)).then(h => { bytes += 32768; return { x, h }; })
       .catch(e => { if (e.name === 'AbortError' && signal?.aborted) throw e; throw new Unavailable('unavailable', 'NASA\'s SPHEREx archive (S3) is not answering', `${x.obs}: ${e.message}`); }))));
     mark('headers');
@@ -233,7 +234,7 @@ export async function buildBright({ base, ra, dec, at = 61100, signal: outer, pr
     const { ctx, cats } = F, { K, T } = ctx, blend = K.nmem[T];
     const star = { name: K.name[T], ra: K.ra[T], dec: K.dec[T], blend, ref: K.src[T] === 'cw' ? 'CatWISE2020' : 'AllWISE', ref_mag: { W1: [K.w1[T], K.e1[T]], W2: [K.w2[T], K.e2[T]] } };
     const pos = mjd => P.skyPos(K, mjd, T);
-    if (!star0) { mark('first content'); view.star = star; show(); }
+    if (!star0) { mark('first content'); view.star = star; show(); progress({ text: 'Reading the SPHEREx pictures' }); }
     // NEOWISE of the star as the field sees it (the early answer when it is the same cone), without holding up the pictures
     const neoFinal = neoFor(star, pos, [K.pme[T], K.pmn[T]]).then(n => { const o = neoOut(n, star, pos); view.star = star; view.neowise = o; mark('neowise'); show(); return o; });
     neoFinal.catch(() => {});
