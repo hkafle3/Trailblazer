@@ -49,12 +49,13 @@ test('a miss stores what the archive sent, keyed by the rounded spot; a hit is s
   const r = await cat(...req('cat=gaia&ra=84.0181&dec=-6.5770'), env, { fetch: down });
   assert.equal(r.status, 200); assert.equal(r.headers.get('X-Cat'), 'hit'); assert.match(await text(r), /^source_id,ra,dec,pmra/);
 });
-test('the archive queries: IRSA TAP with the reference columns in a 0.275 degree cone', async () => {
+test('the archive queries: Gator first (990 arcsec, the same columns), then IRSA TAP in a 0.275 degree cone', async () => {
   const { f, calls } = archive(), env = fakeEnv();
   await cat(...req('cat=gaia&ra=84.0181&dec=-6.577'), env, { fetch: f });
-  const q = new URL(calls[0].url).searchParams.get('QUERY');
+  assert.match(calls[0].url, /Gator\/nph-query\?catalog=gaia_dr3_source&spatial=cone&objstr=84.018\+-6.577&radius=990&radunits=arcsec&outfmt=1&selcols=source_id%2Cra%2Cdec%2Cpmra/);
+  const q = new URL(calls[1].url).searchParams.get('QUERY');
   assert.match(q, /phot_variable_flag FROM gaia_dr3_source WHERE phot_g_mean_mag < 20 AND pmra IS NOT NULL AND CONTAINS\(POINT\('ICRS',ra,dec\),CIRCLE\('ICRS',84.018,-6.577,0.275\)\)=1/);
-  assert.equal(calls[0].init.redirect, 'manual');
+  assert.equal(calls[1].init.redirect, 'manual');
 });
 test('upstream 5xx, HTML, a wrong table, a short table, a missing column and a redirect are never stored', async () => {
   const bad = [new Response('source_id,ra,dec,pmra,pmdec,phot_g_mean_mag\n1,2,3,4,5,6\n', { headers: { 'Content-Type': 'text/csv' } }), new Response('err', { status: 502 }), new Response('<html>maintenance</html>', { headers: { 'Content-Type': 'text/html' } }),
@@ -118,13 +119,13 @@ test('neowise: a 0.0001 degree key with the radius; refusals before any archive 
     assert.equal((await cat(...req(q), env, { fetch: f })).status, 400, q);
   assert.equal(calls.length, 0);
 });
-test('neowise: TAP answers; when it fails, Gator\'s table is stored as the same CSV (null as empty)', async () => {
-  const { f, calls } = archive(), env = fakeEnv();
+test('neowise: Gator first, its table stored as TAP\'s CSV (null as empty); TAP when Gator fails', async () => {
+  const { f, calls } = archive(), env = fakeEnv();   // the fake has no Gator: TAP answers
   let r = await cat(...req('cat=neowise&ra=85.62757&dec=-8.54869&r=6'), env, { fetch: f });
-  assert.equal(r.status, 200); assert.match(new URL(calls[0].url).searchParams.get('QUERY'), /FROM neowiser_p1bs_psd WHERE CONTAINS\(POINT\('ICRS',ra,dec\),CIRCLE\('ICRS',85.6276,-8.5487,0.001667\)\)=1/);
+  assert.equal(r.status, 200); assert.match(calls[0].url, /Gator/); assert.match(new URL(calls[1].url).searchParams.get('QUERY'), /FROM neowiser_p1bs_psd WHERE CONTAINS\(POINT\('ICRS',ra,dec\),CIRCLE\('ICRS',85.6276,-8.5487,0.001667\)\)=1/);
   const g = archive(u => (u.includes('/TAP/') ? new Response('err', { status: 502 }) : new Response(GATOR, { headers: { 'Content-Type': 'text/plain' } }))), env2 = fakeEnv();
   r = await cat(...req('cat=neowise&ra=85.62757&dec=-8.54869'), env2, { fetch: g.f });
-  assert.equal(r.status, 200); assert.equal(g.calls.length, 2); assert.match(g.calls[1].url, /Gator\/nph-query\?catalog=neowiser_p1bs_psd&spatial=cone&objstr=85.6276\+-8.5487&radius=5/);
+  assert.equal(r.status, 200); assert.equal(g.calls.length, 1); assert.match(g.calls[0].url, /Gator\/nph-query\?catalog=neowiser_p1bs_psd&spatial=cone&objstr=85.6276\+-8.5487&radius=5/);
   const body = await text(r);
   assert.equal(body, `${NEO}\n85.6275860,-8.5486080,57089.39936119,10.150,0.021,52.1,9.968,0.021,51.7,10,1.0,99.878,00,0000\n85.6275650,-8.5486637,57089.20236935,10.124,,67.3,10.082,0.017,64.1,10,1.0,73.957,01,0000\n`);
   assert.equal(new TextDecoder().decode(env2.store.get('cat/v1/neowise/85.6276-8.5487_5.csv')), body);
@@ -150,4 +151,29 @@ test('neowise: the card asks for exactly the cone the route stores, RA rounded o
     assert.ok(!got.error, `${a}: ${q}`); assert.match(q, /ra=\d+\.\d{4}&/);
     assert.equal(+new URL(`https://x/?${q}`).searchParams.get('ra'), got.ra, `${a}: the route rounds nothing more`);
   }
+});
+// a whole field from Gator: kept as its IPAC table (rewriting it would cost the Worker's CPU), served as text/plain
+const CW_HEAD = '|' + CATS.catwise.need.map(c => c.padStart(12)).join('|') + '|\n';
+const cwRow = i => ' ' + CATS.catwise.need.map((c, k) => (k === 0 ? `J0000${i}` : String(i)).padStart(12)).join(' ') + '\n';
+test('catwise field from Gator: stored as it came, rows counted, served as text/plain on a hit too', async () => {
+  const table = `\\fixlen = T\n\\RowsRetrieved = 3\n${CW_HEAD}|      char|\n${cwRow(1)}${cwRow(2)}${cwRow(3)}`;
+  const g = archive(u => (u.includes('/Gator/') ? new Response(table, { headers: { 'Content-Type': 'text/plain' } }) : null)), env = fakeEnv();
+  let r = await cat(...req('cat=catwise&ra=84.01812&dec=-6.57701'), env, { fetch: g.f });
+  assert.equal(r.status, 200); assert.equal(r.headers.get('Content-Type'), 'text/plain'); assert.equal(await text(r), table); assert.equal(g.calls.length, 1);
+  env.OLDSKY.get = (k => async key => (env.store.has(key) ? { body: env.store.get(key), httpMetadata: { contentType: 'text/plain' } } : null))();
+  r = await cat(...req('cat=catwise&ra=84.01812&dec=-6.57701'), env, { fetch: async () => { throw new Error('down'); } });
+  assert.equal(r.headers.get('X-Cat'), 'hit'); assert.equal(r.headers.get('Content-Type'), 'text/plain');
+  for (const bad of [table.replace('RowsRetrieved = 3', 'RowsRetrieved = 4'), table.slice(0, -5), table.replace('  w1mpro_pm', '  w9mpro_pm')]) {
+    const b2 = archive(u => (u.includes('/Gator/') ? new Response(bad, { headers: { 'Content-Type': 'text/plain' } }) : null)), env2 = fakeEnv();
+    r = await cat(...req('cat=catwise&ra=84.01812&dec=-6.57701'), env2, { fetch: b2.f });
+    assert.equal(r.status, 200); assert.equal(b2.calls.length, 2, 'Gator refused, TAP asked'); assert.match(await text(r), /^source_name,/);
+  }
+});
+test('catwise small cone: 0.0001 degree key with the radius, Gator rows rewritten to CSV', async () => {
+  assert.equal(readCat(new URL('https://x/api/cat?cat=catwise&ra=85.627573&dec=-8.548694&r=4')).key, 'cat/v1/catwise/85.6276-8.5487_4.csv');
+  assert.equal(readCat(new URL('https://x/api/cat?cat=catwise&ra=85.627573&dec=-8.548694')).key, 'cat/v1/catwise/85.628-8.549.csv');
+  const table = `\\fixlen = T\n\\RowsRetrieved = 1\n${CW_HEAD}${cwRow(1)}`;
+  const g = archive(u => (u.includes('/Gator/') ? new Response(table, { headers: { 'Content-Type': 'text/plain' } }) : null)), env = fakeEnv();
+  const r = await cat(...req('cat=catwise&ra=85.627573&dec=-8.548694&r=4'), env, { fetch: g.f });
+  assert.match(g.calls[0].url, /radius=4&/); assert.equal(await text(r), `${CATS.catwise.need.join(',')}\nJ00001,${CATS.catwise.need.slice(1).map(() => 1).join(',')}\n`);
 });
