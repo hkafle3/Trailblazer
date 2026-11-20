@@ -99,7 +99,7 @@ export async function buildBright({ base, ra, dec, at = null, signal, progress =
     const neo = blend > 1 ? Promise.resolve(null) : api(() => retry(async () => {
       // ponytail: one cone, centred mid-NEOWISE (2019.5), reaches 2013.9 and 2024.6 for motions up to 4.8"/yr; faster
       // stars lose their earliest and latest visits (split the cone if that ever matters: they are few, and bright)
-      const [a0, d0] = pos(MJD_NEO), r0 = (a0 % 360 + 360) % 360, r = Math.min(30, Math.ceil(3 + pm * 5.6));   // RA past 360 after the motion: wrapped
+      const [a0, d0] = pos(MJD_NEO), r0 = (Math.round(a0 * 1e5) / 1e5 % 360 + 360) % 360, r = Math.min(30, Math.ceil(3 + pm * 5.6));   // RA past 360 after the motion: wrapped
       const x = await fetch(`${base}/api/cat?cat=neowise&ra=${r0.toFixed(5)}&dec=${d0.toFixed(5)}&r=${r}`, { signal: within(signal) });
       if (x.status === 429 || x.status >= 500) return { status: x.status };
       if (!x.ok) throw new Error(`neowise HTTP ${x.status}`);
