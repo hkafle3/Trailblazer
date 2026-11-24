@@ -59,7 +59,7 @@ function synth(band, dets) {
   for (const e of exps) if (dets.includes(e.det)) B.synthAdd(acc, { det: e.det, t: e.t, key: e.key, sha256: null, img: e.img, flg: e.flg, w: e.w, h: e.h, x0: e.x0, y0: e.y0, map: B.spherexMap(e.head, grid) }, waves[e.det]);
   return B.synthEnd(acc, band);
 }
-const wise = band => B.oldWise(fitsOf(`allwise_${band}_int.fits`), fitsOf(`allwise_${band}_cov.fits`), grid, []);
+const wise = band => B.oldWise([{ name: `allwise_${band}`, int: fitsOf(`allwise_${band}_int.fits`), cov: fitsOf(`allwise_${band}_cov.fits`) }], grid, []);
 const twomass = only => B.old2mass(['2mass_Ks_001126_ki1020021.fits', '2mass_Ks_001126_ki1020033.fits', '2mass_Ks_001126_ki1030244.fits', '2mass_Ks_001126_ki1030256.fits',
   '2mass_Ks_001126_ki1040021.fits', '2mass_Ks_001126_ki1040033.fits'].filter(f => !only || f.includes(only)).map(f => ({ name: f, fits: fitsOf(f) })), grid, []);
 

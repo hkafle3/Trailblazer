@@ -84,9 +84,13 @@ async function oldSky(base, band, ra, dec, signal, progress) {
   }
   const inputs = tiles.map(t => ({ file: t.name, sha256: t.fits_sha256, digest: 'sha256 of the whole FITS file, inflated', stored_sha256: t.stored_sha256, stored_digest: 'sha256 of the bytes as stored, as IRSA sent them (gzip or not)', stored_etag: t.etag, source: t.source }));
   if (survey === 'allwise') {
-    const int = tiles.find(t => t.name.endsWith('_int.fits')), cov = tiles.find(t => t.name.endsWith('_cov.fits'));
-    if (!int || !cov) throw new Unavailable('comparison-unavailable', 'The AllWISE coverage map is missing');
-    return { kind: 'wise', int: int.fits, cov: cov.fits, inputs, release: man.release };
+    // every tile that touches the field, each an intensity image and its coverage map (allwise_W2_<tile>_int.fits, _cov.fits)
+    const wise = tiles.filter(t => t.name.endsWith('_int.fits')).map(t => {
+      const name = t.name.replace(/_int\.fits$/, ''), cov = tiles.find(c => c.name === `${name}_cov.fits`);
+      return { name, int: t.fits, cov: cov?.fits };
+    });
+    if (!wise.length || wise.some(t => !t.cov)) throw new Unavailable('comparison-unavailable', 'The AllWISE coverage map is missing');
+    return { kind: 'wise', tiles: wise, inputs, release: man.release };
   }
   return { kind: '2mass', tiles: tiles.map(t => ({ name: t.name, fits: t.fits })), inputs, release: man.release };
 }
@@ -140,7 +144,7 @@ export async function buildBand(band, { base, ra, dec, grid, curves, waves, sign
   const { dets } = B.PAIRS[band], acc = B.synthStart(curves[band], dets);
   const spxP = (async () => {
     const all = (await Promise.all(dets.map(d => exposures(base, d, ra, dec, signal)))).flat();
-    if (!all.length) throw new Unavailable('comparison-unavailable', 'SPHEREx has no pictures of this spot in this band');
+    if (!all.length) throw new Unavailable('comparison-unavailable', 'SPHEREx has no pictures of this spot at this wavelength');
     let done = 0;
     progress(`Reading ${all.length} SPHEREx exposures`);
     await Promise.all(all.map(async e => {
@@ -157,7 +161,7 @@ export async function buildBand(band, { base, ra, dec, grid, curves, waves, sign
   catch (e) { failed = e; oldP.catch(() => {}); spxP.catch(() => {}); throw e; }
   const sp = B.synthEnd(acc, band);
   progress('Matching and measuring');
-  const old = o.kind === 'wise' ? B.oldWise(o.int, o.cov, grid, o.inputs) : B.old2mass(o.tiles, grid, o.inputs);
+  const old = o.kind === 'wise' ? B.oldWise(o.tiles, grid, o.inputs) : B.old2mass(o.tiles, grid, o.inputs);
   return B.pair(band, old, sp);
 }
 // what a band's report becomes on the page: its state, and the frames only when the comparison is good
@@ -166,8 +170,9 @@ export function bandMessage(band, rep) {
   const reason = state === 'ok' ? '' : reasonOf(failed, rep);
   return { type: 'band', band, state, reason, report, ...(state === 'ok' ? { frames, info } : {}) };
 }
-const WHY = { band_match: 'the pictures are not of the same band', spectral_coverage_at_lead: 'SPHEREx does not cover enough of this band at the star',
-  spherex_footprint: 'SPHEREx does not cover enough of the field in this band', old_footprint: 'the older picture does not cover enough of the field',
+// the coverage reasons are read by anyone (C-0177): what is missing, in everyday words; the page adds what to try instead
+const WHY = { band_match: 'the two pictures are of different wavelengths', spectral_coverage_at_lead: 'SPHEREx has not yet seen enough of this wavelength at this spot',
+  spherex_footprint: 'SPHEREx\'s picture of this area has gaps at this wavelength', old_footprint: 'the older survey\'s picture of this area has gaps',
   qualified_stars: 'too few clean comparison stars', field_scatter_cap: 'nearby stars scatter too much', validation_median: 'the test stars do not come out unchanged',
   finite: 'a measurement is missing', psf_fwhm_match: 'the two pictures could not be matched in sharpness', psf_profile_match: 'star profiles differ between the pictures',
   alignment: 'the pictures do not line up', lead_same_place: 'nothing sits at the same spot in both pictures',
@@ -178,6 +183,9 @@ function reasonOf(failed, rep) {
   // unavailable: the coverage is the reason, and what fails only because of it (a missing measurement) is not repeated
   const cover = ['band_match', 'spectral_coverage_at_lead', 'spherex_footprint', 'old_footprint'];
   if (failed.some(k => cover.includes(k))) failed = failed.filter(k => cover.includes(k));
+  // the spot's object missing from one picture (C-0177: nothing there in 2010) is the reason; the drawn frames then cannot
+  // reproduce a ratio over nothing, which follows from it and is not repeated
+  if (failed.includes('lead_same_place')) failed = failed.filter(k => !k.startsWith('display_'));
   failed = [...failed].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
   const w = failed.map(k => WHY[k] ?? k);
   if (failed.includes('qualified_stars')) w[failed.indexOf('qualified_stars')] = `${rep.qualified_stars} clean comparison stars, 20 needed`;
@@ -185,11 +193,14 @@ function reasonOf(failed, rep) {
   // the field covered but the star's own pixels unusable (C-0175, W1 6.2: saturated): said of the star, not the field
   const o = rep.old ?? {}, sp = rep.spherex ?? {};
   if (failed.includes('spectral_coverage_at_lead') && sp.exposures_saturated_at_lead > 0 && 2 * sp.exposures_saturated_at_lead >= sp.exposures_seeing_lead)
-    w[failed.indexOf('spectral_coverage_at_lead')] = `the star is too bright: SPHEREx is saturated there in ${sp.exposures_saturated_at_lead} of ${sp.exposures_seeing_lead} exposures`;
+    w[failed.indexOf('spectral_coverage_at_lead')] = `the star is too bright: it saturates SPHEREx in ${sp.exposures_saturated_at_lead} of ${sp.exposures_seeing_lead} shots`;
   else if (failed.includes('spectral_coverage_at_lead') && sp.exposures_masked_at_lead > 0 && 2 * sp.exposures_masked_at_lead >= sp.exposures_seeing_lead)
-    w[failed.indexOf('spectral_coverage_at_lead')] = `SPHEREx has unusable pixels at the star in ${sp.exposures_masked_at_lead} of ${sp.exposures_seeing_lead} exposures`;
+    w[failed.indexOf('spectral_coverage_at_lead')] = `SPHEREx's pixels at this spot are unusable in ${sp.exposures_masked_at_lead} of ${sp.exposures_seeing_lead} shots`;
+  const found = rep.lead_found;
+  if (failed.includes('lead_same_place') && found && found.old !== found.spherex)
+    w[failed.indexOf('lead_same_place')] = found.spherex ? 'the older picture shows no clear dot at this spot' : 'SPHEREx shows no clear dot at this spot now';
   if (failed.includes('old_footprint') && o.valid_fraction >= B.T.FOOTPRINT)
-    w[failed.indexOf('old_footprint')] = o.coverage_frames_at_lead < 5 ? `the older picture has ${o.coverage_frames_at_lead} good AllWISE frames at the star, 5 needed` : 'the older picture has no usable pixels at the star';
+    w[failed.indexOf('old_footprint')] = o.coverage_frames_at_lead < 5 ? 'the older survey has too few good shots of this exact spot' : 'the older picture has no usable data at this exact spot';
   return w.slice(0, 2).join('; ');
 }
 

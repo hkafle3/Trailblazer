@@ -4,7 +4,7 @@
 // download, a real miss and hit) are in worker/test_contract.sh.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { oldsky, oldskyTile, stored, blinkBaked, readRequest, posKey } from './src/oldsky.js';
+import { oldsky, oldskyTile, stored, blinkBaked, readRequest, posKey, touchesField } from './src/oldsky.js';
 
 const card = (k, v) => (k.padEnd(8) + (v === undefined ? '' : '= ' + String(v).padStart(20))).padEnd(80);
 // a FITS file: header, then NAXIS1 x NAXIS2 float32 pixels padded to 2880 (dataBytes overrides how much data follows)
@@ -14,9 +14,9 @@ function fitsBytes(cards, { nx = 2, ny = 2, dataBytes } = {}) {
   const out = new Uint8Array(h.length + (dataBytes ?? Math.ceil(nx * ny * 4 / 2880) * 2880)); out.set(new TextEncoder().encode(h)); return out;
 }
 const gzip = async b => new Uint8Array(await new Response(new Blob([b]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
-const SIA = 's_ra,s_dec,dataproduct_subtype,energy_bandpassname,access_url,obs_id\n' +
-  '83.5446,-6.0578,science,W2,https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w2-int-3.fits,0835m061_ac51\n' +
-  '83.5446,-6.0578,science,W1,https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w1-int-3.fits,0835m061_ac51\n';
+const SIA = 's_ra,s_dec,dataproduct_subtype,energy_bandpassname,access_url,obs_id,s_region\n' +
+  '83.5446,-6.0578,science,W2,https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w2-int-3.fits,0835m061_ac51,POLYGON ICRS 84.332659111208 -6.839647613318 82.75695160634 -6.839648167653 82.759230907014 -5.275156783985 84.330378697328 -5.275156231255 84.332659111208 -6.839647613318\n' +
+  '83.5446,-6.0578,science,W1,https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/08/0835/0835m061_ac51/0835m061_ac51-w1-int-3.fits,0835m061_ac51,POLYGON ICRS 84.332659111208 -6.839647613318 82.75695160634 -6.839648167653 82.759230907014 -5.275156783985 84.330378697328 -5.275156231255 84.332659111208 -6.839647613318\n';
 const IBE = 'fname,ordate,hemisphere,scanno,filter\nki1030244.fits.gz,001126,n,103,k\nhi1030244.fits.gz,001126,n,103,h\nki1020021.fits.gz,001126,n,102,k\n';
 
 // a fake IRSA: answers by URL; `override(url)` may return a Response to replace the normal one
@@ -27,7 +27,9 @@ async function fakeIrsa(override = () => null) {
   const f = async (url, init) => {
     calls.push({ url, init });
     const o = override(url); if (o) return o;
-    if (url.includes('/SIA?')) return new Response(SIA);
+    // the search: the fixed rows at the showcase spot; elsewhere the same tile moved to sit over the spot asked about
+    if (url.includes('/SIA?')) { const [, ra, dec] = url.match(/circle\+([-\d.]+)\+([-\d.]+)/).map(Number), box = [[0.75, -0.75], [-0.75, -0.75], [-0.75, 0.75], [0.75, 0.75]];
+      return new Response(Math.abs(ra - 84.018) < 0.01 ? SIA : SIA.replace(/POLYGON ICRS [^\n]*/g, `POLYGON ICRS ${box.map(([x, y]) => `${ra + x} ${dec + y}`).join(' ')}`)); }
     if (url.includes('/ibe/search/twomass')) return new Response(IBE);
     if (url.includes('-w2-int-3.fits')) return new Response(w2);
     if (url.includes('-w2-cov-3.fits.gz')) return new Response(cov);
@@ -99,8 +101,8 @@ test('400 for an unlisted survey or band, a bad position or another size', async
 });
 
 test('positions are canonical: rounded to 0.001 degree, one key', () => {
-  assert.equal(readRequest(new URL('https://x/api/oldsky?survey=allwise&band=W2&ra=84.01808&dec=-6.5775')).prefix, 'oldsky/v1/allwise/W2/780/84.018-6.578/');
-  assert.equal(readRequest(new URL('https://x/api/oldsky?survey=allwise&band=W2&ra=84.0184&dec=-6.57751')).prefix, 'oldsky/v1/allwise/W2/780/84.018-6.578/');
+  assert.equal(readRequest(new URL('https://x/api/oldsky?survey=allwise&band=W2&ra=84.01808&dec=-6.5775')).prefix, 'oldsky/v2/allwise/W2/780/84.018-6.578/');
+  assert.equal(readRequest(new URL('https://x/api/oldsky?survey=allwise&band=W2&ra=84.0184&dec=-6.57751')).prefix, 'oldsky/v2/allwise/W2/780/84.018-6.578/');
   assert.equal(posKey(359.9996, 4.5), '0.000+4.500');
 });
 
@@ -108,10 +110,10 @@ test('a miss fetches, checks and stores the bytes as IRSA sent them (gzip or not
   const env = fakeEnv(), irsa = await fakeIrsa();
   const r = await miss('survey=allwise&band=W2&ra=84.01808&dec=-6.5775', env, DEPS(irsa.f));
   const m = await r.json(); assert.equal(r.status, 200, JSON.stringify(m));
-  assert.deepEqual(m.tiles.map(t => [t.name, t.gzip]), [['allwise_W2_int.fits', false], ['allwise_W2_cov.fits', true]]);
+  assert.deepEqual(m.tiles.map(t => [t.name, t.gzip]), [['allwise_W2_0835m061_ac51_int.fits', false], ['allwise_W2_0835m061_ac51_cov.fits', true]]);
   assert.equal(m.tiles[0].header.DATEOBS1, '2010-03-06T22:30:53.139');
   const int = env.store.get(m.tiles[0].path.slice(4)).v, cov = env.store.get(m.tiles[1].path.slice(4)).v;
-  assert.match(m.tiles[0].path, /^api\/oldsky\/v1\/allwise\/W2\/780\/84\.018-6\.578\/allwise_W2_int\.[0-9a-f]{8}\.fits$/);
+  assert.match(m.tiles[0].path, /^api\/oldsky\/v2\/allwise\/W2\/780\/84\.018-6\.578\/allwise_W2_0835m061_ac51_int\.[0-9a-f]{8}\.fits$/);
   assert.deepEqual(int, irsa.w2); assert.deepEqual(cov, irsa.cov);
   assert.deepEqual(m.tiles.map(t => [t.bytes, t.etag]), [[irsa.w2.length, `etag-${irsa.w2.length}`], [irsa.cov.length, `etag-${irsa.cov.length}`]]);
   assert.ok(m.tiles.every(t => !('sha256' in t)), 'no hashing in the Worker');
@@ -121,6 +123,24 @@ test('a miss fetches, checks and stores the bytes as IRSA sent them (gzip or not
   assert.equal(r2.status, 200); assert.equal(r2.headers.get('X-Oldsky'), 'hit'); assert.deepEqual((await r2.json()).tiles.length, 2);
   const file = await stored(new URL(`https://x.test/${m.tiles[1].path}`), env);
   assert.equal(file.status, 200); assert.deepEqual(new Uint8Array(await new Response(file.body).arrayBuffer()), irsa.cov);
+});
+
+test('AllWISE: every tile whose corners overlap the field, and no other (C-0177, a spot at a tile edge)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const fx = JSON.parse(readFileSync(new URL('../web/tests/fixtures/allwise_c0177_w2.json', import.meta.url)));
+  const far = 'POLYGON ICRS 329.0 -56.0 327.6 -56.0 327.6 -57.5 329.0 -57.5';   // west of the field by over a degree
+  const url = id => `https://irsa.ipac.caltech.edu/ibe/data/wise/allwise/p3am_cdd/33/${id.slice(0, 4)}/${id}/${id}-w2-int-3.fits`;
+  const rows = [...fx.tiles.map(t => [t.obs_id, t.s_region]), ['3280m576_ac51', far]].map(([id, reg]) => `0,0,science,W2,${url(id)},${id},${reg}`);
+  assert.equal(touchesField(far, 331.096, -56.8), false);
+  const sia = `s_ra,s_dec,dataproduct_subtype,energy_bandpassname,access_url,obs_id,s_region\n${rows.join('\n')}\n`;
+  const env = fakeEnv(), irsa = await fakeIrsa(u => (u.includes('/SIA?') ? new Response(sia) : null));
+  const r = await oldsky(...req('survey=allwise&band=W2&ra=331.0957&dec=-56.8004'), env, DEPS(irsa.f));
+  assert.equal(r.status, 202);
+  assert.deepEqual((await r.json()).pending, ['3295m576_ac51', '3306m561_ac51', '3323m576_ac51'].flatMap(id => [`allwise_W2_${id}_int.fits`, `allwise_W2_${id}_cov.fits`]));
+  assert.ok(irsa.calls[0].url.includes('POS=circle+331.096+-56.8+0.15'), irsa.calls[0].url);
+  // a v1 tile (one tile per spot, before 2026-11-24) stays readable for manifests already in browsers' caches
+  env.store.set('oldsky/v1/allwise/W2/780/331.096-56.800/allwise_W2_int.abcd1234.fits', { v: new Uint8Array([1]), meta: {} });
+  assert.equal((await stored(new URL('https://x.test/api/oldsky/v1/allwise/W2/780/331.096-56.800/allwise_W2_int.abcd1234.fits'), env)).status, 200);
 });
 
 test('2MASS: every Ks tile from one box search, named and ordered as the reference', async () => {
@@ -215,15 +235,15 @@ test('a header-only or short FITS, plain or gzip, a body shorter than its Conten
 test('the tile route takes only names from the stored plan, never a URL, and one tile per request', async () => {
   const env = fakeEnv(), irsa = await fakeIrsa(), q = 'survey=allwise&band=W2&ra=84.01808&dec=-6.5775';
   const tile = async name => { const url = new URL(`https://x.test/api/oldsky/tile?${q}&name=${name}`); return oldskyTile(new Request(url), url, env, DEPS(irsa.f)); };
-  assert.equal((await tile('allwise_W2_int.fits')).status, 404, 'no plan yet: nothing to fetch');
+  assert.equal((await tile('allwise_W2_0835m061_ac51_int.fits')).status, 404, 'no plan yet: nothing to fetch');
   const first = await oldsky(...req(q), env, DEPS(irsa.f));
-  assert.equal(first.status, 202); assert.deepEqual((await first.json()).pending, ['allwise_W2_int.fits', 'allwise_W2_cov.fits']);
+  assert.equal(first.status, 202); assert.deepEqual((await first.json()).pending, ['allwise_W2_0835m061_ac51_int.fits', 'allwise_W2_0835m061_ac51_cov.fits']);
   const before = irsa.calls.length;
   for (const bad of ['evil.fits', '..%2Fx', 'https%3A%2F%2Fevil.example%2Fa.fits']) assert.equal((await tile(bad)).status, 404, bad);
   assert.equal(irsa.calls.length, before, 'a refused name never reaches IRSA');
-  assert.equal((await tile('allwise_W2_int.fits')).status, 200); assert.equal(irsa.calls.length, before + 1, 'one tile, one IRSA request');
+  assert.equal((await tile('allwise_W2_0835m061_ac51_int.fits')).status, 200); assert.equal(irsa.calls.length, before + 1, 'one tile, one IRSA request');
   const mid = await oldsky(...req(q), env, DEPS(irsa.f));
-  assert.equal(mid.status, 202); assert.deepEqual((await mid.json()).pending, ['allwise_W2_cov.fits']);
+  assert.equal(mid.status, 202); assert.deepEqual((await mid.json()).pending, ['allwise_W2_0835m061_ac51_cov.fits']);
 });
 
 test('tile requests are idempotent: a done tile is not fetched again, and an overlapping failed attempt never removes it', async () => {
@@ -237,12 +257,12 @@ test('tile requests are idempotent: a done tile is not fetched again, and an ove
   });
   const tile = name => { const url = new URL(`https://x.test/api/oldsky/tile?${q}&name=${name}`); return oldskyTile(new Request(url), url, env, DEPS(irsa.f)); };
   assert.equal((await oldsky(...req(q), env, DEPS(irsa.f))).status, 202);
-  const [a, b] = await Promise.all([tile('allwise_W2_int.fits'), tile('allwise_W2_int.fits')]);
+  const [a, b] = await Promise.all([tile('allwise_W2_0835m061_ac51_int.fits'), tile('allwise_W2_0835m061_ac51_int.fits')]);
   assert.deepEqual([a.status, b.status].sort(), [200, 503], 'one attempt passed, the overlapping one failed');
   const calls = intCalls;
-  assert.equal((await tile('allwise_W2_int.fits')).status, 200, 'asked again: done');
+  assert.equal((await tile('allwise_W2_0835m061_ac51_int.fits')).status, 200, 'asked again: done');
   assert.equal(intCalls, calls, 'a done tile is not fetched again');
-  assert.equal((await tile('allwise_W2_cov.fits')).status, 200);
+  assert.equal((await tile('allwise_W2_0835m061_ac51_cov.fits')).status, 200);
   const r = await oldsky(...req(q), env, DEPS(irsa.f)), m = await r.json();
   assert.equal(r.status, 200);
   for (const t of m.tiles) {
