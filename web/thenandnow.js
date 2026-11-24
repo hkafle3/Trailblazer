@@ -6,6 +6,8 @@
 import * as B from './live/blink.js';
 
 const ORDER = ['Ks', 'W1', 'W2'];
+// the states whose pictures are drawn: ok, and absent (a dot at the spot in one picture only: no ratio is shown)
+const drawn = m => m?.state === 'ok' || m?.state === 'absent';
 const BAND = {
   Ks: { um: '2.2', wl: '2.16 µm', oldName: '2MASS', oldBand: 'Ks 2.16 µm', gloss: 'Infrared light, about 3 times the wavelength of red light. Invisible to the eye.' },
   W1: { um: '3.4', wl: '3.4 µm', oldName: 'AllWISE', oldBand: 'W1 3.4 µm', gloss: 'Infrared light, about 5 times the wavelength of red light. Invisible to the eye.' },
@@ -52,16 +54,24 @@ function words(band, m, context) {
   const out = s.response_weight_outside_spherex >= 0.01 ? ` SPHEREx stops at 5.0 µm, so the last ${Math.round(100 * s.response_weight_outside_spherex)}% of this band is filled in from its edge.` : '';
   const change = Math.abs(r.lead_z_vs_field) < 3 ? 'same' : ratio > 1 ? 'brighter' : 'dimmer';
   const pct = Math.round(Math.abs(ratio - 1) * 100), sc = Math.round(r.field_scatter_robust_sigma * 100);
-  return {
-    oldYear, nowYr, oldT: wise ? (year(o.dates[0]) + year(o.dates.at(-1))) / 2 : year(o.dates[0]), nowT: (year(s0) + year(s1)) / 2,
+  const held = `${r.validation_stars} test stars, kept out of the matching, come out ${r.validation_median.toFixed(2)}× their ${oldYear} brightness (scatter ${r.field_scatter_robust_sigma.toFixed(2)}).`;
+  const base = { oldYear, nowYr, oldT: wise ? (year(o.dates[0]) + year(o.dates.at(-1))) / 2 : year(o.dates[0]), nowT: (year(s0) + year(s1)) / 2,
     old: { yr: oldYear, l1: `<b>${b.oldName}</b> · ${esc(b.oldBand)}`, l2: `${esc(oldDates)} · ${gl(esc(oldExp), (wise ? G.wise : G.scan).replace('DATES', oldDates))}` },
-    now: { yr: nowYr, l1: `<b>SPHEREx</b> · as ${band}, ${gl(`${s.synth_range_um[0].toFixed(2)}–${s.synth_range_um[1].toFixed(2)} µm`, G.sx + out)}`, l2: `${esc(span(s0, s1))} · ${s.exposures_at_lead} exposures` },
-    show: `${ratio.toFixed(2)}×`, change,
+    now: { yr: nowYr, l1: `<b>SPHEREx</b> · as ${band}, ${gl(`${s.synth_range_um[0].toFixed(2)}–${s.synth_range_um[1].toFixed(2)} µm`, G.sx + out)}`, l2: `${esc(span(s0, s1))} · ${s.exposures_at_lead} exposures` }, held };
+  // a dot in one picture only: what each picture shows, and no ratio
+  if (m.state === 'absent') {
+    const inOld = m.missing === 'spherex';
+    return { ...base, show: inOld ? 'Gone' : 'Not here', word: inOld ? `since ${oldYear}` : `in ${oldYear}`, change: inOld ? 'gone' : 'not-here',
+      wordGloss: inOld ? `${b.oldName} shows a dot at this spot in ${oldYear}. SPHEREx shows none in ${nowYr}. Both pictures are matched on nearby stars.`
+        : `${b.oldName} shows no dot at this spot in ${oldYear}. SPHEREx shows a clear one in ${nowYr}. Both pictures are matched on nearby stars.`,
+      spot: `Nearby stars line up to ${Math.max(0.1, r.align_offset_arcsec.median).toFixed(1)}″ between the two pictures, so the dot is not missing because a picture is shifted.` };
+  }
+  return {
+    ...base, show: `${ratio.toFixed(2)}×`, change,
     word: change === 'same' ? `the same as in ${oldYear}` : `${change} than in ${oldYear}`,
     wordGloss: change === 'same'
       ? `Within the noise. Nearby stars scatter by about ${sc}% between these two pictures, so a ${pct}% difference is consistent with no change.${band === 'Ks' ? ' This band is the control: a star alone should look the same here.' : ''}`
       : `SPHEREx (${s0.slice(0, 4)}-${s1.slice(2, 4)}) collects ${ratio.toFixed(2)} times the light ${b.oldName.replace('All', '')} saw from this star in ${oldYear}, after both pictures are matched on nearby stars.`,
-    held: `${r.validation_stars} test stars, kept out of the matching, come out ${r.validation_median.toFixed(2)}× their ${oldYear} brightness (scatter ${r.field_scatter_robust_sigma.toFixed(2)}).`,
     spot: `It sits within ${Math.max(0.1, r.lead_shift_arcsec ?? 0).toFixed(1)}″ of where it was (1.5″ allowed), and the two pictures line up to ${Math.max(0.1, r.align_offset_arcsec.median).toFixed(1)}″.`,
   };
 }
@@ -115,7 +125,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
       return `<div class="blink down" role="status" data-state="comparison-unavailable"><div class="down-msg">${ICON.down}<h3>No fair comparison at ${BAND[S.band].um} µm</h3><p>${esc(m.reason[0].toUpperCase() + m.reason.slice(1))}.</p>${tryIt}</div></div>`;
     }
     if (m.state === 'inconclusive') return `<div class="blink down" role="status" data-state="inconclusive"><div class="down-msg">${ICON.unsure}<h3>Inconclusive</h3><p>${esc(m.reason[0].toUpperCase() + m.reason.slice(1))}, so the two pictures cannot be compared fairly here.</p></div></div>`;
-    return `<div class="blink" tabindex="0" role="img" aria-roledescription="blink" aria-label="" data-state="ok">
+    return `<div class="blink" tabindex="0" role="img" aria-roledescription="blink" aria-label="" data-state="${m.state}">
       <canvas class="fr" data-f="0" width="${B.CROP}" height="${B.CROP}"></canvas><canvas class="fr" data-f="1" width="${B.CROP}" height="${B.CROP}"></canvas>
       <canvas class="wide" data-w="0" width="${B.N}" height="${B.N}"></canvas><canvas class="wide" data-w="1" width="${B.N}" height="${B.N}"></canvas>
       <svg class="marks" viewBox="0 0 91 91" aria-hidden="true"><line x1="45.5" y1="34.5" x2="45.5" y2="39.3"/><line x1="45.5" y1="51.7" x2="45.5" y2="56.5"/><line x1="34.5" y1="45.5" x2="39.3" y2="45.5"/><line x1="51.7" y1="45.5" x2="56.5" y2="45.5"/></svg>
@@ -136,12 +146,12 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
   }
   function result(m, w) {
     const b = BAND[S.band];
-    if (!m || m.state !== 'ok') {
+    if (!drawn(m)) {
       const say = !m ? 'Measured once both pictures load.' : m.state === 'old-unavailable' ? 'Older survey unavailable: measured once both pictures load.'
         : m.state === 'spherex-unavailable' ? 'SPHEREx unavailable: measured once both pictures load.' : m.state === 'inconclusive' ? `Inconclusive: ${m.reason}.` : `No fair comparison: ${m.reason}.`;
       return `<div class="res wait" data-state="${m?.state ?? 'building'}"><p class="band">${gl(b.wl, G.micron)}</p><p class="near">${esc(say)}</p></div>`;
     }
-    return `<div class="res" data-state="ok"><p class="band">${gl(`${b.wl} · ${S.band}`, b.gloss)}</p><div class="big"><b>${w.show}</b><span>${gl(esc(w.word), w.wordGloss)}</span></div></div>`;
+    return `<div class="res" data-state="${m.state}"><p class="band">${gl(`${b.wl} · ${S.band}`, b.gloss)}</p><div class="big"><b>${w.show}</b><span>${gl(esc(w.word), w.wordGloss)}</span></div></div>`;
   }
   function bars() {
     const max = Math.max(2.1, ...ORDER.map(k => (S.results[k]?.state === 'ok' ? S.results[k].report.lead_ratio * 1.05 : 0)));
@@ -151,13 +161,13 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
     }).join('')}</div>`;
   }
   function checks(m, w) {
-    if (!m || m.state !== 'ok') return '';
+    if (!drawn(m)) return '';
     const t = trend(S.results, context), row = (icon, text, detail, pass, extra = '') =>
       `<li><button type="button" class="chk gl" data-g="${esc(detail)}">${ICON[icon]}<span>${esc(text)}</span>${pass ? ICON.ok : ICON.no}</button>${extra}</li>`;
-    return `<ul class="checks">${row('stars', 'Nearby stars unchanged', w.held, true)}${row('wave', t.text, t.detail, t.pass, bars())}${row('spot', 'Same star, same spot', w.spot, true)}</ul>`;
+    return `<ul class="checks">${row('stars', 'Nearby stars unchanged', w.held, true)}${row('wave', t.text, t.detail, t.pass, bars())}${row('spot', m.state === 'absent' ? 'Pictures line up' : 'Same star, same spot', w.spot, true)}</ul>`;
   }
   function diffBox(m) {
-    if (!m || m.state !== 'ok') return '';
+    if (!drawn(m)) return '';
     return `<details class="diffbox"><summary><span>Difference image</span>${ICON.chev}</summary>
       <div class="diff-in"><div class="dimg"><canvas data-diff width="181" height="181" role="img" aria-label="SPHEREx minus the old picture, 6 arcminutes wide"></canvas><svg class="marks" viewBox="0 0 181 181" aria-hidden="true"><line x1="90.5" y1="78" x2="90.5" y2="84"/><line x1="90.5" y1="97" x2="90.5" y2="103"/><line x1="78" y1="90.5" x2="84" y2="90.5"/><line x1="97" y1="90.5" x2="103" y2="90.5"/></svg></div>
       <div><p><span class="key"><i style="background:var(--comet)"></i>brighter now</span><span class="key"><i style="background:var(--known)"></i>dimmer</span></p>
@@ -166,24 +176,24 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
 
   // ---------- render ----------
   function render() {
-    const m = S.results[S.band], w = m?.state === 'ok' ? words(S.band, m, context) : null;
+    const m = S.results[S.band], w = drawn(m) ? words(S.band, m, context) : null;
     const openDiff = root?.querySelector('.diffbox:not(.credits-d)')?.open, openCred = root?.querySelector('.credits-d')?.open;
     if (mode === 'page') {
       const top = `${gl('Wavelength', G.micron)}${bandSwitch()}`;
       if (head) head.innerHTML = top;
       root.innerHTML = `${head ? '' : `<div class="tn-top"><h2 id="tn-h">Then and now</h2><div class="wl">${top}</div></div>`}
-        <div class="tn-body"><div>${blinkBox(m)}${w ? axis(w) + '<p class="hint">Watch the marked star.</p>' : ''}</div><div>${result(m, w)}${checks(m, w)}</div></div>${diffBox(m)}${CREDITS}`;
+        <div class="tn-body"><div>${blinkBox(m)}${w ? axis(w) + `<p class="hint">Watch the marked ${m.state === 'absent' ? 'spot' : 'star'}.</p>` : ''}</div><div>${result(m, w)}${checks(m, w)}</div></div>${diffBox(m)}${CREDITS}`;
       if (openDiff) root.querySelector('.diffbox:not(.credits-d)')?.setAttribute('open', '');
       if (openCred) root.querySelector('.credits-d').setAttribute('open', '');
     } else {
       slots.band.innerHTML = bandSwitch();
       slots.blink.innerHTML = blinkBox(m);
       slots.ctl.innerHTML = w ? axis(w) : '';
-      slots.say.innerHTML = w ? `<b>${w.show}</b>${gl(esc(w.word), w.wordGloss)}` : `<span class="res wait" data-state="${m?.state ?? 'building'}">${esc(m ? (m.state === 'ok' ? '' : m.reason || m.state) : S.progress[S.band] || 'Building the comparison')}</span>`;
+      slots.say.innerHTML = w ? `<b>${w.show}</b>${gl(esc(w.word), w.wordGloss)}` : `<span class="res wait" data-state="${m?.state ?? 'building'}">${esc(m ? (drawn(m) ? '' : m.reason || m.state) : S.progress[S.band] || 'Building the comparison')}</span>`;
       slots.facts.innerHTML = checks(m, w);
     }
     wire();
-    if (m?.state === 'ok') draw(m, w);
+    if (drawn(m)) draw(m, w);
     pub.state = m?.state ?? 'building';
     show();
   }
@@ -220,8 +230,8 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
     }
   }
   function show() {
-    const scope = mode === 'page' ? root : slots.blink, box = scope.querySelector('.blink[data-state=ok]'), m = S.results[S.band];
-    if (box && m?.state === 'ok') {
+    const scope = mode === 'page' ? root : slots.blink, box = scope.querySelector('.blink[tabindex]'), m = S.results[S.band];
+    if (box && drawn(m)) {
       const w = words(S.band, m, context), f = S.frame, L = f ? w.now : w.old;
       box.querySelectorAll('canvas.fr').forEach(c => c.classList.toggle('off', +c.dataset.f !== f));
       const fl = box.querySelector('.flabel');
@@ -240,7 +250,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
   }
   function play(on) {
     S.playing = on; clearInterval(timer);
-    if (on && S.active) timer = setInterval(() => { if (S.results[S.band]?.state === 'ok') { S.frame ^= 1; show(); } }, 850);
+    if (on && S.active) timer = setInterval(() => { if (drawn(S.results[S.band])) { S.frame ^= 1; show(); } }, 850);
     show();
   }
   function flip() { play(false); S.frame ^= 1; show(); }
@@ -262,7 +272,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
   // keyboard: F flips, Space plays and pauses (not in a text field, nor on a button)
   addEventListener('keydown', e => {
     if (!S.active || e.target.closest?.('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (S.results[S.band]?.state !== 'ok') return;
+    if (!drawn(S.results[S.band])) return;
     if (e.key === 'f' || e.key === 'F') { e.preventDefault(); e.stopImmediatePropagation(); flip(); }
     else if (e.key === ' ' && !e.target.closest?.('button, summary, a')) { e.preventDefault(); e.stopImmediatePropagation(); play(!S.playing); }
   }, true);

@@ -204,3 +204,34 @@ test('a spot with no dot in one picture is said plainly, without the display che
   assert.equal(bandMessage('W2', rep({ old: true, spherex: true })).reason, 'nothing sits at the same spot in both pictures');
   assert.equal(bandMessage('W2', rep(undefined)).reason, 'nothing sits at the same spot in both pictures', 'a report from before lead_found');
 });
+
+// "Not here in 2010" (C-0177 W2, ε Indi B, which moved 72″ since 2010): a clear dot in one picture, none and at most a
+// tenth of its light in the other, everything else passing. The blink is shown, without a ratio. One row per case.
+test('absent: shown only when the field and the drawn frames pass and the spot is clearly one-sided', async () => {
+  const { bandMessage } = await import('../live/blinkworker.js');
+  const names = ['finite', 'band_match', 'old_footprint', 'spherex_footprint', 'spectral_coverage_at_lead', 'qualified_stars', 'validation_median', 'field_scatter_cap',
+    'psf_fwhm_match', 'psf_profile_match', 'alignment', 'lead_same_place', 'display_frames_differ', 'display_no_hidden_gaps', 'display_crop_is_subarray',
+    'display_lead_ratio', 'display_field_ratio', 'display_background_match'];
+  // C-0177 W2 as measured: no dot in 2010, 1/619 of the light, SPHEREx's dot at signal-to-noise 1528
+  const c0177 = { fails: ['lead_same_place', 'display_lead_ratio'], found: { old: false, spherex: true }, snr: { old: 4.49, spherex: 1527.99 }, R: 619.157 };
+  const msg = ({ fails, found, snr, R }) => bandMessage('W2', { checks: Object.fromEntries(names.map(k => [k, !fails.includes(k)])), lead_found: found, lead_snr: snr,
+    lead_ratio: R, old: { valid_fraction: 1 }, spherex: { valid_fraction: 1 }, frames: { ow: new Float32Array(1), sw: new Float32Array(1) }, info: {} });
+  const rows = [
+    ['C-0177: no dot in 2010', c0177, 'absent', 'old'],
+    ['the reverse: a dot in 2010, none now', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 1 }, R: 0.004 }, 'absent', 'spherex'],
+    ['the old spot holds a fifth of the light: not absent', { ...c0177, R: 5 }, 'inconclusive'],
+    ['the dot itself is faint (SNR 6): not absent', { ...c0177, snr: { old: 0.5, spherex: 6 } }, 'inconclusive'],
+    ['too few calibration stars: refused as before', { ...c0177, fails: [...c0177.fails, 'qualified_stars'] }, 'inconclusive'],
+    ['the drawn field stars do not hold: refused as before', { ...c0177, fails: [...c0177.fails, 'display_field_ratio'] }, 'inconclusive'],
+    ['a dot in both, shifted: inconclusive as before', { ...c0177, found: { old: true, spherex: true } }, 'inconclusive'],
+    ['the old picture short of the field: unavailable as before', { ...c0177, fails: [...c0177.fails, 'old_footprint'] }, 'comparison-unavailable'],
+    ['a report from before lead_snr: inconclusive', { ...c0177, snr: undefined }, 'inconclusive'],
+  ];
+  for (const [what, x, state, missing] of rows) {
+    const m = msg(x);
+    assert.equal(m.state, state, what);
+    assert.equal(m.missing, missing, what);
+    assert.equal(!!m.frames, state === 'absent', `${what}: frames only when the blink is shown`);
+  }
+  assert.equal(msg(c0177).reason, 'the older picture shows no dot at this spot');
+});

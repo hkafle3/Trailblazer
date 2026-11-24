@@ -164,11 +164,11 @@ export async function buildBand(band, { base, ra, dec, grid, curves, waves, sign
   const old = o.kind === 'wise' ? B.oldWise(o.tiles, grid, o.inputs) : B.old2mass(o.tiles, grid, o.inputs);
   return B.pair(band, old, sp);
 }
-// what a band's report becomes on the page: its state, and the frames only when the comparison is good
+// what a band's report becomes on the page: its state, and the frames only when they are fit to show (ok, or absent)
 export function bandMessage(band, rep) {
-  const { state, failed } = B.stateOf(rep), { frames, info, ...report } = rep;
-  const reason = state === 'ok' ? '' : reasonOf(failed, rep);
-  return { type: 'band', band, state, reason, report, ...(state === 'ok' ? { frames, info } : {}) };
+  const { state, failed, missing } = B.stateOf(rep), { frames, info, ...report } = rep, drawn = state === 'ok' || state === 'absent';
+  const reason = state === 'ok' ? '' : state === 'absent' ? (missing === 'old' ? 'the older picture shows no dot at this spot' : 'SPHEREx shows no dot at this spot now') : reasonOf(failed, rep);
+  return { type: 'band', band, state, reason, report, ...(state === 'absent' ? { missing } : {}), ...(drawn ? { frames, info } : {}) };
 }
 // the coverage reasons are read by anyone (C-0177): what is missing, in everyday words; the page adds what to try instead
 const WHY = { band_match: 'the two pictures are of different wavelengths', spectral_coverage_at_lead: 'SPHEREx has not yet seen enough of this wavelength at this spot',

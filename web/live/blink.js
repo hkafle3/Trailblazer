@@ -675,6 +675,7 @@ export function pair(name, old, sp, { displayScale = 1, matchBg = true } = {}) {
     ee_median_diff: quals.length ? r3(eeMed) : null, align_offset_arcsec: { median: r2(median(offs)), p90: r2(percentile(offs, 90)) },
     lead_shift_arcsec: flO && flS ? r2(Math.hypot(flO.x - flS.x, flO.y - flS.y) * PIX) : null,
     lead_found: { old: !!flO, spherex: !!flS },   // a star-shaped source at the spot in each picture (null shift when either is missing)
+    lead_snr: { old: loPh ? r2(loPh.snr) : null, spherex: lsPh ? r2(lsPh.snr) : null },   // light at the spot against its sky's noise
     display: { crop_arcmin: r2(CROP * PIX / 60), stretch: { kind: 'asinh10', lo, hi }, lead_ratio_from_png: disp.lead_ratio_from_display,
       masked_pixels_in_crop: disp.masked_pixels_in_crop, field_stars_read_back: disp.field_stars_read_back, field_ratio_from_png: disp.field_ratio_from_display },
     background: { method, fit_scale: r3(a), fit_offset: +cc.toFixed(4), block_corr: r3(corr), before: strip(before), after_linear: strip(lin), after: strip(after),
@@ -698,9 +699,22 @@ export function unpackBits(s, n = NN) { const b = Uint8Array.from(atob(s), c => 
 // ok, or why not: footprint and spectral coverage make the comparison unavailable; the science checks make it inconclusive.
 // (The showcase's expectation is the evaluator's, never the page's.)
 const UNAVAILABLE = ['old_footprint', 'spherex_footprint', 'spectral_coverage_at_lead', 'band_match'];
+// absent: a clear dot at the spot in one picture, and in the other no dot and at most a tenth of its light (C-0177 in
+// 2010: no dot, 1/600 of the light), with every check of the field and of the drawn frames passing. The blink is shown
+// without a ratio, which over next to nothing is no measurement, so only the checks of the spot's brightness or place
+// may fail.
+const ONE_SIDED = ['lead_same_place', 'display_lead_ratio'], CLEAR = 10, FAINT = 0.1;
+function missingIn(rep) {
+  const f = rep.lead_found, n = rep.lead_snr, R = rep.lead_ratio;
+  if (!f || !n || f.old === f.spherex || !Number.isFinite(R) || R === 0) return null;
+  const [gone, here] = f.spherex ? ['old', 'spherex'] : ['spherex', 'old'];
+  return n[here] >= CLEAR && (gone === 'old' ? 1 / R : R) < FAINT ? gone : null;
+}
 export function stateOf(rep) {
   const failed = Object.entries(rep.checks).filter(([, v]) => !v).map(([k]) => k);
   if (failed.some(k => UNAVAILABLE.includes(k))) return { state: 'comparison-unavailable', failed };
+  const gone = failed.includes('lead_same_place') && failed.every(k => ONE_SIDED.includes(k)) ? missingIn(rep) : null;
+  if (gone) return { state: 'absent', failed, missing: gone };
   if (failed.length) return { state: 'inconclusive', failed };
   return { state: 'ok', failed };
 }
