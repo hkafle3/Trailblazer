@@ -6,6 +6,7 @@
 //   GET /api/oldsky?survey=&band=&ra=&dec=   GET /api/oldsky/v1/...   GET /api/blink?ra=&dec=   GET /api/blink/v1/...   (R2 OLDSKY, worker/src/oldsky.js)
 //   GET /api/cat?cat=&ra=&dec=   GET /api/colors?ra=&dec=   (R2 OLDSKY, worker/src/cat.js)
 //   GET /api/comets   GET /api/comets/:id (with `now`, the daily snapshot: cron, worker/src/now.js)   POST /api/comments   POST /api/candidates   GET /api/candidates/near   POST /api/sightings   (D1)        GET /api/explored   POST /api/checks   GET /api/posts   GET /api/threads   (D1)   See docs/api.md.
+//   POST /api/openspace/frame.png   GET /api/openspace/frame.png   GET /api/openspace/frames/<id>.png   (one PNG in memory, for a local OpenSpace)
 // The same Worker serves the app's files from web/ (wrangler.toml [assets]); only /api/* reaches this code.
 
 import { skyImagesJson, skyImagesCompact, eclipticLat } from './sky_index.js';
@@ -591,6 +592,34 @@ async function check(request, env) {
   return json({ cell, checks: row.n }, 201);
 }
 
+// The picture currently shown in OpenSpace. One image, replaced on every "Show in OpenSpace".
+// Not cached and not stored: a restart drops it. OpenSpace refetches only when the URL changes,
+// so each post gets its own /frames/<id>.png.
+let latestFrame = null;
+const BLANK_PNG = Uint8Array.from(atob(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+), c => c.charCodeAt(0));
+
+function pngResponse(bytes) {
+  return new Response(bytes, {
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store', ...CORS }
+  });
+}
+
+async function openspaceFrame(request, url) {
+  if (request.method === 'POST' && url.pathname === '/api/openspace/frame.png') {
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.length < 8 || bytes.length > 12_000_000) return json({ error: 'image is empty or too large' }, 400);
+    latestFrame = { id: Date.now().toString(36), bytes };
+    return json({ url: `${url.origin}/api/openspace/frames/${latestFrame.id}.png` });
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'use GET or POST' }, 405, { Allow: 'GET, POST' });
+  if (url.pathname === '/api/openspace/frame.png') return pngResponse(latestFrame ? latestFrame.bytes : BLANK_PNG);
+  const id = url.pathname.slice('/api/openspace/frames/'.length).replace(/\.png$/, '');
+  if (latestFrame && id === latestFrame.id) return pngResponse(latestFrame.bytes);
+  return new Response('no frame', { status: 404, headers: CORS });
+}
+
 export default {
   // the daily "right now" snapshot of each known comet (worker/src/now.js; wrangler.toml [triggers])
   async scheduled(event, env, ctx) { ctx.waitUntil(snapshot(env).then(r => console.log('snapshot', JSON.stringify(r)))); },
@@ -655,6 +684,9 @@ export default {
       if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'use GET' }, 405, { Allow: 'GET' });
       try { return url.pathname === '/api/cat' ? await cat(request, url, env) : await colorsBaked(url, env); }
       catch (e) { console.error(e); return json({ error: 'catalogue unavailable', reason: 'store is not answering' }, 503, { 'Cache-Control': 'no-store' }); }
+    }
+    if (url.pathname === '/api/openspace/frame.png' || url.pathname.startsWith('/api/openspace/frames/')) {
+      return openspaceFrame(request, url);
     }
     const route = { '/api/images': images, '/api/gaia': gaia, '/api/known': known }[url.pathname];
     if (!route) return json({ error: 'not found' }, 404);

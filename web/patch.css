@@ -187,6 +187,14 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 .pv-specbtn:hover { background: rgba(40, 40, 40, .8); }
 .pv-specbtn[aria-pressed=true] { background: #fff; color: #000; }
 .pv-specbtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* Show in OpenSpace is the button to the right of Spectrum. Its note grows upward. */
+.pv-os button { height: calc(46 * var(--e)); min-height: 28px; box-sizing: border-box; padding: 0 calc(20 * var(--e)); border: max(1.5px, calc(3 * var(--e))) solid #fff; border-radius: 999px; background: rgba(0, 0, 0, .6); color: #fff; font: 400 max(11px, calc(20 * var(--e))) / 1 var(--panel-font); white-space: nowrap; cursor: pointer; }
+.pv-os button:hover { background: rgba(40, 40, 40, .8); }
+.pv-os button:disabled { opacity: .45; cursor: default; }
+.pv-os button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+#osmsg { margin: 0; font: 400 max(11px, calc(14 * var(--e))) / 1.3 var(--panel-font); color: #cfd6e4; text-align: left; text-shadow: 0 1px 4px #000; transition: opacity .6s; }
+#osmsg.fade { opacity: 0; }
+#osmsg:empty { display: none; }
 #patch.picking { cursor: crosshair; }
 @media (min-width: 901px) { body:is(.speccing, .talking, .brighting) .pstage > :is(.pv-who, .pv-report, .pv-dist) { display: none; } }
 body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { display: none; }
@@ -291,8 +299,11 @@ i.kn-check { display: inline-block; width: calc(16 * var(--m)); height: calc(16 
 .pv-views button[aria-selected=true] { background: #fff; color: #000; }
 .pv-views button:focus-visible { outline: 2px solid #ff9a4d; outline-offset: -3px; }
 .pv-views svg { width: calc(16 * var(--m)); height: calc(16 * var(--m)); min-width: 12px; min-height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-/* the Spectrum toggle leaves the corner to the tabs: bottom-left, across from the legend */
-.pv-specbtn { top: auto !important; bottom: calc(16 * var(--e)); }
+/* the Spectrum toggle leaves the corner to the tabs: bottom-left, across from the legend.
+   Show in OpenSpace is the next control in that row. */
+.pv-tools { position: absolute; z-index: 1; left: calc(18 * var(--e)); bottom: calc(16 * var(--e)); display: flex; align-items: flex-end; gap: calc(10 * var(--e)); max-width: calc(100% - 36 * var(--e)); }
+.pv-tools .pv-specbtn { position: static; top: auto !important; bottom: auto !important; left: auto; }
+.pv-os { position: static; display: flex; flex-direction: column-reverse; align-items: flex-start; gap: calc(6 * var(--e)); min-width: 0; }
 /* the legend: one "already known" mark, or Advanced's split into predicted and known passing */
 #legend .lg-split { display: none; }
 body:has(#split:checked) #legend .lg-merged { display: none; }
@@ -331,7 +342,7 @@ body.ringed #legend .lg-merged { display: none; }
 .pv-err:empty { display: none; }
 .xp-d3.nogl .xp-d3-nogl { display: block; position: absolute; left: 10%; right: 10%; top: 45%; margin: 0; text-align: center; font-size: calc(13 * var(--m)); color: #fff; }
 .xp-d3.nogl :is(.xp-d3-hint, .xp-d3-note) { display: none; }
-body.depth :is(#legend, .pv-specbtn, #one-photo, #patch, #hold) { visibility: hidden; }
+body.depth :is(#legend, .pv-specbtn, .pv-os, #one-photo, #patch, #hold) { visibility: hidden; }
 body:not(.depth) .pstage > .pv-dist, body.depth .pstage > .pv-report, body.depth #pv-facts { display: none; }
 
 /* Distances (Depth): every object with a distance, nearest first; the list scrolls under its heading */
@@ -500,9 +511,11 @@ body.sky .pv-desc { margin: 0; }
   body.lapse:not(.sky) .spec-key { font-size: 11px; }
   body.lapse:not(.sky) .spec-log { min-height: 44px; font-size: 13px; gap: 4px; }
   body.lapse:not(.sky) .spec-csv { height: 44px; padding: 0 16px; border-width: 1.5px; font-size: 12.5px; }
-  /* the tabs take the top-left corner and the legend the foot, so the Spectrum toggle sits top-right, the loading line under it */
+  /* the tabs take the top-left corner and the legend the foot; Spectrum and OpenSpace sit under the tabs */
   body.lapse:not(.sky) #loading { right: 6px; top: 58px; padding: 8px 10px; gap: 7px; font-size: 11px; }
-  body.lapse:not(.sky) .pv-specbtn { left: auto; right: 8px; top: 8px !important; bottom: auto !important; height: 44px; padding: 0 14px 0 10px; border-width: 1.5px; font-size: 12.5px; gap: 6px; }
+  body.lapse:not(.sky) .pv-tools { left: 8px; right: auto; top: 52px; bottom: auto; max-width: calc(100% - 16px); }
+  body.lapse:not(.sky) .pv-tools .pv-specbtn { position: static; left: auto; right: auto; top: auto !important; bottom: auto !important; height: 44px; padding: 0 14px 0 10px; border-width: 1.5px; font-size: 12.5px; gap: 6px; }
+  body.lapse:not(.sky) .pv-os button { height: 44px; padding: 0 14px; border-width: 1.5px; font-size: 12.5px; }
   body.lapse:not(.sky) .pv-spec .cbx { width: 44px; height: 44px; border: 11px solid transparent; border-radius: 14px; box-shadow: inset 0 0 0 1.5px #fff; }
 }
 
