@@ -108,7 +108,12 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
     if (!m) return `<div class="blink down" role="status" data-state="building"><div class="down-msg"><h3>Building the comparison</h3><p class="prog">${esc(S.progress[S.band] || 'Starting')}</p><div class="bar"><i></i></div></div></div>`;
     if (m.state === 'old-unavailable') return `<div class="blink down" role="status" data-state="old-unavailable"><div class="down-msg">${ICON.down}<h3>The old pictures are not available right now</h3><p>${esc(m.reason)}. Try again in a few minutes.</p><button type="button" class="btn-line" data-retry>${ICON.retry}Try again</button></div></div>`;
     if (m.state === 'spherex-unavailable') return `<div class="blink down" role="status" data-state="spherex-unavailable"><div class="down-msg">${ICON.down}<h3>The SPHEREx pictures are not available right now</h3><p>${esc(m.reason)}. Try again in a few minutes.</p><button type="button" class="btn-line" data-retry>${ICON.retry}Try again</button></div></div>`;
-    if (m.state === 'comparison-unavailable') return `<div class="blink down" role="status" data-state="comparison-unavailable"><div class="down-msg">${ICON.down}<h3>No fair comparison in this band</h3><p>${esc(m.reason[0].toUpperCase() + m.reason.slice(1))}.</p></div></div>`;
+    if (m.state === 'comparison-unavailable') {
+      // what to try instead: the other wavelengths not already refused
+      const other = ORDER.filter(k => k !== S.band && !['comparison-unavailable', 'inconclusive'].includes(S.results[k]?.state));
+      const tryIt = other.length ? `<div class="try">${other.map(k => `<button type="button" class="btn-line" data-band="${k}">Try ${BAND[k].um} µm</button>`).join('')}</div>` : '';
+      return `<div class="blink down" role="status" data-state="comparison-unavailable"><div class="down-msg">${ICON.down}<h3>No fair comparison at ${BAND[S.band].um} µm</h3><p>${esc(m.reason[0].toUpperCase() + m.reason.slice(1))}.</p>${tryIt}</div></div>`;
+    }
     if (m.state === 'inconclusive') return `<div class="blink down" role="status" data-state="inconclusive"><div class="down-msg">${ICON.unsure}<h3>Inconclusive</h3><p>${esc(m.reason[0].toUpperCase() + m.reason.slice(1))}, so the two pictures cannot be compared fairly here.</p></div></div>`;
     return `<div class="blink" tabindex="0" role="img" aria-roledescription="blink" aria-label="" data-state="ok">
       <canvas class="fr" data-f="0" width="${B.CROP}" height="${B.CROP}"></canvas><canvas class="fr" data-f="1" width="${B.CROP}" height="${B.CROP}"></canvas>
@@ -133,7 +138,7 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
     const b = BAND[S.band];
     if (!m || m.state !== 'ok') {
       const say = !m ? 'Measured once both pictures load.' : m.state === 'old-unavailable' ? 'Older survey unavailable: measured once both pictures load.'
-        : m.state === 'spherex-unavailable' ? 'SPHEREx unavailable: measured once both pictures load.' : m.state === 'inconclusive' ? `Inconclusive: ${m.reason}.` : `Comparison unavailable: ${m.reason}.`;
+        : m.state === 'spherex-unavailable' ? 'SPHEREx unavailable: measured once both pictures load.' : m.state === 'inconclusive' ? `Inconclusive: ${m.reason}.` : `No fair comparison: ${m.reason}.`;
       return `<div class="res wait" data-state="${m?.state ?? 'building'}"><p class="band">${gl(b.wl, G.micron)}</p><p class="near">${esc(say)}</p></div>`;
     }
     return `<div class="res" data-state="ok"><p class="band">${gl(`${b.wl} · ${S.band}`, b.gloss)}</p><div class="big"><b>${w.show}</b><span>${gl(esc(w.word), w.wordGloss)}</span></div></div>`;

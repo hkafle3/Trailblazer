@@ -80,18 +80,18 @@ test('a star masked at its own position is said so, not blamed on the field', as
     spherex: { valid_fraction: 0.9994, covered_weight_at_lead: 0.081, exposures_seeing_lead: 335, exposures_saturated_at_lead: 312, ...spx }, qualified_stars: 72 });
   const both = bandMessage('W2', rep({ old_footprint: false, spectral_coverage_at_lead: false }));
   assert.equal(both.state, 'comparison-unavailable');
-  assert.doesNotMatch(both.reason, /of the field/, both.reason);
+  assert.doesNotMatch(both.reason, /this area/, both.reason);
   assert.match(both.reason, /too bright/, both.reason);
-  assert.match(both.reason, /saturated .*312 of 335/, both.reason);
-  assert.match(both.reason, /3\.7 good AllWISE frames at the star, 5 needed/, both.reason);
+  assert.match(both.reason, /saturates SPHEREx in 312 of 335 shots/, both.reason);
+  assert.match(both.reason, /older survey has too few good shots of this exact spot/, both.reason);
   // a missing measurement follows from the coverage: not given as a second reason (Ks at C-0175)
   assert.doesNotMatch(bandMessage('Ks', rep({ spectral_coverage_at_lead: false, finite: false })).reason, /measurement is missing/);
   // the field itself short: still said as the field
-  assert.match(bandMessage('W2', rep({ old_footprint: false }, { valid_fraction: 0.9 })).reason, /older picture does not cover enough of the field/);
+  assert.match(bandMessage('W2', rep({ old_footprint: false }, { valid_fraction: 0.9 })).reason, /older survey's picture of this area has gaps/);
   // SPHEREx short at the star without saturation: the coverage, as before
-  assert.match(bandMessage('W2', rep({ spectral_coverage_at_lead: false }, {}, { exposures_saturated_at_lead: 0 })).reason, /SPHEREx does not cover enough of this band at the star/);
+  assert.match(bandMessage('W2', rep({ spectral_coverage_at_lead: false }, {}, { exposures_saturated_at_lead: 0 })).reason, /SPHEREx has not yet seen enough of this wavelength at this spot/);
   // 2MASS has no coverage map: the star's pixels are unusable
-  assert.match(bandMessage('Ks', rep({ old_footprint: false }, { survey: '2MASS All-Sky Atlas', coverage_frames_at_lead: undefined })).reason, /older picture has no usable pixels at the star/);
+  assert.match(bandMessage('Ks', rep({ old_footprint: false }, { survey: '2MASS All-Sky Atlas', coverage_frames_at_lead: undefined })).reason, /older picture has no usable data at this exact spot/);
 });
 
 test('SPHEREx exposures saturated at the star are counted', async () => {
@@ -128,7 +128,7 @@ test('SPHEREx saturation at the star: OVERFLOW or NONLINEAR in any contributing 
   const checks = Object.fromEntries(['finite', 'band_match', 'old_footprint', 'spherex_footprint', 'qualified_stars'].map(k => [k, true]));
   const r = bandMessage('W2', { checks: { ...checks, spectral_coverage_at_lead: false }, old: { valid_fraction: 1 },
     spherex: { valid_fraction: 1, covered_weight_at_lead: 0, exposures_seeing_lead: 15, exposures_masked_at_lead: 15, exposures_saturated_at_lead: 0 } }).reason;
-  assert.doesNotMatch(r, /too bright|saturated/, r); assert.match(r, /SPHEREx has unusable pixels at the star in 15 of 15 exposures/, r);
+  assert.doesNotMatch(r, /too bright|saturated/, r); assert.match(r, /SPHEREx's pixels at this spot are unusable in 15 of 15 shots/, r);
 });
 
 // Codex review 6: several saturated contributors each under 0.001 of the weight can mask the star together
@@ -143,4 +143,64 @@ test('saturated contributors too small alone but masking the star together are c
   B.synthAdd(acc, { det: 'D6', t: 61000, key: 'k', sha256: 's', img, flg, w, h: w, x0: 990, y0: 990, map: { px, py } }, waves.D6);
   const { meta } = B.synthEnd(acc, 'W2');
   assert.equal(meta.exposures_masked_at_lead, 1); assert.equal(meta.exposures_saturated_at_lead, 1);
+});
+
+// C-0177 (2026-11-24, RA 331.0957, Dec -56.8004): "the older picture does not cover enough of the field" in W2 and W1.
+// The spot is 1 arcmin from the edge of its nearest AllWISE tile, and the page used that tile alone: its cutout held 58%
+// of the field (0.98 needed), though the star has 30 frames. The real tile geometry: web/tests/fixtures/allwise_c0177_w2.json
+// (bake/allwise_footprint_fixture.mjs). Every tile touching the field together covers it.
+test('C-0177 W2: the AllWISE picture is every tile touching the field, and together they cover it', async () => {
+  const { readFileSync } = await import('node:fs'), { touchesField } = await import('../../worker/src/oldsky.js');
+  const fx = JSON.parse(readFileSync(new URL('./fixtures/allwise_c0177_w2.json', import.meta.url)));
+  const r3 = v => Math.round(v * 1000) / 1000, grid = B.makeGrid(r3(fx.ra), r3(fx.dec)), c = Math.round(B.C0) * B.N + Math.round(B.C0);
+  // which tiles the Worker asks IRSA for: those whose corners overlap the field
+  assert.deepEqual(fx.tiles.map(t => [t.obs_id, touchesField(t.s_region, r3(fx.ra), r3(fx.dec))]), fx.tiles.map(t => [t.obs_id, t.touches]));
+  const tile = t => { const v = B.unpackBits(t.valid, t.w * t.ht), fits = data => ({ h: t.h, w: t.w, ht: t.ht, data });
+    return { name: t.obs_id, int: fits(Float64Array.from(v, x => (x ? 1 : NaN))), cov: fits(Float64Array.from(v, x => (x ? 30 : 0))) }; };
+  const touching = fx.tiles.filter(t => t.touches).map(tile);
+  assert.equal(touching.length, 3);
+  // the old rule, the nearest tile alone: the field is not covered, as the page said
+  const nearest = B.oldWise([touching.find(t => t.name === '3306m561_ac51')], grid, []);
+  assert.ok(nearest.meta.valid_fraction < B.T.FOOTPRINT, `nearest alone ${nearest.meta.valid_fraction}`);
+  // every touching tile: covered, the star included, so the footprint check passes
+  const all = B.oldWise(touching, grid, []);
+  assert.ok(all.meta.valid_fraction >= B.T.FOOTPRINT, `all tiles ${all.meta.valid_fraction}`);
+  assert.equal(all.m[c], 1);
+  assert.equal(all.meta.tiles.length, 3);
+});
+
+test('AllWISE tiles are levelled where they overlap: no step at the seam; one tile is the one-tile answer', () => {
+  const grid = B.makeGrid(100, 20), w = 600, ht = 600, N = B.N;
+  // two tiles of one flat sky at different levels (5 and 9), each holding part of the field
+  const tile = (name, crval1, level) => {
+    const h = { CTYPE1: 'RA---SIN', CTYPE2: 'DEC--SIN', CRVAL1: crval1, CRVAL2: 20, CRPIX1: 300.5, CRPIX2: 300.5, CDELT1: -1.375 / 3600, CDELT2: 1.375 / 3600, CROTA2: 0, BAND: 2,
+      DATEOBS1: '2010-01-07T00:00:00', DATEOBS2: '2010-07-31T00:00:00', MIDOBS: '2010-04-01T00:00:00' };
+    const data = new Float64Array(w * ht), cov = new Float64Array(w * ht);
+    data.fill(level); cov.fill(20);
+    return { name, int: { h, w, ht, data }, cov: { h, w, ht, data: cov } };
+  };
+  // the field is 0.2 degree wide; tiles 0.23 degree wide, offset east and west so they share a strip through the middle
+  const a = tile('a', 100 + 0.06 / Math.cos(20 * Math.PI / 180), 5), b = tile('b', 100 - 0.06 / Math.cos(20 * Math.PI / 180), 9);
+  const one = B.oldWise([a], grid, []), both = B.oldWise([a, b], grid, []);
+  assert.ok(one.meta.valid_fraction < 0.9 && both.meta.valid_fraction === 1, `${one.meta.valid_fraction} ${both.meta.valid_fraction}`);
+  // levelled, the mosaic is flat; unlevelled it would step from 5 to 7 (the overlap) to 9
+  let lo = Infinity, hi = -Infinity; for (const v of both.img) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  assert.ok(hi - lo < 1e-9, `step across the seam ${hi - lo}`);
+  // one tile: its own pixels less their median, as before
+  const ref = B.toGrid(a.int.data, new Uint8Array(w * ht).fill(1), w, ht, B.sinMap(a.int.h, grid)).g, med = B.nanmedian(ref);
+  for (let k = 0; k < N * N; k += 997) assert.ok(Object.is(one.img[k], ref[k] - med) || Math.abs(one.img[k] - (ref[k] - med)) < 1e-12);
+  assert.deepEqual(both.meta.dates, ['2010-01-07', '2010-07-31']);
+});
+
+// C-0177 W2 once the field is covered (2026-11-24): calibrated on 35 stars, but nothing star-shaped at the spot in 2010,
+// so the ratio is over nothing and the drawn-frame checks fail with it. The page says what is missing, once.
+test('a spot with no dot in one picture is said plainly, without the display checks that follow from it', async () => {
+  const { bandMessage } = await import('../live/blinkworker.js');
+  const ok = Object.fromEntries(['finite', 'band_match', 'old_footprint', 'spherex_footprint', 'spectral_coverage_at_lead', 'qualified_stars', 'display_field_ratio'].map(k => [k, true]));
+  const rep = found => ({ checks: { ...ok, lead_same_place: false, display_lead_ratio: false }, lead_found: found, old: {}, spherex: {} });
+  const m = bandMessage('W2', rep({ old: false, spherex: true }));
+  assert.equal(m.state, 'inconclusive'); assert.equal(m.reason, 'the older picture shows no clear dot at this spot');
+  assert.equal(bandMessage('W2', rep({ old: true, spherex: false })).reason, 'SPHEREx shows no clear dot at this spot now');
+  assert.equal(bandMessage('W2', rep({ old: true, spherex: true })).reason, 'nothing sits at the same spot in both pictures');
+  assert.equal(bandMessage('W2', rep(undefined)).reason, 'nothing sits at the same spot in both pictures', 'a report from before lead_found');
 });

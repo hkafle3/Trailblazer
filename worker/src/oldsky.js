@@ -1,13 +1,13 @@
 // "Then and now": the older survey's picture of a spot, for the blink (web/live/blinkworker.js). Contract in docs/api.md.
 //   GET /api/oldsky?survey=allwise|2mass&band=W1|W2|Ks&ra=&dec=   a JSON manifest (tiles, size, R2 etag, dates, release)
-//   GET /api/oldsky/v1/...   the tile bytes, same origin, from R2 (OLDSKY)   GET /api/blink/v1/...   a baked blink
+//   GET /api/oldsky/v2/...   the tile bytes, same origin, from R2 (OLDSKY)   GET /api/blink/v1/...   a baked blink
 //   GET /api/blink?ra=&dec=   a baked blink's result, when there is one (the showcase), else 404 and the page builds live
 // IRSA's cutouts are FITS, often gzip whatever the name says. They are streamed into R2 as IRSA sent them (never through
 // fetchRetry's .text(), which would corrupt them), at their declared length, and checked from their header and size. Only complete answers are stored;
 // an error is never cached. R2 answers first; a miss is rate limited per IP (OLDSKY_LIMIT) before IRSA is asked.
 import { inflateStart } from './inflate_start.js';
 const IRSA = 'https://irsa.ipac.caltech.edu';
-const SIZE = 780, MAX_TILE = 4 << 20, MAX_TILES = 8, MAX_TEXT = 1 << 20, TIMEOUT = 20000;
+const SIZE = 780, MAX_TILE = 4 << 20, MAX_TILES = 16, MAX_TEXT = 1 << 20, TIMEOUT = 20000;
 // the only survey/band pairs: the band each one compares with SPHEREx
 export const BANDS = { allwise: ['W1', 'W2'], '2mass': ['Ks'] };
 const CORS = { 'Access-Control-Allow-Origin': '*' };
@@ -27,7 +27,9 @@ export function readRequest(url) {
   if (!q.has('ra') || q.get('ra').trim() === '' || !Number.isFinite(ra) || ra < 0 || ra >= 360) return { error: 'ra must be 0 to 360' };
   if (!q.has('dec') || q.get('dec').trim() === '' || !Number.isFinite(dec) || dec < -90 || dec > 90) return { error: 'dec must be -90 to 90' };
   const r = round3(ra) % 360, d = round3(dec);
-  return { survey, band, ra: r, dec: d, prefix: `oldsky/v1/${survey}/${band}/${SIZE}/${posKey(r, d)}/` };
+  // v2 (2026-11-24): an AllWISE plan holds every tile touching the field. v1 plans held one tile, often clipped, so they
+  // are never reused; v1 bytes stay readable for manifests already in browsers' caches
+  return { survey, band, ra: r, dec: d, prefix: `oldsky/v2/${survey}/${band}/${SIZE}/${posKey(r, d)}/` };
 }
 
 // bytes of an IRSA URL: host fixed, no redirects, at most max bytes, at most TIMEOUT
@@ -128,18 +130,40 @@ function csvRows(text, need) {
   if (need.some(k => !head.includes(k))) throw new Error('IRSA sent no table');
   return lines.slice(1).filter(l => l.includes(',')).map(l => { const v = l.replace(/\r$/, '').split(','); return Object.fromEntries(head.map((h, i) => [h, v[i]])); });
 }
+// does a tile (IRSA's s_region, 'POLYGON ICRS ra1 dec1 ra2 dec2 ...') overlap the page's 12 arcmin field (web/live/blink.js
+// makeGrid: 361 pixels of 2", flat on the tangent plane at the spot)? A tile's edges are great circles, straight lines on
+// that plane, so this is two convex polygons, which overlap unless one of their edge normals separates them
+const FIELD = 361 / 3600 * Math.PI / 180;   // the field's half width on the tangent plane, a hair over 180.5 pixels
+export function touchesField(region, ra, dec) {
+  const v = String(region ?? '').trim().split(/\s+/).slice(2).map(Number), D = Math.PI / 180, a0 = ra * D, d0 = dec * D, P = [];
+  if (!/^POLYGON/i.test(region ?? '') || v.length < 6 || v.length % 2 || !v.every(Number.isFinite)) return false;
+  for (let i = 0; i < v.length; i += 2) {
+    const a = v[i] * D, d = v[i + 1] * D, cc = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(a - a0);
+    if (!(cc > 0)) return false;   // a corner on the far side of the sky: never one of the field's tiles
+    P.push([Math.cos(d) * Math.sin(a - a0) / cc, (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(a - a0)) / cc]);
+  }
+  const sq = [[-FIELD, -FIELD], [FIELD, -FIELD], [FIELD, FIELD], [-FIELD, FIELD]];
+  const axes = [[1, 0], [0, 1], ...P.map((p, i) => { const q = P[(i + 1) % P.length]; return [q[1] - p[1], p[0] - q[0]]; })];
+  return axes.every(([x, y]) => {
+    const a = P.map(p => p[0] * x + p[1] * y), b = sq.map(p => p[0] * x + p[1] * y);
+    return Math.max(...a) >= Math.min(...b) && Math.max(...b) >= Math.min(...a);
+  });
+}
 // which tiles to cut out, from IRSA's searches: [{ name, url }]
 async function plan_(req, fetchFn) {
   const { survey, band, ra, dec } = req, cut = `center=${ra},${dec}&size=${SIZE}arcsec`;
   const text = async u => new TextDecoder().decode(await tries(2, () => irsaBytes(u, MAX_TEXT, fetchFn)));
   if (survey === 'allwise') {
-    // the AllWISE Atlas tile nearest the spot (the reference's rule), its intensity image and its coverage map
-    const rows = csvRows(await text(`${IRSA}/SIA?COLLECTION=wise_allwise&POS=circle+${ra}+${dec}+0.01&RESPONSEFORMAT=CSV`), ['s_ra', 's_dec', 'dataproduct_subtype', 'energy_bandpassname', 'access_url', 'obs_id']);
-    const sci = rows.filter(x => x.dataproduct_subtype === 'science' && x.energy_bandpassname === band)
-      .sort((a, b) => ((a.s_ra - ra) ** 2 + (a.s_dec - dec) ** 2) - ((b.s_ra - ra) ** 2 + (b.s_dec - dec) ** 2))[0];
-    if (!sci || !/-int-3\.fits$/.test(sci.access_url)) return [];
-    return [{ name: `allwise_${band}_int.fits`, url: `${sci.access_url}?${cut}`, tile: sci.obs_id },
-      { name: `allwise_${band}_cov.fits`, url: `${sci.access_url.replace(/-int-3\.fits$/, '-cov-3.fits.gz')}?${cut}`, tile: sci.obs_id }];
+    // every AllWISE Atlas tile that touches the field, its intensity image and its coverage map. One tile is not enough
+    // near a tile's edge (about 1 spot in 6: C-0177's nearest tile held 58% of the field); a cutout that misses its
+    // tile entirely is IRSA's HTTP 500, so a tile is asked for only if its corners (s_region) overlap the field
+    const rows = csvRows(await text(`${IRSA}/SIA?COLLECTION=wise_allwise&POS=circle+${ra}+${dec}+0.15&RESPONSEFORMAT=CSV`), ['dataproduct_subtype', 'energy_bandpassname', 'access_url', 'obs_id', 's_region']);
+    const sci = new Map();
+    for (const x of rows) if (x.dataproduct_subtype === 'science' && x.energy_bandpassname === band && /-int-3\.fits$/.test(x.access_url)
+      && /^[A-Za-z0-9_]{1,40}$/.test(x.obs_id) && touchesField(x.s_region, ra, dec)) sci.set(x.obs_id, x);
+    return [...sci.values()].sort((a, b) => (a.obs_id < b.obs_id ? -1 : 1)).flatMap(s => [
+      { name: `allwise_${band}_${s.obs_id}_int.fits`, url: `${s.access_url}?${cut}`, tile: s.obs_id },
+      { name: `allwise_${band}_${s.obs_id}_cov.fits`, url: `${s.access_url.replace(/-int-3\.fits$/, '-cov-3.fits.gz')}?${cut}`, tile: s.obs_id }]);
   }
   // 2MASS: every Ks atlas image overlapping the 12 arcmin field (one box search gives the reference's 25-point set)
   const rows = csvRows(await text(`${IRSA}/ibe/search/twomass/allsky/allsky?POS=${ra},${dec}&SIZE=0.2006&INTERSECT=OVERLAPS&RESPONSEFORMAT=CSV`), ['fname', 'ordate', 'hemisphere', 'scanno', 'filter']);
@@ -168,7 +192,7 @@ const manifestOf = (req, plan, done) => ({ v: 2, survey: req.survey, band: req.b
 function testPlan(url, env, req) {
   if (!env.OLDSKY_TEST_ORIGIN || url.searchParams.get('test') !== 'zeros16m') return null;
   const origin = env.OLDSKY_TEST_ORIGIN === 'self' ? url.origin : env.OLDSKY_TEST_ORIGIN;
-  return { host: new URL(origin).host, prefix: req.prefix.replace('oldsky/v1/', 'oldsky/test/'), tiles: [{ name: `allwise_${req.band}_int.fits`, url: `${origin}/tests/fixtures/zeros16m-w2.fits.gz`, tile: 'test' }] };
+  return { host: new URL(origin).host, prefix: req.prefix.replace('oldsky/v2/', 'oldsky/test/'), tiles: [{ name: `allwise_${req.band}_int.fits`, url: `${origin}/tests/fixtures/zeros16m-w2.fits.gz`, tile: 'test' }] };
 }
 async function readJsonObject(env, key) { const o = await env.OLDSKY.get(key); return o ? JSON.parse(await new Response(o.body).text()) : null; }
 export async function oldsky(request, url, env, deps = {}) {
@@ -234,9 +258,9 @@ export async function oldskyTile(request, url, env, deps = {}) {
   }
 }
 
-// stored bytes, by canonical key only: oldsky/v1/<survey>/<band>/780/<pos>/<tile>, blink/v1/<pos>/<file>
+// stored bytes, by canonical key only: oldsky/v2/<survey>/<band>/780/<pos>/<tile>, blink/v1/<pos>/<file>
 const POS = '\\d{1,3}\\.\\d{3}[+-]\\d{1,2}\\.\\d{3}';
-const FILE = new RegExp(`^(oldsky/v1/(allwise/(W1|W2)|2mass/Ks)/${SIZE}/${POS}/[A-Za-z0-9_.]{1,80}|blink/v1/${POS}/(result\\.json|frames\\.bin|centre\\.json))$`);
+const FILE = new RegExp(`^(oldsky/v[12]/(allwise/(W1|W2)|2mass/Ks)/${SIZE}/${POS}/[A-Za-z0-9_.]{1,80}|blink/v1/${POS}/(result\\.json|frames\\.bin|centre\\.json))$`);
 export async function stored(url, env) {
   const key = url.pathname.slice('/api/'.length);
   if (!FILE.test(key)) return json({ error: 'not found' }, 404);

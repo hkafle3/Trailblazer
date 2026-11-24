@@ -379,17 +379,47 @@ export function readFits(bytes, parseCards) {
   for (let i = 0; i < w * ht; i++) { const v = get(i); data[i] = bp > 0 && h.BLANK !== undefined && v === h.BLANK ? NaN : v * bs + bz; }
   return { h, data, w, ht };
 }
-// AllWISE intensity tile with its coverage map: valid where finite and at least 5 frames
-export function oldWise(int, cov, grid, inputs) {
-  const valid = new Uint8Array(int.w * int.ht);
-  for (let k = 0; k < valid.length; k++) valid[k] = finite(int.data[k]) && cov.data[k] >= 5 ? 1 : 0;
-  const map = sinMap(int.h, grid), { g, m } = toGrid(int.data, valid, int.w, int.ht, map);
-  const med = nanmedian(g); for (let k = 0; k < NN; k++) g[k] -= med;
-  const c = Math.round(C0) * N + Math.round(C0), cl = bilin(cov.data, cov.w, cov.ht, map.px[c], map.py[c]);
-  let nv = 0; for (const v of m) nv += v;
-  const hd = int.h;
-  return { img: g, m, meta: { survey: 'AllWISE Atlas', band_header: `BAND ${hd.BAND}`, band: `W${hd.BAND}`, dates: [hd.DATEOBS1.slice(0, 10), hd.DATEOBS2.slice(0, 10)],
-    mid: hd.MIDOBS.slice(0, 10), coverage_frames_at_lead: +cl.toFixed(1), valid_fraction: +(nv / NN).toFixed(4), release: 'AllWISE p3am_cdd', inputs } };
+// AllWISE: every atlas tile that touches the field, each an intensity image with its coverage map, valid where finite and
+// at least 5 frames. tiles: [{ name, int, cov }]. A spot near a tile's edge needs the neighbours: one tile held 58% of
+// C-0177's field. The tile holding most of the field sets the level; each other is shifted by its median difference
+// where it overlaps what is already placed, then the overlaps are averaged. One tile gives exactly the one-tile answer.
+const MIN_OVERLAP = 100;   // grid pixels two tiles must share to be levelled against each other
+export function oldWise(tiles, grid, inputs) {
+  if (!tiles.length) throw new Error('no AllWISE tile');
+  const c = Math.round(C0) * N + Math.round(C0);
+  const layers = tiles.map(({ name, int, cov }) => {
+    const valid = new Uint8Array(int.w * int.ht);
+    for (let k = 0; k < valid.length; k++) valid[k] = finite(int.data[k]) && cov.data[k] >= 5 ? 1 : 0;
+    const map = sinMap(int.h, grid), { g, m } = toGrid(int.data, valid, int.w, int.ht, map);
+    let n = 0; for (const v of m) n += v;
+    return { name, hd: int.h, g, m, n, cl: bilin(cov.data, cov.w, cov.ht, map.px[c], map.py[c]) };
+  }).sort((a, b) => b.n - a.n);
+  const bands = new Set(layers.map(l => l.hd.BAND));
+  if (bands.size !== 1) throw new Error(`AllWISE tiles of different bands: ${[...bands].join(', ')}`);
+  const S = new Float64Array(NN), Cn = new Uint16Array(NN), used = [];
+  for (let todo = layers.filter(l => l.n); todo.length;) {
+    const later = [];
+    for (const l of todo) {
+      let off = 0;
+      if (used.length) {
+        const d = []; for (let k = 0; k < NN; k++) if (l.m[k] && Cn[k]) d.push(l.g[k] - S[k] / Cn[k]);
+        if (d.length < MIN_OVERLAP) { later.push(l); continue; }
+        off = median(d);
+      }
+      for (let k = 0; k < NN; k++) if (l.m[k]) { S[k] += l.g[k] - off; Cn[k]++; }
+      used.push(l);
+    }
+    if (later.length === todo.length) break;   // a tile that never overlaps the rest is left out: its pixels stay masked
+    todo = later;
+  }
+  const img = new Float64Array(NN), m = new Uint8Array(NN); let nv = 0;
+  for (let k = 0; k < NN; k++) { m[k] = Cn[k] ? 1 : 0; img[k] = m[k] ? S[k] / Cn[k] : NaN; nv += m[k]; }
+  const med = nanmedian(img); for (let k = 0; k < NN; k++) img[k] -= med;
+  const hd = (used[0] ?? layers[0]).hd, iso = s => s.slice(0, 10);
+  return { img, m, meta: { survey: 'AllWISE Atlas', band_header: `BAND ${hd.BAND}`, band: `W${hd.BAND}`,
+    dates: [iso(layers.map(l => l.hd.DATEOBS1).sort()[0]), iso(layers.map(l => l.hd.DATEOBS2).sort().at(-1))],
+    mid: iso(hd.MIDOBS), tiles: used.map(l => l.name), coverage_frames_at_lead: +Math.max(...layers.map(l => l.cl)).toFixed(1),
+    valid_fraction: +(nv / NN).toFixed(4), release: 'AllWISE p3am_cdd', inputs } };
 }
 // 2MASS Ks: every atlas tile that touches the field, one zero point, anti-aliased, each tile's own sky taken away,
 // averaged where they overlap. tiles: [{ name, fits }], sorted by name (the first sets the zero point, as the reference)
@@ -644,6 +674,7 @@ export function pair(name, old, sp, { displayScale = 1, matchBg = true } = {}) {
     fwhm_arcsec: { old_native: r2(Fo), spherex_native: r2(Fs), old_matched: r2(Fo2), spherex_matched: r2(Fs2) },
     ee_median_diff: quals.length ? r3(eeMed) : null, align_offset_arcsec: { median: r2(median(offs)), p90: r2(percentile(offs, 90)) },
     lead_shift_arcsec: flO && flS ? r2(Math.hypot(flO.x - flS.x, flO.y - flS.y) * PIX) : null,
+    lead_found: { old: !!flO, spherex: !!flS },   // a star-shaped source at the spot in each picture (null shift when either is missing)
     display: { crop_arcmin: r2(CROP * PIX / 60), stretch: { kind: 'asinh10', lo, hi }, lead_ratio_from_png: disp.lead_ratio_from_display,
       masked_pixels_in_crop: disp.masked_pixels_in_crop, field_stars_read_back: disp.field_stars_read_back, field_ratio_from_png: disp.field_ratio_from_display },
     background: { method, fit_scale: r3(a), fit_offset: +cc.toFixed(4), block_corr: r3(corr), before: strip(before), after_linear: strip(lin), after: strip(after),
