@@ -215,7 +215,7 @@ test('absent: shown only when the field and the drawn frames pass and the spot i
   // C-0177 W2 as measured: no dot in 2010, 1/619 of the light, SPHEREx's dot at signal-to-noise 1528
   const c0177 = { fails: ['lead_same_place', 'display_lead_ratio'], found: { old: false, spherex: true }, snr: { old: 4.49, spherex: 1527.99 }, R: 619.157 };
   const msg = ({ fails, found, snr, R }) => bandMessage('W2', { checks: Object.fromEntries(names.map(k => [k, !fails.includes(k)])), lead_found: found, lead_snr: snr,
-    lead_ratio: R, old: { valid_fraction: 1 }, spherex: { valid_fraction: 1 }, frames: { ow: new Float32Array(1), sw: new Float32Array(1) }, info: {} });
+    lead_ratio: R, lead_missing: B.oneSided({ found, snr, R }), old: { valid_fraction: 1 }, spherex: { valid_fraction: 1 }, frames: { ow: new Float32Array(1), sw: new Float32Array(1) }, info: {} });
   const rows = [
     ['C-0177: no dot in 2010', c0177, 'absent', 'old'],
     ['the reverse: a dot in 2010, none now', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 1 }, R: 0.004 }, 'absent', 'spherex'],
@@ -229,7 +229,8 @@ test('absent: shown only when the field and the drawn frames pass and the spot i
     ['the reverse with no light left (R rounds to 0)', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 0 }, R: 0 }, 'absent', 'spherex'],
     ['exactly a tenth of the light, old side', { ...c0177, R: 10 }, 'absent', 'old'],
     ['exactly a tenth of the light, SPHEREx side', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 2 }, R: 0.1 }, 'absent', 'spherex'],
-    ['just over a tenth, SPHEREx side', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 2 }, R: 0.101 }, 'inconclusive'],
+    ['just over a tenth, SPHEREx side (0.1004, which a 3-decimal report would show as 0.100)', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 2 }, R: 0.1004 }, 'inconclusive'],
+    ['just over a tenth, old side (R 9.9996)', { ...c0177, R: 9.9996 }, 'inconclusive'],
   ];
   for (const [what, x, state, missing] of rows) {
     const m = msg(x);

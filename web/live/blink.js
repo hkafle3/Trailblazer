@@ -676,6 +676,7 @@ export function pair(name, old, sp, { displayScale = 1, matchBg = true } = {}) {
     lead_shift_arcsec: flO && flS ? r2(Math.hypot(flO.x - flS.x, flO.y - flS.y) * PIX) : null,
     lead_found: { old: !!flO, spherex: !!flS },   // a star-shaped source at the spot in each picture (null shift when either is missing)
     lead_snr: { old: loPh ? r2(loPh.snr) : null, spherex: lsPh ? r2(lsPh.snr) : null },   // light at the spot against its sky's noise
+    lead_missing: oneSided({ found: { old: !!flO, spherex: !!flS }, snr: { old: loPh?.snr, spherex: lsPh?.snr }, R }),   // stateOf's absent, decided unrounded
     display: { crop_arcmin: r2(CROP * PIX / 60), stretch: { kind: 'asinh10', lo, hi }, lead_ratio_from_png: disp.lead_ratio_from_display,
       masked_pixels_in_crop: disp.masked_pixels_in_crop, field_stars_read_back: disp.field_stars_read_back, field_ratio_from_png: disp.field_ratio_from_display },
     background: { method, fit_scale: r3(a), fit_offset: +cc.toFixed(4), block_corr: r3(corr), before: strip(before), after_linear: strip(lin), after: strip(after),
@@ -704,19 +705,19 @@ const UNAVAILABLE = ['old_footprint', 'spherex_footprint', 'spectral_coverage_at
 // without a ratio, which over next to nothing is no measurement, so only the checks of the spot's brightness or place
 // may fail.
 const ONE_SIDED = ['lead_same_place', 'display_lead_ratio'], CLEAR = 10, FAINT = 0.1;
-function missingIn(rep) {
-  const f = rep.lead_found, n = rep.lead_snr, R = rep.lead_ratio;
-  if (!f || !n || f.old === f.spherex || !Number.isFinite(R)) return null;
-  const [gone, here] = f.spherex ? ['old', 'spherex'] : ['spherex', 'old'];
-  // the missing side's light as a fraction of the dot's; R is SPHEREx over old (rounded to 0.001: a SPHEREx side that
-  // rounds to 0 is none at all, and an old side can never make R exactly 0 while SPHEREx has a clear dot)
+// which picture lacks the spot's dot, from pair()'s unrounded measurements: found (a star-shaped fit at the spot in
+// each picture), snr (the spot's light against its sky's noise) and R (SPHEREx over old, calibrated); or null
+export function oneSided({ found, snr, R }) {
+  if (!found || !snr || found.old === found.spherex || !Number.isFinite(R)) return null;
+  const [gone, here] = found.spherex ? ['old', 'spherex'] : ['spherex', 'old'];
+  // the missing side's light as a fraction of the dot's (an old side can never make R exactly 0 while SPHEREx has a dot)
   const frac = gone === 'spherex' ? R : R === 0 ? Infinity : 1 / R;
-  return n[here] >= CLEAR && frac <= FAINT ? gone : null;
+  return snr[here] >= CLEAR && frac <= FAINT ? gone : null;
 }
 export function stateOf(rep) {
   const failed = Object.entries(rep.checks).filter(([, v]) => !v).map(([k]) => k);
   if (failed.some(k => UNAVAILABLE.includes(k))) return { state: 'comparison-unavailable', failed };
-  const gone = failed.includes('lead_same_place') && failed.every(k => ONE_SIDED.includes(k)) ? missingIn(rep) : null;
+  const gone = failed.includes('lead_same_place') && failed.every(k => ONE_SIDED.includes(k)) ? rep.lead_missing ?? null : null;
   if (gone) return { state: 'absent', failed, missing: gone };
   if (failed.length) return { state: 'inconclusive', failed };
   return { state: 'ok', failed };
