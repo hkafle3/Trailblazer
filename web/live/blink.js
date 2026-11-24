@@ -706,9 +706,12 @@ const UNAVAILABLE = ['old_footprint', 'spherex_footprint', 'spectral_coverage_at
 const ONE_SIDED = ['lead_same_place', 'display_lead_ratio'], CLEAR = 10, FAINT = 0.1;
 function missingIn(rep) {
   const f = rep.lead_found, n = rep.lead_snr, R = rep.lead_ratio;
-  if (!f || !n || f.old === f.spherex || !Number.isFinite(R) || R === 0) return null;
+  if (!f || !n || f.old === f.spherex || !Number.isFinite(R)) return null;
   const [gone, here] = f.spherex ? ['old', 'spherex'] : ['spherex', 'old'];
-  return n[here] >= CLEAR && (gone === 'old' ? 1 / R : R) < FAINT ? gone : null;
+  // the missing side's light as a fraction of the dot's; R is SPHEREx over old (rounded to 0.001: a SPHEREx side that
+  // rounds to 0 is none at all, and an old side can never make R exactly 0 while SPHEREx has a clear dot)
+  const frac = gone === 'spherex' ? R : R === 0 ? Infinity : 1 / R;
+  return n[here] >= CLEAR && frac <= FAINT ? gone : null;
 }
 export function stateOf(rep) {
   const failed = Object.entries(rep.checks).filter(([, v]) => !v).map(([k]) => k);

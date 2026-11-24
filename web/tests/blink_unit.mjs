@@ -226,6 +226,10 @@ test('absent: shown only when the field and the drawn frames pass and the spot i
     ['a dot in both, shifted: inconclusive as before', { ...c0177, found: { old: true, spherex: true } }, 'inconclusive'],
     ['the old picture short of the field: unavailable as before', { ...c0177, fails: [...c0177.fails, 'old_footprint'] }, 'comparison-unavailable'],
     ['a report from before lead_snr: inconclusive', { ...c0177, snr: undefined }, 'inconclusive'],
+    ['the reverse with no light left (R rounds to 0)', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 0 }, R: 0 }, 'absent', 'spherex'],
+    ['exactly a tenth of the light, old side', { ...c0177, R: 10 }, 'absent', 'old'],
+    ['exactly a tenth of the light, SPHEREx side', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 2 }, R: 0.1 }, 'absent', 'spherex'],
+    ['just over a tenth, SPHEREx side', { ...c0177, found: { old: true, spherex: false }, snr: { old: 900, spherex: 2 }, R: 0.101 }, 'inconclusive'],
   ];
   for (const [what, x, state, missing] of rows) {
     const m = msg(x);
