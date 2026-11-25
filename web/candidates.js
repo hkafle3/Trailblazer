@@ -10,7 +10,6 @@ const GROUPS = [['worth_reporting', 'Worth reporting', 'g-co2'], ['known', 'Know
 // Returns how many failed.
 function check(v, data) {
   const box = $('c-check'), pct = x => `${Math.round(x * 100)}%`, known = v.known_expected ? v.known_recovered / v.known_expected : null;
-  box.append(el('h2', null, 'How the detector was checked'));
   const dl = el('dl');
   let failed = 0;
   // The cold detector (slow movers between six-month passes) has no 80% bars: its blind recoveries and planted movers are
@@ -65,7 +64,10 @@ else {
     sec.dataset.v = v; h.id = `g-${v}`; sec.setAttribute('aria-labelledby', h.id);
     h.append(el('i', `g ${glyph}`), label, el('span', 'n', String(mine.length)));
     grid.append(...mine);
-    sec.append(h, mine.length ? grid : el('p', 'c-none', 'None yet. The detector has not found a mover it cannot match to a known object.'));
+    // nothing to look at yet: say so, and offer something to do meanwhile (the home page's real example)
+    const none = el('p', 'c-none', 'Nothing new yet: the detector has not found a mover it cannot match to a known object. While you wait, '), go = el('a', null, 'practise on a real example');
+    go.href = 'timelapse.html?target=barnard'; none.append(go, '.');
+    sec.append(h, mine.length ? grid : none);
     $('c-groups').append(sec);
   }
 }
