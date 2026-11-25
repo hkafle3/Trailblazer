@@ -8,7 +8,7 @@
 
 /* how the detector was checked: one straight-ruled band, three numbers */
 .c-check { margin-top: 26px; padding-top: 12px; border-top: 1.5px solid #fff; }
-.c-check h2 { font: 400 12px var(--panel-font); letter-spacing: .04em; }
+.c-check summary { cursor: pointer; font: 400 12px var(--panel-font); letter-spacing: .04em; color: #cfd6e4; }
 .c-check dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin-top: 12px; }
 .c-check dt { font-size: 11.5px; color: #b5b5b5; }
 .c-check dd { margin: 4px 0 0; font: 400 18px/1.2 var(--panel-font); color: #fff; }
@@ -16,6 +16,7 @@
 .c-check .ok.pass { color: #8fd6a4; }
 .c-check .ok.fail { color: var(--glitch); }
 .c-group .c-none { margin: 10px 0 12px; color: #cfd6e4; font-size: 13px; }
+.c-group .c-none a { color: #fff; text-decoration: underline; }
 .c-check .by { margin-top: 10px; font-size: 11.5px; color: #b5b5b5; }
 
 /* groups: the Comets list's headings (styles.css .sec, .g, .n), a straight white rule with the name and count */

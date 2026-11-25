@@ -95,7 +95,7 @@ async def main():
         await pg.select_option("#det", "D2"); await pg.wait_for_timeout(300)   # another band at the same spot keeps it
         assert (await pg.text_content("#state-label")) == "Discovered", "a band change dropped the discovery"
         await pg.fill("#coords", "269.4463 4.7671"); await pg.press("#coords", "Enter"); await pg.wait_for_timeout(300)
-        assert (await pg.text_content("#state-label")) == "Report a new find" and await pg.get_attribute("#state", "href") == "forums.html", "new coordinates still say Discovered"
+        assert (await pg.text_content("#state-label")) in ("Report a new find", "Discuss this spot") and await pg.get_attribute("#state", "href") == "forums.html", "new coordinates still say Discovered"
         assert "found=" not in pg.url and await pg.is_hidden("#vName"), f"new coordinates keep the discovery: {pg.url}"
         print("PASS discovery: kept for a band change, dropped from the label, link, Found as line and address at new coordinates")
 

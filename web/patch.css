@@ -188,6 +188,7 @@ body:not(.sky) #skyui, body:not(.sky) .tmark { display: none !important; }   /* 
 .pv-specbtn[aria-pressed=true] { background: #fff; color: #000; }
 .pv-specbtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 #patch.picking { cursor: crosshair; }
+body.spec-picking #legend { visibility: hidden; }   /* the Spectrum button's longer label takes the bottom row */
 @media (min-width: 901px) { body:is(.speccing, .talking, .brighting) .pstage > :is(.pv-who, .pv-report, .pv-dist) { display: none; } }
 body:not(.speccing) .pstage > .pv-spec, body.talking .pstage > .pv-spec { display: none; }
 body:not(.brighting) .pstage > .pv-bright, body.talking .pstage > .pv-bright { display: none; }

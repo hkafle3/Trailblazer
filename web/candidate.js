@@ -7,6 +7,8 @@ import { userName } from './discuss.js';
 import { CHANNELS } from './live/spectral.js';
 import { candidateBox } from './colors.js';
 import { designation } from './live/blink.js';
+import { middle, identify } from './live/identity.js';   // the time-lapse's one rule for what the dot is
+import { parseCsv } from './live/colors.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -26,6 +28,7 @@ const settled = t => { const n = t.comet + t.asteroid + t.glitch + t.unsure + (t
 // a star lead: at least 3 tags and 60% of them say star (never "Likely comet" for a star)
 const starLead = t => { const n = t.comet + t.asteroid + t.glitch + t.unsure + (t.star ?? 0); return n >= 3 && (t.star ?? 0) / n >= 0.6; };
 const statusOf = t => (starLead(t) ? 'Star' : settled(t) ? 'Likely comet' : 'Candidate');
+let known = null;     // the Gaia star on the dot at the reported visit ({ name: SIMBAD's, or null }), when there is one (identity)
 let context = null;   // what the baked blink adds about the spot (its region, distance), when there is one
 const fmtDate = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -50,10 +53,10 @@ function head(c) {
   where(c);
 }
 function status(c) {
-  const st = statusOf(c.tags), wrap = $('c-status-wrap');
+  const st = known ? 'Known star' : statusOf(c.tags), wrap = $('c-status-wrap');   // a catalog match outranks the votes
   $('c-status').textContent = st === 'Star' && context?.region ? `Star · ${context.region}` : st;
   wrap.classList.toggle('has-dot', st !== 'Candidate');
-  wrap.style.setProperty('--c', st === 'Star' ? '#e3d58f' : 'var(--comet)');   // the star tag's colour (styles.css; ui.css reuses --star for white)
+  wrap.style.setProperty('--c', st === 'Known star' ? 'var(--known)' : st === 'Star' ? '#e3d58f' : 'var(--comet)');   // the star tag's colour (styles.css; ui.css reuses --star for white)
 }
 // the place in words beside the coordinates, never instead of them; drawn again with the names once labels.json is in
 // (each call draws it all, so the later call, with the distance, keeps the place)
@@ -105,8 +108,7 @@ function frames(c) {
         img.data.set([255 * s, 247 * s, 235 * s, 255], j);
       }
       g.putImageData(img, 0, 0);
-      const end = c.detail?.candidate?.visit?.end ?? c.visit, reported = f.start <= end && (f.end ?? f.start) >= c.visit;   // shares a day with it
-      const ring = el('span', reported ? 'ring' : 'ring earlier');   // the reported visit orange, the others blue
+      const ring = el('span', reported(c, f) ? 'ring' : 'ring earlier');   // the reported visit orange, the others blue
       const fx = f.x ?? (G - 1) / 2, fy = f.y ?? (G - 1) / 2;
       ring.style.left = (fx - x0 + .5) / CROP * 100 + '%'; ring.style.top = (G - 1 - fy - x0 + .5) / CROP * 100 + '%';
       plate.append(cv, ring);
@@ -114,8 +116,41 @@ function frames(c) {
       return fig;
     }));
     note.remove();
+    identity(c, man);
   };
   w.postMessage({ id: 1, ra: c.ra, dec: c.dec, det: ch?.detector ?? c.det, api: '', band: ch ? [ch.lo, ch.hi, ch.um] : null });
+}
+
+const reported = (c, f) => f.start <= (c.detail?.candidate?.visit?.end ?? c.visit) && (f.end ?? f.start) >= c.visit;   // shares a day with the reported visit
+
+// what the dot is, by the time-lapse's own rule (live/identity.js): a Gaia star whose place at the reported visit is on
+// the dot, the reported spot (the patch centre). The pipeline keeps a Gaia star only when its path lies on the dot visit
+// by visit; these frames can be at another wavelength than the report, so its place is carried to the reported time by
+// its own motion. Its name is SIMBAD's row at its place in 2000, SIMBAD's epoch, within 2 arcsec.
+const yearOf = mjd => 2000 + (mjd - 51544.5) / 365.25;   // as live/pipeline.js
+function identity(c, man) {
+  const g = man.gaia, f = man.frames.find(q => q.pred_east != null);
+  const t = c.detail?.candidate?.visit?.mjd ?? Date.parse(c.visit) / 864e5 + 40587;   // older candidates: the visit's day
+  if (!g || !f) return;
+  const a = man.arcsec_per_pixel, k = (man.grid - 1) / 2;
+  const at = yr => [f.pred_east + g.pmra / 1000 * (yr - f.year), f.pred_north + g.pmdec / 1000 * (yr - f.year)];
+  // a frame on the reported day: the time-lapse's own test there (the dot: the source measured there, within two pixels
+  // of the centre). With none (frames at another wavelength), Gaia's place carried to the reported time on the reported spot
+  const rf = man.frames.find(q => q.pred_east != null && reported(c, q)), src = rf?.x != null ? [(k - rf.x) * a, (rf.y - k) * a] : null;
+  const on = rf ? identify(middle(src, a), [{ pos: [[rf.pred_east, rf.pred_north]] }], a).match : identify([0, 0], [{ pos: [at(yearOf(t))] }], a).match;
+  if (!on) return;
+  known = { name: null }; status(c); sayKnown();
+  const [e, n] = at(2000), cos = Math.cos(man.dec * Math.PI / 180);
+  const off = s => Math.hypot(((s.ra - man.ra + 540) % 360 - 180) * 3600 * cos - e, (s.dec - man.dec) * 3600 - n);
+  fetch(`/api/cat?cat=simbad&ra=${man.ra.toFixed(5)}&dec=${man.dec.toFixed(5)}`).then(r => (r.ok ? r.text() : '')).then(txt => {
+    const near = parseCsv(txt).filter(s => s.main_id && !/^Gaia /.test(s.main_id) && off(s) <= 2).sort((p, q) => off(p) - off(q));
+    if (near.length) { known.name = near[0].main_id.replace(/^\*+\s*/, ''); sayKnown(); }   // SIMBAD prefixes star names with '* '
+  }).catch(() => {});   // no name: the match still stands
+}
+function sayKnown() {
+  const p = $('c-known');
+  p.hidden = !known;
+  if (known) p.replaceChildren(el('i', 'kn-check'), `Matches a star in Gaia${known.name ? `: ${known.name}` : ''}. Already known.`);
 }
 
 function composer(c) {

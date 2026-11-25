@@ -162,9 +162,10 @@ export function thenAndNow(root, { ra, dec, mode = 'page', slots = {}, head = nu
   }
   function checks(m, w) {
     if (!drawn(m)) return '';
+    // a dot in one picture only has no change to compare across wavelengths, so that row is left out
     const t = trend(S.results, context), row = (icon, text, detail, pass, extra = '') =>
       `<li><button type="button" class="chk gl" data-g="${esc(detail)}">${ICON[icon]}<span>${esc(text)}</span>${pass ? ICON.ok : ICON.no}</button>${extra}</li>`;
-    return `<ul class="checks">${row('stars', 'Nearby stars unchanged', w.held, true)}${row('wave', t.text, t.detail, t.pass, bars())}${row('spot', m.state === 'absent' ? 'Pictures line up' : 'Same star, same spot', w.spot, true)}</ul>`;
+    return `<ul class="checks">${row('stars', 'Nearby stars unchanged', w.held, true)}${m.state === 'absent' ? '' : row('wave', t.text, t.detail, t.pass, bars())}${row('spot', m.state === 'absent' ? 'Pictures line up' : 'Same star, same spot', w.spot, true)}</ul>`;
   }
   function diffBox(m) {
     if (!drawn(m)) return '';

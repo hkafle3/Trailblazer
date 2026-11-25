@@ -75,7 +75,7 @@ async def run(p, name, ctx_args):
         for gv, n, cids, none in groups:
             want = [c["id"] for c in REAL["candidates"] if c["verdict"] == gv]
             assert n == len(want) and cids == want, (gv, n, cids)
-            if gv == "worth_reporting" and not want: assert none.startswith("None yet"), none
+            if gv == "worth_reporting" and not want: assert none.startswith("Nothing new yet") and await pg.get_attribute(".c-none a", "href") == "timelapse.html?target=barnard", none
         assert groups[0][0] == "worth_reporting", "Worth reporting is not first"
         # a real card opens the time-lapse at its own first detection, never a baked target patch that only shares the region's name
         links = await pg.eval_on_selector_all(".cd .cd-open", "e => e.map(a => [a.closest('.cd').dataset.id, new URL(a.href).searchParams.toString()])")

@@ -67,6 +67,7 @@ html:has(.cpage), body.page:has(.cpage) { background: #000; }
 .cpage .head h1 { margin: 0; font: 400 calc(56 * var(--e)) / 1 var(--panel-font); letter-spacing: 0; color: #fff; background: none; -webkit-text-fill-color: #fff; }
 .cpage .head .pv-info { margin: 0; }
 .cpage .head .byline { margin-left: auto; }
+.cpage .head .known-line { flex-basis: 100%; color: #fff; }   /* what the dot is (candidate.js identity) */
 /* frames: each in his mini-map box (.pv-mini), dated in his timeline's type (.tl-tick b) */
 .cpage .frames { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(28 * var(--e)); }
 .cpage .frames figure { margin: 0; display: grid; gap: calc(14 * var(--e)); justify-items: center; font: 300 calc(22 * var(--e)) / 1 var(--head-font); color: #e8e8e8; }
