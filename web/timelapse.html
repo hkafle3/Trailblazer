@@ -861,11 +861,11 @@ function sayVerdict(m, f) {
 }
 // the line under Report a new find: what the button does, or why there is nothing to report
 // (about the target, targetAt: a candidate's detection in this visit, or the dot)
-// With nothing new to report (already known, no detection here, sample data) the same button opens the same sheet, named
+// With nothing new to report at a spot (already known, sample data) the same button opens the same sheet, named
 // for what is left to do there: talk about the spot. "Report a new find" stays for a spot that could be one.
 reportNote = () => {
   const el = document.getElementById('state-note'), v = state.verdict, tg = state.m && targetAt(state.m, state.m.frames[state.i]);
-  const quiet = !!tg && !found && (candTrack.isSample() || !!v?.known || !tg.sky);
+  const quiet = !!tg?.sky && !found && (candTrack.isSample() || !!v?.known);   // only where the sheet opens (discuss.js open: a spot)
   if (!found) {
     const label = quiet ? 'Discuss this spot' : 'Report a new find';
     document.getElementById('state-label').textContent = label; document.getElementById('state').setAttribute('aria-label', label);
@@ -874,7 +874,7 @@ reportNote = () => {
     : candTrack.isSample() ? 'Sample data, so there is nothing here to report.'
     : found ? `Already reported here as ${found}. The arrow opens its page.`
     : v?.known ? `${v.who} is already known. Ask a question or share what you see.`
-    : !tg.sky ? `${tg.name} has no detection in this visit. Ask a question or share what you see.`
+    : !tg.sky ? `${tg.name} has no detection in this visit, so there is nothing to report here.`
     : tg.id ? `Tells other hunters about ${tg.name ?? 'the dot in the middle'}, so they can tag what it is.`
     : `Tells other hunters about ${tg.name}, ringed in this visit, so they can tag what it is.`;
 };

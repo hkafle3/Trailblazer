@@ -37,8 +37,9 @@ export function commit(url) {
 // the page's title while a candidate is open: a sample one says so, never the baked target's real name
 // (a known one is not called a candidate: the detector matched it to a catalogued object)
 export const title = () => (cand ? (sample ? `Sample candidate ${cand.id}` : knownName() ? cand.id : `Candidate ${cand.id}`) : null);
-// the catalogued object the detector matched the track to (data/candidates.json known_name, from SIMBAD), or null
-export const knownName = () => (cand?.verdict === 'known' && cand.known_name ? cand.known_name.replace(/^\*+\s*/, '') : null);   // SIMBAD prefixes star names with '* '
+// the catalogued object the detector matched the track to (data/candidates.json known_name, from SIMBAD), or null;
+// never a sample's made-up name
+export const knownName = () => (cand && !sample && cand.verdict === 'known' && cand.known_name ? cand.known_name.replace(/^\*+\s*/, '') : null);   // SIMBAD prefixes star names with '* '
 export const on = () => !!cand;
 
 // where the candidate is in the visit on screen (its first day to the end of its last): the detection taken during it
