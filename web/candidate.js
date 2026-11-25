@@ -7,7 +7,7 @@ import { userName } from './discuss.js';
 import { CHANNELS } from './live/spectral.js';
 import { candidateBox } from './colors.js';
 import { designation } from './live/blink.js';
-import { identify } from './live/identity.js';   // the time-lapse's one rule for what the dot is
+import { middle, identify } from './live/identity.js';   // the time-lapse's one rule for what the dot is
 import { parseCsv } from './live/colors.js';
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');
@@ -132,8 +132,14 @@ function identity(c, man) {
   const g = man.gaia, f = man.frames.find(q => q.pred_east != null);
   const t = c.detail?.candidate?.visit?.mjd ?? Date.parse(c.visit) / 864e5 + 40587;   // older candidates: the visit's day
   if (!g || !f) return;
+  const a = man.arcsec_per_pixel, k = (man.grid - 1) / 2;
   const at = yr => [f.pred_east + g.pmra / 1000 * (yr - f.year), f.pred_north + g.pmdec / 1000 * (yr - f.year)];
-  if (!identify([0, 0], [{ pos: [at(yearOf(t))] }], man.arcsec_per_pixel).match) return;
+  // the time-lapse's own test at the frame nearest the reported time (the dot: the source measured there, within two
+  // pixels of the centre), or Gaia's place carried to the reported time on the reported spot
+  const nf = man.frames.filter(q => q.pred_east != null).sort((p, q) => Math.abs(p.mjd - t) - Math.abs(q.mjd - t))[0];
+  const src = nf.x != null ? [(k - nf.x) * a, (nf.y - k) * a] : null;
+  const on = identify(middle(src, a), [{ pos: [[nf.pred_east, nf.pred_north]] }], a).match || identify([0, 0], [{ pos: [at(yearOf(t))] }], a).match;
+  if (!on) return;
   known = { name: null }; status(c); sayKnown();
   const [e, n] = at(2000), cos = Math.cos(man.dec * Math.PI / 180);
   const off = s => Math.hypot(((s.ra - man.ra + 540) % 360 - 180) * 3600 * cos - e, (s.dec - man.dec) * 3600 - n);
