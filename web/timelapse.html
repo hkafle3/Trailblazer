@@ -873,7 +873,7 @@ reportNote = () => {
   el.textContent = !tg ? ''
     : candTrack.isSample() ? 'Sample data, so there is nothing here to report.'
     : found ? `Already reported here as ${found}. The arrow opens its page.`
-    : v?.known ? `${v.who} is already known. Ask a question or share what you see.`
+    : v?.known ? `${v.who} is already known${tg.sky ? '. Ask a question or share what you see.' : ', so there is nothing to report here.'}`
     : !tg.sky ? `${tg.name} has no detection in this visit, so there is nothing to report here.`
     : tg.id ? `Tells other hunters about ${tg.name ?? 'the dot in the middle'}, so they can tag what it is.`
     : `Tells other hunters about ${tg.name}, ringed in this visit, so they can tag what it is.`;
