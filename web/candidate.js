@@ -134,11 +134,10 @@ function identity(c, man) {
   if (!g || !f) return;
   const a = man.arcsec_per_pixel, k = (man.grid - 1) / 2;
   const at = yr => [f.pred_east + g.pmra / 1000 * (yr - f.year), f.pred_north + g.pmdec / 1000 * (yr - f.year)];
-  // the time-lapse's own test at the frame nearest the reported time (the dot: the source measured there, within two
-  // pixels of the centre), or Gaia's place carried to the reported time on the reported spot
-  const nf = man.frames.filter(q => q.pred_east != null).sort((p, q) => Math.abs(p.mjd - t) - Math.abs(q.mjd - t))[0];
-  const src = nf.x != null ? [(k - nf.x) * a, (nf.y - k) * a] : null;
-  const on = identify(middle(src, a), [{ pos: [[nf.pred_east, nf.pred_north]] }], a).match || identify([0, 0], [{ pos: [at(yearOf(t))] }], a).match;
+  // a frame on the reported day: the time-lapse's own test there (the dot: the source measured there, within two pixels
+  // of the centre). With none (frames at another wavelength), Gaia's place carried to the reported time on the reported spot
+  const rf = man.frames.find(q => q.pred_east != null && reported(c, q)), src = rf?.x != null ? [(k - rf.x) * a, (rf.y - k) * a] : null;
+  const on = rf ? identify(middle(src, a), [{ pos: [[rf.pred_east, rf.pred_north]] }], a).match : identify([0, 0], [{ pos: [at(yearOf(t))] }], a).match;
   if (!on) return;
   known = { name: null }; status(c); sayKnown();
   const [e, n] = at(2000), cos = Math.cos(man.dec * Math.PI / 180);
