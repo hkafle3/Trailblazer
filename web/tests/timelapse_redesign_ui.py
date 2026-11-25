@@ -9,7 +9,7 @@ SIMBAD through /api/depth).
 4. unknown and unavailable: rows with no distance say why, a pending source is asked again after retry_after, an
    unavailable one (the server's own fault switch) is said plainly;
 5. Advanced holds every control the page had, each still works, and it stays open next time;
-6. Report a new find: the button's words and the line under it (nothing to report on a known star);
+6. Report a new find: the button's words and the line under it (Discuss this spot on a known star);
 7. the view rides in the address: a shared link reopens Depth, Photo drops it, Copy link copies it;
 8. phone (390x844): one column in the mockup's order, nothing sideways, the tabs and Advanced are 44 px taps, Depth
    shows Distances under the timeline.
@@ -60,7 +60,7 @@ async def main():
         check(say.startswith("Moved 10 arcseconds a year.") and "Matches Gaia's Barnard's Star, already known." in say and await pg.evaluate(SHOWN, "#pv-say"), f"default: the verdict in one plain sentence: {say}")
         r = await pg.evaluate("['.pv-who', '.pv-frame'].map(s => document.querySelector(s).getBoundingClientRect().left)")
         check(r[0] > r[1], "default: the name and verdict sit beside the photo (right column)")
-        check(label == "Report a new find" and note == "Barnard's Star is already known, so there is nothing to report here.", f"report: '{label}' / '{note}'")
+        check(label == "Discuss this spot" and note == "Barnard's Star is already known. Ask a question or share what you see.", f"report: '{label}' / '{note}'")
         # honest when nothing is known: made-up patches through the page's own verdict
         # dx: how many pixels east of the centre the source was measured this visit (101 x 101 patch of 6.15 arcsec pixels)
         V = """(([motion, gaia, ref, n, seen, dx = 0]) => { const f = { known: null, x: null, y: 50 }; const m = { key: 'live-x', name: 'x', ra: 10, dec: 5, motion, gaia, ref,
