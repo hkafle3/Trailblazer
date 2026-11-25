@@ -740,6 +740,9 @@ function verdict(m, f) {
   // a detector candidate (&cand=) is a dot on its own track, not the source the patch measures in its middle: the
   // middle's motion and Gaia match say nothing about it, so the verdict claims neither
   const tg = targetAt(m, f), name = tg.name;
+  // the detector's own catalog match (SIMBAD, data/candidates.json) is the one claim made, so every place says the same
+  const kn = candTrack.knownName();
+  if (!tg.id && kn) return { parts: [{ ok: `Matches ${kn} in SIMBAD, already known.` }, ' The dotted line is its track.'], star: kn, known: true, who: kn };
   if (!tg.id) return { parts: [`${name} is a detector candidate. Its track is the dotted line; nothing here checks it against Gaia or the asteroid catalogs, so it is not called known.`], star: null, known: false, who: name };
   // what is the dot in the middle in this visit (live/identity.js, the one rule): the catalog star only when Gaia's (or a
   // published) place for it this visit is on the dot; a passer only when SkyBoT puts it on the dot at an exposure's time
